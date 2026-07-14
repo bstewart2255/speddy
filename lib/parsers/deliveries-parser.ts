@@ -4,6 +4,7 @@
  * for service type codes based on provider role
  */
 
+import { parse } from 'csv-parse/sync';
 import { normalizeStudentName } from './name-utils';
 import { isServiceCodeForRole, getServiceTypeCode } from './service-type-mapping';
 
@@ -138,40 +139,6 @@ function parseDate(dateStr: string): Date | null {
 }
 
 /**
- * Parse CSV line handling quoted fields
- */
-function parseCSVLine(line: string): string[] {
-  const result: string[] = [];
-  let current = '';
-  let inQuotes = false;
-
-  for (let i = 0; i < line.length; i++) {
-    const char = line[i];
-
-    if (char === '"') {
-      if (inQuotes && line[i + 1] === '"') {
-        // Escaped quote
-        current += '"';
-        i++;
-      } else {
-        // Toggle quote mode
-        inQuotes = !inQuotes;
-      }
-    } else if (char === ',' && !inQuotes) {
-      result.push(current.trim());
-      current = '';
-    } else {
-      current += char;
-    }
-  }
-
-  // Add the last field
-  result.push(current.trim());
-
-  return result;
-}
-
-/**
  * Parse SEIS Deliveries CSV buffer
  * @param buffer - The CSV file buffer
  * @param options - Options including providerRole for service type filtering
@@ -180,9 +147,6 @@ export async function parseDeliveriesCSV(
   buffer: Buffer,
   options: DeliveriesParseOptions = {}
 ): Promise<DeliveriesParseResult> {
-  const content = buffer.toString('utf-8');
-  const lines = content.split(/\r?\n/).filter((line) => line.trim());
-
   const deliveries = new Map<string, DeliveryRecord>();
   const errors: Array<{ row: number; message: string }> = [];
   const warnings: Array<{ row: number; message: string }> = [];
@@ -194,21 +158,43 @@ export async function parseDeliveriesCSV(
   let totalRows = 0;
   let filteredServiceRows = 0;
 
+  // Parse with csv-parse so newlines inside quoted fields don't split one row
+  // into several. The previous split(/\r?\n/) + hand-rolled field parser broke
+  // any row whose quoted field (e.g. a multi-line note) contained a line break.
+  //
+  // relax_quotes keeps a single stray/unbalanced quote in one row from
+  // discarding the rest of the file. A HARD parse failure (e.g. an unterminated
+  // quote that runs to EOF) is intentionally NOT caught here: it propagates to
+  // the caller, which surfaces it as an error. Swallowing it into the returned
+  // `errors` would import zero schedules silently, because callers only render
+  // `warnings`.
+  const allRecords: string[][] = parse(buffer, {
+    encoding: 'utf-8',
+    bom: true,
+    relax_column_count: true,
+    relax_quotes: true,
+    skip_empty_lines: true,
+  });
+
+  // csv-parse's skip_empty_lines only drops truly-empty lines; the previous
+  // reader also dropped whitespace-only lines BEFORE numbering rows. Such a line
+  // parses to a single blank field — drop those here so warning/error row
+  // numbers stay aligned with the old behavior (a comma-bearing row like ",,,"
+  // is kept and still warned on as a short row).
+  const records = allRecords.filter((r) => !(r.length === 1 && !r[0].trim()));
+
   // Expected columns (0-indexed):
   // 0: Name, 1: SEIS ID, 2: Service, 3: Delivery, 4: Start Date, 5: End Date,
   // 6: Sessions / Frequency, 7: Location, 8: Total Minutes, 9: Total Delivered, 10: Medi-Cal
 
   // Skip header row
-  for (let i = 1; i < lines.length; i++) {
-    const line = lines[i];
-    if (!line.trim()) continue;
+  for (let i = 1; i < records.length; i++) {
+    const fields = records[i];
 
     totalRows++;
     const rowNum = i + 1;
 
     try {
-      const fields = parseCSVLine(line);
-
       if (fields.length < 7) {
         warnings.push({ row: rowNum, message: 'Row has fewer than expected columns' });
         continue;

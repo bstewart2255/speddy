@@ -12,7 +12,7 @@ import {
   parseDeliveriesCSV,
   DeliveriesParseResult,
 } from '@/lib/parsers/deliveries-parser';
-import { readFixture } from './fixtures/builders';
+import { readFixture, DELIVERIES_EMBEDDED_NEWLINE_CSV } from './fixtures/builders';
 
 /**
  * Serialize a DeliveriesParseResult into a deterministic, snapshot-friendly
@@ -114,5 +114,82 @@ describe('parseDeliveriesCSV', () => {
   it('psychologist role (no service code) keeps all service rows', async () => {
     const result = await parseDeliveriesCSV(buffer(), { providerRole: 'psychologist' });
     expect(serialize(result)).toMatchSnapshot();
+  });
+});
+
+describe('parseDeliveriesCSV — newline inside a quoted field', () => {
+  it('keeps a row with an embedded newline as one row (no split) and imports it', async () => {
+    const result = await parseDeliveriesCSV(DELIVERIES_EMBEDDED_NEWLINE_CSV(), { providerRole: 'resource' });
+
+    // One clean row, not a valid row plus an orphaned fragment.
+    expect(result.deliveries.size).toBe(1);
+    expect(result.metadata.totalRows).toBe(1);
+
+    const delivery = Array.from(result.deliveries.values())[0];
+    expect(delivery.name).toBe('Young, Yara');
+    expect(delivery.sessionsFrequency).toBe('30 min Weekly');
+    expect(delivery.weeklyMinutes).toBe(30);
+
+    // The old split(/\r?\n/) reader would have cut the quoted Location in two and
+    // warned "fewer than expected columns" on the "(Portable B)",... remainder.
+    expect(result.warnings.some((w) => /fewer than expected columns/i.test(w.message))).toBe(false);
+  });
+});
+
+describe('parseDeliveriesCSV — malformed quote in one row', () => {
+  it('parses leniently so one stray quote does not discard the whole file', async () => {
+    // A bare double-quote inside an unquoted field makes csv-parse throw unless
+    // relaxed; a throw here would zero out the entire caseload.
+    const csv = Buffer.from(
+      [
+        'Name,SEIS ID,Service,Delivery,Start Date,End Date,Sessions / Frequency,Location,Total Minutes (min/year),Total Delivered,Medi-Cal Billing Consent',
+        '"Alvarez, Ana",2000001,330 - Specialized Academic Instruction,Direct,08/15/2025,06/10/2026,45 min Weekly,Room 1,1620,0,Yes',
+        'Ort"iz Omar,2000030,330 - Specialized Academic Instruction,Direct,08/15/2025,06/10/2026,30 min Weekly,Room 2,1080,0,No',
+        '"Bishop, Ben",2000002,330 - Specialized Academic Instruction,Direct,08/15/2025,06/10/2026,30 min x 5 Times = 150 min Weekly,Room 3,5400,0,Yes',
+      ].join('\r\n'),
+      'utf-8',
+    );
+    const result = await parseDeliveriesCSV(csv, { providerRole: 'resource' });
+
+    // The well-formed rows still import — a stray quote must not zero out the
+    // whole caseload the way a throwing parser would.
+    expect(result.deliveries.has('alvarez_ana')).toBe(true);
+    expect(result.deliveries.has('bishop_ben')).toBe(true);
+    expect(result.errors.some((e) => /failed to parse csv/i.test(e.message))).toBe(false);
+  });
+});
+
+describe('parseDeliveriesCSV — blank-line handling parity', () => {
+  it('drops a whitespace-only line but keeps and warns on a comma-only row', async () => {
+    const csv = Buffer.from(
+      [
+        'Name,SEIS ID,Service,Delivery,Start Date,End Date,Sessions / Frequency,Location,Total Minutes (min/year),Total Delivered,Medi-Cal Billing Consent',
+        '   ', // whitespace-only line — dropped before numbering, like the old reader
+        ',,,', // short comma row — kept and surfaced as a short row, not silently dropped
+        '"Alvarez, Ana",2000001,330 - Specialized Academic Instruction,Direct,08/15/2025,06/10/2026,45 min Weekly,Room 1,1620,0,Yes',
+      ].join('\r\n'),
+      'utf-8',
+    );
+    const result = await parseDeliveriesCSV(csv, { providerRole: 'resource' });
+
+    expect(result.deliveries.has('alvarez_ana')).toBe(true);
+    expect(result.warnings.some((w) => /fewer than expected columns/i.test(w.message))).toBe(true);
+  });
+});
+
+describe('parseDeliveriesCSV — unrecoverable parse failure', () => {
+  it('propagates the error so the caller surfaces it, instead of importing zero rows silently', async () => {
+    // An opening quote that never closes runs to EOF (CSV_QUOTE_NOT_CLOSED),
+    // which relax_quotes does not recover. The import route catches this and
+    // surfaces it (400 / warning); swallowing it into an ignored errors array
+    // would hide a total-loss failure.
+    const csv = Buffer.from(
+      [
+        'Name,SEIS ID,Service,Delivery,Start Date,End Date,Sessions / Frequency,Location,Total Minutes (min/year),Total Delivered,Medi-Cal Billing Consent',
+        '"Doe, Jane,2000040,330 - Specialized Academic Instruction,Direct,08/15/2025,06/10/2026,30 min Weekly,Room 1,1080,0,Yes',
+      ].join('\r\n'),
+      'utf-8',
+    );
+    await expect(parseDeliveriesCSV(csv, { providerRole: 'resource' })).rejects.toThrow();
   });
 });

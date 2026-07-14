@@ -278,6 +278,25 @@ export const UTF8_WITH_REPLACEMENT_CHAR_CSV = (): Buffer => {
 };
 
 // ---------------------------------------------------------------------------
+// SEIS Deliveries CSV — newline inside a quoted field
+// ---------------------------------------------------------------------------
+
+/**
+ * A Deliveries CSV with a newline inside a quoted field (the Location cell) —
+ * exactly the shape the old hand-rolled split(/\r?\n/) line reader mangled by
+ * cutting one row into two. Pins that csv-parse keeps it as a single row: the
+ * student imports normally and no spurious "fewer than expected columns"
+ * warning is emitted for the orphaned second half.
+ */
+export const DELIVERIES_EMBEDDED_NEWLINE_CSV = (): Buffer => {
+  const text = [
+    'Name,SEIS ID,Service,Delivery,Start Date,End Date,Sessions / Frequency,Location,Total Minutes (min/year),Total Delivered,Medi-Cal Billing Consent',
+    '"Young, Yara",2000020,330 - Specialized Academic Instruction,Direct,08/15/2025,06/10/2026,30 min Weekly,"Room 1\n(Portable B)",1080,0,Yes',
+  ].join('\r\n');
+  return Buffer.from(text, 'utf-8');
+};
+
+// ---------------------------------------------------------------------------
 // SEIS Student Goals Report — XLSX variants
 // ---------------------------------------------------------------------------
 
