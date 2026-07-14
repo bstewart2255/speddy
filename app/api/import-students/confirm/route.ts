@@ -35,6 +35,9 @@ interface StudentToImport {
   studentId?: string; // Required for 'update' action
 }
 
+// Canonical UUID form; mirrors the check in app/api/sessions/ungroup/route.ts.
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export const POST = withRoute({}, async ({ req: request, userId }) => {
   const perf = measurePerformanceWithAlerts('import_students_confirm', 'api');
 
@@ -93,7 +96,10 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
       }
     }
 
-    const results: ImportResult[] = [];
+    // Pre-sized so every student's outcome lands in its INPUT position, whether it
+    // resolves during phase-1 validation or after the batched write — keeping the
+    // response order byte-compatible with the old per-student loop.
+    const results: ImportResult[] = new Array(students.length);
     let insertedCount = 0;
     let updatedCount = 0;
     let skippedCount = 0;
@@ -101,6 +107,9 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
 
     // Track newly added students to detect duplicates within the same import batch
     const addedInThisBatch = new Set<string>();
+    // Track update targets so the same student isn't updated twice in one batch —
+    // the batched session-sync baseline is captured once, up front (see phase 2).
+    const updatedInThisBatch = new Set<string>();
 
     // SPE-229: instead of one write RPC per student (a pre-select + RPC + session
     // sync each — ~3 round trips per student), validate every student here and
@@ -110,13 +119,15 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
     const batchPayload: Array<Record<string, unknown>> = [];
     const batchPending: Array<
       PendingUpsert & {
+        index: number; // original position in `students`, for input-ordered results
         student: StudentToImport;
         newRequirements: { sessions_per_week: number | null; minutes_per_session: number | null };
       }
     > = [];
 
     // Phase 1: validate each student (O(1) per student) and queue the writes.
-    for (const student of students) {
+    for (let index = 0; index < students.length; index++) {
+      const student = students[index];
       try {
         // Determine action (default to 'insert' for backward compatibility)
         const action = student.action || 'insert';
@@ -127,35 +138,67 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
 
         // Handle skip action
         if (action === 'skip') {
-          results.push({
+          results[index] = {
             success: true,
             studentId: student.studentId,
             initials: initialsNormalized || fallbackInitials,
             action: 'skipped'
-          });
+          };
           skippedCount++;
           continue;
         }
 
         if (initialsNormalized.length < 2 || initialsNormalized.length > 4) {
-          results.push({
+          results[index] = {
             success: false,
             initials: initialsNormalized || fallbackInitials,
             action: 'error',
             error: 'Invalid initials: must be 2-4 characters'
-          });
+          };
           errorCount++;
           continue;
         }
 
         // For updates, validate studentId is provided
         if (action === 'update' && !student.studentId) {
-          results.push({
+          results[index] = {
             success: false,
             initials: initialsNormalized,
             action: 'error',
             error: 'Student ID required for update action'
-          });
+          };
+          errorCount++;
+          continue;
+        }
+
+        // Reject a malformed studentId up front. upsert_students_atomic casts
+        // studentId to uuid BEFORE its per-row exception block, so one bad id would
+        // abort the whole batched write instead of failing just this row.
+        if (action === 'update' && student.studentId && !UUID_REGEX.test(student.studentId)) {
+          results[index] = {
+            success: false,
+            studentId: student.studentId,
+            initials: initialsNormalized,
+            action: 'error',
+            error: 'Invalid student ID'
+          };
+          errorCount++;
+          continue;
+        }
+
+        // Reject a second update for the same student in one batch. The old
+        // per-student loop re-read each student's requirements before its update, so
+        // sequential updates stayed self-consistent; the batched path captures one
+        // baseline up front, so a duplicate would sync sessions against a stale
+        // value. Mirrors the insert within-batch duplicate check below.
+        if (action === 'update' && student.studentId && updatedInThisBatch.has(student.studentId)) {
+          results[index] = {
+            success: false,
+            studentId: student.studentId,
+            initials: initialsNormalized,
+            action: 'error',
+            error: `Duplicate in import: student "${initialsNormalized}" appears multiple times`
+          };
           errorCount++;
           continue;
         }
@@ -166,23 +209,23 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
         // rows in this same batch) - O(1) instead of a database query.
         if (action === 'insert') {
           if (existingStudentMap.has(duplicateKey)) {
-            results.push({
+            results[index] = {
               success: false,
               initials: initialsNormalized,
               action: 'error',
               error: `Student with initials "${initialsNormalized}" in grade ${student.gradeLevel} already exists`
-            });
+            };
             errorCount++;
             continue;
           }
 
           if (addedInThisBatch.has(duplicateKey)) {
-            results.push({
+            results[index] = {
               success: false,
               initials: initialsNormalized,
               action: 'error',
               error: `Duplicate in import: "${initialsNormalized}" in grade ${student.gradeLevel} appears multiple times`
-            });
+            };
             errorCount++;
             continue;
           }
@@ -200,12 +243,12 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
               userId,
               studentInitials: initialsNormalized
             });
-            results.push({
+            results[index] = {
               success: false,
               initials: initialsNormalized,
               action: 'error',
               error: 'Failed to validate school access'
-            });
+            };
             errorCount++;
             continue;
           }
@@ -216,12 +259,12 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
               requestedSchoolId,
               studentInitials: initialsNormalized
             });
-            results.push({
+            results[index] = {
               success: false,
               initials: initialsNormalized,
               action: 'error',
               error: `User does not have access to school ${requestedSchoolId}`
-            });
+            };
             errorCount++;
             continue;
           }
@@ -246,6 +289,7 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
         // sessions synced afterward (the RPC deliberately leaves that to the API),
         // so we capture the new requirements now.
         if (action === 'update') {
+          updatedInThisBatch.add(student.studentId as string);
           batchPayload.push({
             action: 'update',
             studentId: student.studentId,
@@ -254,8 +298,8 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
             firstName: student.firstName,
             lastName: student.lastName,
             goals: student.goals,
-            sessionsPerWeek: student.sessionsPerWeek || null,
-            minutesPerSession: student.minutesPerSession || null,
+            sessionsPerWeek: student.sessionsPerWeek ?? null,
+            minutesPerSession: student.minutesPerSession ?? null,
             teacherId: student.teacherId || null,
             teacherName: student.teacherName || null
           });
@@ -271,8 +315,8 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
             schoolId,
             districtId,
             stateId,
-            sessionsPerWeek: student.sessionsPerWeek || null,
-            minutesPerSession: student.minutesPerSession || null,
+            sessionsPerWeek: student.sessionsPerWeek ?? null,
+            minutesPerSession: student.minutesPerSession ?? null,
             teacherId: student.teacherId || null,
             firstName: student.firstName,
             lastName: student.lastName,
@@ -282,6 +326,7 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
         }
 
         batchPending.push({
+          index,
           student,
           initials: initialsNormalized,
           gradeLevel: student.gradeLevel,
@@ -301,12 +346,12 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
           studentInitials: errorInitials
         });
 
-        results.push({
+        results[index] = {
           success: false,
           initials: errorInitials,
           action: 'error',
           error: error.message || 'Unknown error occurred'
-        });
+        };
         errorCount++;
       }
     }
@@ -346,13 +391,13 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
           batchSize: batchPending.length
         });
         for (const p of batchPending) {
-          results.push({
+          results[p.index] = {
             success: false,
             studentId: p.action === 'update' ? p.studentId : undefined,
             initials: p.initials,
             action: 'error',
             error: p.action === 'update' ? 'Failed to update student' : 'Failed to import student'
-          });
+          };
           errorCount++;
         }
       } else {
@@ -364,7 +409,7 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
         for (let i = 0; i < mapped.length; i++) {
           const { result, outcome } = mapped[i];
           const p = batchPending[i];
-          results.push(result);
+          results[p.index] = result;
 
           if (outcome === 'error') {
             errorCount++;
