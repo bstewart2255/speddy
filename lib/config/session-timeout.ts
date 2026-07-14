@@ -14,7 +14,6 @@ export const SESSION_CONFIG = {
   
   // Activities that should extend the session without user interaction
   KEEP_ALIVE_ACTIVITIES: [
-    'ai-upload',
     'lesson-generation',
     'file-upload',
     'worksheet-generation',

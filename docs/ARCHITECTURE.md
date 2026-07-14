@@ -343,7 +343,7 @@ flowchart TD
 - **Idle timeout** (`lib/config/session-timeout.ts`): default **45 min**
   (`NEXT_PUBLIC_SESSION_TIMEOUT`, `2_700_000` ms), **2-min** warning,
   **30 s** activity throttle, with `KEEP_ALIVE_ACTIVITIES`
-  (`ai-upload`, `lesson-generation`, `file-upload`, `worksheet-generation`) and
+  (`lesson-generation`, `file-upload`, `worksheet-generation`) and
   `EXEMPT_ROUTES`. Wired by `useActivityTracker` + `auth-provider.tsx`;
   cross-tab via storage event + `BroadcastChannel`; #661 enforces the window
   across tab/browser close.

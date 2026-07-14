@@ -122,9 +122,9 @@ describe('useActivityTracker', () => {
     
     // Call keepAlive multiple times rapidly
     act(() => {
-      result.current.keepAlive('ai-upload');
-      result.current.keepAlive('ai-upload');
-      result.current.keepAlive('ai-upload');
+      result.current.keepAlive('file-upload');
+      result.current.keepAlive('file-upload');
+      result.current.keepAlive('file-upload');
     });
     
     // Should call onActivity for each keepAlive call
