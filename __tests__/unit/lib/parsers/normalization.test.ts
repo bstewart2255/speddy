@@ -69,11 +69,11 @@ describe('normalizeGradeLevel — CSV copy (lib/parsers/csv-parser.ts)', () => {
     expect(normalizeGradeLevelCsv('13')).toBe('13');
   });
 
-  it('pins the current spelled-out-grade bug (suffix stripper clobbers the word)', () => {
-    // The `/TH|ST|ND|RD/` removal runs before the number-word map, so these
-    // never reach the map. Post-SPE-240 these should become '1' and 'K'.
-    expect(normalizeGradeLevelCsv('First')).toBe('First');
-    expect(normalizeGradeLevelCsv('Kindergarten')).toBe('Kindergarten');
+  it('normalizes spelled-out grades (SPE-240: dropped the ordinal strip that clobbered them)', () => {
+    // The `/TH|ST|ND|RD/` removal used to run before the number-word map, so
+    // "First" -> "Fir" and "Kindergarten" -> "Kiergarten" never matched. Fixed.
+    expect(normalizeGradeLevelCsv('First')).toBe('1');
+    expect(normalizeGradeLevelCsv('Kindergarten')).toBe('K');
   });
 
   it('snapshots the full CSV-copy grade matrix', () => {
@@ -88,10 +88,12 @@ describe('normalizeGradeLevel — CSV copy (lib/parsers/csv-parser.ts)', () => {
 });
 
 describe('normalizeGradeLevel — XLSX copy (lib/parsers/seis-parser.ts)', () => {
-  it('does NOT apply the SEIS-specific 18 -> TK / 0 -> K special cases (divergence)', () => {
-    // This is the key divergence SPE-240 will resolve when the copies merge.
-    expect(normalizeGradeLevelSeis('18')).toBe('18');
-    expect(normalizeGradeLevelSeis('0')).toBe('0');
+  it('now applies the SEIS-specific 18 -> TK / 0 -> K special cases too (SPE-240 convergence)', () => {
+    // SPE-240 merged the CSV/XLSX copies onto the shared normalizer, so the XLSX
+    // path applies the same SEIS special cases the CSV path always did.
+    expect(normalizeGradeLevelSeis('18')).toBe('TK');
+    expect(normalizeGradeLevelSeis('0')).toBe('K');
+    expect(normalizeGradeLevelSeis('18')).toBe(normalizeGradeLevelCsv('18'));
   });
 
   it('agrees with the CSV copy on ordinary numeric and K/TK grades', () => {

@@ -6,6 +6,7 @@
 import { parse } from 'csv-parse/sync';
 import { normalizeSchoolName } from '../school-helpers';
 import { getServiceTypeCode, getServiceTypeNameForRole, isGoalForProviderByKeywords } from './service-type-mapping';
+import { normalizeGradeLevel } from '../utils/grade-parser';
 
 export interface ParsedStudent {
   firstName: string;
@@ -407,68 +408,12 @@ function detectColumnMapping(records: string[][]): ColumnMapping {
   return mapping;
 }
 
-/**
- * Normalize grade level to standard format (K, TK, 1-12)
- *
- * Exported for the parser golden-fixture suite (SPE-239). Note this copy
- * diverges from the one in seis-parser.ts: this one applies the SEIS-specific
- * grade "18" -> TK and grade "0" -> K rules. SPE-240 is expected to merge them.
- */
-export function normalizeGradeLevel(grade: string): string {
-  const gradeStr = grade.trim().toUpperCase();
-
-  // Remove common prefixes/suffixes
-  let normalized = gradeStr
-    .replace(/GRADE/i, '')
-    .replace(/TH|ST|ND|RD/i, '')
-    .trim();
-
-  // Handle special cases
-  if (/^T\.?K\.?$|TRANSITIONAL\s*K|TK/i.test(normalized)) {
-    return 'TK';
-  }
-
-  if (/^K\.?$|KINDER|KINDERGARTEN/i.test(normalized)) {
-    return 'K';
-  }
-
-  // Handle spelled-out numbers
-  const numberWords: { [key: string]: string } = {
-    'FIRST': '1', 'SECOND': '2', 'THIRD': '3', 'FOURTH': '4',
-    'FIFTH': '5', 'SIXTH': '6', 'SEVENTH': '7', 'EIGHTH': '8',
-    'NINTH': '9', 'TENTH': '10', 'ELEVENTH': '11', 'TWELFTH': '12'
-  };
-
-  for (const [word, num] of Object.entries(numberWords)) {
-    if (normalized.includes(word)) {
-      return num;
-    }
-  }
-
-  // Extract numeric grade (handle leading zeros like "02" -> "2")
-  const match = normalized.match(/\d+/);
-  if (match) {
-    const num = parseInt(match[0], 10); // parseInt removes leading zeros
-
-    // SEIS-specific: Grade "18" often represents TK or Pre-K
-    if (num === 18) {
-      return 'TK';
-    }
-
-    // Standard grades 1-12
-    if (num >= 1 && num <= 12) {
-      return String(num);
-    }
-
-    // Grade 0 might be Kindergarten
-    if (num === 0) {
-      return 'K';
-    }
-  }
-
-  // Return as-is if we couldn't normalize
-  return grade.trim();
-}
+// The canonical grade-string normalizer lives in lib/utils/grade-parser.ts —
+// SPE-240 merged the diverging CSV/XLSX copies (this one previously applied the
+// SEIS 18->TK / 0->K rules the XLSX copy lacked, and both mangled spelled-out
+// grades). Re-exported so existing importers and the SPE-239 fixture suite keep
+// resolving it from this module.
+export { normalizeGradeLevel };
 
 /**
  * Detect if CSV is a SEIS Student Goals Report

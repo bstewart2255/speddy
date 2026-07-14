@@ -5,6 +5,7 @@
 
 import * as ExcelJS from 'exceljs';
 import { getServiceTypeCode, isGoalForProviderByKeywords } from './service-type-mapping';
+import { normalizeGradeLevel } from '../utils/grade-parser';
 
 // ExcelJS cell value types for rich text and formula results
 interface ExcelRichTextValue {
@@ -369,57 +370,12 @@ function getCellValue(row: ExcelJS.Row, colNumber: number): string {
   return String(cell.value);
 }
 
-/**
- * Normalize grade level to standard format (K, TK, 1-12)
- *
- * Exported for the parser golden-fixture suite (SPE-239). Note this copy
- * diverges from the one in csv-parser.ts: this one does NOT apply the
- * SEIS-specific grade "18" -> TK or grade "0" -> K rules. SPE-240 is expected
- * to merge the two copies.
- */
-export function normalizeGradeLevel(grade: string): string {
-  const gradeStr = grade.trim().toUpperCase();
-
-  // Remove common prefixes/suffixes
-  let normalized = gradeStr
-    .replace(/GRADE/i, '')
-    .replace(/TH|ST|ND|RD/i, '')
-    .trim();
-
-  // Handle special cases
-  if (/^T\.?K\.?$|TRANSITIONAL\s*K|TK/i.test(normalized)) {
-    return 'TK';
-  }
-
-  if (/^K\.?$|KINDER|KINDERGARTEN/i.test(normalized)) {
-    return 'K';
-  }
-
-  // Handle spelled-out numbers
-  const numberWords: { [key: string]: string } = {
-    'FIRST': '1', 'SECOND': '2', 'THIRD': '3', 'FOURTH': '4',
-    'FIFTH': '5', 'SIXTH': '6', 'SEVENTH': '7', 'EIGHTH': '8',
-    'NINTH': '9', 'TENTH': '10', 'ELEVENTH': '11', 'TWELFTH': '12'
-  };
-
-  for (const [word, num] of Object.entries(numberWords)) {
-    if (normalized.includes(word)) {
-      return num;
-    }
-  }
-
-  // Extract numeric grade (1-12)
-  const match = normalized.match(/\d+/);
-  if (match) {
-    const num = parseInt(match[0]);
-    if (num >= 1 && num <= 12) {
-      return String(num);
-    }
-  }
-
-  // Return as-is if we couldn't normalize
-  return grade.trim();
-}
+// The canonical grade-string normalizer lives in lib/utils/grade-parser.ts —
+// SPE-240 merged the diverging CSV/XLSX copies. This copy previously did NOT
+// apply the SEIS 18->TK / 0->K rules and (like the CSV copy) mangled spelled-out
+// grades; the shared helper fixes both. Re-exported so existing importers and
+// the SPE-239 fixture suite keep resolving it from this module.
+export { normalizeGradeLevel };
 
 /**
  * Parse a date string into ISO format (YYYY-MM-DD)

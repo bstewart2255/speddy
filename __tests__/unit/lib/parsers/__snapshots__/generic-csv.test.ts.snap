@@ -80,7 +80,7 @@ exports[`parseCSVReport — messy grade values (generic format) matches the gold
       "goals": [
         "The student will read 60 words per minute by year end with 90% accuracy.",
       ],
-      "gradeLevel": "First",
+      "gradeLevel": "1",
       "iepDate": undefined,
       "initials": "AA",
       "lastName": "Adams",
@@ -92,7 +92,7 @@ exports[`parseCSVReport — messy grade values (generic format) matches the gold
       "goals": [
         "The student will identify all letter sounds by June with 80% accuracy.",
       ],
-      "gradeLevel": "Kindergarten",
+      "gradeLevel": "K",
       "iepDate": undefined,
       "initials": "BB",
       "lastName": "Brooks",
