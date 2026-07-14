@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { Button } from '../ui/button';
 
@@ -159,6 +159,19 @@ export function StudentImportPreviewModal({
 
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // After an import that partially failed, the modal stays open on its failure
+  // list and the footer collapses to a single "Done" button (no auto-close).
+  const [importFinished, setImportFinished] = useState(false);
+  const doneButtonRef = useRef<HTMLButtonElement>(null);
+
+  // When the modal switches to the post-import "finished" state, move focus to
+  // the Done button — the Confirm button the user activated has unmounted, so
+  // without this keyboard focus falls to <body>.
+  useEffect(() => {
+    if (importFinished) {
+      doneButtonRef.current?.focus();
+    }
+  }, [importFinished]);
 
   const getInitials = (index: number) => {
     return editedInitials[index] || data.students[index].initials;
@@ -299,14 +312,14 @@ export function StudentImportPreviewModal({
         const errorMessages = failed.map((r: any) => `${r.initials}: ${r.error}`).join(', ');
         setError(`Some students failed to import: ${errorMessages}`);
 
-        // Still close if some succeeded
+        // Some succeeded: refresh the caseload behind the modal, but keep the
+        // modal open so the user can read the failure list. They dismiss it
+        // with the Done button — no timer-based auto-close.
         if (result.data.summary.succeeded > 0) {
-          setTimeout(() => {
-            if (onImportComplete) {
-              onImportComplete();
-            }
-            onClose();
-          }, 3000);
+          if (onImportComplete) {
+            onImportComplete();
+          }
+          setImportFinished(true);
         }
       } else {
         // All succeeded
@@ -448,7 +461,7 @@ export function StudentImportPreviewModal({
 
             {/* Errors/Warnings */}
             {error && (
-              <div className="bg-red-50 border border-red-200 rounded-md p-4">
+              <div role="alert" className="bg-red-50 border border-red-200 rounded-md p-4">
                 <p className="text-sm text-red-800">{error}</p>
               </div>
             )}
@@ -760,6 +773,9 @@ export function StudentImportPreviewModal({
           <div className="flex justify-between items-center gap-3 px-6 py-4 border-t bg-gray-50">
             <div className="text-sm text-gray-600">
               {(() => {
+                // Once the import has run (partial failure), the pending-selection
+                // summary is no longer meaningful — the error list explains what happened.
+                if (importFinished) return null;
                 // Calculate counts for selected students by action
                 const selectedInserts = Array.from(selectedStudents).filter(idx => {
                   const s = data.students[idx];
@@ -779,16 +795,24 @@ export function StudentImportPreviewModal({
               })()}
             </div>
             <div className="flex gap-3">
-              <Button variant="secondary" onClick={onClose} disabled={importing}>
-                Cancel
-              </Button>
-              <Button
-                variant="primary"
-                onClick={handleImport}
-                disabled={importing || selectedCount === 0}
-              >
-                {importing ? 'Processing...' : `Confirm ${selectedCount} Student${selectedCount !== 1 ? 's' : ''}`}
-              </Button>
+              {importFinished ? (
+                <Button ref={doneButtonRef} variant="primary" onClick={onClose}>
+                  Done
+                </Button>
+              ) : (
+                <>
+                  <Button variant="secondary" onClick={onClose} disabled={importing}>
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="primary"
+                    onClick={handleImport}
+                    disabled={importing || selectedCount === 0}
+                  >
+                    {importing ? 'Processing...' : `Confirm ${selectedCount} Student${selectedCount !== 1 ? 's' : ''}`}
+                  </Button>
+                </>
+              )}
             </div>
           </div>
         </div>
