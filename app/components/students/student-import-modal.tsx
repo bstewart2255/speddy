@@ -62,8 +62,13 @@ export function StudentImportModal({
 
   const inputRef = useRef<HTMLInputElement>(null);
   const idCounter = useRef(0);
+  // Bumped on every reset so results from a detection started before the reset
+  // (e.g. the user closed the modal mid-read) are discarded instead of
+  // repopulating a now-closed modal that stays mounted on the page.
+  const detectionGeneration = useRef(0);
 
   const resetState = () => {
+    detectionGeneration.current += 1;
     setEntries([]);
     setIsDragging(false);
     setSubmitError(null);
@@ -103,7 +108,14 @@ export function StudentImportModal({
       return { id, file, type: 'unknown', error: `File is larger than ${MAX_FILE_SIZE_MB}MB.` };
     }
 
-    const type = await detectImportFile(file);
+    let type: DetectedImportType;
+    try {
+      type = await detectImportFile(file);
+    } catch {
+      // A file that can't be read shouldn't take down the whole batch — surface
+      // it as an actionable per-file error.
+      return { id, file, type: 'unknown', error: 'Could not read this file. Please try selecting it again.' };
+    }
     if (type === 'roster-template') {
       return {
         id,
@@ -116,25 +128,39 @@ export function StudentImportModal({
   };
 
   const addFiles = async (fileList: FileList | File[]) => {
+    const generation = detectionGeneration.current;
     setSubmitError(null);
     const incoming = Array.from(fileList);
     if (incoming.length === 0) return;
 
     const built = await Promise.all(incoming.map(buildEntry));
+    // The modal was reset (e.g. closed) while these files were being detected —
+    // drop the stale results rather than repopulating a closed modal.
+    if (generation !== detectionGeneration.current) return;
 
     setEntries((prev) => {
       const next = [...prev];
       for (const entry of built) {
         const formKey = IMPORT_TYPE_META[entry.type].formKey;
-        // Replace-last: one file per server-backed type. Note the replacement.
+        // Replace-last: one file per server-backed type. Header detection is
+        // async, so two same-type files picked in separate actions can resolve
+        // out of order. `id` is assigned synchronously at pick time, so compare
+        // ids to keep whichever was PICKED last (not whichever detection
+        // finished last) and never let an older pick splice out a newer one.
         if (formKey && !entry.error) {
           const existingIndex = next.findIndex(
             (e) => !e.error && IMPORT_TYPE_META[e.type].formKey === formKey
           );
           if (existingIndex !== -1) {
-            const replaced = next[existingIndex];
-            next.splice(existingIndex, 1);
-            entry.note = `replaced ${replaced.file.name}`;
+            const existing = next[existingIndex];
+            if (Number(entry.id) > Number(existing.id)) {
+              next.splice(existingIndex, 1);
+              entry.note = `replaced ${existing.file.name}`;
+              next.push(entry);
+            }
+            // else: this file was picked earlier but its detection landed late —
+            // the newer file already shown wins; drop this stale one.
+            continue;
           }
         }
         next.push(entry);

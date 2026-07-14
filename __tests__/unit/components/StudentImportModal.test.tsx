@@ -1,6 +1,17 @@
 import React from 'react';
-import { render, screen, waitFor, fireEvent } from '../../../test-utils';
+import { render, screen, waitFor, fireEvent, act } from '../../../test-utils';
 import { StudentImportModal } from '@/app/components/students/student-import-modal';
+import * as detectModule from '@/lib/import/detect-import-file';
+
+// Wrap detectImportFile in a jest.fn that defaults to the real implementation,
+// so most tests exercise real detection while a few can force specific
+// resolution order / failures (ESM exports aren't spy-able directly).
+jest.mock('@/lib/import/detect-import-file', () => {
+  const actual = jest.requireActual('@/lib/import/detect-import-file');
+  return { ...actual, detectImportFile: jest.fn(actual.detectImportFile) };
+});
+
+const detectMock = () => detectModule.detectImportFile as jest.Mock;
 
 // SPE-231: the unified drop zone detects each dropped file's type client-side,
 // routes it to the right /api/import-students form key, and never nags about
@@ -104,6 +115,74 @@ describe('StudentImportModal (SPE-231)', () => {
     expect(await screen.findByText('second.csv')).toBeInTheDocument();
     expect(screen.queryByText('first.csv')).not.toBeInTheDocument();
     expect(screen.getByText(/replaced first\.csv/i)).toBeInTheDocument();
+  });
+
+  it('replace-last honors pick order even when header detection resolves out of order', async () => {
+    // Force the FIRST-picked file's detection to resolve LAST (Codex P2 race):
+    // the older pick must never splice out the newer one.
+    let resolveFirst!: (t: detectModule.DetectedImportType) => void;
+    const firstPending = new Promise<detectModule.DetectedImportType>((r) => {
+      resolveFirst = r;
+    });
+    detectMock()
+      .mockImplementationOnce(() => firstPending) // A (picked first) — pending
+      .mockImplementationOnce(() => Promise.resolve('deliveries')); // B (picked second) — immediate
+
+    const { container } = renderModal();
+    const input = fileInput(container);
+
+    fireEvent.change(input, { target: { files: [makeFile(DELIVERIES_HEADER, 'A.csv')] } });
+    fireEvent.change(input, { target: { files: [makeFile(DELIVERIES_HEADER, 'B.csv')] } });
+
+    // B (last picked) shows first because its detection resolved first.
+    expect(await screen.findByText('B.csv')).toBeInTheDocument();
+
+    // A's detection lands late — it must NOT replace B.
+    resolveFirst('deliveries');
+    await waitFor(() => expect(screen.getByRole('button', { name: /Import 1 file/i })).toBeEnabled());
+    expect(screen.getByText('B.csv')).toBeInTheDocument();
+    expect(screen.queryByText('A.csv')).not.toBeInTheDocument();
+  });
+
+  it('surfaces a per-file error when detection fails, without dropping the rest of the batch', async () => {
+    detectMock()
+      .mockRejectedValueOnce(new Error('read failed')) // bad.csv
+      .mockResolvedValueOnce('deliveries'); // good.csv
+
+    const { container } = renderModal();
+    fireEvent.change(fileInput(container), {
+      target: { files: [makeFile('x', 'bad.csv'), makeFile(DELIVERIES_HEADER, 'good.csv')] },
+    });
+
+    expect(await screen.findByText('good.csv')).toBeInTheDocument();
+    expect(screen.getByText('bad.csv')).toBeInTheDocument();
+    expect(screen.getByText(/Could not read this file/i)).toBeInTheDocument();
+    // The readable file is still importable.
+    await waitFor(() => expect(screen.getByRole('button', { name: /Import 1 file/i })).toBeEnabled());
+  });
+
+  it('discards a detection result when the modal is reset mid-detection', async () => {
+    let resolveDetect!: (t: detectModule.DetectedImportType) => void;
+    detectMock().mockImplementationOnce(
+      () =>
+        new Promise((r) => {
+          resolveDetect = r;
+        })
+    );
+
+    const { container } = renderModal();
+    fireEvent.change(fileInput(container), { target: { files: [makeFile(DELIVERIES_HEADER, 'x.csv')] } });
+
+    // Reset the modal (Cancel) before detection resolves.
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    // The stale detection lands afterward — it must not repopulate the modal.
+    await act(async () => {
+      resolveDetect('deliveries');
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(screen.queryByText('x.csv')).not.toBeInTheDocument();
   });
 
   it('submits detected files under the right form keys and reports the result', async () => {
