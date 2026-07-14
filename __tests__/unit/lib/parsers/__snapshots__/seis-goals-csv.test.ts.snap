@@ -142,7 +142,7 @@ exports[`parseCSVReport — SEIS Student Goals Report (CSV) falls back to the ge
     {
       "firstName": "Finn",
       "goals": [
-        "Academic #3",
+        "OT (1 of 1)",
         "By 4/12/2027, Finn will form lower-case letters with correct size and spacing in 4 of 5 samples.",
       ],
       "gradeLevel": "TK",
@@ -416,16 +416,16 @@ exports[`parseCSVReport — SEIS Student Goals Report (CSV) per-role goal filter
     "students": 1,
   },
   "ot": {
-    "goalsFiltered": 8,
-    "students": 3,
+    "goalsFiltered": 9,
+    "students": 2,
   },
   "psychologist": {
     "goalsFiltered": 0,
     "students": 10,
   },
   "resource": {
-    "goalsFiltered": 5,
-    "students": 5,
+    "goalsFiltered": 6,
+    "students": 4,
   },
   "speech": {
     "goalsFiltered": 10,

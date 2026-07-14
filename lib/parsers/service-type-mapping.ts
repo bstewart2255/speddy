@@ -83,6 +83,9 @@ export const PROVIDER_KEYWORDS: Record<string, string[]> = {
     'academic',
     'reading',
     'math',
+    // Word-boundary matching means "math" no longer matches inside
+    // "mathematics", so the spelled-out form is listed explicitly (SPE-247).
+    'mathematics',
     'written',
     'writing',
     'rsp',
@@ -97,6 +100,7 @@ export const PROVIDER_KEYWORDS: Record<string, string[]> = {
     'gross motor',
     'occupational',
     'ot',
+    'handwriting',
   ],
   counseling: [
     'social',
@@ -110,9 +114,31 @@ export const PROVIDER_KEYWORDS: Record<string, string[]> = {
   ],
 };
 
+/** Escape a keyword so it can be embedded literally in a RegExp. */
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * One word-boundary-anchored alternation per role, compiled once from
+ * PROVIDER_KEYWORDS. Word boundaries (not substring `includes`) stop keywords
+ * from matching inside longer unrelated words — the cross-contamination that
+ * routed "Handwriting" to resource (via `writing`) and "Social/Emotional" to
+ * OT (via `ot` inside "emOTional"). See SPE-247.
+ */
+const PROVIDER_KEYWORD_PATTERNS: Record<string, RegExp> = Object.fromEntries(
+  Object.entries(PROVIDER_KEYWORDS).map(([role, keywords]) => [
+    role,
+    new RegExp(`\\b(?:${keywords.map(escapeRegExp).join('|')})\\b`, 'i'),
+  ])
+);
+
 /**
  * Check if goal text matches a provider's keywords
  * Used for filtering SEIS Student Goals Report by provider type
+ *
+ * Matches on whole words (word boundaries), so `writing` no longer matches
+ * inside "Handwriting" and `ot` no longer matches inside "emotional".
  *
  * @param text - Text from Area of Need, Annual Goal #, or Person Responsible columns
  * @param providerRole - The provider's role (resource, speech, ot, counseling)
@@ -122,15 +148,26 @@ export function doesTextMatchProvider(text: string, providerRole: string): boole
   if (!text) return false;
 
   const normalizedRole = providerRole.toLowerCase().trim();
-  const keywords = PROVIDER_KEYWORDS[normalizedRole];
+  const pattern = PROVIDER_KEYWORD_PATTERNS[normalizedRole];
 
   // If no keywords defined for this role (e.g., psychologist), don't filter
-  if (!keywords) return true;
+  if (!pattern) return true;
 
-  const lowerText = text.toLowerCase();
+  return pattern.test(text);
+}
 
-  // Check if any keyword is found in the text
-  return keywords.some(keyword => lowerText.includes(keyword));
+/**
+ * A goal row has no routing signal when Area of Need, Annual Goal #, and Person
+ * Responsible are all blank. Such a row can't be attributed to any provider by
+ * keyword, so instead of silently filtering it out for every keyworded role,
+ * callers surface it for manual review rather than letting it vanish (SPE-247).
+ */
+export function hasNoProviderRoutingSignal(
+  areaOfNeed: string | undefined,
+  goalNumber: string | undefined,
+  personResponsible: string | undefined
+): boolean {
+  return !areaOfNeed?.trim() && !goalNumber?.trim() && !personResponsible?.trim();
 }
 
 /**

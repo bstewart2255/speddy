@@ -6,7 +6,7 @@
 import { parse } from 'csv-parse/sync';
 import { TextDecoder } from 'util';
 import { normalizeSchoolName } from '../school-helpers';
-import { getServiceTypeCode, getServiceTypeNameForRole, isGoalForProviderByKeywords } from './service-type-mapping';
+import { getServiceTypeCode, getServiceTypeNameForRole, isGoalForProviderByKeywords, hasNoProviderRoutingSignal } from './service-type-mapping';
 import { normalizeGradeLevel } from '../utils/grade-parser';
 
 export interface ParsedStudent {
@@ -261,6 +261,28 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
         const areaOfNeed = columnMapping.areaOfNeed !== undefined ? row[columnMapping.areaOfNeed] || '' : '';
         const goalType = columnMapping.goalType !== undefined ? row[columnMapping.goalType] || '' : '';
         const personResponsible = columnMapping.personResponsible !== undefined ? row[columnMapping.personResponsible] || '' : '';
+
+        // A SEIS goal row with blank Area of Need, Annual Goal #, AND Person
+        // Responsible has no signal to route it to any provider. Under keyword
+        // filtering it would silently vanish for every keyworded role; surface
+        // it for manual review instead (SPE-247). Psychologist/specialist roles
+        // have no service code and import everything, so they're unaffected.
+        if (
+          isSEISFormat &&
+          options.providerRole &&
+          getServiceTypeCode(options.providerRole) !== null &&
+          hasNoProviderRoutingSignal(areaOfNeed, goalType, personResponsible)
+        ) {
+          const hasGoalText = columnMapping.goalColumns.some(
+            (i) => (row[i] || '').trim().length > 10
+          );
+          if (hasGoalText) {
+            warnings.push({
+              row: rowIndex + 1,
+              message: `Goal for student ${initials} (grade ${normalizedGrade}) has no Area of Need, Annual Goal #, or Person Responsible and could not be routed to a provider — please review and assign it manually.`,
+            });
+          }
+        }
 
         for (const goalColIndex of columnMapping.goalColumns) {
           const goalText = row[goalColIndex] || '';

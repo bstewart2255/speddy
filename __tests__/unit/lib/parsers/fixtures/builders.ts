@@ -142,10 +142,13 @@ const SEIS_GOALS_ROWS: SparseRow[] = [
     17: 'Occupational Therapist',
   },
   {
-    // Grade 18 -> TK (CSV copy only); Handwriting area cross-contaminates the
-    // resource "writing" keyword; Person Responsible = OT so it also matches OT.
+    // Grade 18 -> TK (CSV copy only). Handwriting routing (SPE-247): pre-fix the
+    // resource "writing" keyword matched inside "Hand-writing" and pulled this
+    // OT goal into resource; word-boundary matching plus the new OT
+    // "handwriting" keyword now route it to OT, not resource. No column carries
+    // a resource keyword, so the flip is unambiguous.
     0: '2000006', 2: 'Foster', 3: 'Finn', 5: '18', 6: 'Mt Diablo Elementary School',
-    9: '04/12/2026', 11: 'Handwriting', 12: 'Academic #3',
+    9: '04/12/2026', 11: 'Handwriting', 12: 'OT (1 of 1)',
     14: 'By 4/12/2027, Finn will form lower-case letters with correct size and spacing in 4 of 5 samples.',
     17: 'Occupational Therapist',
   },
