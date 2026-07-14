@@ -365,8 +365,10 @@ export default function StudentsPage() {
             data={bulkImportPreviewData}
             currentSchool={currentSchool}
             onImportComplete={() => {
+              // Refresh the caseload behind the modal without unmounting it, so
+              // a partial-failure modal stays open on its error list. The modal
+              // unmounts only on explicit close (onClose).
               fetchStudents();
-              setBulkImportPreviewData(null);
             }}
           />
         )}
