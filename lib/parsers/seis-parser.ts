@@ -371,8 +371,13 @@ function getCellValue(row: ExcelJS.Row, colNumber: number): string {
 
 /**
  * Normalize grade level to standard format (K, TK, 1-12)
+ *
+ * Exported for the parser golden-fixture suite (SPE-239). Note this copy
+ * diverges from the one in csv-parser.ts: this one does NOT apply the
+ * SEIS-specific grade "18" -> TK or grade "0" -> K rules. SPE-240 is expected
+ * to merge the two copies.
  */
-function normalizeGradeLevel(grade: string): string {
+export function normalizeGradeLevel(grade: string): string {
   const gradeStr = grade.trim().toUpperCase();
 
   // Remove common prefixes/suffixes
@@ -472,8 +477,10 @@ function parseDate(dateStr: string): string | undefined {
 /**
  * Convert Excel serial date to ISO date string
  * Excel's epoch is 1899-12-30 (day 0 = Dec 30, 1899)
+ *
+ * Exported for the parser golden-fixture suite (SPE-239).
  */
-function excelSerialToDate(serial: number): string | undefined {
+export function excelSerialToDate(serial: number): string | undefined {
   if (!Number.isFinite(serial) || serial < 1) {
     return undefined;
   }

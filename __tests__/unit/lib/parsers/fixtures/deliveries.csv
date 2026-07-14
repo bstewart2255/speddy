@@ -1,0 +1,15 @@
+Name,SEIS ID,Service,Delivery,Start Date,End Date,Sessions / Frequency,Location,Total Minutes (min/year),Total Delivered,Medi-Cal Billing Consent
+"Alvarez, Ana",2000001,330 - Specialized Academic Instruction,Direct,08/15/2025,06/10/2026,45 min Weekly,Room 1,1620,0,Yes
+"Bishop, Ben",2000002,330 - Specialized Academic Instruction,Direct,08/15/2025,06/10/2026,30 min x 5 Times = 150 min Weekly,Room 2,5400,0,No
+"Cho, Cora",2000003,415 - Language and Speech,Direct,08/15/2025,06/10/2026,30 min x 2 Times = 60 min Weekly,Room 3,2160,0,Yes
+"Diaz, Drew",2000004,510 - Individual  counseling,Direct,08/15/2025,06/10/2026,30 min Weekly,Room 4,1080,0,Yes
+"Evans, Ella",2000005,450 - Occupational Therapy,Direct,08/15/2025,06/10/2026,15 min Weekly,Room 5,540,0,No
+"Foster, Finn",2000006,330 - Specialized Academic Instruction,Direct,08/15/2025,06/10/2026,60 min x 2 Times = 120 min Daily,Room 6,21600,0,Yes
+"Gomez, Gia",2000007,330 - Specialized Academic Instruction,Direct,08/15/2025,06/10/2026,300 min Yearly,Room 7,300,0,No
+"Hunt, Hana",2000008,330 - Specialized Academic Instruction,Direct,08/15/2025,06/10/2026,90 min x 3 Times = 270 min Yearly,Room 8,270,0,Yes
+"Ito, Ken",2000009,330 - Specialized Academic Instruction,Direct,08/15/2025,06/10/2026,120 min Monthly,Room 9,1440,0,No
+"Ng-Patel, Nadia",2000010,330 - Specialized Academic Instruction,Direct,08/01/2025,09/01/2025,120 min x 6 Times = 720 min Weekly,Room 10,720,0,Yes
+"Ng-Patel, Nadia",2000010,330 - Specialized Academic Instruction,Direct,09/01/2025,06/10/2026,30 min Weekly,Room 10,1080,0,Yes
+"Van Horn, Vera",2000011,330 - Specialized Academic Instruction,Direct,08/15/2025,06/10/2026,45 min Weekly,Room 11,1620,0,Yes
+"Ito, Ken",2000009,900 - Other Service,Direct,08/15/2025,06/10/2026,30 min Weekly,Room 9,1080,0,No
+

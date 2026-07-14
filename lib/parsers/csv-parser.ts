@@ -409,8 +409,12 @@ function detectColumnMapping(records: string[][]): ColumnMapping {
 
 /**
  * Normalize grade level to standard format (K, TK, 1-12)
+ *
+ * Exported for the parser golden-fixture suite (SPE-239). Note this copy
+ * diverges from the one in seis-parser.ts: this one applies the SEIS-specific
+ * grade "18" -> TK and grade "0" -> K rules. SPE-240 is expected to merge them.
  */
-function normalizeGradeLevel(grade: string): string {
+export function normalizeGradeLevel(grade: string): string {
   const gradeStr = grade.trim().toUpperCase();
 
   // Remove common prefixes/suffixes
@@ -469,8 +473,10 @@ function normalizeGradeLevel(grade: string): string {
 /**
  * Detect if CSV is a SEIS Student Goals Report
  * Checks for specific SEIS column headers in expected positions
+ *
+ * Exported for the parser golden-fixture suite (SPE-239).
  */
-function detectSEISStudentGoalsFormat(records: string[][]): boolean {
+export function detectSEISStudentGoalsFormat(records: string[][]): boolean {
   if (records.length === 0) {
     return false;
   }
@@ -594,8 +600,10 @@ function parseDate(dateStr: string): string | undefined {
 /**
  * Convert Excel serial date to ISO date string
  * Excel's epoch is 1899-12-30 (day 0 = Dec 30, 1899)
+ *
+ * Exported for the parser golden-fixture suite (SPE-239).
  */
-function excelSerialToDate(serial: number): string | undefined {
+export function excelSerialToDate(serial: number): string | undefined {
   if (!Number.isFinite(serial) || serial < 1) {
     return undefined;
   }

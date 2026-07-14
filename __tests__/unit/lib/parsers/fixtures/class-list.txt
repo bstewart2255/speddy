@@ -1,0 +1,19 @@
+Mt Diablo Elementary School,09/15/2025
+2025-2026,Special Education Class List,Page 1
+Student Name,Student ID,Grade,Birthdate,Program
+Teacher#,101,Teacher: Barrera E
+"Alvarez, Ana",100001,3,09/15/2018 ,RSP
+"Bishop, Ben",100002,TK,05/02/2021 ,RSP
+Teacher#,102,Teacher: Batra
+"Cho, Cora",100003,K,11/20/2020 ,RSP
+"Davis-Wong, Drew",100004,5,01/10/2016 ,RSP
+Mt Diablo Elementary School,09/15/2025
+2025-2026,Special Education Class List,Page 2
+Student Name,Student ID,Grade,Birthdate,Program
+Teacher#,103,Teacher: Davis/Winbery
+"Evans, Ella",100005,2,03/03/2019 ,RSP
+Teacher#,904,"Teacher: Khristo,G"
+"Foster, Finn",100006,1,07/07/2020 ,RSP
+"Alvarez, Ana",100001,3,09/15/2018 ,RSP
+Teacher#,905,"Teacher: Massey,C"
+"Van Horn, Vera",100007,4,02/02/2017 ,RSP

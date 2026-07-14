@@ -1,0 +1,116 @@
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
+
+exports[`parseClassListTXT matches the golden snapshot 1`] = `
+{
+  "errors": [],
+  "metadata": {
+    "totalStudents": 7,
+    "totalTeachers": 5,
+  },
+  "students": [
+    {
+      "key": "alvarez_ana",
+      "name": "Alvarez, Ana",
+      "teacher": {
+        "firstInitial": "E",
+        "lastName": "Barrera",
+        "rawName": "Barrera E",
+        "teacherNumber": "101",
+      },
+    },
+    {
+      "key": "bishop_ben",
+      "name": "Bishop, Ben",
+      "teacher": {
+        "firstInitial": "E",
+        "lastName": "Barrera",
+        "rawName": "Barrera E",
+        "teacherNumber": "101",
+      },
+    },
+    {
+      "key": "cho_cora",
+      "name": "Cho, Cora",
+      "teacher": {
+        "firstInitial": null,
+        "lastName": "Batra",
+        "rawName": "Batra",
+        "teacherNumber": "102",
+      },
+    },
+    {
+      "key": "davis-wong_drew",
+      "name": "Davis-Wong, Drew",
+      "teacher": {
+        "firstInitial": null,
+        "lastName": "Batra",
+        "rawName": "Batra",
+        "teacherNumber": "102",
+      },
+    },
+    {
+      "key": "evans_ella",
+      "name": "Evans, Ella",
+      "teacher": {
+        "firstInitial": null,
+        "lastName": "Davis",
+        "rawName": "Davis/Winbery",
+        "teacherNumber": "103",
+      },
+    },
+    {
+      "key": "foster_finn",
+      "name": "Foster, Finn",
+      "teacher": {
+        "firstInitial": "G",
+        "lastName": "Khristo",
+        "rawName": "Khristo,G",
+        "teacherNumber": "904",
+      },
+    },
+    {
+      "key": "vanhorn_vera",
+      "name": "Van Horn, Vera",
+      "teacher": {
+        "firstInitial": "C",
+        "lastName": "Massey",
+        "rawName": "Massey,C",
+        "teacherNumber": "905",
+      },
+    },
+  ],
+  "teachers": [
+    {
+      "firstInitial": "E",
+      "lastName": "Barrera",
+      "rawName": "Barrera E",
+      "teacherNumber": "101",
+    },
+    {
+      "firstInitial": null,
+      "lastName": "Batra",
+      "rawName": "Batra",
+      "teacherNumber": "102",
+    },
+    {
+      "firstInitial": null,
+      "lastName": "Davis",
+      "rawName": "Davis/Winbery",
+      "teacherNumber": "103",
+    },
+    {
+      "firstInitial": "G",
+      "lastName": "Khristo",
+      "rawName": "Khristo,G",
+      "teacherNumber": "904",
+    },
+    {
+      "firstInitial": "C",
+      "lastName": "Massey",
+      "rawName": "Massey,C",
+      "teacherNumber": "905",
+    },
+  ],
+  "warnings": [],
+}
+`;

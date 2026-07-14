@@ -1,0 +1,73 @@
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
+
+exports[`parseSEISReport — ~5 metadata rows above the header matches the golden snapshot 1`] = `
+{
+  "errors": [
+    {
+      "message": "Sheet "Student Goals": Could not detect student name or grade columns. Looking for columns like: First Name, Last Name, Grade, Student Name.",
+      "row": 0,
+    },
+  ],
+  "metadata": {
+    "goalsFiltered": 0,
+    "sheetsProcessed": [
+      "Student Goals",
+    ],
+    "totalRows": 1,
+  },
+  "students": [],
+}
+`;
+
+exports[`parseSEISReport — header on row 1 (row-skip data loss) matches the golden snapshot (including the goal-column trap) 1`] = `
+{
+  "errors": [],
+  "metadata": {
+    "goalsFiltered": 0,
+    "sheetsProcessed": [
+      "Student Goals",
+    ],
+    "totalRows": 3,
+  },
+  "students": [
+    {
+      "firstName": "Ella",
+      "goals": [
+        "OT (1 of 1)",
+        "By 3/5/2027, Ella will copy a five-word sentence legibly within 5 minutes in 4 of 5 trials.",
+      ],
+      "gradeLevel": "5",
+      "iepDate": "2026-03-05",
+      "initials": "EE",
+      "lastName": "Evans",
+      "rawRow": 6,
+      "schoolOfAttendance": "Mt Diablo Elementary School",
+    },
+    {
+      "firstName": "Finn",
+      "goals": [
+        "Academic #3",
+        "By 4/12/2027, Finn will form lower-case letters with correct size and spacing in 4 of 5 samples.",
+      ],
+      "gradeLevel": "18",
+      "iepDate": "2026-04-12",
+      "initials": "FF",
+      "lastName": "Foster",
+      "rawRow": 7,
+      "schoolOfAttendance": "Mt Diablo Elementary School",
+    },
+    {
+      "firstName": "Gia",
+      "goals": [
+        "By 5/9/2027, Gia will raise her hand and wait to be called on in 4 of 5 opportunities.",
+      ],
+      "gradeLevel": "1",
+      "iepDate": "2026-05-09",
+      "initials": "GG",
+      "lastName": "Gomez",
+      "rawRow": 8,
+      "schoolOfAttendance": "Mt Diablo Elementary School",
+    },
+  ],
+}
+`;
