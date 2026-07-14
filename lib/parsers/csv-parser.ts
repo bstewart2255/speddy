@@ -4,6 +4,7 @@
  */
 
 import { parse } from 'csv-parse/sync';
+import { TextDecoder } from 'util';
 import { normalizeSchoolName } from '../school-helpers';
 import { getServiceTypeCode, getServiceTypeNameForRole, isGoalForProviderByKeywords } from './service-type-mapping';
 import { normalizeGradeLevel } from '../utils/grade-parser';
@@ -80,21 +81,26 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
       trim: true,
     };
 
+    // Choose the encoding from the raw bytes. csv-parse substitutes U+FFFD for
+    // invalid UTF-8 instead of throwing, so it can't distinguish a UTF-8 file
+    // from a latin1 / Windows-1252 re-save (e.g. "Muñoz" saved with byte 0xF1).
+    // Probe the buffer: if it is NOT valid UTF-8, decode as latin1, under which
+    // those single high bytes map to the intended characters. Crucially, a file
+    // that IS valid UTF-8 stays UTF-8 even when it legitimately contains a
+    // U+FFFD character — so correctly-encoded multibyte text is never garbled by
+    // a false-positive retry (checking the decoded output for U+FFFD couldn't
+    // tell a real replacement char from a substituted one).
+    let encoding: BufferEncoding = 'utf-8';
     try {
-      // Try UTF-8 first.
-      records = parse(buffer, { encoding: 'utf-8', ...parseOptions });
+      new TextDecoder('utf-8', { fatal: true }).decode(buffer);
+    } catch {
+      encoding = 'latin1';
+    }
 
-      // csv-parse does NOT throw on invalid UTF-8 — it substitutes U+FFFD (the
-      // replacement character), so the catch below never fires for a latin1 /
-      // Windows-1252 re-save (e.g. "Muñoz" saved with 0xF1). Detect the
-      // replacement character and re-decode as latin1, under which those single
-      // bytes map to the intended characters.
-      const REPLACEMENT_CHAR = '�';
-      if (records.some((row) => row.some((cell) => cell.includes(REPLACEMENT_CHAR)))) {
-        records = parse(buffer, { encoding: 'latin1', ...parseOptions });
-      }
+    try {
+      records = parse(buffer, { encoding, ...parseOptions });
     } catch (e) {
-      // Fallback to latin1 on a hard parse/decoding error.
+      // Last-resort fallback for any other hard parse/decoding error.
       records = parse(buffer, { encoding: 'latin1', ...parseOptions });
     }
 
