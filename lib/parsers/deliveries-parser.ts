@@ -103,6 +103,14 @@ export function calculateSessions(weeklyMinutes: number): { sessionsPerWeek: num
     return { sessionsPerWeek: 1, minutesPerSession: 45 };
   }
 
+  // Sub-30-minute mandates are a single session of exactly that length. The
+  // default `ceil(n / 30)` path would round these up to a full 30-minute
+  // session (e.g. a 15 min/week mandate scheduled as 30 min/week), booking
+  // more service time than the IEP requires.
+  if (weeklyMinutes < 30) {
+    return { sessionsPerWeek: 1, minutesPerSession: weeklyMinutes };
+  }
+
   // Default: 30-minute sessions
   const sessionsPerWeek = Math.ceil(weeklyMinutes / 30);
   return { sessionsPerWeek, minutesPerSession: 30 };
