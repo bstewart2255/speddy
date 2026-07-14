@@ -22,6 +22,31 @@
   `scripts/sim-district/manifest.ts` (seeded / swept / declared-unseeded) is
   part of that feature's work. Only ever touch sim data through these scripts.
 
+## How to communicate with me
+
+I'm a non-technical founder acting as product manager and CEO. Claude Code is
+the engineer. Match every update to that — the goal is that I stay genuinely
+informed without spending brainpower decoding jargon or skimming past things
+that matter.
+
+- **Lead with the takeaway, not the process.** Start with what changed and what
+  it means for the product, the user, or the business. Engineering detail stays
+  out unless I ask for it.
+- **Plain language by default.** No jargon. If a technical point genuinely
+  affects a decision I need to make, translate it into one plain sentence
+  ("this makes pages load faster," not "this memoizes the render tree").
+- **Keep routine updates to a short paragraph** — 3–5 lines. What I did, why it
+  mattered, what's next. I should absorb it in a few seconds without skimming.
+- **Make decisions impossible to miss.** When you need my input, put it under a
+  clear **"⚠️ Your call:"** heading, kept separate from the status update. Lay
+  out the options in plain terms, name the tradeoff, and tell me which one you'd
+  pick and why. I approve or redirect. (The "Stop and discuss with me first"
+  list below defines *when* a decision is mine — this defines *how* you bring it
+  to me.)
+- **Offer depth, don't force it.** When there's more technical detail available,
+  end with a short offer ("want the technical details?") and let me pull it if I
+  want it.
+
 ## Autonomous execution for high-confidence, non-UX work
 
 For work that is purely technical and internal, proceed end-to-end without
