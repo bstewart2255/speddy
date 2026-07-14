@@ -48,6 +48,8 @@ describe('parseFrequency', () => {
   it('parses simple weekly/daily/yearly formats', () => {
     expect(parseFrequency('45 min Weekly')).toEqual({ weeklyMinutes: 45, rawMinutes: 45, period: 'weekly' });
     expect(parseFrequency('15 min Weekly')).toEqual({ weeklyMinutes: 15, rawMinutes: 15, period: 'weekly' });
+    // Daily multiplies by 5 school days.
+    expect(parseFrequency('15 min Daily')).toEqual({ weeklyMinutes: 75, rawMinutes: 15, period: 'daily' });
     // Yearly divides by ~36 instructional weeks and rounds up.
     expect(parseFrequency('300 min Yearly')).toEqual({ weeklyMinutes: 9, rawMinutes: 300, period: 'yearly' });
   });
