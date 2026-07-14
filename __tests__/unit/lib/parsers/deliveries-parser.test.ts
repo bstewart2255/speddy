@@ -74,8 +74,15 @@ describe('calculateSessions', () => {
     expect(calculateSessions(45)).toEqual({ sessionsPerWeek: 1, minutesPerSession: 45 });
   });
 
-  it('otherwise breaks weekly minutes into ceil(n/30) 30-minute sessions', () => {
-    expect(calculateSessions(15)).toEqual({ sessionsPerWeek: 1, minutesPerSession: 30 });
+  it('schedules a sub-30-minute mandate as one session of exactly that length (no doubling)', () => {
+    // Previously these rounded up to 1x30, booking more time than mandated.
+    expect(calculateSessions(15)).toEqual({ sessionsPerWeek: 1, minutesPerSession: 15 });
+    expect(calculateSessions(20)).toEqual({ sessionsPerWeek: 1, minutesPerSession: 20 });
+    expect(calculateSessions(29)).toEqual({ sessionsPerWeek: 1, minutesPerSession: 29 });
+  });
+
+  it('breaks 30+ weekly minutes into ceil(n/30) 30-minute sessions', () => {
+    expect(calculateSessions(30)).toEqual({ sessionsPerWeek: 1, minutesPerSession: 30 });
     expect(calculateSessions(150)).toEqual({ sessionsPerWeek: 5, minutesPerSession: 30 });
     expect(calculateSessions(600)).toEqual({ sessionsPerWeek: 20, minutesPerSession: 30 });
     expect(calculateSessions(720)).toEqual({ sessionsPerWeek: 24, minutesPerSession: 30 });

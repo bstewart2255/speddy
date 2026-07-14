@@ -42,7 +42,7 @@ exports[`parseDeliveriesCSV matches the golden snapshot for the resource role (3
     {
       "endDate": "2026-06-10",
       "key": "gomez_gia",
-      "minutesPerSession": 30,
+      "minutesPerSession": 9,
       "name": "Gomez, Gia",
       "seisId": "2000007",
       "service": "330 - Specialized Academic Instruction",
@@ -54,7 +54,7 @@ exports[`parseDeliveriesCSV matches the golden snapshot for the resource role (3
     {
       "endDate": "2026-06-10",
       "key": "hunt_hana",
-      "minutesPerSession": 30,
+      "minutesPerSession": 8,
       "name": "Hunt, Hana",
       "seisId": "2000008",
       "service": "330 - Specialized Academic Instruction",
@@ -158,7 +158,7 @@ exports[`parseDeliveriesCSV psychologist role (no service code) keeps all servic
     {
       "endDate": "2026-06-10",
       "key": "evans_ella",
-      "minutesPerSession": 30,
+      "minutesPerSession": 15,
       "name": "Evans, Ella",
       "seisId": "2000005",
       "service": "450 - Occupational Therapy",
@@ -182,7 +182,7 @@ exports[`parseDeliveriesCSV psychologist role (no service code) keeps all servic
     {
       "endDate": "2026-06-10",
       "key": "gomez_gia",
-      "minutesPerSession": 30,
+      "minutesPerSession": 9,
       "name": "Gomez, Gia",
       "seisId": "2000007",
       "service": "330 - Specialized Academic Instruction",
@@ -194,7 +194,7 @@ exports[`parseDeliveriesCSV psychologist role (no service code) keeps all servic
     {
       "endDate": "2026-06-10",
       "key": "hunt_hana",
-      "minutesPerSession": 30,
+      "minutesPerSession": 8,
       "name": "Hunt, Hana",
       "seisId": "2000008",
       "service": "330 - Specialized Academic Instruction",
