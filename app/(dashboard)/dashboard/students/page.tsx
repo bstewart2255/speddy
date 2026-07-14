@@ -16,7 +16,7 @@ import { StudentDetailsModal } from '../../../components/students/student-detail
 import { TeacherDetailsModal } from '../../../components/teachers/teacher-details-modal';
 import { TeacherAutocomplete } from '../../../components/teachers/teacher-autocomplete';
 import { useRouter } from 'next/navigation';
-import { SeisUploadWizardModal } from '../../../components/students/seis-upload-wizard-modal';
+import { StudentImportModal } from '../../../components/students/student-import-modal';
 import { StudentImportPreviewModal } from '../../../components/students/student-import-preview-modal';
 
 type Student = {
@@ -306,12 +306,12 @@ export default function StudentsPage() {
                   Import CSV
                 </Button>
               </LongHoverTooltip>
-              <LongHoverTooltip content="Upload student data from multiple source files (SEIS goals, deliveries, and an Aeries class list).">
+              <LongHoverTooltip content="Import students from your SEIS and Aeries files. Drop everything at once — goals report, deliveries, and class list — and we detect each one.">
                 <Button
                   variant="secondary"
                   onClick={() => setShowFileUploadModal(true)}
                 >
-                  File Upload
+                  Import Students
                 </Button>
               </LongHoverTooltip>
               <LongHoverTooltip content="Add a new student to your caseload. You'll need their name, grade, teacher, and service requirements.">
@@ -346,8 +346,8 @@ export default function StudentsPage() {
           </div>
         )}
 
-        {/* File Upload Modal */}
-        <SeisUploadWizardModal
+        {/* Unified Import Students Modal */}
+        <StudentImportModal
           isOpen={showFileUploadModal}
           onClose={() => setShowFileUploadModal(false)}
           onUploadComplete={(data) => {
