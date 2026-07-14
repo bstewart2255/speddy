@@ -4,6 +4,7 @@
  */
 
 import { ParsedStudent } from '../parsers/seis-parser';
+import { normalizeGradeLevel } from './grade-parser';
 
 export interface DatabaseStudent {
   id: string;
@@ -289,21 +290,16 @@ function normalizeInitials(initials: string): string {
 }
 
 /**
- * Normalize grade for comparison
+ * Normalize grade for comparison.
+ *
+ * Delegates to the canonical grade normalizer (SPE-240) so this matcher agrees
+ * with the import parsers. Critically, legacy `grade_level` values written by
+ * the pre-SPE-240 SEIS parser ('18' for TK, '0' for K) now reconcile with the
+ * 'TK' / 'K' the parsers emit, so re-imports of those students still match their
+ * existing rows instead of being demoted to a new insert.
  */
 function normalizeGrade(grade: string): string {
-  const normalized = grade.toUpperCase().trim();
-
-  if (normalized === 'TK' || normalized === 'TRANSITIONAL KINDERGARTEN') return 'TK';
-  if (normalized === 'K' || normalized === 'KINDERGARTEN') return 'K';
-
-  // Extract number
-  const match = normalized.match(/\d+/);
-  if (match) {
-    return match[0];
-  }
-
-  return normalized;
+  return normalizeGradeLevel(grade);
 }
 
 /**

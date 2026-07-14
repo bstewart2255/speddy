@@ -49,7 +49,7 @@ exports[`parseSEISReport — header on row 1 (row-skip data loss) matches the go
         "Academic #3",
         "By 4/12/2027, Finn will form lower-case letters with correct size and spacing in 4 of 5 samples.",
       ],
-      "gradeLevel": "18",
+      "gradeLevel": "TK",
       "iepDate": "2026-04-12",
       "initials": "FF",
       "lastName": "Foster",

@@ -6,9 +6,9 @@
  * Pins current behavior — including bugs SPE-225/SPE-240 will change:
  *  - The roster template currently fails generic detection (no name columns),
  *    which is exactly what SPE-225 will fix by adding template auto-detection.
- *  - Spelled-out grades ("First", "Kindergarten") are NOT normalized (the
- *    suffix stripper clobbers the word); digit grades and the SEIS 18/0 special
- *    cases are.
+ *  - Spelled-out grades ("First", "Kindergarten"), digit grades, and the SEIS
+ *    18/0 special cases all normalize now (SPE-240 removed the destructive
+ *    ordinal strip and merged the CSV/XLSX normalizer copies).
  *  - Windows-1252 accented names are decoded as UTF-8 first, so this pins the
  *    current mojibake behavior (SPE-240 will add encoding detection).
  */
@@ -46,17 +46,17 @@ describe('parseCSVReport — index-0 name column bug', () => {
 });
 
 describe('parseCSVReport — messy grade values (generic format)', () => {
-  it('normalizes digit grades and SEIS 18/0 but not spelled-out words', async () => {
+  it('normalizes digit grades, the SEIS 18/0 cases, and spelled-out words (SPE-240)', async () => {
     const result = await parseCSVReport(readFixture('messy-values.csv'), {});
     const byLast = Object.fromEntries(result.students.map((s) => [s.lastName, s.gradeLevel]));
 
     expect(byLast['Cole']).toBe('3'); // "3rd"
     expect(byLast['Dorsey']).toBe('3'); // "03"
-    expect(byLast['Ellis']).toBe('TK'); // "18" (CSV copy special case)
-    expect(byLast['Ford']).toBe('K'); // "0" (CSV copy special case)
-    // Current bug: spelled-out grades pass through unchanged.
-    expect(byLast['Adams']).toBe('First');
-    expect(byLast['Brooks']).toBe('Kindergarten');
+    expect(byLast['Ellis']).toBe('TK'); // "18" (SEIS special case)
+    expect(byLast['Ford']).toBe('K'); // "0" (SEIS special case)
+    // SPE-240: spelled-out grades now normalize (destructive ordinal strip removed).
+    expect(byLast['Adams']).toBe('1'); // "First"
+    expect(byLast['Brooks']).toBe('K'); // "Kindergarten"
   });
 
   it('matches the golden snapshot', async () => {
@@ -71,5 +71,29 @@ describe('parseCSVReport — Windows-1252 encoding', () => {
     expect(result.metadata.formatDetected).toBe('generic');
     expect(result.students).toHaveLength(3);
     expect(result).toMatchSnapshot();
+  });
+});
+
+describe('parseCSVReport — target-student grade reconciliation (SPE-240)', () => {
+  // targetStudent.gradeLevel comes from students.grade_level. For rows written
+  // by the pre-SPE-240 parser that value can be a legacy string ('First', '18')
+  // that must still resolve to the CSV row, which now normalizes canonically.
+  it('matches a legacy "First" target grade against the row that normalizes to "1"', async () => {
+    const result = await parseCSVReport(readFixture('messy-values.csv'), {
+      targetStudent: { initials: 'AA', gradeLevel: 'First', schoolName: '' },
+    });
+    expect(result.metadata.targetStudentFound).toBe(true);
+    expect(result.students).toHaveLength(1);
+    expect(result.students[0].lastName).toBe('Adams');
+    expect(result.students[0].gradeLevel).toBe('1');
+  });
+
+  it('matches a legacy "18" target grade against the row that normalizes to "TK"', async () => {
+    const result = await parseCSVReport(readFixture('messy-values.csv'), {
+      targetStudent: { initials: 'EE', gradeLevel: '18', schoolName: '' },
+    });
+    expect(result.metadata.targetStudentFound).toBe(true);
+    expect(result.students).toHaveLength(1);
+    expect(result.students[0].gradeLevel).toBe('TK');
   });
 });

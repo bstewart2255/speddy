@@ -36,6 +36,71 @@ export function parseGradeLevel(gradeLevel: string | null | undefined, defaultGr
       return grade;
     }
   }
-  
+
   return defaultGrade;
+}
+
+/**
+ * Normalize a free-text grade value to the app's canonical string form
+ * (`'TK'`, `'K'`, or `'1'`..`'12'`); returns the trimmed input unchanged when it
+ * can't be interpreted.
+ *
+ * This is the single source of truth for grade-string normalization across the
+ * SEIS (XLSX) and CSV import parsers (SPE-240). Both parsers previously carried
+ * their own diverging copies:
+ *   - both stripped ordinal suffixes (`/TH|ST|ND|RD/`) *before* the spelled-out
+ *     number map, which clobbered the words themselves — `FIRST` → `FIR`,
+ *     `KINDERGARTEN` → `KIERGARTEN` — so spelled-out grades fell through
+ *     unnormalized. The numeric extractor below already ignores ordinal
+ *     suffixes (`3RD` → `3`), so that strip is simply removed.
+ *   - only the CSV copy applied the SEIS-specific `18` → TK and `0` → K rules;
+ *     the SEIS export uses `18` for TK, so both formats now apply them.
+ */
+export function normalizeGradeLevel(grade: string): string {
+  const gradeStr = String(grade ?? '').trim().toUpperCase();
+
+  // Strip a leading/embedded "Grade" label only. Do NOT strip ordinal letters
+  // here — see the doc comment; the numeric match below handles "3RD" etc.
+  const normalized = gradeStr.replace(/GRADE/i, '').trim();
+
+  // Pre-K variants (Pre-Kindergarten, Pre-K, "pre k", PK) must be checked BEFORE
+  // the K/KINDER match below, which they would otherwise satisfy ("Pre-Kindergarten"
+  // contains "KINDER"). The app has no separate Pre-K student grade — TK is the
+  // earliest (the SEIS "18" code likewise stands in for TK/Pre-K) — so they
+  // normalize to TK.
+  if (/^P\.?K\.?$|PRE[-\s]?K/i.test(normalized)) {
+    return 'TK';
+  }
+
+  if (/^T\.?K\.?$|TRANSITIONAL\s*K|TK/i.test(normalized)) {
+    return 'TK';
+  }
+
+  if (/^K\.?$|KINDER|KINDERGARTEN/i.test(normalized)) {
+    return 'K';
+  }
+
+  // Spelled-out ordinals
+  const numberWords: { [key: string]: string } = {
+    FIRST: '1', SECOND: '2', THIRD: '3', FOURTH: '4',
+    FIFTH: '5', SIXTH: '6', SEVENTH: '7', EIGHTH: '8',
+    NINTH: '9', TENTH: '10', ELEVENTH: '11', TWELFTH: '12',
+  };
+  for (const [word, num] of Object.entries(numberWords)) {
+    if (normalized.includes(word)) {
+      return num;
+    }
+  }
+
+  // Numeric grade (leading zeros and ordinal suffixes handled by the match)
+  const match = normalized.match(/\d+/);
+  if (match) {
+    const num = parseInt(match[0], 10);
+    if (num === 18) return 'TK'; // SEIS uses 18 for TK / Pre-K
+    if (num >= 1 && num <= 12) return String(num);
+    if (num === 0) return 'K'; // SEIS uses 0 for Kindergarten
+  }
+
+  // Return trimmed original if we couldn't normalize
+  return String(grade ?? '').trim();
 }
