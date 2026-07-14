@@ -103,6 +103,17 @@ interface StudentImportPreviewModalProps {
   currentSchool?: any; // Current school context for assignment
 }
 
+// Effective UPSERT action for a preview row. Falls back to the legacy
+// matchStatus when `action` is absent (the fallback goes away in Phase 3 once
+// `action` is always present). A row is selectable iff its effective action is
+// not 'skip' — the single source of truth for both Select All and the per-row
+// checkbox's disabled state, so the two can't drift out of sync.
+function getEffectiveAction(
+  student: StudentPreview
+): 'insert' | 'update' | 'skip' {
+  return student.action || (student.matchStatus === 'new' ? 'insert' : 'skip');
+}
+
 export function StudentImportPreviewModal({
   isOpen,
   onClose,
@@ -119,7 +130,7 @@ export function StudentImportPreviewModal({
     const selected = new Set<number>();
     data.students.forEach((student, idx) => {
       // Use action field if available, otherwise fall back to matchStatus
-      const action = student.action || (student.matchStatus === 'new' ? 'insert' : 'skip');
+      const action = getEffectiveAction(student);
       if (action === 'insert' || action === 'update') {
         selected.add(idx);
       }
@@ -171,13 +182,25 @@ export function StudentImportPreviewModal({
     });
   };
 
+  // A row is selectable unless it's a "no changes" skip. Mirror the action
+  // fallback used for the initial selection above until Phase 3 makes `action`
+  // always present on preview rows.
+  const selectableIndices = data.students.reduce<number[]>((acc, student, idx) => {
+    const action = getEffectiveAction(student);
+    if (action !== 'skip') acc.push(idx);
+    return acc;
+  }, []);
+  const allSelectableSelected =
+    selectableIndices.length > 0 && selectedStudents.size === selectableIndices.length;
+
   const toggleSelectAll = () => {
-    if (selectedStudents.size === data.students.length) {
+    if (allSelectableSelected) {
       // Deselect all
       setSelectedStudents(new Set());
     } else {
-      // Select all
-      setSelectedStudents(new Set(data.students.map((_, idx) => idx)));
+      // Select only selectable (insert/update) rows — never the disabled "no
+      // changes" skips, which the user otherwise can't individually clear.
+      setSelectedStudents(new Set(selectableIndices));
     }
   };
 
@@ -232,7 +255,7 @@ export function StudentImportPreviewModal({
         // Determine action based on student.action or matchStatus
         // - 'new' students default to insert
         // - matched/duplicate students default to skip (not insert, to avoid duplicates)
-        const action = student.action || (student.matchStatus === 'new' ? 'insert' : 'skip');
+        const action = getEffectiveAction(student);
 
         return {
           firstName: student.firstName,
@@ -477,7 +500,7 @@ export function StudentImportPreviewModal({
                   size="sm"
                   onClick={toggleSelectAll}
                 >
-                  {selectedStudents.size === data.students.length ? 'Deselect All' : 'Select All'}
+                  {allSelectableSelected ? 'Deselect All' : 'Select All'}
                 </Button>
               </div>
 
@@ -486,12 +509,15 @@ export function StudentImportPreviewModal({
                   const isSelected = selectedStudents.has(idx);
                   const isExpanded = expandedStudent === idx;
                   const currentInitials = getInitials(idx);
+                  // A "no changes" skip row: not selectable, so its checkbox is
+                  // disabled — same eligibility rule as selectableIndices.
+                  const isSkipRow = getEffectiveAction(student) === 'skip';
 
                   return (
                     <div
                       key={idx}
                       className={`border rounded-md overflow-hidden ${
-                        student.action === 'skip'
+                        isSkipRow
                           ? 'border-gray-200 bg-gray-50 opacity-60'
                           : isSelected
                           ? 'border-blue-300 bg-blue-50'
@@ -505,9 +531,9 @@ export function StudentImportPreviewModal({
                             type="checkbox"
                             checked={isSelected}
                             onChange={() => toggleStudentSelection(idx)}
-                            disabled={student.action === 'skip'}
+                            disabled={isSkipRow}
                             className={`mt-1 h-4 w-4 rounded border-gray-300 ${
-                              student.action === 'skip' ? 'opacity-50 cursor-not-allowed' : 'text-blue-600'
+                              isSkipRow ? 'opacity-50 cursor-not-allowed' : 'text-blue-600'
                             }`}
                           />
 
