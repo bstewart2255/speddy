@@ -63,6 +63,15 @@ export function normalizeGradeLevel(grade: string): string {
   // here — see the doc comment; the numeric match below handles "3RD" etc.
   const normalized = gradeStr.replace(/GRADE/i, '').trim();
 
+  // Pre-K variants (Pre-Kindergarten, Pre-K, "pre k", PK) must be checked BEFORE
+  // the K/KINDER match below, which they would otherwise satisfy ("Pre-Kindergarten"
+  // contains "KINDER"). The app has no separate Pre-K student grade — TK is the
+  // earliest (the SEIS "18" code likewise stands in for TK/Pre-K) — so they
+  // normalize to TK.
+  if (/^P\.?K\.?$|PRE[-\s]?K/i.test(normalized)) {
+    return 'TK';
+  }
+
   if (/^T\.?K\.?$|TRANSITIONAL\s*K|TK/i.test(normalized)) {
     return 'TK';
   }

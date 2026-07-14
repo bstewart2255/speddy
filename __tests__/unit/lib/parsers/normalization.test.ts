@@ -76,6 +76,16 @@ describe('normalizeGradeLevel — CSV copy (lib/parsers/csv-parser.ts)', () => {
     expect(normalizeGradeLevelCsv('Kindergarten')).toBe('K');
   });
 
+  it('normalizes Pre-K variants to TK (checked before the K match; no separate Pre-K student grade)', () => {
+    for (const g of ['Pre-K', 'Pre-Kindergarten', 'PK', 'pre k', 'PreK']) {
+      expect(normalizeGradeLevelCsv(g)).toBe('TK');
+    }
+    // Plain kindergarten must still resolve to K, not be swept up by the Pre-K branch.
+    expect(normalizeGradeLevelCsv('K')).toBe('K');
+    expect(normalizeGradeLevelCsv('Kindergarten')).toBe('K');
+    expect(normalizeGradeLevelCsv('Kinder')).toBe('K');
+  });
+
   it('snapshots the full CSV-copy grade matrix', () => {
     const inputs = [
       'K', 'TK', 'Kindergarten', 'Kinder', 'First', 'Second', 'Third',
