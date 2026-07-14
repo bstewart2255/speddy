@@ -10,6 +10,7 @@ import { log } from '@/lib/monitoring/logger';
 import { track } from '@/lib/monitoring/analytics';
 import { measurePerformanceWithAlerts } from '@/lib/monitoring/performance-alerts';
 import { updateExistingSessionsForStudent } from '@/lib/scheduling/session-requirement-sync';
+import { buildStudentDedupKey } from '@/lib/utils/student-dedup-key';
 
 export const runtime = 'nodejs';
 
@@ -82,10 +83,12 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
       supabase.rpc('user_accessible_school_ids')
     ]);
 
-    // Build lookup map for O(1) duplicate detection: key = "INITIALS-GRADE"
+    // Build lookup map for O(1) duplicate detection: key = "INITIALS-GRADE".
+    // The key normalizes both components so a stored legacy SEIS grade
+    // (grade_level '18'/'0') still matches an incoming normalized 'TK'/'K'.
     const existingStudentMap = new Map<string, boolean>();
     for (const student of existingStudents || []) {
-      const key = `${student.initials}-${student.grade_level}`;
+      const key = buildStudentDedupKey(student.initials, student.grade_level);
       existingStudentMap.set(key, true);
     }
 
@@ -154,7 +157,7 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
         // For inserts, check for duplicates
         if (action === 'insert') {
           // Check for duplicate using Map - O(1) instead of database query
-          const duplicateKey = `${initialsNormalized}-${student.gradeLevel}`;
+          const duplicateKey = buildStudentDedupKey(initialsNormalized, student.gradeLevel);
           if (existingStudentMap.has(duplicateKey)) {
             results.push({
               success: false,
@@ -368,7 +371,7 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
         } else {
           // INSERT: Create student and student_details atomically using RPC function
           // This prevents orphaned student records if student_details insert fails
-          const duplicateKey = `${initialsNormalized}-${student.gradeLevel}`;
+          const duplicateKey = buildStudentDedupKey(initialsNormalized, student.gradeLevel);
 
           const { data: importResult, error: importError } = await supabase
             .rpc('import_student_atomic', {
