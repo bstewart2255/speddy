@@ -19,7 +19,7 @@ exports[`parseSEISReport — ~5 metadata rows above the header matches the golde
 }
 `;
 
-exports[`parseSEISReport — header on row 1 (row-skip data loss) matches the golden snapshot (including the goal-column trap) 1`] = `
+exports[`parseSEISReport — header on row 1 (row-skip fixed) matches the golden snapshot (all rows, one goal per row) 1`] = `
 {
   "errors": [],
   "metadata": {
@@ -27,13 +27,60 @@ exports[`parseSEISReport — header on row 1 (row-skip data loss) matches the go
     "sheetsProcessed": [
       "Student Goals",
     ],
-    "totalRows": 3,
+    "totalRows": 7,
   },
   "students": [
     {
+      "firstName": "Ana",
+      "goals": [
+        "By 5/1/2027, given a grade-level passage, Ana will read 90 words per minute with 95% accuracy in 3 of 4 trials.",
+      ],
+      "gradeLevel": "1",
+      "iepDate": "2026-05-01",
+      "initials": "AA",
+      "lastName": "Alvarez",
+      "rawRow": 2,
+      "schoolOfAttendance": "Mt Diablo Elementary School",
+    },
+    {
+      "firstName": "Ben",
+      "goals": [
+        "By 10/15/2026, given manipulatives, Ben will solve two-digit addition problems with 80% accuracy across 3 sessions.",
+      ],
+      "gradeLevel": "2",
+      "iepDate": "2025-10-15",
+      "initials": "BB",
+      "lastName": "Bishop",
+      "rawRow": 3,
+      "schoolOfAttendance": "St Mary School",
+    },
+    {
+      "firstName": "Cora",
+      "goals": [
+        "By 1/20/2027, Cora will produce /r/ in structured sentences with 80% accuracy in 4 of 5 trials.",
+      ],
+      "gradeLevel": "3",
+      "iepDate": "2026-01-20",
+      "initials": "CC",
+      "lastName": "Cho",
+      "rawRow": 4,
+      "schoolOfAttendance": "Mt Diablo Elementary School",
+    },
+    {
+      "firstName": "Drew",
+      "goals": [
+        "By 2/10/2027, Drew will use a coping strategy when frustrated in 4 of 5 observed opportunities.",
+      ],
+      "gradeLevel": "4",
+      "iepDate": "2026-02-10",
+      "initials": "DD",
+      "lastName": "Diaz",
+      "rawRow": 5,
+      "schoolOfAttendance": "Out of District- MOU",
+    },
+    {
       "firstName": "Ella",
       "goals": [
-        "OT (1 of 1)",
         "By 3/5/2027, Ella will copy a five-word sentence legibly within 5 minutes in 4 of 5 trials.",
       ],
       "gradeLevel": "5",
@@ -46,7 +93,6 @@ exports[`parseSEISReport — header on row 1 (row-skip data loss) matches the go
     {
       "firstName": "Finn",
       "goals": [
-        "Academic #3",
         "By 4/12/2027, Finn will form lower-case letters with correct size and spacing in 4 of 5 samples.",
       ],
       "gradeLevel": "TK",
@@ -66,6 +112,57 @@ exports[`parseSEISReport — header on row 1 (row-skip data loss) matches the go
       "initials": "GG",
       "lastName": "Gomez",
       "rawRow": 8,
+      "schoolOfAttendance": "Mt Diablo Elementary School",
+    },
+  ],
+}
+`;
+
+exports[`parseSEISReport — title rows then header on row 3 matches the golden snapshot 1`] = `
+{
+  "errors": [],
+  "metadata": {
+    "goalsFiltered": 0,
+    "sheetsProcessed": [
+      "Student Goals",
+    ],
+    "totalRows": 3,
+  },
+  "students": [
+    {
+      "firstName": "Ana",
+      "goals": [
+        "By 5/1/2027, given a grade-level passage, Ana will read 90 words per minute with 95% accuracy in 3 of 4 trials.",
+      ],
+      "gradeLevel": "1",
+      "iepDate": "2026-05-01",
+      "initials": "AA",
+      "lastName": "Alvarez",
+      "rawRow": 4,
+      "schoolOfAttendance": "Mt Diablo Elementary School",
+    },
+    {
+      "firstName": "Ben",
+      "goals": [
+        "By 10/15/2026, given manipulatives, Ben will solve two-digit addition problems with 80% accuracy across 3 sessions.",
+      ],
+      "gradeLevel": "2",
+      "iepDate": "2025-10-15",
+      "initials": "BB",
+      "lastName": "Bishop",
+      "rawRow": 5,
+      "schoolOfAttendance": "St Mary School",
+    },
+    {
+      "firstName": "Cora",
+      "goals": [
+        "By 1/20/2027, Cora will produce /r/ in structured sentences with 80% accuracy in 4 of 5 trials.",
+      ],
+      "gradeLevel": "3",
+      "iepDate": "2026-01-20",
+      "initials": "CC",
+      "lastName": "Cho",
+      "rawRow": 6,
       "schoolOfAttendance": "Mt Diablo Elementary School",
     },
   ],

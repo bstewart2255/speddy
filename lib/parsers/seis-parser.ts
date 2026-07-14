@@ -51,6 +51,7 @@ interface ColumnMapping {
   goalType?: number; // Annual Goal # / Service type column (Column M in SEIS)
   personResponsible?: number; // Column R in SEIS Student Goals Report
   goalColumns: number[];
+  headerRow?: number; // 1-based row the header was detected on; data starts after it
 }
 
 /**
@@ -101,10 +102,18 @@ export async function parseSEISReport(
         continue;
       }
 
+      // Data begins on the row AFTER the detected header. The old fixed
+      // `rowNumber <= 5` skip silently dropped students whenever the header sat
+      // above row 5 (header on row 1 -> rows 2-5 vanished with no error).
+      // columnMapping.headerRow is always set here: the guard above requires
+      // firstName/lastName/grade, which is exactly what detection needs to
+      // record the header row.
+      const headerRow = columnMapping.headerRow ?? 5;
+
       // Process each row
       worksheet.eachRow((row, rowNumber) => {
-        // Skip header rows (first 5 rows typically contain headers/metadata)
-        if (rowNumber <= 5) return;
+        // Skip everything up to and including the header row.
+        if (rowNumber <= headerRow) return;
 
         try {
           const firstName = getCellValue(row, columnMapping.firstName!);
@@ -301,17 +310,60 @@ function detectColumnMapping(worksheet: ExcelJS.Worksheet): ColumnMapping {
         mapping.personResponsible = colNumber;
       }
 
-      // Check for goal columns
-      if (goalPatterns.test(headerText)) {
-        if (!mapping.goalColumns.includes(colNumber)) {
-          mapping.goalColumns.push(colNumber);
-        }
-      }
+      // NOTE: goal columns are detected AFTER this loop, from the confirmed
+      // header row only — see below. Detecting them here would accumulate
+      // matches across the pre-header scan window, letting a stray
+      // "Goal"/"Objective" label above the real header pollute or hijack the
+      // selection.
     });
 
     // If we found the core columns, we're done
     if (mapping.firstName && mapping.lastName && mapping.grade) {
+      mapping.headerRow = rowNum;
       break;
+    }
+  }
+
+  // Goal-column selection, scoped to the CONFIRMED header row only. The fuzzy
+  // `goalPatterns` match sweeps in metadata columns whose header merely
+  // contains "goal"/"objective" — on the real 59-column SEIS report that's
+  // "Annual Goal #", "Purpose(s) of Goal", "Goal Met", and the "Objective N
+  // Met" columns, several of which carry >10-char values that would leak in as
+  // bogus goals. Prefer the exact "Goal" column; otherwise take the fuzzy
+  // matches minus any column already mapped to a specific metadata field.
+  if (mapping.headerRow !== undefined) {
+    const headerCells = worksheet.getRow(mapping.headerRow);
+    let exactGoalColumn: number | undefined;
+
+    headerCells.eachCell((cell, colNumber) => {
+      const headerText = getCellValue(headerCells, colNumber).toLowerCase();
+      if (!headerText) return;
+
+      if (goalPatterns.test(headerText) && !mapping.goalColumns.includes(colNumber)) {
+        mapping.goalColumns.push(colNumber);
+      }
+      // Exact "Goal" header (ignoring case and surrounding space).
+      if (exactGoalColumn === undefined && headerText.trim() === 'goal') {
+        exactGoalColumn = colNumber;
+      }
+    });
+
+    if (exactGoalColumn !== undefined) {
+      mapping.goalColumns = [exactGoalColumn];
+    } else {
+      const mappedMetaColumns = new Set(
+        [
+          mapping.firstName,
+          mapping.lastName,
+          mapping.grade,
+          mapping.schoolOfAttendance,
+          mapping.iepDate,
+          mapping.areaOfNeed,
+          mapping.goalType,
+          mapping.personResponsible,
+        ].filter((c): c is number => c !== undefined)
+      );
+      mapping.goalColumns = mapping.goalColumns.filter((c) => !mappedMetaColumns.has(c));
     }
   }
 
