@@ -161,12 +161,16 @@ export async function parseDeliveriesCSV(
   // Parse with csv-parse so newlines inside quoted fields don't split one row
   // into several. The previous split(/\r?\n/) + hand-rolled field parser broke
   // any row whose quoted field (e.g. a multi-line note) contained a line break.
-  let records: string[][];
+  let allRecords: string[][];
   try {
-    records = parse(buffer, {
+    allRecords = parse(buffer, {
       encoding: 'utf-8',
       bom: true,
       relax_column_count: true,
+      // Don't throw on a stray/unbalanced quote in one row — parse it leniently
+      // so a single malformed cell can't discard the entire caseload. The old
+      // hand-rolled reader never threw and always produced partial results.
+      relax_quotes: true,
       skip_empty_lines: true,
     });
   } catch (error: unknown) {
@@ -180,6 +184,13 @@ export async function parseDeliveriesCSV(
     };
   }
 
+  // csv-parse's skip_empty_lines only drops truly-empty lines; the previous
+  // reader also dropped whitespace-only lines BEFORE numbering rows. Such a line
+  // parses to a single blank field — drop those here so warning/error row
+  // numbers stay aligned with the old behavior (a comma-bearing row like ",,,"
+  // is kept and still warned on as a short row).
+  const records = allRecords.filter((r) => !(r.length === 1 && !r[0].trim()));
+
   // Expected columns (0-indexed):
   // 0: Name, 1: SEIS ID, 2: Service, 3: Delivery, 4: Start Date, 5: End Date,
   // 6: Sessions / Frequency, 7: Location, 8: Total Minutes, 9: Total Delivered, 10: Medi-Cal
@@ -187,7 +198,6 @@ export async function parseDeliveriesCSV(
   // Skip header row
   for (let i = 1; i < records.length; i++) {
     const fields = records[i];
-    if (fields.every((f) => !f || !f.trim())) continue;
 
     totalRows++;
     const rowNum = i + 1;

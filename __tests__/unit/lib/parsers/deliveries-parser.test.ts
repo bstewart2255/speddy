@@ -135,3 +135,44 @@ describe('parseDeliveriesCSV — newline inside a quoted field', () => {
     expect(result.warnings.some((w) => /fewer than expected columns/i.test(w.message))).toBe(false);
   });
 });
+
+describe('parseDeliveriesCSV — malformed quote in one row', () => {
+  it('parses leniently so one stray quote does not discard the whole file', async () => {
+    // A bare double-quote inside an unquoted field makes csv-parse throw unless
+    // relaxed; a throw here would zero out the entire caseload.
+    const csv = Buffer.from(
+      [
+        'Name,SEIS ID,Service,Delivery,Start Date,End Date,Sessions / Frequency,Location,Total Minutes (min/year),Total Delivered,Medi-Cal Billing Consent',
+        '"Alvarez, Ana",2000001,330 - Specialized Academic Instruction,Direct,08/15/2025,06/10/2026,45 min Weekly,Room 1,1620,0,Yes',
+        'Ort"iz Omar,2000030,330 - Specialized Academic Instruction,Direct,08/15/2025,06/10/2026,30 min Weekly,Room 2,1080,0,No',
+        '"Bishop, Ben",2000002,330 - Specialized Academic Instruction,Direct,08/15/2025,06/10/2026,30 min x 5 Times = 150 min Weekly,Room 3,5400,0,Yes',
+      ].join('\r\n'),
+      'utf-8',
+    );
+    const result = await parseDeliveriesCSV(csv, { providerRole: 'resource' });
+
+    // The well-formed rows still import — a stray quote must not zero out the
+    // whole caseload the way a throwing parser would.
+    expect(result.deliveries.has('alvarez_ana')).toBe(true);
+    expect(result.deliveries.has('bishop_ben')).toBe(true);
+    expect(result.errors.some((e) => /failed to parse csv/i.test(e.message))).toBe(false);
+  });
+});
+
+describe('parseDeliveriesCSV — blank-line handling parity', () => {
+  it('drops a whitespace-only line but keeps and warns on a comma-only row', async () => {
+    const csv = Buffer.from(
+      [
+        'Name,SEIS ID,Service,Delivery,Start Date,End Date,Sessions / Frequency,Location,Total Minutes (min/year),Total Delivered,Medi-Cal Billing Consent',
+        '   ', // whitespace-only line — dropped before numbering, like the old reader
+        ',,,', // short comma row — kept and surfaced as a short row, not silently dropped
+        '"Alvarez, Ana",2000001,330 - Specialized Academic Instruction,Direct,08/15/2025,06/10/2026,45 min Weekly,Room 1,1620,0,Yes',
+      ].join('\r\n'),
+      'utf-8',
+    );
+    const result = await parseDeliveriesCSV(csv, { providerRole: 'resource' });
+
+    expect(result.deliveries.has('alvarez_ana')).toBe(true);
+    expect(result.warnings.some((w) => /fewer than expected columns/i.test(w.message))).toBe(true);
+  });
+});
