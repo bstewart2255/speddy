@@ -295,12 +295,16 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
             studentId: student.studentId,
             initials: initialsNormalized,
             gradeLevel: student.gradeLevel,
-            firstName: student.firstName,
-            lastName: student.lastName,
             goals: student.goals,
             sessionsPerWeek: student.sessionsPerWeek ?? null,
             minutesPerSession: student.minutesPerSession ?? null
           };
+          // Roster-template rows carry no names. The RPC COALESCEs first/last
+          // name, so sending '' would overwrite an existing student's real name
+          // (e.g. set by an earlier SEIS import) with blank. Omit blank names so
+          // the existing ones are preserved; SEIS rows still carry real names.
+          if (student.firstName) updatePayload.firstName = student.firstName;
+          if (student.lastName) updatePayload.lastName = student.lastName;
           // Only touch the teacher link when the import actually resolved a
           // teacher_id. upsert_students_atomic keys off the *presence* of the
           // teacherId/teacherName fields (`v_student ? 'teacherId'`), setting the

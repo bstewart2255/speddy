@@ -491,6 +491,7 @@ async function handleTemplateRoster(
     id: string;
     initials: string | null;
     grade_level: string | null;
+    school_id: string | null;
     sessions_per_week: number | null;
     minutes_per_session: number | null;
     teacher_id: string | null;
@@ -500,9 +501,13 @@ async function handleTemplateRoster(
   perf: ReturnType<typeof measurePerformanceWithAlerts>
 ) {
   // Existing students keyed by the same initials+grade key the confirm route
-  // dedups on, so a re-import updates in place instead of duplicating.
+  // dedups on, so a re-import updates in place instead of duplicating. Scoped to
+  // the active school: a roster row is keyed only by initials+grade (no names),
+  // so for a multi-school provider an unscoped match could update a same-initials
+  // student at a different school.
   const existingByKey = new Map<string, (typeof dbStudents)[number]>();
   for (const s of dbStudents) {
+    if (s.school_id !== currentSchoolId) continue;
     existingByKey.set(buildStudentDedupKey(s.initials, s.grade_level), s);
   }
 

@@ -8,7 +8,7 @@ import { TextDecoder } from 'util';
 import { normalizeSchoolName } from '../school-helpers';
 import { getServiceTypeCode, getServiceTypeNameForRole, isGoalForProviderByKeywords, hasNoProviderRoutingSignal } from './service-type-mapping';
 import { normalizeGradeLevel } from '../utils/grade-parser';
-import { buildStudentDedupKey } from '../utils/student-dedup-key';
+import { buildStudentDedupKey, normalizeInitialsForKey } from '../utils/student-dedup-key';
 
 export interface ParsedStudent {
   firstName: string;
@@ -517,7 +517,15 @@ function normalizeTemplateHeader(header: string | undefined): string {
 export function detectSpeddyTemplateFormat(records: string[][]): boolean {
   if (records.length === 0) return false;
   const headers = (records[0] || []).map(normalizeTemplateHeader);
-  return headers.includes('initials') && headers.includes('grade') && headers.includes('teacher');
+  const hasRosterColumns =
+    headers.includes('initials') && headers.includes('grade') && headers.includes('teacher');
+  if (!hasRosterColumns) return false;
+  // A genuine roster has no goals. If a file also carries a goal-like column,
+  // it's some other export that happens to share these headers — defer to
+  // SEIS/generic detection so its goals aren't silently dropped by the
+  // goal-less template parser.
+  const hasGoalColumn = headers.some((h) => /goal|iep\s*goal|objective|target|present\s*level/.test(h));
+  return !hasGoalColumn;
 }
 
 /**
@@ -553,6 +561,13 @@ function parseSpeddyTemplateRows(records: string[][]): ParseResult {
       if (initials || gradeRaw || teacher) {
         warnings.push({ row: rowNum, message: 'Row skipped — roster rows need Initials, Grade, and Teacher.' });
       }
+      continue;
+    }
+
+    // Mirror the confirm route's 2–4-letter initials rule so a bad value is
+    // flagged at parse time instead of failing only at confirm.
+    if (normalizeInitialsForKey(initials).length < 2 || normalizeInitialsForKey(initials).length > 4) {
+      warnings.push({ row: rowNum, message: `Row skipped — initials "${initials}" must be 2–4 letters.` });
       continue;
     }
 

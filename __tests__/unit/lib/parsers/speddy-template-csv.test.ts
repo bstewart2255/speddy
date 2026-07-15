@@ -23,6 +23,14 @@ describe('detectSpeddyTemplateFormat', () => {
     expect(detectSpeddyTemplateFormat([['First Name', 'Last Name', 'Grade', 'Goal']])).toBe(false);
     expect(detectSpeddyTemplateFormat([])).toBe(false);
   });
+
+  it('defers a file that has roster columns AND a goal column to SEIS/generic', () => {
+    // Same Initials/Grade/Teacher headers but also carrying goals — not a bare
+    // roster, so the goal-less template parser must not claim it.
+    expect(detectSpeddyTemplateFormat([['Initials', 'Grade', 'Teacher', 'IEP Goal']])).toBe(false);
+    expect(detectSpeddyTemplateFormat([['Initials', 'Grade', 'Teacher', 'Present Levels']])).toBe(false);
+    expect(detectSpeddyTemplateFormat([['Initials', 'Grade', 'Teacher', 'Objective']])).toBe(false);
+  });
 });
 
 describe('parseCSVReport — Speddy roster template', () => {
@@ -66,6 +74,23 @@ describe('parseCSVReport — Speddy roster template', () => {
     expect(result.students[0].teacherName).toBe('Smith'); // first JD wins
     expect(result.warnings.some((w) => /duplicate/i.test(w.message))).toBe(true);
     expect(result.warnings.some((w) => /need Initials, Grade, and Teacher/i.test(w.message))).toBe(true);
+  });
+
+  it('skips rows whose initials are not 2–4 letters (mirrors the confirm-route rule)', async () => {
+    const csv = Buffer.from(
+      [
+        'Initials,Grade,Teacher',
+        'J,3,Smith', // 1 letter -> skipped
+        'JD,3,Smith', // ok
+        'ABCDE,3,Smith', // 5 letters -> skipped
+      ].join('\n'),
+      'utf-8'
+    );
+    const result = await parseCSVReport(csv, {});
+
+    expect(result.students).toHaveLength(1);
+    expect(result.students[0].initials).toBe('JD');
+    expect(result.warnings.filter((w) => /2.4 letters/.test(w.message))).toHaveLength(2);
   });
 
   it('treats sessions/minutes as optional', async () => {
