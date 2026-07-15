@@ -7,7 +7,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
 import bcrypt from 'bcryptjs';
-import { scrubPIIFromGoals } from '@/lib/utils/pii-scrubber';
 
 export const runtime = 'nodejs';
 
@@ -227,58 +226,23 @@ export async function POST(request: NextRequest) {
           d => d.student_id === matchedStudent.id
         );
 
-        // Parse and validate student names for PII scrubbing
-        // Use existing details if available, otherwise parse from SEIS data
-        let validatedFirstName = existingDetails?.first_name || seisStudent.firstName || '';
-        let validatedLastName = existingDetails?.last_name || seisStudent.lastName || '';
-
-        // If still empty, try to parse from full name
-        if (!validatedFirstName && !validatedLastName && seisStudent.name) {
-          const nameParts = seisStudent.name.split(/[,\s]+/).filter(Boolean);
-          if (nameParts.length >= 2) {
-            if (seisStudent.name.includes(',')) {
-              validatedLastName = nameParts[0] || '';
-              validatedFirstName = nameParts[1] || '';
-            } else {
-              validatedFirstName = nameParts[0] || '';
-              validatedLastName = nameParts[nameParts.length - 1] || '';
-            }
-          }
-        }
-
         // Prepare update data
         const updateData: Record<string, unknown> = {};
 
-        // Process IEP goals if provided
+        // Process IEP goals if provided (stored verbatim — SPE-238)
         if (seisStudent.goals && seisStudent.goals.length > 0) {
-          const goalTexts = seisStudent.goals.map(g => g.goalText);
-
-          // Scrub PII from goals using validated names
-          const scrubResult = await scrubPIIFromGoals(
-            goalTexts,
-            validatedFirstName,
-            validatedLastName
-          );
+          const newGoals = seisStudent.goals.map(g => g.goalText);
 
           // Merge with existing goals (avoid duplicates)
           const existingGoals = existingDetails?.iep_goals || [];
-          const newGoals = scrubResult.goals.map(g => g.scrubbed);
           const mergedGoals = [...new Set([...existingGoals, ...newGoals])];
 
           updateData.iep_goals = mergedGoals;
         }
 
-        // Process accommodations if provided
+        // Process accommodations if provided (stored verbatim — SPE-238)
         if (seisStudent.accommodations && seisStudent.accommodations.length > 0) {
-          const accommodationTexts = seisStudent.accommodations.map(a => a.description);
-
-          // Scrub PII from accommodations using validated names
-          const scrubResult = await scrubPIIFromGoals(
-            accommodationTexts,
-            validatedFirstName,
-            validatedLastName
-          );
-          const newAccommodations = scrubResult.goals.map(g => g.scrubbed);
+          const newAccommodations = seisStudent.accommodations.map(a => a.description);
 
           // Merge with existing accommodations
           const existingAccommodations = existingDetails?.accommodations || [];

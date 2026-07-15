@@ -1,6 +1,6 @@
 /**
  * IEP Goals Import API
- * Handles Excel file upload, parsing, student matching, and PII scrubbing
+ * Handles Excel file upload, parsing, and student matching.
  */
 
 import { NextResponse } from 'next/server';
@@ -9,7 +9,6 @@ import { withRoute } from '@/lib/api/with-route';
 import { parseSEISReport, ParseResult as SEISParseResult } from '@/lib/parsers/seis-parser';
 import { parseCSVReport, ParseResult as CSVParseResult } from '@/lib/parsers/csv-parser';
 import { matchStudents, DatabaseStudent } from '@/lib/utils/student-matcher';
-import { scrubPIIFromGoals } from '@/lib/utils/pii-scrubber';
 import { log } from '@/lib/monitoring/logger';
 import { track } from '@/lib/monitoring/analytics';
 import { measurePerformanceWithAlerts } from '@/lib/monitoring/performance-alerts';
@@ -23,12 +22,8 @@ interface ProcessedMatch {
   matchConfidence: 'high' | 'medium' | 'low' | 'none';
   matchReason: string;
   iepDate?: string; // The IEP date from the parsed report, for validation warnings
-  goals: Array<{
-    original: string;
-    scrubbed: string;
-    piiDetected: string[];
-    confidence: 'high' | 'medium' | 'low';
-  }>;
+  // Goals are stored verbatim (SPE-238).
+  goals: Array<{ text: string }>;
 }
 
 export const POST = withRoute({}, async ({ req: request, userId }) => {
@@ -325,9 +320,8 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
       noMatch: matchResult.summary.noMatch
     });
 
-    // Step 6: Scrub PII from goals for matched students
+    // Step 6: Assemble matched students with their verbatim goals (SPE-238).
     const processedMatchesMap = new Map<string, ProcessedMatch>();
-    const scrubErrors: string[] = [];
 
     for (const match of matchResult.matches) {
       if (match.confidence === 'none' || !match.matchedStudent) {
@@ -349,43 +343,13 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
           newGoalsCount: match.excelStudent.goals.length
         });
 
-        const scrubPerf = measurePerformanceWithAlerts('scrub_pii', 'api');
-        const scrubResult = await scrubPIIFromGoals(
-          match.excelStudent.goals,
-          match.excelStudent.firstName,
-          match.excelStudent.lastName
-        );
-        scrubPerf.end({ success: scrubResult.errors.length === 0 });
-
-        if (scrubResult.errors.length > 0) {
-          scrubErrors.push(...scrubResult.errors);
-        }
-
-        // Add new goals (avoid duplicates)
-        for (const newGoal of scrubResult.goals) {
-          if (!existing.goals.some(g => g.scrubbed === newGoal.scrubbed)) {
-            existing.goals.push(newGoal);
+        // Add new goals verbatim (avoid duplicates by text)
+        for (const goalText of match.excelStudent.goals) {
+          if (!existing.goals.some(g => g.text === goalText)) {
+            existing.goals.push({ text: goalText });
           }
         }
         continue;
-      }
-
-      log.info('Scrubbing PII for student', {
-        userId,
-        studentId,
-        goalsCount: match.excelStudent.goals.length
-      });
-
-      const scrubPerf = measurePerformanceWithAlerts('scrub_pii', 'api');
-      const scrubResult = await scrubPIIFromGoals(
-        match.excelStudent.goals,
-        match.excelStudent.firstName,
-        match.excelStudent.lastName
-      );
-      scrubPerf.end({ success: scrubResult.errors.length === 0 });
-
-      if (scrubResult.errors.length > 0) {
-        scrubErrors.push(...scrubResult.errors);
       }
 
       processedMatchesMap.set(studentId, {
@@ -395,7 +359,7 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
         matchConfidence: match.confidence,
         matchReason: match.reason,
         iepDate: match.excelStudent.iepDate,
-        goals: scrubResult.goals
+        goals: match.excelStudent.goals.map((text) => ({ text }))
       });
     }
 
@@ -418,30 +382,13 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
       totalGoals
     });
 
-    // Optimize response: Remove original text to reduce payload size
-    // Only send scrubbed goals and metadata
-    const optimizedMatches = processedMatches.map(match => ({
-      studentId: match.studentId,
-      studentInitials: match.studentInitials,
-      studentGrade: match.studentGrade,
-      matchConfidence: match.matchConfidence,
-      matchReason: match.matchReason,
-      iepDate: match.iepDate,
-      goals: match.goals.map(goal => ({
-        // Remove 'original' field to reduce payload size by ~50%
-        scrubbed: goal.scrubbed,
-        piiDetected: goal.piiDetected,
-        confidence: goal.confidence
-      }))
-    }));
-
     perf.end({ success: true });
 
     // Return processed data for preview
     return NextResponse.json({
       success: true,
       data: {
-        matches: optimizedMatches,
+        matches: processedMatches,
         summary: {
           totalParsed: parseResult.students.length,
           matched: processedMatches.length,
@@ -454,7 +401,6 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
         },
         parseErrors: parseResult.errors.length > 0 ? parseResult.errors.slice(0, 10) : [], // Limit errors
         parseWarnings: 'warnings' in parseResult && parseResult.warnings && parseResult.warnings.length > 0 ? parseResult.warnings.slice(0, 10) : [], // Limit warnings
-        scrubErrors: scrubErrors.length > 0 ? scrubErrors.slice(0, 10) : [], // Limit errors
         unmatchedStudents: matchResult.matches
           .filter(m => m.confidence === 'none')
           .slice(0, 20) // Limit unmatched to 20

@@ -20,7 +20,7 @@ interface StudentToImport {
   lastName: string;
   initials: string; // User-edited initials
   gradeLevel: string;
-  goals: string[]; // Already PII-scrubbed
+  goals: string[]; // Verbatim goal text, selected in the review screen
   schoolSite?: string;
   schoolId?: string;
   districtId?: string;

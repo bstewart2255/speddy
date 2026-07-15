@@ -6,10 +6,7 @@ import { createClient } from '@/lib/supabase/client';
 import { getIepDateWarning } from '@/lib/utils/iep-date-utils';
 
 interface Goal {
-  original?: string; // Optional - not sent in optimized response
-  scrubbed: string;
-  piiDetected: string[];
-  confidence: 'high' | 'medium' | 'low';
+  text: string;
 }
 
 interface Match {
@@ -33,7 +30,6 @@ interface ImportData {
     lowConfidence: number;
   };
   parseErrors?: Array<{ row: number; message: string }>;
-  scrubErrors?: string[];
   unmatchedStudents?: Array<{
     firstName: string;
     lastName: string;
@@ -108,7 +104,7 @@ export function IEPGoalsPreviewModal({
         if (selectedIndices.length === 0) continue;
 
         // Get selected goals
-        const goalsToImport = selectedIndices.map(idx => match.goals[idx].scrubbed);
+        const goalsToImport = selectedIndices.map(idx => match.goals[idx].text);
 
         // Get current student details
         const { data: currentDetails } = await supabase
@@ -332,23 +328,7 @@ export function IEPGoalsPreviewModal({
                                   className="mt-1 h-4 w-4 text-blue-600 rounded border-gray-300"
                                 />
                                 <div className="flex-1 space-y-2">
-                                  <div>
-                                    <p className="text-sm font-medium text-gray-700">Scrubbed Goal:</p>
-                                    <p className="text-sm text-gray-900">{goal.scrubbed}</p>
-                                  </div>
-
-                                  {goal.piiDetected.length > 0 && (
-                                    <div className="text-xs text-orange-700 bg-orange-50 p-2 rounded">
-                                      <p className="font-medium">PII Removed:</p>
-                                      <p>{goal.piiDetected.join(', ')}</p>
-                                    </div>
-                                  )}
-
-                                  {goal.confidence !== 'high' && (
-                                    <p className="text-xs text-yellow-700">
-                                      ⚠ {goal.confidence} confidence - please review
-                                    </p>
-                                  )}
+                                  <p className="text-sm text-gray-900">{goal.text}</p>
                                 </div>
                               </div>
                             </div>
