@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Button } from '../../../components/ui/button';
 import { LongHoverTooltip } from '../../../components/ui/long-hover-tooltip';
 import { Card, CardHeader, CardTitle, CardBody } from '../../../components/ui/card';
@@ -38,6 +38,11 @@ type Student = {
 
 export default function StudentsPage() {
   const [showAddForm, setShowAddForm] = useState(false);
+  // SPE-237: the Add Student form stays open for consecutive entries — inline
+  // feedback (no alert()) and an initials ref so we can refocus after each add.
+  const [addFormError, setAddFormError] = useState<string | null>(null);
+  const [addFormConfirmation, setAddFormConfirmation] = useState<string | null>(null);
+  const initialsInputRef = useRef<HTMLInputElement>(null);
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
   const [userRole, setUserRole] = useState<string | null>(null);
@@ -180,16 +185,24 @@ export default function StudentsPage() {
     checkUnscheduledSessions();
   }, [currentSchool, fetchStudents, checkUnscheduledSessions]);
 
+  // Focus Initials when the form opens so entry starts at the keyboard.
+  useEffect(() => {
+    if (showAddForm) initialsInputRef.current?.focus();
+  }, [showAddForm]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setAddFormError(null);
+    setAddFormConfirmation(null);
 
     if (!currentSchool) {
-      alert('No school selected');
+      setAddFormError('No school selected.');
       return;
     }
 
+    const addedInitials = formData.initials;
     try {
-      const newStudent = await createStudent({
+      await createStudent({
         initials: formData.initials,
         grade_level: formData.grade_level,
         teacher_id: formData.teacher_id,
@@ -203,23 +216,43 @@ export default function StudentsPage() {
         state_id: currentSchool?.state_id,
       });
 
-      // Reset form
+      // SPE-237: stay open for the next entry. Reset the per-student fields but
+      // keep the grade preselected (caseloads cluster by grade), confirm inline,
+      // and refocus Initials so the next student can be typed without the mouse.
       setFormData({
         initials: '',
-        grade_level: '',
+        grade_level: formData.grade_level,
         teacher_id: null,
         teacherName: null,
         sessions_per_week: '',
         minutes_per_session: '30'
       });
-
-      setShowAddForm(false);
+      setAddFormConfirmation(`${addedInitials} added`);
       fetchStudents();
       checkUnscheduledSessions();
+      initialsInputRef.current?.focus();
     } catch (error) {
       console.error('Error creating student:', error);
-      alert(error instanceof Error ? error.message : 'Failed to add student');
+      // Inline error — keep the form open and the other fields intact so the
+      // user can correct (e.g. duplicate initials) without re-entering everything.
+      setAddFormError(error instanceof Error ? error.message : 'Failed to add student');
     }
+  };
+
+  // Finish adding — closes the form and clears its inline state (the header × and
+  // the Done button both route here).
+  const handleCloseAddForm = () => {
+    setShowAddForm(false);
+    setAddFormError(null);
+    setAddFormConfirmation(null);
+    setFormData({
+      initials: '',
+      grade_level: '',
+      teacher_id: null,
+      teacherName: null,
+      sessions_per_week: '',
+      minutes_per_session: '30'
+    });
   };
 
   const handleDelete = async (studentId: string, studentInitials: string) => {
@@ -418,7 +451,7 @@ export default function StudentsPage() {
                   <CardTitle>Add New Student</CardTitle>
                   <Button
                     variant="secondary"
-                    onClick={() => setShowAddForm(false)}
+                    onClick={handleCloseAddForm}
                     className="text-gray-500 hover:text-gray-700"
                   >
                     ×
@@ -426,6 +459,11 @@ export default function StudentsPage() {
                 </div>
               </CardHeader>
               <CardBody>
+                {addFormError && (
+                  <div className="mb-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-md p-3">
+                    {addFormError}
+                  </div>
+                )}
                   <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-6 gap-4">
                   <div className="md:col-span-1">
                     <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -433,6 +471,7 @@ export default function StudentsPage() {
                     </label>
                     <input
                       type="text"
+                      ref={initialsInputRef}
                       required
                       value={formData.initials}
                       onChange={(e) => setFormData({...formData, initials: e.target.value})}
@@ -515,12 +554,17 @@ export default function StudentsPage() {
                     </select>
                   </div>
 
-                  <div className="md:col-span-6 flex justify-end gap-3 pt-4">
-                    <Button variant="secondary" type="button" onClick={() => setShowAddForm(false)}>
-                      Cancel
+                  <div className="md:col-span-6 flex items-center justify-end gap-3 pt-4">
+                    {addFormConfirmation && (
+                      <span className="mr-auto text-sm font-medium text-green-700">
+                        {addFormConfirmation}
+                      </span>
+                    )}
+                    <Button variant="secondary" type="button" onClick={handleCloseAddForm}>
+                      Done
                     </Button>
                     <Button variant="primary" type="submit">
-                      Add Student
+                      Add &amp; add another
                     </Button>
                   </div>
                 </form>
