@@ -24,8 +24,10 @@ const SEIS_HEADER = 'SEIS ID,District ID,Last Name,First Name,Birthdate,Grade,Sc
 
 const makeFile = (content: string, name: string, type = 'text/csv') => new File([content], name, { type });
 
-const fileInput = (container: HTMLElement): HTMLInputElement => {
-  const input = container.querySelector('input[type="file"]') as HTMLInputElement | null;
+// The Modal renders through a Headless UI Dialog portal (document.body), so the
+// file input lives outside the render `container` — query the document instead.
+const fileInput = (): HTMLInputElement => {
+  const input = document.querySelector('input[type="file"]') as HTMLInputElement | null;
   if (!input) throw new Error('file input not found');
   return input;
 };
@@ -62,8 +64,8 @@ describe('StudentImportModal (SPE-231)', () => {
   });
 
   it('detects a Deliveries CSV, labels its contribution, and enables Import', async () => {
-    const { container } = renderModal();
-    fireEvent.change(fileInput(container), {
+    renderModal();
+    fireEvent.change(fileInput(), {
       target: { files: [makeFile(`${DELIVERIES_HEADER}\n"A, B",1,330`, 'deliveries.csv')] },
     });
 
@@ -73,8 +75,8 @@ describe('StudentImportModal (SPE-231)', () => {
   });
 
   it('detects a SEIS student/goals CSV as students & goals', async () => {
-    const { container } = renderModal();
-    fireEvent.change(fileInput(container), {
+    renderModal();
+    fireEvent.change(fileInput(), {
       target: { files: [makeFile(`${SEIS_HEADER}\n1,2,Doe,Jane,,3,Mt Diablo`, 'goals.csv')] },
     });
 
@@ -83,8 +85,8 @@ describe('StudentImportModal (SPE-231)', () => {
   });
 
   it('detects a roster template as importable student data (SPE-225)', async () => {
-    const { container } = renderModal();
-    fireEvent.change(fileInput(container), {
+    renderModal();
+    fireEvent.change(fileInput(), {
       target: { files: [makeFile(`${ROSTER_HEADER}\nJD,3,Smith`, 'roster.csv')] },
     });
 
@@ -94,8 +96,8 @@ describe('StudentImportModal (SPE-231)', () => {
   });
 
   it('rejects an unsupported file with an actionable error and keeps Import disabled', async () => {
-    const { container } = renderModal();
-    fireEvent.change(fileInput(container), {
+    renderModal();
+    fireEvent.change(fileInput(), {
       target: { files: [makeFile('whatever', 'ParentLetter.docx', 'application/octet-stream')] },
     });
 
@@ -105,8 +107,8 @@ describe('StudentImportModal (SPE-231)', () => {
   });
 
   it('replace-last: a second file of the same type replaces the first, with a notice', async () => {
-    const { container } = renderModal();
-    const input = fileInput(container);
+    renderModal();
+    const input = fileInput();
 
     fireEvent.change(input, { target: { files: [makeFile(DELIVERIES_HEADER, 'first.csv')] } });
     expect(await screen.findByText('first.csv')).toBeInTheDocument();
@@ -128,8 +130,8 @@ describe('StudentImportModal (SPE-231)', () => {
       .mockImplementationOnce(() => firstPending) // A (picked first) — pending
       .mockImplementationOnce(() => Promise.resolve('deliveries')); // B (picked second) — immediate
 
-    const { container } = renderModal();
-    const input = fileInput(container);
+    renderModal();
+    const input = fileInput();
 
     fireEvent.change(input, { target: { files: [makeFile(DELIVERIES_HEADER, 'A.csv')] } });
     fireEvent.change(input, { target: { files: [makeFile(DELIVERIES_HEADER, 'B.csv')] } });
@@ -149,8 +151,8 @@ describe('StudentImportModal (SPE-231)', () => {
       .mockRejectedValueOnce(new Error('read failed')) // bad.csv
       .mockResolvedValueOnce('deliveries'); // good.csv
 
-    const { container } = renderModal();
-    fireEvent.change(fileInput(container), {
+    renderModal();
+    fireEvent.change(fileInput(), {
       target: { files: [makeFile('x', 'bad.csv'), makeFile(DELIVERIES_HEADER, 'good.csv')] },
     });
 
@@ -170,8 +172,8 @@ describe('StudentImportModal (SPE-231)', () => {
         })
     );
 
-    const { container } = renderModal();
-    fireEvent.change(fileInput(container), { target: { files: [makeFile(DELIVERIES_HEADER, 'x.csv')] } });
+    renderModal();
+    fireEvent.change(fileInput(), { target: { files: [makeFile(DELIVERIES_HEADER, 'x.csv')] } });
 
     // Reset the modal (Cancel) before detection resolves.
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
@@ -192,9 +194,9 @@ describe('StudentImportModal (SPE-231)', () => {
       json: async () => ({ data: { summary: { total: 1 } } }),
     });
     const onUploadComplete = jest.fn();
-    const { container } = renderModal({ onUploadComplete });
+    renderModal({ onUploadComplete });
 
-    fireEvent.change(fileInput(container), {
+    fireEvent.change(fileInput(), {
       target: { files: [makeFile(DELIVERIES_HEADER, 'deliveries.csv')] },
     });
     await screen.findByText('deliveries.csv');
