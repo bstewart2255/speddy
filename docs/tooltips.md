@@ -35,7 +35,7 @@ This document defines all action buttons in the app and their tooltip descriptio
 
 | Button           | File                | Tooltip                                                                                                                   |
 | ---------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| File Upload      | `students/page.tsx` | Upload student data files using the guided import wizard. Supports various file formats.                                  |
+| Import Students  | `students/page.tsx` | Upload student data files using the guided import wizard. Supports various file formats.                                  |
 | Add Student      | `students/page.tsx` | Add a new student to your caseload. You'll need their name, grade, teacher, and service requirements.                     |
 | Close Add Form   | `students/page.tsx` | Close the add student form without saving. Any entered data will be lost.                                                 |
 | Edit Student     | `students/page.tsx` | Edit this student's information including name, grade, teacher assignment, and service details.                           |
