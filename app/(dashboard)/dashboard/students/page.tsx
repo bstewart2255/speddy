@@ -16,7 +16,8 @@ import { TeacherDetailsModal } from '../../../components/teachers/teacher-detail
 import { TeacherAutocomplete } from '../../../components/teachers/teacher-autocomplete';
 import { useRouter } from 'next/navigation';
 import { StudentImportModal } from '../../../components/students/student-import-modal';
-import { StudentImportPreviewModal } from '../../../components/students/student-import-preview-modal';
+import { StudentImportReview } from '../../../components/students/review/student-import-review';
+import { adaptBulkPreview } from '@/lib/import/review-model';
 
 type Student = {
   id: string;
@@ -324,18 +325,58 @@ export default function StudentsPage() {
           currentSchool={currentSchool}
         />
 
-        {/* Import Preview Modal */}
+        {/* Import review screen (SPE-227) */}
         {bulkImportPreviewData && (
-          <StudentImportPreviewModal
+          <StudentImportReview
             isOpen={!!bulkImportPreviewData}
             onClose={() => setBulkImportPreviewData(null)}
-            data={bulkImportPreviewData}
-            currentSchool={currentSchool}
-            onImportComplete={() => {
-              // Refresh the caseload behind the modal without unmounting it, so
-              // a partial-failure modal stays open on its error list. The modal
-              // unmounts only on explicit close (onClose).
+            model={adaptBulkPreview(bulkImportPreviewData)}
+            onComplete={() => {
+              // Refresh the caseload behind the modal without unmounting it, so a
+              // partial-failure modal stays open on its error list.
               fetchStudents();
+            }}
+            onConfirm={async ({ rows }) => {
+              const students = rows.map(({ row, initials, selectedGoalTexts }) => ({
+                firstName: row.firstName,
+                lastName: row.lastName,
+                initials,
+                gradeLevel: row.gradeLevel,
+                goals: selectedGoalTexts,
+                action: row.action,
+                studentId: row.targetStudentId,
+                schoolId: currentSchool?.school_id,
+                schoolSite: currentSchool?.school_site,
+                districtId: currentSchool?.district_id,
+                stateId: currentSchool?.state_id,
+                sessionsPerWeek: row.schedule?.sessionsPerWeek,
+                minutesPerSession: row.schedule?.minutesPerSession,
+                teacherId: row.teacher?.teacherId || undefined,
+                teacherName: row.teacher?.teacherName || undefined,
+              }));
+
+              const response = await fetch('/api/import-students/confirm', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ students }),
+              });
+              const result = await response.json();
+              if (!response.ok) {
+                throw new Error(result.error || 'Failed to import students');
+              }
+
+              // The confirm route returns input-ordered results; map back by index.
+              const results: Array<{ success: boolean; error?: string }> = result.data.results;
+              const outcomes = rows.map((r, i) => ({
+                rowId: r.row.id,
+                success: results[i]?.success ?? false,
+                error: results[i]?.error,
+              }));
+              return {
+                outcomes,
+                succeeded: outcomes.filter((o) => o.success).length,
+                failed: outcomes.filter((o) => !o.success).length,
+              };
             }}
           />
         )}
