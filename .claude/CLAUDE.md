@@ -84,6 +84,17 @@ branch, and keep capturing deferred items in Linear. Report a brief summary
 when a batch merges or when escalating — keep me informed without making me a
 bottleneck.
 
+**PR follow-through is yours; merging is the pause point.** You never need my
+permission to set up PR follow-through — subscribe to / watch a PR's activity
+and schedule your own `send_later` check-ins to follow a PR on your own, and
+run the whole pre-merge loop (open the PR, watch CI, run reviews, address valid
+feedback, push fixes) without asking. **The one action to pause on is merging:**
+hold a finished, green PR for me and tell me it's ready rather than merging it
+yourself — unless I've given you the go-ahead to merge, for that PR or as a
+standing rule for the work at hand (then merge on green without checking back).
+The purely-internal, non-UX, all-gates-green case above is the standing
+exception where that go-ahead is already granted.
+
 ## Standing rule: deep self-review before any substantive PR
 
 Before marking any substantive PR ready for review (features, bug fixes,
