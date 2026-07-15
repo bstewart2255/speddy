@@ -82,4 +82,34 @@ describe('StudentImportReview (SPE-227)', () => {
     expect(screen.getByText(/Needs your review/)).toBeInTheDocument();
     expect(screen.getByText('Ghost Kid')).toBeInTheDocument();
   });
+
+  it('target-student (merge) mode: merge copy, footer counts goals, goals expanded by default (SPE-232)', () => {
+    const m = model({
+      mode: 'target-student',
+      writeMode: 'merge',
+      summary: { totalStudents: 1, inserts: 0, updates: 1, skips: 0, totalGoals: 2 },
+      rows: [
+        row({
+          id: 'stu-7:0',
+          action: 'update',
+          displayName: 'KL',
+          initials: 'KL',
+          targetStudentId: 'stu-7',
+          goals: [
+            { text: 'Read 90 wpm', status: 'added' },
+            { text: 'Solve 2-digit addition', status: 'added' },
+          ],
+        }),
+      ],
+    });
+    render(<StudentImportReview isOpen model={m} onClose={() => {}} onConfirm={noopConfirm} />);
+
+    // Merge semantics stated in copy; title is IEP-goals-specific.
+    expect(screen.getByText('Review IEP goals')).toBeInTheDocument();
+    expect(screen.getByText(/nothing is removed/i)).toBeInTheDocument();
+    // Primary action counts goals, not students.
+    expect(screen.getByRole('button', { name: /Add 2 goals/ })).toBeEnabled();
+    // The single row's goals are expanded by default (no click needed).
+    expect(screen.getByText('Read 90 wpm')).toBeInTheDocument();
+  });
 });

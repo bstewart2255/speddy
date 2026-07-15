@@ -1,12 +1,18 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Button } from '../ui/button';
 import { Input, Label, FormGroup } from '../ui/form';
 import { getStudentDetails, upsertStudentDetails, StudentDetails, getMatchingProviderRoles } from '../../../lib/supabase/queries/student-details';
+import { createClient } from '@/lib/supabase/client';
+import { adaptTargetStudentPreview } from '@/lib/import/review-model';
 import AssessmentList from './assessment-list';
 import { IEPGoalsUploader } from './iep-goals-uploader';
-import { IEPGoalsPreviewModal } from './iep-goals-preview-modal';
+import {
+  StudentImportReview,
+  type ReviewConfirmSelection,
+  type ReviewWriteResult,
+} from './review/student-import-review';
 import { TeacherAutocomplete } from '../teachers/teacher-autocomplete';
 import { StudentProgressTab } from './student-progress-tab';
 import { StudentAttendanceTab } from './student-attendance-tab';
@@ -199,14 +205,83 @@ export function StudentDetailsModal({
     }
   };
 
+  // Per-student IEP goals import writes client-side today (server-side merge is
+  // SPE-234). Merge semantics: append each selected goal that isn't already on
+  // the student (case-insensitive), preserving goals_iep_date when the report
+  // carries one — the same stored result as the retired preview modal.
+  const handleTargetImport = async ({ rows }: ReviewConfirmSelection): Promise<ReviewWriteResult> => {
+    const supabase = createClient();
+    const outcomes: ReviewWriteResult['outcomes'] = [];
+
+    for (const { row, selectedGoalTexts } of rows) {
+      const studentId = row.targetStudentId;
+      if (!studentId) continue;
+      const match = importData?.matches?.find((m: { studentId: string; iepDate?: string }) => m.studentId === studentId);
+
+      try {
+        const { data: currentDetails } = await supabase
+          .from('student_details')
+          .select('iep_goals')
+          .eq('student_id', studentId)
+          .single();
+
+        const existingGoals: string[] = currentDetails?.iep_goals || [];
+        const newGoals = [...existingGoals];
+        for (const goal of selectedGoalTexts) {
+          if (!newGoals.some(existing => existing.trim().toLowerCase() === goal.trim().toLowerCase())) {
+            newGoals.push(goal);
+          }
+        }
+
+        const upsertData: {
+          student_id: string;
+          iep_goals: string[];
+          updated_at: string;
+          goals_iep_date?: string;
+        } = {
+          student_id: studentId,
+          iep_goals: newGoals,
+          updated_at: new Date().toISOString(),
+        };
+        if (match?.iepDate) upsertData.goals_iep_date = match.iepDate;
+
+        const { error } = await supabase
+          .from('student_details')
+          .upsert(upsertData, { onConflict: 'student_id' });
+        if (error) throw error;
+
+        outcomes.push({ rowId: row.id, success: true });
+      } catch (err) {
+        outcomes.push({
+          rowId: row.id,
+          success: false,
+          error: err instanceof Error ? err.message : 'Failed to save goals',
+        });
+      }
+    }
+
+    return {
+      outcomes,
+      succeeded: outcomes.filter(o => o.success).length,
+      failed: outcomes.filter(o => !o.success).length,
+    };
+  };
+
+  // Adapt the per-student IEP preview into the shared review model once per upload.
+  const reviewModel = useMemo(
+    () => (importData ? adaptTargetStudentPreview(importData) : null),
+    [importData],
+  );
+
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto">
+    <>
+    <div className={`fixed inset-0 z-50 overflow-y-auto ${showImportPreview ? 'hidden' : ''}`}>
       <div className="flex min-h-full items-center justify-center p-4">
         {/* Backdrop */}
-        <div 
-          className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" 
+        <div
+          className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"
           onClick={onClose}
         />
 
@@ -703,16 +778,23 @@ export function StudentDetailsModal({
           </div>
         </div>
       </div>
+    </div>
 
-      {/* IEP Goals Import Preview Modal */}
-      {importData && (
-        <IEPGoalsPreviewModal
+      {/* Per-student IEP goals review (SPE-232): the shared review screen in
+          target-student mode. The details panel above is hidden while this is
+          open, so there is no stacked modal (SPE-224 decision). */}
+      {importData && reviewModel && (
+        <StudentImportReview
           isOpen={showImportPreview}
-          onClose={() => setShowImportPreview(false)}
-          data={importData}
-          onImportComplete={handleImportComplete}
+          model={reviewModel}
+          onClose={() => {
+            setShowImportPreview(false);
+            setImportData(null);
+          }}
+          onConfirm={handleTargetImport}
+          onComplete={handleImportComplete}
         />
       )}
-    </div>
+    </>
   );
 }

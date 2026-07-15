@@ -13,8 +13,17 @@ const COLUMN_COUNT = 8;
  * happens one attribute at a time (sweep Grade, then Teacher, then Schedule),
  * grouped New → Updated, with unchanged rows collapsed to a single line.
  */
-export function ReviewTable({ rows, selection }: { rows: ReviewRowData[]; selection: ReviewSelection }) {
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+export function ReviewTable({
+  rows,
+  selection,
+  defaultExpandedId,
+}: {
+  rows: ReviewRowData[];
+  selection: ReviewSelection;
+  /** Row whose goals start expanded (target-student mode expands its one row). */
+  defaultExpandedId?: string;
+}) {
+  const [expandedId, setExpandedId] = useState<string | null>(defaultExpandedId ?? null);
   const [showUnchanged, setShowUnchanged] = useState(false);
 
   const inserts = rows.filter((r) => r.action === 'insert');

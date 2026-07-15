@@ -304,3 +304,68 @@ export function adaptBulkPreview(data: BulkPreviewData): ReviewModel {
     rows,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Wire-input types: the per-student IEP goals preview payload (`result.data`
+// from /api/import-iep-goals). One matched student whose goals merge into their
+// record — nothing is removed (SPE-232). Only the fields the review screen uses
+// are modeled; the route returns more (summary counts, unmatched list) that the
+// single-student target flow doesn't surface.
+// ---------------------------------------------------------------------------
+
+export interface TargetMatch {
+  studentId: string;
+  studentInitials: string;
+  studentGrade: string;
+  matchConfidence: 'high' | 'medium' | 'low';
+  matchReason: string;
+  /** IEP date from the report, carried through to the write (goals_iep_date). */
+  iepDate?: string;
+  goals: Array<{ text: string }>;
+}
+
+export interface TargetPreviewData {
+  matches: TargetMatch[];
+}
+
+/**
+ * Convert a per-student IEP goals preview (the `/api/import-iep-goals` `matches`
+ * shape) into the normalized `ReviewModel` in target-student mode. Merge
+ * semantics: every incoming goal is an addition (`status: 'added'`), nothing is
+ * ever removed, so `goalsRemoved` is always empty. Pure — no I/O.
+ */
+export function adaptTargetStudentPreview(data: TargetPreviewData): ReviewModel {
+  const rows: ReviewRow[] = data.matches.map((match, index) => ({
+    id: `${match.studentId}:${index}`,
+    srcIndex: index,
+    action: 'update',
+    firstName: '',
+    lastName: '',
+    // The IEP goals report exposes initials + grade for a match, not a name.
+    displayName: match.studentInitials,
+    initials: match.studentInitials,
+    gradeLevel: match.studentGrade,
+    goals: match.goals.map(goal => ({ text: goal.text, status: 'added' as const })),
+    goalsRemoved: [],
+    targetStudentId: match.studentId,
+    matchConfidence: match.matchConfidence,
+    matchReason: match.matchReason,
+  }));
+
+  const totalGoals = rows.reduce((sum, r) => sum + r.goals.length, 0);
+
+  return {
+    mode: 'target-student',
+    writeMode: 'merge',
+    summary: {
+      totalStudents: rows.length,
+      inserts: 0,
+      updates: rows.length,
+      skips: 0,
+      totalGoals,
+    },
+    files: [],
+    exceptions: [],
+    rows,
+  };
+}

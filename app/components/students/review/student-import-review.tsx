@@ -118,6 +118,19 @@ export function StudentImportReview({
     }
   };
 
+  // Per-student IEP import merges goals, so its primary action counts goals, not
+  // students (there is only ever the one target student).
+  const isMerge = model.writeMode === 'merge';
+  const goalCount = selection.totalSelectedGoals;
+  const primaryDisabled = importing || (isMerge ? goalCount === 0 : selection.selectedCount === 0);
+  const primaryLabel = importing
+    ? isMerge
+      ? 'Adding…'
+      : 'Importing…'
+    : isMerge
+      ? `Add ${goalCount} goal${goalCount !== 1 ? 's' : ''}`
+      : `Import ${selection.selectedCount} student${selection.selectedCount !== 1 ? 's' : ''}`;
+
   const footer = importFinished ? (
     <Button ref={doneRef} variant="primary" onClick={onClose}>
       Done
@@ -125,19 +138,15 @@ export function StudentImportReview({
   ) : (
     <>
       <div className="mr-auto self-center text-sm tabular-nums text-gray-600">
-        {selection.selectedCount} selected · {selection.totalSelectedGoals} goals
+        {isMerge
+          ? `${goalCount} goal${goalCount !== 1 ? 's' : ''} selected`
+          : `${selection.selectedCount} selected · ${selection.totalSelectedGoals} goals`}
       </div>
       <Button variant="secondary" onClick={onClose} disabled={importing}>
         Cancel
       </Button>
-      <Button
-        variant="primary"
-        onClick={handleImport}
-        disabled={importing || selection.selectedCount === 0}
-      >
-        {importing
-          ? 'Importing…'
-          : `Import ${selection.selectedCount} student${selection.selectedCount !== 1 ? 's' : ''}`}
+      <Button variant="primary" onClick={handleImport} disabled={primaryDisabled}>
+        {primaryLabel}
       </Button>
     </>
   );
@@ -153,6 +162,11 @@ export function StudentImportReview({
     >
       <div className="space-y-5">
         <ReviewSummaryBar summary={model.summary} />
+        <p className="text-sm text-gray-600">
+          {isMerge
+            ? 'New goals are added alongside existing ones — nothing is removed.'
+            : 'Importing updates each matched student’s goals to match the file.'}
+        </p>
         {error && (
           <div role="alert" className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">
             {error}
@@ -164,7 +178,13 @@ export function StudentImportReview({
           teacherOverrides={teacherOverrides}
           onResolveTeacher={resolveTeacher}
         />
-        {model.rows.length > 0 && <ReviewTable rows={model.rows} selection={selection} />}
+        {model.rows.length > 0 && (
+          <ReviewTable
+            rows={model.rows}
+            selection={selection}
+            defaultExpandedId={model.mode === 'target-student' ? model.rows[0]?.id : undefined}
+          />
+        )}
       </div>
     </Modal>
   );
