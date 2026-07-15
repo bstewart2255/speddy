@@ -90,6 +90,18 @@ interface UnmatchedStudent {
   source: 'deliveries' | 'classList';
 }
 
+// SPE-227: per-file "receipt" for the rebuilt review screen — what each uploaded
+// file read / matched / filtered, plus any per-row notes. Additive to the preview
+// response; existing fields are unchanged.
+interface PreviewFileReceipt {
+  fileKey: 'studentsFile' | 'deliveriesFile' | 'classListFile';
+  fileName: string;
+  read: number;
+  matched: number;
+  filtered: number;
+  notes?: Array<{ row: number; message: string }>;
+}
+
 /**
  * Normalize school name for comparison by removing trailing "school" word
  * and standardizing common abbreviations.
@@ -251,6 +263,7 @@ async function handleDeliveriesOrClassListOnly(
 
   // Parse deliveries file if provided
   let deliveriesData: Map<string, DeliveryRecord> | null = null;
+  let deliveriesRead = 0;
   const deliveriesWarnings: Array<{ row: number; message: string }> = [];
   if (deliveriesFile) {
     try {
@@ -258,6 +271,7 @@ async function handleDeliveriesOrClassListOnly(
       const deliveriesBuffer = Buffer.from(deliveriesBytes);
       const deliveriesResult = await parseDeliveriesCSV(deliveriesBuffer, { providerRole });
       deliveriesData = deliveriesResult.deliveries;
+      deliveriesRead = deliveriesResult.metadata.uniqueStudents;
       deliveriesWarnings.push(...deliveriesResult.warnings);
 
       log.info('Deliveries file parsed (standalone)', {
@@ -279,6 +293,7 @@ async function handleDeliveriesOrClassListOnly(
 
   // Parse class list file if provided
   let classListData: Map<string, ClassListStudent> | null = null;
+  let classListRead = 0;
   const classListWarnings: Array<{ row: number; message: string }> = [];
   if (classListFile) {
     try {
@@ -286,6 +301,7 @@ async function handleDeliveriesOrClassListOnly(
       const classListBuffer = Buffer.from(classListBytes);
       const classListResult = await parseClassListTXT(classListBuffer);
       classListData = classListResult.students;
+      classListRead = classListResult.metadata.totalStudents;
       classListWarnings.push(...classListResult.warnings);
 
       log.info('Class list file parsed (standalone)', {
@@ -448,11 +464,38 @@ async function handleDeliveriesOrClassListOnly(
     ...classListWarnings.map(w => ({ ...w, source: 'classList' as const }))
   ];
 
+  // SPE-227: per-file receipts for the rebuilt review screen. Only deliveries
+  // and/or class list apply here — there is no student goals file in this mode.
+  const files: PreviewFileReceipt[] = [];
+  if (deliveriesFile) {
+    files.push({
+      fileKey: 'deliveriesFile',
+      fileName: deliveriesFile.name,
+      read: deliveriesRead,
+      matched: matchedDeliveryNames.size,
+      filtered: Math.max(0, deliveriesRead - matchedDeliveryNames.size),
+      notes: deliveriesWarnings
+    });
+  }
+  if (classListFile) {
+    files.push({
+      fileKey: 'classListFile',
+      fileName: classListFile.name,
+      read: classListRead,
+      matched: matchedClassListNames.size,
+      filtered: Math.max(0, classListRead - matchedClassListNames.size),
+      notes: classListWarnings
+    });
+  }
+
   // Return update preview
   return NextResponse.json({
     success: true,
     mode: 'update', // Indicate this is an update-only operation
     data: {
+      // SPE-227: mirror the top-level `mode` inside `data` so the client keeps it.
+      mode: 'update',
+      files,
       students: studentUpdates,
       summary: {
         total: studentUpdates.length,
@@ -482,6 +525,7 @@ async function handleTemplateRoster(
   userId: string,
   supabase: Awaited<ReturnType<typeof createClient>>,
   parseResult: CSVParseResult,
+  fileName: string,
   dbStudents: Array<{
     id: string;
     initials: string | null;
@@ -634,9 +678,27 @@ async function handleTemplateRoster(
 
   perf.end({ success: true });
 
+  // SPE-227: single-file receipt for the rebuilt review screen — the roster
+  // template is the only uploaded file on this path.
+  const files: PreviewFileReceipt[] = [
+    {
+      fileKey: 'studentsFile',
+      fileName,
+      read: parseResult.students.length,
+      matched: studentPreviews.length,
+      // Every parsed row becomes a preview on the roster path (matched === read),
+      // so nothing is filtered out. Unparseable rows surface via `notes`; counting
+      // them here would break the receipt's read = matched + filtered invariant and
+      // render a contradictory "N of N matched · M not matched".
+      filtered: 0,
+      notes: parseWarnings
+    }
+  ];
+
   return NextResponse.json({
     success: true,
     data: {
+      files,
       students: studentPreviews,
       summary: {
         total: studentPreviews.length,
@@ -828,6 +890,7 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
         userId,
         supabase,
         parseResult as CSVParseResult,
+        file.name,
         dbStudents || [],
         currentSchoolId,
         templateWarnings,
@@ -927,6 +990,7 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
 
     // Parse optional Deliveries file
     let deliveriesData: Map<string, DeliveryRecord> | null = null;
+    let deliveriesRead = 0;
     const deliveriesWarnings: Array<{ row: number; message: string }> = [];
     if (deliveriesFile) {
       try {
@@ -936,6 +1000,7 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
           providerRole: userProfile?.role
         });
         deliveriesData = deliveriesResult.deliveries;
+        deliveriesRead = deliveriesResult.metadata.uniqueStudents;
         deliveriesWarnings.push(...deliveriesResult.warnings);
 
         log.info('Deliveries file parsed', {
@@ -953,6 +1018,7 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
 
     // Parse optional Class List file
     let classListData: Map<string, ClassListStudent> | null = null;
+    let classListRead = 0;
     const classListWarnings: Array<{ row: number; message: string }> = [];
     if (classListFile) {
       try {
@@ -960,6 +1026,7 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
         const classListBuffer = Buffer.from(classListBytes);
         const classListResult = await parseClassListTXT(classListBuffer);
         classListData = classListResult.students;
+        classListRead = classListResult.metadata.totalStudents;
         classListWarnings.push(...classListResult.warnings);
 
         log.info('Class list file parsed', {
@@ -1254,6 +1321,40 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
     const skipCount = studentPreviews.filter(s => s.action === 'skip').length;
     const withGoalsRemovedCount = studentPreviews.filter(s => s.goalsRemoved && s.goalsRemoved.length > 0).length;
 
+    // SPE-227: per-file receipts for the rebuilt review screen. The student goals
+    // file is always present on this path; deliveries/class list are optional. The
+    // goals file may have been filtered in place (school scoping), so `read` adds
+    // back `filteredOutCount` to reflect what the file actually contained.
+    const files: PreviewFileReceipt[] = [];
+    files.push({
+      fileKey: 'studentsFile',
+      fileName: file.name,
+      read: parseResult.students.length + filteredOutCount,
+      matched: studentPreviews.length,
+      filtered: filteredOutCount,
+      notes: 'warnings' in parseResult ? parseResult.warnings || [] : []
+    });
+    if (deliveriesFile) {
+      files.push({
+        fileKey: 'deliveriesFile',
+        fileName: deliveriesFile.name,
+        read: deliveriesRead,
+        matched: matchedDeliveryNames.size,
+        filtered: Math.max(0, deliveriesRead - matchedDeliveryNames.size),
+        notes: deliveriesWarnings
+      });
+    }
+    if (classListFile) {
+      files.push({
+        fileKey: 'classListFile',
+        fileName: classListFile.name,
+        read: classListRead,
+        matched: matchedClassListNames.size,
+        filtered: Math.max(0, classListRead - matchedClassListNames.size),
+        notes: classListWarnings
+      });
+    }
+
     // Return preview data
     return NextResponse.json({
       success: true,
@@ -1279,7 +1380,8 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
         },
         unmatchedStudents: unmatchedStudents.length > 0 ? unmatchedStudents.slice(0, 20) : [],
         parseErrors: parseResult.errors.length > 0 ? parseResult.errors.slice(0, 10) : [],
-        parseWarnings: allWarnings.length > 0 ? allWarnings.slice(0, 10) : []
+        parseWarnings: allWarnings.length > 0 ? allWarnings.slice(0, 10) : [],
+        files
       }
     });
   } catch (error: unknown) {
