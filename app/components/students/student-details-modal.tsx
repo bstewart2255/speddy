@@ -219,11 +219,15 @@ export function StudentDetailsModal({
       if (!studentId || selectedGoalTexts.length === 0) continue;
 
       try {
-        const { data: currentDetails } = await supabase
+        const { data: currentDetails, error: readError } = await supabase
           .from('student_details')
           .select('iep_goals')
           .eq('student_id', studentId)
-          .single();
+          .maybeSingle();
+        // Abort on a real read failure — never overwrite goals we couldn't read.
+        // maybeSingle returns null data + no error when the row simply doesn't
+        // exist yet, which is a legitimate "no existing goals" case.
+        if (readError) throw readError;
 
         const existingGoals: string[] = currentDetails?.iep_goals || [];
         const newGoals = [...existingGoals];
@@ -252,10 +256,12 @@ export function StudentDetailsModal({
 
         outcomes.push({ rowId: row.id, success: true });
       } catch (err) {
+        // Supabase/PostgREST errors are often plain objects (not Error
+        // instances), so read .message directly to keep the real DB error.
         outcomes.push({
           rowId: row.id,
           success: false,
-          error: err instanceof Error ? err.message : 'Failed to save goals',
+          error: (err as { message?: string })?.message ?? 'Failed to save goals',
         });
       }
     }

@@ -112,4 +112,26 @@ describe('StudentImportReview (SPE-227)', () => {
     // The single row's goals are expanded by default (no click needed).
     expect(screen.getByText('Read 90 wpm')).toBeInTheDocument();
   });
+
+  it('target-student mode surfaces a stale/future IEP-date warning before import (SPE-232)', () => {
+    const m = model({
+      mode: 'target-student',
+      writeMode: 'merge',
+      summary: { totalStudents: 1, inserts: 0, updates: 1, skips: 0, totalGoals: 1 },
+      rows: [
+        row({
+          id: 'stu-8:0',
+          action: 'update',
+          displayName: 'PQ',
+          initials: 'PQ',
+          targetStudentId: 'stu-8',
+          iepDate: '2099-01-01', // far future → getIepDateWarning flags it pre-import
+          goals: [{ text: 'g1', status: 'added' }],
+        }),
+      ],
+    });
+    render(<StudentImportReview isOpen model={m} onClose={() => {}} onConfirm={noopConfirm} />);
+
+    expect(screen.getByText(/IEP date is in the future/i)).toBeInTheDocument();
+  });
 });
