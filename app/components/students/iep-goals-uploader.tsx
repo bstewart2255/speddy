@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useRef } from 'react';
-import { Upload, Loader2 } from 'lucide-react';
+import { Upload } from 'lucide-react';
 import { Button } from '../ui/button';
+import { Spinner } from '../ui/spinner';
 
 interface IEPGoalsUploaderProps {
   onUploadComplete: (data: any) => void;
@@ -116,7 +117,7 @@ export function IEPGoalsUploader({ onUploadComplete, disabled = false, targetStu
       >
         {uploading ? (
           <>
-            <Loader2 className="animate-spin -ml-1 mr-2 h-4 w-4" aria-hidden="true" />
+            <Spinner className="-ml-1 mr-2 h-4 w-4" />
             {targetStudent ? `Importing goals for ${targetStudent.initials}…` : 'Importing…'}
           </>
         ) : (
