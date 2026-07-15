@@ -62,6 +62,12 @@ export default function StudentsPage() {
   const [sortByGrade, setSortByGrade] = useState(false);
   const [showFileUploadModal, setShowFileUploadModal] = useState(false);
   const [bulkImportPreviewData, setBulkImportPreviewData] = useState<any>(null);
+  // Adapt the wire payload into the review model once per preview, not on every
+  // render (each render would otherwise rebuild every row/exception).
+  const bulkModel = useMemo(
+    () => (bulkImportPreviewData ? adaptBulkPreview(bulkImportPreviewData) : null),
+    [bulkImportPreviewData],
+  );
   const [worksAtMultipleSchools, setWorksAtMultipleSchools] = useState(false);
   const supabase = useMemo(() => createClient(), []);
   const { currentSchool, loading: schoolLoading, isSecondary } = useSchool();
@@ -326,11 +332,11 @@ export default function StudentsPage() {
         />
 
         {/* Import review screen (SPE-227) */}
-        {bulkImportPreviewData && (
+        {bulkModel && (
           <StudentImportReview
-            isOpen={!!bulkImportPreviewData}
+            isOpen={!!bulkModel}
             onClose={() => setBulkImportPreviewData(null)}
-            model={adaptBulkPreview(bulkImportPreviewData)}
+            model={bulkModel}
             onComplete={() => {
               // Refresh the caseload behind the modal without unmounting it, so a
               // partial-failure modal stays open on its error list.

@@ -204,8 +204,19 @@ function toReviewRow(student: BulkStudentPreview, srcIndex: number): ReviewRow {
 
   const goalsRemoved = student.goalsRemoved ?? student.changes?.goals?.removed ?? [];
 
+  // Only carry a teacher when there's a real match to show/resolve. A blank
+  // teacher object (no id, no name) would otherwise surface as a "teacher needs
+  // review" exception with nothing to review, and render as "Unknown" in the row.
+  const teacher =
+    student.teacher && (student.teacher.teacherId || student.teacher.teacherName?.trim())
+      ? toReviewTeacher(student.teacher)
+      : undefined;
+
   return {
-    id: targetStudentId ?? `new:${srcIndex}`,
+    // Unique per source row. Two rows can match the same student (e.g. a goals
+    // row and a deliveries row); keying on targetStudentId alone would collide
+    // the React key and the selection state, so always disambiguate by srcIndex.
+    id: `${targetStudentId ?? 'new'}:${srcIndex}`,
     srcIndex,
     action,
     firstName: student.firstName,
@@ -219,7 +230,7 @@ function toReviewRow(student: BulkStudentPreview, srcIndex: number): ReviewRow {
           minutesPerSession: student.schedule.minutesPerSession,
         }
       : undefined,
-    teacher: student.teacher ? toReviewTeacher(student.teacher) : undefined,
+    teacher,
     goals,
     goalsRemoved,
     targetStudentId,

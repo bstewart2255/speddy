@@ -73,7 +73,7 @@ describe('adaptBulkPreview (SPE-227)', () => {
     const model = adaptBulkPreview(data);
 
     const row = model.rows[0];
-    expect(row.id).toBe('stu-1');
+    expect(row.id).toBe('stu-1:0');
     expect(row.targetStudentId).toBe('stu-1');
     expect(row.action).toBe('update');
     expect(row.goals.find((g) => g.text === 'New goal A')?.status).toBe('added');
@@ -85,8 +85,8 @@ describe('adaptBulkPreview (SPE-227)', () => {
     expect(model.exceptions).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ kind: 'unmatched-student', name: 'Unknown Kid', source: 'deliveries' }),
-        expect.objectContaining({ kind: 'low-confidence-teacher', rowId: 'stu-1', studentLabel: 'Sam Lee' }),
-        expect.objectContaining({ kind: 'goals-removed', rowId: 'stu-1', goals: ['Old goal C'] }),
+        expect.objectContaining({ kind: 'low-confidence-teacher', rowId: 'stu-1:0', studentLabel: 'Sam Lee' }),
+        expect.objectContaining({ kind: 'goals-removed', rowId: 'stu-1:0', goals: ['Old goal C'] }),
       ])
     );
     expect(model.exceptions).toHaveLength(3);
@@ -112,7 +112,7 @@ describe('adaptBulkPreview (SPE-227)', () => {
     const model = adaptBulkPreview(data);
     const row = model.rows[0];
     expect(row.targetStudentId).toBe('stu-9');
-    expect(row.id).toBe('stu-9');
+    expect(row.id).toBe('stu-9:0');
     expect(row.goals).toEqual([]);
     expect(row.schedule).toEqual({ sessionsPerWeek: 3, minutesPerSession: 30 });
     expect(model.summary.totalGoals).toBe(0);

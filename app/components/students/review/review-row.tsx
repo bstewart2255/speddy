@@ -27,7 +27,11 @@ export function ReviewRow({ row, selection, isExpanded, onToggleExpand, columnCo
   const goalsSelected = selection.goalsSelectedFor(row.id);
   const badge = ACTION_BADGE[row.action];
   const goalCount = row.goals.length;
-  const noGoalsSelected = selected && goalCount > 0 && goalsSelected.size === 0;
+  // Only a warning for inserts: on an update, sending no goals keeps the
+  // student's existing goals (the confirm RPC preserves goals when none are
+  // supplied), so "imported without any goals" would be misleading.
+  const noGoalsSelected =
+    selected && goalCount > 0 && goalsSelected.size === 0 && row.action === 'insert';
 
   return (
     <>
