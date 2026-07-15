@@ -8,6 +8,7 @@ import { TextDecoder } from 'util';
 import { normalizeSchoolName } from '../school-helpers';
 import { getServiceTypeCode, getServiceTypeNameForRole, isGoalForProviderByKeywords, hasNoProviderRoutingSignal } from './service-type-mapping';
 import { normalizeGradeLevel } from '../utils/grade-parser';
+import { buildStudentDedupKey } from '../utils/student-dedup-key';
 
 export interface ParsedStudent {
   firstName: string;
@@ -18,6 +19,11 @@ export interface ParsedStudent {
   iepDate?: string; // IEP Date (SEIS Column J) - for validation warnings
   goals: string[];
   rawRow: number; // For debugging
+  // Speddy roster template only (SPE-225): the template carries the teacher name
+  // and schedule inline (no goals, no names). Undefined for SEIS/generic rows.
+  teacherName?: string;
+  sessionsPerWeek?: number;
+  minutesPerSession?: number;
 }
 
 export interface ParseResult {
@@ -27,7 +33,7 @@ export interface ParseResult {
   metadata: {
     totalRows: number;
     columnsDetected: string[];
-    formatDetected?: 'seis-student-goals' | 'generic';
+    formatDetected?: 'seis-student-goals' | 'generic' | 'speddy-template';
     goalsFiltered?: number; // Number of goals filtered out (SEIS only)
     targetStudentFound?: boolean; // Whether target student was found (when targetStudent filter is used)
   };
@@ -106,6 +112,15 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
 
     if (records.length === 0) {
       throw new Error('CSV file is empty');
+    }
+
+    // SPE-225: the simple Speddy roster template (Initials/Grade/Teacher +
+    // optional schedule, no goals) flows through this same preview/confirm
+    // pipeline as SEIS files, so it gains first-class records (real teacher_id,
+    // dedupe, preview) instead of the old browser-side write. Checked before
+    // SEIS/generic detection since it has no goal column of its own.
+    if (detectSpeddyTemplateFormat(records)) {
+      return parseSpeddyTemplateRows(records);
     }
 
     // Detect column mapping from headers
@@ -484,6 +499,99 @@ export function detectSEISStudentGoalsFormat(records: string[][]): boolean {
   const matches = [lastNameMatch, firstNameMatch, gradeMatch, schoolMatch, goalTypeMatch, goalMatch].filter(Boolean).length;
 
   return matches >= 5;
+}
+
+/** Normalize a header cell for template detection: trim, lowercase, collapse whitespace. */
+function normalizeTemplateHeader(header: string | undefined): string {
+  return (header || '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+/**
+ * Detect the Speddy roster template (SPE-225): a CSV whose header carries the
+ * required Initials / Grade / Teacher columns. Mirrors `validateColumns` in
+ * csv-import.tsx (case-insensitive, whitespace-tolerant). Sessions Per Week and
+ * Minutes Per Session are optional schedule columns.
+ *
+ * Exported for the parser golden-fixture suite (SPE-239).
+ */
+export function detectSpeddyTemplateFormat(records: string[][]): boolean {
+  if (records.length === 0) return false;
+  const headers = (records[0] || []).map(normalizeTemplateHeader);
+  return headers.includes('initials') && headers.includes('grade') && headers.includes('teacher');
+}
+
+/**
+ * Parse the Speddy roster template into goal-less students that carry the
+ * teacher name and schedule inline. Rows missing a required field are skipped
+ * (a partial row is warned), and duplicate Initials+Grade rows keep the first.
+ */
+function parseSpeddyTemplateRows(records: string[][]): ParseResult {
+  const students: ParsedStudent[] = [];
+  const warnings: Array<{ row: number; message: string }> = [];
+
+  const headers = (records[0] || []).map(normalizeTemplateHeader);
+  const col = (name: string) => headers.indexOf(name);
+  const initialsCol = col('initials');
+  const gradeCol = col('grade');
+  const teacherCol = col('teacher');
+  const sessionsCol = col('sessions per week');
+  const minutesCol = col('minutes per session');
+
+  const seen = new Set<string>();
+
+  for (let rowIndex = 1; rowIndex < records.length; rowIndex++) {
+    const row = records[rowIndex];
+    const rowNum = rowIndex + 1;
+
+    const initials = (row[initialsCol] || '').toUpperCase().trim();
+    const gradeRaw = (row[gradeCol] || '').trim();
+    const teacher = (row[teacherCol] || '').trim();
+
+    if (!initials || !gradeRaw || !teacher) {
+      // A wholly-empty row is a trailing blank — ignore it silently. A partial
+      // row (some fields present) is a likely mistake — surface it.
+      if (initials || gradeRaw || teacher) {
+        warnings.push({ row: rowNum, message: 'Row skipped — roster rows need Initials, Grade, and Teacher.' });
+      }
+      continue;
+    }
+
+    const gradeLevel = normalizeGradeLevel(gradeRaw);
+    // Same key the route/confirm dedup on, so "J.D." and "JD" collapse together.
+    const dedupKey = buildStudentDedupKey(initials, gradeLevel);
+    if (seen.has(dedupKey)) {
+      warnings.push({ row: rowNum, message: `Duplicate roster row for ${initials} (grade ${gradeLevel}) — keeping the first.` });
+      continue;
+    }
+    seen.add(dedupKey);
+
+    const sessions = sessionsCol >= 0 ? parseInt((row[sessionsCol] || '').trim(), 10) : NaN;
+    const minutes = minutesCol >= 0 ? parseInt((row[minutesCol] || '').trim(), 10) : NaN;
+
+    students.push({
+      firstName: '',
+      lastName: '',
+      initials,
+      gradeLevel,
+      goals: [],
+      teacherName: teacher,
+      sessionsPerWeek: Number.isFinite(sessions) && sessions > 0 ? sessions : undefined,
+      minutesPerSession: Number.isFinite(minutes) && minutes > 0 ? minutes : undefined,
+      rawRow: rowNum,
+    });
+  }
+
+  return {
+    students,
+    errors: [],
+    warnings,
+    metadata: {
+      totalRows: records.length,
+      columnsDetected: records[0] || [],
+      formatDetected: 'speddy-template',
+      goalsFiltered: undefined,
+    },
+  };
 }
 
 /**

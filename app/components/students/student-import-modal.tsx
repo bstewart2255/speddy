@@ -116,14 +116,6 @@ export function StudentImportModal({
       // it as an actionable per-file error.
       return { id, file, type: 'unknown', error: 'Could not read this file. Please try selecting it again.' };
     }
-    if (type === 'roster-template') {
-      return {
-        id,
-        file,
-        type,
-        note: 'Roster templates import from the "Import CSV" button for now.',
-      };
-    }
     return { id, file, type };
   };
 
@@ -333,11 +325,7 @@ export function StudentImportModal({
               <ul className="space-y-2">
                 {entries.map((entry) => {
                   const meta = IMPORT_TYPE_META[entry.type];
-                  const tone = entry.error
-                    ? 'border-red-200 bg-red-50'
-                    : entry.type === 'roster-template'
-                      ? 'border-amber-200 bg-amber-50'
-                      : 'border-gray-200 bg-white';
+                  const tone = entry.error ? 'border-red-200 bg-red-50' : 'border-gray-200 bg-white';
                   return (
                     <li
                       key={entry.id}

@@ -175,27 +175,3 @@ exports[`parseCSVReport — messy grade values (generic format) matches the gold
   "warnings": [],
 }
 `;
-
-exports[`parseCSVReport — roster template CSV (SPE-225 target) currently fails detection: no First/Last Name columns to key on 1`] = `
-{
-  "errors": [
-    {
-      "message": "Could not detect student name or grade columns. Looking for columns like: First Name, Last Name, Grade, Student Name.",
-      "row": 0,
-    },
-  ],
-  "metadata": {
-    "columnsDetected": [
-      "Initials",
-      "Grade",
-      "Teacher",
-      "Sessions Per Week",
-      "Minutes Per Session",
-    ],
-    "formatDetected": "generic",
-    "totalRows": 6,
-  },
-  "students": [],
-  "warnings": [],
-}
-`;

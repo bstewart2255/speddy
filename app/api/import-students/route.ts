@@ -13,9 +13,11 @@ import { withRoute } from '@/lib/api/with-route';
 import { parseSEISReport, ParseResult as SEISParseResult } from '@/lib/parsers/seis-parser';
 import { parseCSVReport, ParseResult as CSVParseResult } from '@/lib/parsers/csv-parser';
 import { parseDeliveriesCSV, DeliveryRecord } from '@/lib/parsers/deliveries-parser';
-import { parseClassListTXT, ClassListStudent, matchTeacher } from '@/lib/parsers/class-list-parser';
+import { parseClassListTXT, ClassListStudent, matchTeacher, parseTeacherName, TeacherInfo } from '@/lib/parsers/class-list-parser';
 import { createNormalizedKey } from '@/lib/parsers/name-utils';
 import { matchStudents, DatabaseStudent } from '@/lib/utils/student-matcher';
+import { buildStudentDedupKey } from '@/lib/utils/student-dedup-key';
+import { classifyRosterChange } from '@/lib/import/roster-preview';
 import { scrubPIIFromGoals } from '@/lib/utils/pii-scrubber';
 import { log } from '@/lib/monitoring/logger';
 import { track } from '@/lib/monitoring/analytics';
@@ -475,6 +477,186 @@ async function handleDeliveriesOrClassListOnly(
   });
 }
 
+// SPE-225: build the preview for a Speddy roster template (Initials/Grade/Teacher
+// [+ schedule]). The roster creates first-class records through the same
+// preview + confirm pipeline as SEIS files, but it dedups by initials+grade
+// (roster rows have no names) and its teacher/schedule come inline — so it gets
+// its own isolated builder rather than threading through the name-based SEIS
+// matching and enrichment.
+async function handleTemplateRoster(
+  userId: string,
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  parseResult: CSVParseResult,
+  dbStudents: Array<{
+    id: string;
+    initials: string | null;
+    grade_level: string | null;
+    sessions_per_week: number | null;
+    minutes_per_session: number | null;
+    teacher_id: string | null;
+  }>,
+  currentSchoolId: string | null,
+  parseWarnings: Array<{ row: number; message: string }>,
+  perf: ReturnType<typeof measurePerformanceWithAlerts>
+) {
+  // Existing students keyed by the same initials+grade key the confirm route
+  // dedups on, so a re-import updates in place instead of duplicating.
+  const existingByKey = new Map<string, (typeof dbStudents)[number]>();
+  for (const s of dbStudents) {
+    existingByKey.set(buildStudentDedupKey(s.initials, s.grade_level), s);
+  }
+
+  // Resolve the inline teacher names against the school's teachers.
+  const { data: teachers } = await supabase
+    .from('teachers')
+    .select('id, first_name, last_name')
+    .eq('school_id', currentSchoolId || '');
+  const dbTeachers = teachers || [];
+
+  const studentPreviews: StudentPreview[] = [];
+
+  for (const student of parseResult.students) {
+    const existing = existingByKey.get(buildStudentDedupKey(student.initials, student.gradeLevel));
+
+    const { lastName, firstInitial } = parseTeacherName(student.teacherName || '');
+    const teacherInfo: TeacherInfo = {
+      rawName: student.teacherName || '',
+      lastName,
+      firstInitial,
+      teacherNumber: ''
+    };
+    const teacherMatch = matchTeacher(teacherInfo, dbTeachers);
+    const teacher: TeacherMatch = {
+      teacherId: teacherMatch.teacherId,
+      teacherName: teacherMatch.teacherName || teacherInfo.rawName || null,
+      confidence: teacherMatch.confidence,
+      reason: teacherMatch.reason
+    };
+
+    const schedule: ScheduleData | undefined =
+      student.sessionsPerWeek && student.minutesPerSession
+        ? {
+            sessionsPerWeek: student.sessionsPerWeek,
+            minutesPerSession: student.minutesPerSession,
+            weeklyMinutes: student.sessionsPerWeek * student.minutesPerSession,
+            frequency: `${student.sessionsPerWeek}x/week`
+          }
+        : undefined;
+
+    // Insert vs update/skip by the initials+grade key. Only a resolved teacher
+    // that differs counts as a change, so an unmatched teacher name never clears
+    // an existing teacher link on re-import (see classifyRosterChange).
+    const { action, scheduleChanged, teacherChanged } = classifyRosterChange(
+      existing
+        ? {
+            sessions_per_week: existing.sessions_per_week,
+            minutes_per_session: existing.minutes_per_session,
+            teacher_id: existing.teacher_id
+          }
+        : undefined,
+      teacher.teacherId,
+      schedule ? { sessionsPerWeek: schedule.sessionsPerWeek, minutesPerSession: schedule.minutesPerSession } : undefined
+    );
+
+    let changes: StudentChanges | undefined;
+    if (action === 'update') {
+      changes = {};
+      if (scheduleChanged && schedule) {
+        changes.schedule = {
+          old:
+            existing && (existing.sessions_per_week || existing.minutes_per_session)
+              ? {
+                  sessionsPerWeek: existing.sessions_per_week ?? undefined,
+                  minutesPerSession: existing.minutes_per_session ?? undefined
+                }
+              : null,
+          new: { sessionsPerWeek: schedule.sessionsPerWeek, minutesPerSession: schedule.minutesPerSession }
+        };
+      }
+      if (teacherChanged) {
+        let existingTeacherName: string | undefined;
+        if (existing?.teacher_id) {
+          const t = dbTeachers.find((dt) => dt.id === existing.teacher_id);
+          if (t) existingTeacherName = [t.first_name, t.last_name].filter(Boolean).join(' ');
+        }
+        changes.teacher = {
+          old: existing?.teacher_id ? { teacherId: existing.teacher_id, teacherName: existingTeacherName } : null,
+          new: { teacherId: teacher.teacherId, teacherName: teacher.teacherName }
+        };
+      }
+    }
+
+    const preview: StudentPreview = {
+      firstName: '',
+      lastName: '',
+      initials: student.initials,
+      gradeLevel: student.gradeLevel,
+      goals: [],
+      action,
+      matchStatus: existing ? 'duplicate' : 'new',
+      matchedStudentId: existing?.id,
+      matchedStudentInitials: existing?.initials || undefined,
+      matchConfidence: undefined,
+      matchReason: existing ? 'Matched by initials and grade' : undefined,
+      changes,
+      goalsRemoved: undefined
+    };
+    if (schedule) preview.schedule = schedule;
+    preview.teacher = teacher;
+
+    studentPreviews.push(preview);
+  }
+
+  const insertCount = studentPreviews.filter((s) => s.action === 'insert').length;
+  const updateCount = studentPreviews.filter((s) => s.action === 'update').length;
+  const skipCount = studentPreviews.filter((s) => s.action === 'skip').length;
+
+  track.event('student_import_preview_generated', {
+    userId,
+    totalStudents: studentPreviews.length,
+    inserts: insertCount,
+    updates: updateCount,
+    skips: skipCount,
+    withGoalsRemoved: 0,
+    withSchedule: studentPreviews.filter((s) => s.schedule).length,
+    withTeacher: studentPreviews.filter((s) => s.teacher?.teacherId).length,
+    hasDeliveriesFile: false,
+    hasClassListFile: false
+  });
+
+  log.info('Prepared roster-template preview', {
+    userId,
+    total: studentPreviews.length,
+    inserts: insertCount,
+    updates: updateCount,
+    skips: skipCount
+  });
+
+  perf.end({ success: true });
+
+  return NextResponse.json({
+    success: true,
+    data: {
+      students: studentPreviews,
+      summary: {
+        total: studentPreviews.length,
+        new: studentPreviews.filter((s) => s.matchStatus === 'new').length,
+        duplicates: studentPreviews.filter((s) => s.matchStatus === 'duplicate').length,
+        inserts: insertCount,
+        updates: updateCount,
+        skips: skipCount,
+        withGoalsRemoved: 0,
+        withSchedule: studentPreviews.filter((s) => s.schedule).length,
+        withTeacher: studentPreviews.filter((s) => s.teacher?.teacherId).length
+      },
+      unmatchedStudents: [],
+      parseErrors: [],
+      parseWarnings: parseWarnings.length > 0 ? parseWarnings.slice(0, 10) : [],
+      scrubErrors: []
+    }
+  });
+}
+
 export const POST = withRoute({}, async ({ req: request, userId }) => {
   const perf = measurePerformanceWithAlerts('import_students_preview', 'api');
 
@@ -635,6 +817,22 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
           error: `Failed to parse ${fileType} file: ${message}. Please ensure the file contains student names, grades, and IEP goals.`
         },
         { status: 400 }
+      );
+    }
+
+    // SPE-225: a Speddy roster template creates students by initials+grade with
+    // an inline teacher/schedule and no goals — route it to its own preview
+    // builder, bypassing the name-based SEIS matching/enrichment below.
+    if (isCSV && (parseResult as CSVParseResult).metadata.formatDetected === 'speddy-template') {
+      const templateWarnings = 'warnings' in parseResult ? parseResult.warnings || [] : [];
+      return await handleTemplateRoster(
+        userId,
+        supabase,
+        parseResult as CSVParseResult,
+        dbStudents || [],
+        currentSchoolId,
+        templateWarnings,
+        perf
       );
     }
 

@@ -32,9 +32,9 @@ export const IMPORT_TYPE_META: Record<DetectedImportType, ImportTypeMeta> = {
   'seis-report': { formKey: 'studentsFile', label: 'Student & goals report', contribution: 'students & goals' },
   deliveries: { formKey: 'deliveriesFile', label: 'Deliveries', contribution: 'schedules' },
   'class-list': { formKey: 'classListFile', label: 'Class list', contribution: 'teachers' },
-  // Roster template flows through the separate template import for now (SPE-225
-  // will route it through this pipeline). No server key here yet.
-  'roster-template': { formKey: null, label: 'Roster template', contribution: 'student list' },
+  // Roster template now flows through the server preview/confirm pipeline as the
+  // students file (SPE-225), same as a SEIS report.
+  'roster-template': { formKey: 'studentsFile', label: 'Roster template', contribution: 'student list' },
   unknown: { formKey: null, label: 'Unrecognized file', contribution: '' },
 };
 
