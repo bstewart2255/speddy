@@ -686,7 +686,11 @@ async function handleTemplateRoster(
       fileName,
       read: parseResult.students.length,
       matched: studentPreviews.length,
-      filtered: parseWarnings.length,
+      // Every parsed row becomes a preview on the roster path (matched === read),
+      // so nothing is filtered out. Unparseable rows surface via `notes`; counting
+      // them here would break the receipt's read = matched + filtered invariant and
+      // render a contradictory "N of N matched · M not matched".
+      filtered: 0,
       notes: parseWarnings
     }
   ];

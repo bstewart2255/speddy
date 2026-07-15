@@ -99,7 +99,10 @@ export function StudentImportReview({
           .filter((o) => !o.success)
           .map((o) => o.error)
           .filter(Boolean);
-        setError(`Some students couldn't be imported: ${messages.join(', ')}`);
+        const prefix =
+          result.succeeded > 0 ? "Some students couldn't be imported" : "No students could be imported";
+        const detail = messages.length > 0 ? `: ${messages.join(', ')}` : '.';
+        setError(`${prefix}${detail}`);
         if (result.succeeded > 0) {
           onComplete?.();
           setImportFinished(true);

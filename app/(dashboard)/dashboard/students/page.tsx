@@ -339,8 +339,11 @@ export default function StudentsPage() {
             model={bulkModel}
             onComplete={() => {
               // Refresh the caseload behind the modal without unmounting it, so a
-              // partial-failure modal stays open on its error list.
+              // partial-failure modal stays open on its error list. Imported students
+              // can carry a schedule, so refresh the unscheduled-sessions banner too
+              // (every other mutation handler on this page refreshes both).
               fetchStudents();
+              checkUnscheduledSessions();
             }}
             onConfirm={async ({ rows }) => {
               const students = rows.map(({ row, initials, selectedGoalTexts }) => ({
