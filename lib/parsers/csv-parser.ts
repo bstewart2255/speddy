@@ -508,9 +508,9 @@ function normalizeTemplateHeader(header: string | undefined): string {
 
 /**
  * Detect the Speddy roster template (SPE-225): a CSV whose header carries the
- * required Initials / Grade / Teacher columns. Mirrors `validateColumns` in
- * csv-import.tsx (case-insensitive, whitespace-tolerant). Sessions Per Week and
- * Minutes Per Session are optional schedule columns.
+ * required Initials / Grade / Teacher columns (case-insensitive,
+ * whitespace-tolerant). Sessions Per Week and Minutes Per Session are optional
+ * schedule columns.
  *
  * Exported for the parser golden-fixture suite (SPE-239).
  */
