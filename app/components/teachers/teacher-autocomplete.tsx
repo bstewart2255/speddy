@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useId } from 'react';
 import { searchTeachers, formatTeacherName } from '@/lib/supabase/queries/school-directory';
 
 type Teacher = Awaited<ReturnType<typeof searchTeachers>>[number];
@@ -30,14 +30,17 @@ export function TeacherAutocomplete({
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [loading, setLoading] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const [selectedTeacher, setSelectedTeacher] = useState<Teacher | null>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const listboxId = useId();
 
   // Handle clicks outside dropdown
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
         setIsOpen(false);
+        setHighlightedIndex(-1);
       }
     }
 
@@ -50,6 +53,8 @@ export function TeacherAutocomplete({
     const searchForTeachers = async () => {
       if (searchTerm.length < 2) {
         setTeachers([]);
+        setHighlightedIndex(-1);
+        setLoading(false);
         return;
       }
 
@@ -57,6 +62,7 @@ export function TeacherAutocomplete({
         setLoading(true);
         const results = await searchTeachers(searchTerm, schoolId);
         setTeachers(results);
+        setHighlightedIndex(-1);
         setIsOpen(true);
       } catch (error) {
         console.error('Error searching teachers:', error);
@@ -75,13 +81,43 @@ export function TeacherAutocomplete({
     setSelectedTeacher(teacher);
     setSearchTerm('');
     setIsOpen(false);
+    setHighlightedIndex(-1);
     onChange(teacher.id, formatTeacherName(teacher));
   };
 
   const handleClear = () => {
     setSelectedTeacher(null);
     setSearchTerm('');
+    setHighlightedIndex(-1);
     onChange(null, null);
+  };
+
+  // Keyboard navigation so a teacher can be picked without the mouse (SPE-237).
+  // Enter here NEVER submits the parent form — it selects the highlighted (or
+  // first) result, so the user can't accidentally save a student with no teacher.
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (!isOpen && teachers.length > 0) setIsOpen(true);
+      setHighlightedIndex((i) => Math.min(i + 1, teachers.length - 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setHighlightedIndex((i) => Math.max(i - 1, 0));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (isOpen && teachers.length > 0) {
+        handleSelect(teachers[highlightedIndex >= 0 ? highlightedIndex : 0]);
+      }
+    } else if (e.key === 'Escape') {
+      // Only consume Escape when there's a dropdown to close; otherwise let it
+      // bubble so a parent modal's Escape-to-close still works.
+      if (isOpen) {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsOpen(false);
+        setHighlightedIndex(-1);
+      }
+    }
   };
 
   // Display value
@@ -125,11 +161,25 @@ export function TeacherAutocomplete({
             <input
               type="text"
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={(e) => {
+                const term = e.target.value;
+                setSearchTerm(term);
+                // Results belong to the previous term until the debounced search
+                // re-runs; clear them synchronously so a fast Enter can't select a
+                // stale teacher, and show "Searching…" rather than "no results".
+                setTeachers([]);
+                setHighlightedIndex(-1);
+                if (term.length >= 2) setLoading(true);
+              }}
               onFocus={() => searchTerm.length >= 2 && setIsOpen(true)}
+              onKeyDown={handleKeyDown}
               placeholder={placeholder}
               required={required && !value}
               disabled={disabled}
+              role="combobox"
+              aria-expanded={isOpen}
+              aria-controls={listboxId}
+              aria-autocomplete="list"
               className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
             />
             {loading && (
@@ -165,13 +215,16 @@ export function TeacherAutocomplete({
                   )}
                 </div>
               ) : (
-                <ul className="py-1">
-                  {teachers.map((teacher) => (
+                <ul className="py-1" role="listbox" id={listboxId}>
+                  {teachers.map((teacher, index) => (
                     <li key={teacher.id}>
                       <button
                         type="button"
+                        role="option"
+                        aria-selected={index === highlightedIndex}
                         onClick={() => handleSelect(teacher)}
-                        className="w-full text-left px-4 py-2 hover:bg-gray-100 focus:bg-gray-100 focus:outline-none transition-colors"
+                        onMouseEnter={() => setHighlightedIndex(index)}
+                        className={`w-full text-left px-4 py-2 focus:outline-none transition-colors ${index === highlightedIndex ? 'bg-gray-100' : 'hover:bg-gray-100'}`}
                       >
                         <div className="flex items-center justify-between">
                           <div>
