@@ -42,7 +42,15 @@ export default function StudentsPage() {
   // feedback (no alert()) and an initials ref so we can refocus after each add.
   const [addFormError, setAddFormError] = useState<string | null>(null);
   const [addFormConfirmation, setAddFormConfirmation] = useState<string | null>(null);
+  const [savingStudent, setSavingStudent] = useState(false);
   const initialsInputRef = useRef<HTMLInputElement>(null);
+  // Synchronous guard against a double-submit (Enter pressed twice) before state
+  // re-renders; the form is built for rapid keyboard entry.
+  const savingStudentRef = useRef(false);
+  // Bumped after each add to remount TeacherAutocomplete — it keeps its own
+  // internal selected-teacher state, so without a fresh mount it would keep
+  // showing the previous teacher while formData.teacher_id has reset to null.
+  const [teacherFieldKey, setTeacherFieldKey] = useState(0);
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
   const [userRole, setUserRole] = useState<string | null>(null);
@@ -192,6 +200,7 @@ export default function StudentsPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (savingStudentRef.current) return; // already submitting — ignore the repeat
     setAddFormError(null);
     setAddFormConfirmation(null);
 
@@ -201,6 +210,8 @@ export default function StudentsPage() {
     }
 
     const addedInitials = formData.initials;
+    savingStudentRef.current = true;
+    setSavingStudent(true);
     try {
       await createStudent({
         initials: formData.initials,
@@ -227,6 +238,7 @@ export default function StudentsPage() {
         sessions_per_week: '',
         minutes_per_session: '30'
       });
+      setTeacherFieldKey((k) => k + 1);
       setAddFormConfirmation(`${addedInitials} added`);
       fetchStudents();
       checkUnscheduledSessions();
@@ -236,6 +248,10 @@ export default function StudentsPage() {
       // Inline error — keep the form open and the other fields intact so the
       // user can correct (e.g. duplicate initials) without re-entering everything.
       setAddFormError(error instanceof Error ? error.message : 'Failed to add student');
+      initialsInputRef.current?.focus();
+    } finally {
+      savingStudentRef.current = false;
+      setSavingStudent(false);
     }
   };
 
@@ -474,7 +490,10 @@ export default function StudentsPage() {
                       ref={initialsInputRef}
                       required
                       value={formData.initials}
-                      onChange={(e) => setFormData({...formData, initials: e.target.value})}
+                      onChange={(e) => {
+                        setFormData({...formData, initials: e.target.value});
+                        if (addFormConfirmation) setAddFormConfirmation(null);
+                      }}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                       placeholder="e.g., JD"
                     />
@@ -513,6 +532,7 @@ export default function StudentsPage() {
                       Teacher*
                     </label>
                     <TeacherAutocomplete
+                      key={teacherFieldKey}
                       value={formData.teacher_id}
                       teacherName={formData.teacherName || undefined}
                       onChange={(teacherId, teacherName) => setFormData({ ...formData, teacher_id: teacherId, teacherName })}
@@ -563,8 +583,8 @@ export default function StudentsPage() {
                     <Button variant="secondary" type="button" onClick={handleCloseAddForm}>
                       Done
                     </Button>
-                    <Button variant="primary" type="submit">
-                      Add &amp; add another
+                    <Button variant="primary" type="submit" disabled={savingStudent}>
+                      {savingStudent ? 'Adding…' : 'Add & add another'}
                     </Button>
                   </div>
                 </form>
