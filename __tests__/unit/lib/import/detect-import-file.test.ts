@@ -80,8 +80,8 @@ describe('IMPORT_TYPE_META form keys', () => {
     expect(IMPORT_TYPE_META['class-list'].formKey).toBe('classListFile');
   });
 
-  it('gives roster-template and unknown no server form key (not submitted here)', () => {
-    expect(IMPORT_TYPE_META['roster-template'].formKey).toBeNull();
+  it('maps the roster template to the students file (SPE-225); only unknown has no key', () => {
+    expect(IMPORT_TYPE_META['roster-template'].formKey).toBe('studentsFile');
     expect(IMPORT_TYPE_META.unknown.formKey).toBeNull();
   });
 });

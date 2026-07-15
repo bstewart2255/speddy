@@ -290,19 +290,33 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
         // so we capture the new requirements now.
         if (action === 'update') {
           updatedInThisBatch.add(student.studentId as string);
-          batchPayload.push({
+          const updatePayload: Record<string, unknown> = {
             action: 'update',
             studentId: student.studentId,
             initials: initialsNormalized,
             gradeLevel: student.gradeLevel,
-            firstName: student.firstName,
-            lastName: student.lastName,
             goals: student.goals,
             sessionsPerWeek: student.sessionsPerWeek ?? null,
-            minutesPerSession: student.minutesPerSession ?? null,
-            teacherId: student.teacherId || null,
-            teacherName: student.teacherName || null
-          });
+            minutesPerSession: student.minutesPerSession ?? null
+          };
+          // Roster-template rows carry no names. The RPC COALESCEs first/last
+          // name, so sending '' would overwrite an existing student's real name
+          // (e.g. set by an earlier SEIS import) with blank. Omit blank names so
+          // the existing ones are preserved; SEIS rows still carry real names.
+          if (student.firstName) updatePayload.firstName = student.firstName;
+          if (student.lastName) updatePayload.lastName = student.lastName;
+          // Only touch the teacher link when the import actually resolved a
+          // teacher_id. upsert_students_atomic keys off the *presence* of the
+          // teacherId/teacherName fields (`v_student ? 'teacherId'`), setting the
+          // column even to null — so always sending them made a teacher-less
+          // update (a SEIS goals-only re-import, or a roster row whose teacher
+          // name didn't match) wipe the student's existing teacher. Omitting the
+          // keys leaves the existing teacher untouched.
+          if (student.teacherId) {
+            updatePayload.teacherId = student.teacherId;
+            updatePayload.teacherName = student.teacherName ?? null;
+          }
+          batchPayload.push(updatePayload);
         } else {
           // Insert. `teacherName` is intentionally omitted to match the previous
           // import_student_atomic behavior, which never wrote the deprecated

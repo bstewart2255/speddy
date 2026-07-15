@@ -82,15 +82,15 @@ describe('StudentImportModal (SPE-231)', () => {
     expect(screen.getByText(/Fills in students & goals/i)).toBeInTheDocument();
   });
 
-  it('flags a roster template as not importable here and keeps Import disabled', async () => {
+  it('detects a roster template as importable student data (SPE-225)', async () => {
     const { container } = renderModal();
     fireEvent.change(fileInput(container), {
       target: { files: [makeFile(`${ROSTER_HEADER}\nJD,3,Smith`, 'roster.csv')] },
     });
 
     expect(await screen.findByText('roster.csv')).toBeInTheDocument();
-    expect(screen.getByText(/Import CSV.*for now/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /^Import$/ })).toBeDisabled();
+    expect(screen.getByText(/Fills in student list/i)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('button', { name: /Import 1 file/i })).toBeEnabled());
   });
 
   it('rejects an unsupported file with an actionable error and keeps Import disabled', async () => {

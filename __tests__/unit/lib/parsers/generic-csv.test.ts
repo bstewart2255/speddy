@@ -1,11 +1,8 @@
 /**
  * Golden-fixture tests for the generic (non-SEIS) CSV path of parseCSVReport
- * (SPE-239): the roster template, a messy-grade-values fixture, and a
- * Windows-1252-encoded fixture.
+ * (SPE-239): a messy-grade-values fixture and a Windows-1252-encoded fixture.
  *
- * Pins current behavior — including bugs SPE-225/SPE-240 will change:
- *  - The roster template currently fails generic detection (no name columns),
- *    which is exactly what SPE-225 will fix by adding template auto-detection.
+ * Pins current behavior — including bugs SPE-240 changed:
  *  - Spelled-out grades ("First", "Kindergarten"), digit grades, and the SEIS
  *    18/0 special cases all normalize now (SPE-240 removed the destructive
  *    ordinal strip and merged the CSV/XLSX normalizer copies).
@@ -13,20 +10,13 @@
  *    bytes for valid UTF-8 and decodes as latin1 when they aren't (SPE-240
  *    added the encoding fallback), while a valid-UTF-8 file that merely
  *    contains a U+FFFD character is left as UTF-8 (no false-positive re-decode).
+ *
+ * The roster template is now auto-detected (SPE-225) — covered by
+ * speddy-template-csv.test.ts.
  */
 
 import { parseCSVReport } from '@/lib/parsers/csv-parser';
 import { readFixture, WINDOWS_1252_CSV, UTF8_WITH_REPLACEMENT_CHAR_CSV } from './fixtures/builders';
-
-describe('parseCSVReport — roster template CSV (SPE-225 target)', () => {
-  it('currently fails detection: no First/Last Name columns to key on', async () => {
-    const result = await parseCSVReport(readFixture('roster-template.csv'), {});
-    expect(result.metadata.formatDetected).toBe('generic');
-    expect(result.students).toHaveLength(0);
-    expect(result.errors.length).toBeGreaterThan(0);
-    expect(result).toMatchSnapshot();
-  });
-});
 
 describe('parseCSVReport — index-0 name column bug', () => {
   it('rejects a generic CSV whose First Name column is at index 0', async () => {
