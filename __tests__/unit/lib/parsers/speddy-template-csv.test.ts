@@ -67,9 +67,10 @@ describe('parseCSVReport — incomplete roster template (SPE-250)', () => {
   });
 
   it('does not claim a roster when a name-based file also carries an Initials column', async () => {
-    // A genuine name-based file with an extra Initials column (First Name at
-    // index 0 trips detectColumnMapping's falsy-index quirk into the error
-    // branch) must keep the name guidance, not be mislabeled a roster.
+    // A genuine name-based file with an extra Initials column but no Grade
+    // column (Age ≠ grade) reaches the error branch; it must keep the name
+    // guidance, not be mislabeled a roster — the looksLikeRoster guard stands
+    // down because the name columns are present.
     const csv = Buffer.from('First Name,Last Name,Initials,Age\nJane,Doe,JD,8', 'utf-8');
     const result = await parseCSVReport(csv, {});
 

@@ -18,11 +18,12 @@
 import { parseCSVReport } from '@/lib/parsers/csv-parser';
 import { readFixture, WINDOWS_1252_CSV, UTF8_WITH_REPLACEMENT_CHAR_CSV } from './fixtures/builders';
 
-describe('parseCSVReport — index-0 name column bug', () => {
-  it('rejects a generic CSV whose First Name column is at index 0', async () => {
-    // `if (!columnMapping.firstName ...)` treats a detected index of 0 as
-    // "not found" (0 is falsy), so a file with First Name in the first column
-    // yields zero students. SPE-240 should switch these to `=== undefined`.
+describe('parseCSVReport — index-0 name column (SPE-252)', () => {
+  it('imports a generic CSV whose First Name column is at index 0', async () => {
+    // `columnMapping.firstName` is a column *index*. The old `!columnMapping.x`
+    // check treated a detected index of 0 as "not found" (0 is falsy) and
+    // rejected the file. Now compared with `=== undefined`, so a First Name /
+    // Last Name / Grade column in the leftmost position works (SPE-252).
     const csv = Buffer.from(
       [
         'First Name,Last Name,Grade,Goal',
@@ -31,9 +32,32 @@ describe('parseCSVReport — index-0 name column bug', () => {
       'utf-8',
     );
     const result = await parseCSVReport(csv, {});
-    expect(result.students).toHaveLength(0);
-    expect(result.errors.length).toBeGreaterThan(0);
-    expect(result.errors[0].message).toMatch(/could not detect/i);
+    expect(result.errors).toHaveLength(0);
+    expect(result.students).toHaveLength(1);
+    expect(result.students[0]).toMatchObject({
+      firstName: 'Ada',
+      lastName: 'Ames',
+      gradeLevel: '3',
+      initials: 'AA',
+    });
+    expect(result.students[0].goals[0]).toMatch(/read 60 words/);
+  });
+
+  it('lets a real Grade column override an index-0 "grade" substring false positive', async () => {
+    // "Gradebook ID" matches the loose gradePatterns and sits at index 0; the
+    // real Grade column appears later. The first-detection guard keeps its
+    // falsy-override form on purpose, so the real Grade must win — not the
+    // gradebook id (SPE-252 review guard).
+    const csv = Buffer.from(
+      [
+        'Gradebook ID,First Name,Last Name,Grade,Goal',
+        'GB-1,Ada,Ames,3,"The student will read 60 words per minute with 90% accuracy."',
+      ].join('\r\n'),
+      'utf-8',
+    );
+    const result = await parseCSVReport(csv, {});
+    expect(result.students).toHaveLength(1);
+    expect(result.students[0].gradeLevel).toBe('3');
   });
 });
 

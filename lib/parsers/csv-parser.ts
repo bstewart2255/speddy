@@ -131,15 +131,22 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
     const isSEISFormat = detectSEISStudentGoalsFormat(records);
     const formatDetected = isSEISFormat ? 'seis-student-goals' : 'generic' as const;
 
-    if (!columnMapping.firstName || !columnMapping.lastName || !columnMapping.grade) {
+    if (
+      columnMapping.firstName === undefined ||
+      columnMapping.lastName === undefined ||
+      columnMapping.grade === undefined
+    ) {
+      // `firstName`/`lastName`/`grade` are column *indices*; a required column
+      // in the leftmost position has index 0, so the falsy `!columnMapping.x`
+      // form treated a detected index-0 column as missing and wrongly rejected
+      // the file. Compare against undefined explicitly (SPE-252).
       // A file carrying the roster template's signature `Initials` column and NO
       // name columns is a roster attempt with a missing/misnamed required column
       // — give the roster requirement rather than the SEIS/generic name-column
       // guidance (SPE-250). Guard on the name columns being absent so a genuine
-      // name-based file that merely also carries an Initials column (or whose
-      // First/Last/Grade column sits at index 0 — a pre-existing falsy-index
-      // quirk in detectColumnMapping's `!mapping.x` checks) still gets the name
-      // guidance rather than a misleading "looks like the roster template".
+      // name-based file that also carries an Initials column (e.g. one missing
+      // only its Grade column) still gets the name guidance rather than a
+      // misleading "looks like the roster template".
       const looksLikeRoster =
         columnMapping.firstName === undefined && columnMapping.lastName === undefined;
       const rosterHint = looksLikeRoster ? describeIncompleteRosterTemplate(records) : null;
@@ -457,7 +464,12 @@ function detectColumnMapping(records: string[][]): ColumnMapping {
       mapping.lastName = index;
     }
 
-    // Check for grade
+    // Check for grade. Intentionally the falsy `!mapping.grade` (not
+    // `=== undefined`): gradePatterns matches any "grade" substring, so an early
+    // false positive like "Gradebook ID" at index 0 must stay overridable by a
+    // later real "Grade" column. The index-0 fix (SPE-252) lives at the
+    // required-column gate in parseCSVReport, which needs `=== undefined`; this
+    // first-detection guard deliberately keeps its override behavior.
     if (!mapping.grade && gradePatterns.test(headerText)) {
       mapping.grade = index;
     }
