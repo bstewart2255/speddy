@@ -43,7 +43,7 @@ tiers (SPE-163). **Still do not enable AI** until Zero Data Retention is request
 | Service | Role (when enabled) | Student data (when enabled) | Where (code) |
 |---|---|---|---|
 | **OpenAI** | Default lesson-generation provider (`AI_PROVIDER` defaults to `openai`, model `gpt-5-mini`). | Initials + IEP goals in prompts. | `lib/lessons/providers.ts` |
-| **Anthropic (Claude)** | Lessons, exit tickets, progress checks, worksheet vision, document parsing, PII scrubbing. | Initials + IEP goals; raw document text on the upload path. | `lib/exit-tickets/generator.ts`, `app/api/submit-worksheet/route.ts`, `lib/lessons/*`, `lib/progress-checks/*`, `lib/utils/pii-scrubber.ts` |
+| **Anthropic (Claude)** | Lessons, exit tickets, progress checks, worksheet vision, document parsing. | Initials + IEP goals; raw document text on the upload path. | `lib/exit-tickets/generator.ts`, `app/api/submit-worksheet/route.ts`, `lib/lessons/*`, `lib/progress-checks/*` |
 
 ## Data sources (NOT downstream processors)
 

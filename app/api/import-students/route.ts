@@ -18,7 +18,6 @@ import { createNormalizedKey } from '@/lib/parsers/name-utils';
 import { matchStudents, DatabaseStudent } from '@/lib/utils/student-matcher';
 import { buildStudentDedupKey } from '@/lib/utils/student-dedup-key';
 import { classifyRosterChange } from '@/lib/import/roster-preview';
-import { scrubPIIFromGoals } from '@/lib/utils/pii-scrubber';
 import { log } from '@/lib/monitoring/logger';
 import { track } from '@/lib/monitoring/analytics';
 import { measurePerformanceWithAlerts } from '@/lib/monitoring/performance-alerts';
@@ -66,11 +65,8 @@ interface StudentPreview {
   lastName: string;
   initials: string; // Generated, but editable in UI
   gradeLevel: string;
-  goals: Array<{
-    scrubbed: string;
-    piiDetected: string[];
-    confidence: 'high' | 'medium' | 'low';
-  }>;
+  // Imported goals are stored verbatim (SPE-238).
+  goals: Array<{ text: string }>;
   // UPSERT action: insert (new), update (existing with changes), skip (existing, no changes)
   action: 'insert' | 'update' | 'skip';
   // Legacy field for backward compatibility
@@ -471,8 +467,7 @@ async function handleDeliveriesOrClassListOnly(
       },
       unmatchedStudents: unmatchedStudents.length > 0 ? unmatchedStudents.slice(0, 20) : [],
       parseErrors: [],
-      parseWarnings: allWarnings.length > 0 ? allWarnings.slice(0, 10) : [],
-      scrubErrors: []
+      parseWarnings: allWarnings.length > 0 ? allWarnings.slice(0, 10) : []
     }
   });
 }
@@ -656,8 +651,7 @@ async function handleTemplateRoster(
       },
       unmatchedStudents: [],
       parseErrors: [],
-      parseWarnings: parseWarnings.length > 0 ? parseWarnings.slice(0, 10) : [],
-      scrubErrors: []
+      parseWarnings: parseWarnings.length > 0 ? parseWarnings.slice(0, 10) : []
     }
   });
 }
@@ -1040,9 +1034,8 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
     const matchedDeliveryNames = new Set<string>();
     const matchedClassListNames = new Set<string>();
 
-    // Process each student: scrub PII from goals and prepare preview data
+    // Process each student: prepare preview data (goals flow through verbatim).
     const studentPreviews: StudentPreview[] = [];
-    const scrubErrors: string[] = [];
 
     for (const match of matchResult.matches) {
       const student = match.excelStudent;
@@ -1050,31 +1043,13 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
       // Create normalized key for matching across files
       const normalizedKey = createNormalizedKey(student.firstName, student.lastName);
 
-      // Scrub PII from goals
-      log.info('Scrubbing PII for student', {
-        userId,
-        studentInitials: student.initials,
-        goalsCount: student.goals.length
-      });
-
-      const scrubPerf = measurePerformanceWithAlerts('scrub_pii', 'api');
-      const scrubResult = await scrubPIIFromGoals(
-        student.goals,
-        student.firstName,
-        student.lastName
-      );
-      scrubPerf.end({ success: scrubResult.errors.length === 0 });
-
-      if (scrubResult.errors.length > 0) {
-        scrubErrors.push(...scrubResult.errors);
-      }
-
       // Determine match status and UPSERT action
       const isNew = match.confidence === 'none';
       const matchedStudent = match.matchedStudent;
 
-      // Get scrubbed goal texts for comparison
-      const scrubbedGoalTexts = scrubResult.goals.map(g => g.scrubbed);
+      // Goals are imported verbatim (SPE-238) — no at-rest PII scrubbing. Use the
+      // raw goal texts for both change detection and the preview payload.
+      const goalTexts = student.goals;
 
       // Initialize preview with schedule/teacher data for change detection
       let scheduleData: { sessionsPerWeek: number; minutesPerSession: number } | undefined;
@@ -1117,12 +1092,12 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
         // Check for changes to determine if update or skip
         const changeCheck = hasChanges(
           matchedStudent,
-          scrubbedGoalTexts,
+          goalTexts,
           scheduleData,
           teacherMatchResult?.teacherId
         );
 
-        const goalComparison = compareGoals(matchedStudent.iep_goals, scrubbedGoalTexts);
+        const goalComparison = compareGoals(matchedStudent.iep_goals, goalTexts);
         const anyChanges = changeCheck.hasGoalChanges || changeCheck.hasScheduleChanges || changeCheck.hasTeacherChanges;
 
         if (anyChanges) {
@@ -1183,7 +1158,7 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
         lastName: student.lastName,
         initials: student.initials,
         gradeLevel: student.gradeLevel,
-        goals: scrubResult.goals,
+        goals: goalTexts.map((text) => ({ text })),
         action,
         matchStatus: isNew ? 'new' : 'duplicate',
         matchedStudentId: isNew ? undefined : matchedStudent?.id,
@@ -1304,8 +1279,7 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
         },
         unmatchedStudents: unmatchedStudents.length > 0 ? unmatchedStudents.slice(0, 20) : [],
         parseErrors: parseResult.errors.length > 0 ? parseResult.errors.slice(0, 10) : [],
-        parseWarnings: allWarnings.length > 0 ? allWarnings.slice(0, 10) : [],
-        scrubErrors: scrubErrors.length > 0 ? scrubErrors.slice(0, 10) : []
+        parseWarnings: allWarnings.length > 0 ? allWarnings.slice(0, 10) : []
       }
     });
   } catch (error: unknown) {

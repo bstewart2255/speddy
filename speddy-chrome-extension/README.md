@@ -99,7 +99,7 @@ The extension communicates with Speddy via:
 - API keys are stored locally in Chrome storage
 - Keys are hashed (SHA-256) on the server - full key is never stored
 - Data is transmitted over HTTPS
-- PII is scrubbed from IEP goals before storage
+- IEP goals are stored as written; Speddy displays students by initials, not names
 
 ## Publishing
 

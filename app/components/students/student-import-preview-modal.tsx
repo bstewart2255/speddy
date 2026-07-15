@@ -41,11 +41,7 @@ interface StudentPreview {
   lastName: string;
   initials: string;
   gradeLevel: string;
-  goals?: Array<{
-    scrubbed: string;
-    piiDetected: string[];
-    confidence: 'high' | 'medium' | 'low';
-  }>;
+  goals?: Array<{ text: string }>;
   // UPSERT action
   action?: 'insert' | 'update' | 'skip';
   // Legacy field for backward compatibility
@@ -92,7 +88,6 @@ interface ImportData {
   unmatchedStudents?: UnmatchedStudent[];
   parseErrors?: Array<{ row: number; message: string }>;
   parseWarnings?: Array<{ row: number; message: string; source?: string }>;
-  scrubErrors?: string[];
 }
 
 interface StudentImportPreviewModalProps {
@@ -263,7 +258,7 @@ export function StudentImportPreviewModal({
         const goalsToImport = Array.from(studentSelectedGoals)
           .sort((a, b) => a - b) // Keep original order
           .filter(goalIdx => goalIdx < goals.length)
-          .map(goalIdx => goals[goalIdx].scrubbed);
+          .map(goalIdx => goals[goalIdx].text);
 
         // Determine action based on student.action or matchStatus
         // - 'new' students default to insert
@@ -733,17 +728,7 @@ export function StudentImportPreviewModal({
                                   className="mt-1 h-4 w-4 text-blue-600 rounded border-gray-300 flex-shrink-0"
                                 />
                                 <div className="flex-1 text-sm">
-                                  <p className="text-gray-900">{goal.scrubbed}</p>
-                                  {goal.piiDetected.length > 0 && (
-                                    <p className="text-xs text-orange-600 mt-1">
-                                      PII removed: {goal.piiDetected.join(', ')}
-                                    </p>
-                                  )}
-                                  {goal.confidence !== 'high' && (
-                                    <p className="text-xs text-yellow-700 mt-1">
-                                      ⚠ {goal.confidence} confidence - please review
-                                    </p>
-                                  )}
+                                  <p className="text-gray-900">{goal.text}</p>
                                 </div>
                               </div>
                             );

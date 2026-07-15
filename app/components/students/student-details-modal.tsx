@@ -514,20 +514,11 @@ export function StudentDetailsModal({
                 })()}
 
                 <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-md">
-                  <p className="text-sm text-blue-900 font-medium mb-1">
-                    ⚠️ Privacy Guidelines for IEP Goals:
-                  </p>
                   <p className="text-sm text-blue-800">
-                    Enter goals WITHOUT student names or specific dates
+                    Speddy shows students by their initials throughout the app, so
+                    you can enter goals just as they appear in your records. If you
+                    prefer to leave out names or specific dates, that&apos;s fine too.
                   </p>
-                  <div className="mt-2 space-y-1">
-                    <p className="text-sm text-green-700">
-                      ✅ Good: "Will read 60 wpm with 90% accuracy"
-                    </p>
-                    <p className="text-sm text-red-700">
-                      ❌ Avoid: "By March 2024, Johnny will read 60 wpm"
-                    </p>
-                  </div>
                 </div>
               </div>
 
