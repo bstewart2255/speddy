@@ -432,7 +432,11 @@ nothing else.
 
 The loop this district exists for — the owner asks *"run feature X through
 the sim district"* and gets back a defensible *"everything checks out"* (or
-a precise account of what doesn't):
+a precise account of what doesn't). This section defines the loop; the
+**operational playbook** — environment mechanics, Playwright plumbing
+(`scripts/sim-district/walk.ts`), persona quick-reference, report template —
+is the `sim-run` skill at `.claude/skills/sim-run/SKILL.md`. Runs should
+start there:
 
 1. **Reset:** `npm run sim:reset -- --yes` → known-good state, stable IDs —
    then confirm `npm run sim:verify` is green (including its schema-coverage
