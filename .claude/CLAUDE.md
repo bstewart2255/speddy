@@ -21,6 +21,10 @@
   when a feature adds tables, classifying them in
   `scripts/sim-district/manifest.ts` (seeded / swept / declared-unseeded) is
   part of that feature's work. Only ever touch sim data through these scripts.
+  **To run a feature verification through the sim district, use the `sim-run`
+  skill** (`.claude/skills/sim-run/SKILL.md`) — it carries the spec §9 loop
+  plus this environment's Playwright/network mechanics and the shared helpers
+  in `scripts/sim-district/walk.ts`; don't re-derive any of it.
 
 ## How to communicate with me
 
