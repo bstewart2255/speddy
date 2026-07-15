@@ -191,10 +191,9 @@ export function StudentDetailsModal({
   };
 
   const handleImportComplete = async () => {
-    setShowImportPreview(false);
-    setImportData(null);
-
-    // Reload student details to show the newly imported goals
+    // Refresh the details behind the review WITHOUT closing it, so a partial
+    // failure keeps the review open on its error list (mirrors the bulk caller).
+    // Closing is owned by onClose — full success, or the Done button.
     try {
       const existingDetails = await getStudentDetails(student.id);
       if (existingDetails) {
@@ -215,8 +214,9 @@ export function StudentDetailsModal({
 
     for (const { row, selectedGoalTexts } of rows) {
       const studentId = row.targetStudentId;
-      if (!studentId) continue;
-      const match = importData?.matches?.find((m: { studentId: string; iepDate?: string }) => m.studentId === studentId);
+      // Skip a selected student with no selected goals: merging nothing is a
+      // no-op, and writing anyway would bump updated_at / overwrite goals_iep_date.
+      if (!studentId || selectedGoalTexts.length === 0) continue;
 
       try {
         const { data: currentDetails } = await supabase
@@ -243,7 +243,7 @@ export function StudentDetailsModal({
           iep_goals: newGoals,
           updated_at: new Date().toISOString(),
         };
-        if (match?.iepDate) upsertData.goals_iep_date = match.iepDate;
+        if (row.iepDate) upsertData.goals_iep_date = row.iepDate;
 
         const { error } = await supabase
           .from('student_details')

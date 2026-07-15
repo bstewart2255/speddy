@@ -57,6 +57,9 @@ export interface ReviewRow {
   targetStudentId?: string;
   matchConfidence?: 'high' | 'medium' | 'low' | 'none';
   matchReason?: string;
+  /** Incoming IEP date from a per-student goals report (target-student mode,
+   *  SPE-232) — written to goals_iep_date on import. Absent in bulk mode. */
+  iepDate?: string;
 }
 
 export interface ReviewFileReceipt {
@@ -335,7 +338,7 @@ export interface TargetPreviewData {
  * ever removed, so `goalsRemoved` is always empty. Pure — no I/O.
  */
 export function adaptTargetStudentPreview(data: TargetPreviewData): ReviewModel {
-  const rows: ReviewRow[] = data.matches.map((match, index) => ({
+  const rows: ReviewRow[] = (data.matches ?? []).map((match, index) => ({
     id: `${match.studentId}:${index}`,
     srcIndex: index,
     action: 'update',
@@ -350,6 +353,7 @@ export function adaptTargetStudentPreview(data: TargetPreviewData): ReviewModel 
     targetStudentId: match.studentId,
     matchConfidence: match.matchConfidence,
     matchReason: match.matchReason,
+    iepDate: match.iepDate,
   }));
 
   const totalGoals = rows.reduce((sum, r) => sum + r.goals.length, 0);

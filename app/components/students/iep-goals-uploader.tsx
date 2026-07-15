@@ -69,6 +69,18 @@ export function IEPGoalsUploader({ onUploadComplete, disabled = false, targetStu
         fileInputRef.current.value = '';
       }
 
+      // Nothing matched the caseload — the route returns 200 with matches:[] when
+      // it parsed rows but none matched (wrong initials/grade). Explain it here
+      // rather than open a blank review with no rows and no reason.
+      if (!result.data?.matches?.length) {
+        setError(
+          targetStudent
+            ? `We couldn't match ${targetStudent.initials} (Grade ${targetStudent.grade_level}) to anyone in that file. Check that the initials and grade match your records.`
+            : 'No students in that file matched your caseload. Check that initials and grades match your records.'
+        );
+        return;
+      }
+
       // Pass data to parent
       onUploadComplete(result.data);
     } catch (err: any) {

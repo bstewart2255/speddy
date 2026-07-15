@@ -52,6 +52,8 @@ export function StudentImportReview({
   onComplete,
 }: StudentImportReviewProps) {
   const selection = useReviewSelection(model.rows);
+  // Per-student IEP import merges goals (adds, never removes); bulk replaces.
+  const isMerge = model.writeMode === 'merge';
   const [teacherOverrides, setTeacherOverrides] = useState<Record<string, TeacherResolution>>({});
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -99,8 +101,11 @@ export function StudentImportReview({
           .filter((o) => !o.success)
           .map((o) => o.error)
           .filter(Boolean);
-        const prefix =
-          result.succeeded > 0 ? "Some students couldn't be imported" : "No students could be imported";
+        const prefix = isMerge
+          ? "Couldn't save the goals"
+          : result.succeeded > 0
+            ? "Some students couldn't be imported"
+            : "No students could be imported";
         const detail = messages.length > 0 ? `: ${messages.join(', ')}` : '.';
         setError(`${prefix}${detail}`);
         if (result.succeeded > 0) {
@@ -118,9 +123,7 @@ export function StudentImportReview({
     }
   };
 
-  // Per-student IEP import merges goals, so its primary action counts goals, not
-  // students (there is only ever the one target student).
-  const isMerge = model.writeMode === 'merge';
+  // The merge flow's primary action counts goals, not students.
   const goalCount = selection.totalSelectedGoals;
   const primaryDisabled = importing || (isMerge ? goalCount === 0 : selection.selectedCount === 0);
   const primaryLabel = importing
@@ -162,11 +165,11 @@ export function StudentImportReview({
     >
       <div className="space-y-5">
         <ReviewSummaryBar summary={model.summary} />
-        <p className="text-sm text-gray-600">
-          {isMerge
-            ? 'New goals are added alongside existing ones — nothing is removed.'
-            : 'Importing updates each matched student’s goals to match the file.'}
-        </p>
+        {isMerge && (
+          <p className="text-sm text-gray-600">
+            Adds new goals alongside existing ones — nothing is removed.
+          </p>
+        )}
         {error && (
           <div role="alert" className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">
             {error}

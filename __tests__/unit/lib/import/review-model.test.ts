@@ -183,6 +183,8 @@ describe('adaptTargetStudentPreview (SPE-232)', () => {
     expect(row.action).toBe('update');
     expect(row.targetStudentId).toBe('stu-7');
     expect(row.displayName).toBe('KL');
+    // IEP date carries onto the row so the write isn't coupled to the raw payload.
+    expect(row.iepDate).toBe('2027-03-15');
     // Merge: every incoming goal is an addition, nothing is removed.
     expect(row.goals.every(g => g.status === 'added')).toBe(true);
     expect(row.goalsRemoved).toEqual([]);
