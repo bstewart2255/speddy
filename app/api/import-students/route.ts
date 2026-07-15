@@ -844,9 +844,21 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
     if (parseResult.students.length === 0) {
       log.warn(`No students found in ${fileType} file`, { userId, fileName: file.name });
 
+      // Surface the specific column-detection reason (the roster-template hint
+      // from SPE-250, or the name/goal-column message) as the top-level `error`
+      // the client shows — it drops the `parseErrors` array. Scoped to CSV and
+      // to row-0 detection errors on purpose: SEIS .xlsx per-sheet errors and
+      // per-row parse exceptions (`row > 0`) can carry internal or misattributed
+      // text that shouldn't headline. Falls back to the generic message when no
+      // detection error was recorded (e.g. all rows filtered out by role).
+      const detectionError = isCSV
+        ? parseResult.errors.find((e) => e.row === 0)?.message
+        : undefined;
       return NextResponse.json(
         {
-          error: 'No students with IEP goals found in the file. Please check that the file contains columns for student names, grades, and IEP goals.',
+          error:
+            detectionError ||
+            'No students with IEP goals found in the file. Please check that the file contains columns for student names, grades, and IEP goals.',
           parseErrors: parseResult.errors,
           parseWarnings: 'warnings' in parseResult ? parseResult.warnings || [] : []
         },

@@ -33,6 +33,51 @@ describe('detectSpeddyTemplateFormat', () => {
   });
 });
 
+describe('parseCSVReport — incomplete roster template (SPE-250)', () => {
+  it('gives a roster-specific error when Initials is present but a required column is missing/misnamed', async () => {
+    // "Teacher" mistyped as "Teacher Name" — fails template detection and would
+    // otherwise fall through to the SEIS/generic name-column error.
+    const csv = Buffer.from('Initials,Grade,Teacher Name\nJD,3,Smith', 'utf-8');
+    const result = await parseCSVReport(csv, {});
+
+    expect(result.students).toHaveLength(0);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0].message).toMatch(/roster template/i);
+    expect(result.errors[0].message).toMatch(/Teacher/);
+    // Names the roster requirement, not the SEIS/generic name-column guidance.
+    expect(result.errors[0].message).not.toMatch(/First Name, Last Name/);
+  });
+
+  it('names every missing required roster column', async () => {
+    // Only Initials present (Grade + Teacher missing).
+    const csv = Buffer.from('Initials,Room\nJD,12', 'utf-8');
+    const result = await parseCSVReport(csv, {});
+
+    expect(result.errors[0].message).toMatch(/Grade/);
+    expect(result.errors[0].message).toMatch(/Teacher/);
+  });
+
+  it('does not hijack a genuine SEIS/generic file (no Initials column)', async () => {
+    // Missing a grade column but clearly not a roster — keeps the name/grade guidance.
+    const csv = Buffer.from('First Name,Last Name,Age\nJane,Doe,8', 'utf-8');
+    const result = await parseCSVReport(csv, {});
+
+    expect(result.errors[0].message).toMatch(/First Name, Last Name/);
+    expect(result.errors[0].message).not.toMatch(/roster template/i);
+  });
+
+  it('does not claim a roster when a name-based file also carries an Initials column', async () => {
+    // A genuine name-based file with an extra Initials column (First Name at
+    // index 0 trips detectColumnMapping's falsy-index quirk into the error
+    // branch) must keep the name guidance, not be mislabeled a roster.
+    const csv = Buffer.from('First Name,Last Name,Initials,Age\nJane,Doe,JD,8', 'utf-8');
+    const result = await parseCSVReport(csv, {});
+
+    expect(result.errors[0].message).not.toMatch(/roster template/i);
+    expect(result.errors[0].message).toMatch(/First Name, Last Name/);
+  });
+});
+
 describe('parseCSVReport — Speddy roster template', () => {
   it('parses the template fixture into goal-less students with inline teacher + schedule', async () => {
     const result = await parseCSVReport(readFixture('roster-template.csv'), {});

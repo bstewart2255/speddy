@@ -132,9 +132,22 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
     const formatDetected = isSEISFormat ? 'seis-student-goals' : 'generic' as const;
 
     if (!columnMapping.firstName || !columnMapping.lastName || !columnMapping.grade) {
+      // A file carrying the roster template's signature `Initials` column and NO
+      // name columns is a roster attempt with a missing/misnamed required column
+      // — give the roster requirement rather than the SEIS/generic name-column
+      // guidance (SPE-250). Guard on the name columns being absent so a genuine
+      // name-based file that merely also carries an Initials column (or whose
+      // First/Last/Grade column sits at index 0 — a pre-existing falsy-index
+      // quirk in detectColumnMapping's `!mapping.x` checks) still gets the name
+      // guidance rather than a misleading "looks like the roster template".
+      const looksLikeRoster =
+        columnMapping.firstName === undefined && columnMapping.lastName === undefined;
+      const rosterHint = looksLikeRoster ? describeIncompleteRosterTemplate(records) : null;
       errors.push({
         row: 0,
-        message: isSEISFormat
+        message: rosterHint
+          ? rosterHint
+          : isSEISFormat
           ? 'SEIS Student Goals Report detected but could not find expected columns (Last Name, First Name, Grade)'
           : 'Could not detect student name or grade columns. Looking for columns like: First Name, Last Name, Grade, Student Name.'
       });
@@ -526,6 +539,31 @@ export function detectSpeddyTemplateFormat(records: string[][]): boolean {
   // goal-less template parser.
   const hasGoalColumn = headers.some((h) => /goal|iep\s*goal|objective|target|present\s*level/.test(h));
   return !hasGoalColumn;
+}
+
+/**
+ * If a CSV carries the roster template's signature `Initials` column but did not
+ * pass `detectSpeddyTemplateFormat`, it's a roster attempt with a missing or
+ * misnamed required column (e.g. `Teacher` typed as `Teacher Name`). Return a
+ * roster-specific message naming what's required so the user isn't shown the
+ * SEIS/generic name-column guidance (SPE-250). Returns null for genuine
+ * SEIS/generic files (no `Initials` column) and for roster+goal hybrids that
+ * already carry all three required columns.
+ */
+function describeIncompleteRosterTemplate(records: string[][]): string | null {
+  const headers = (records[0] || []).map(normalizeTemplateHeader);
+  // `Initials` is the roster template's signature — SEIS/generic student files
+  // use First/Last Name, never Initials — so its presence marks a roster attempt.
+  if (!headers.includes('initials')) return null;
+  const missing = ([
+    ['initials', 'Initials'],
+    ['grade', 'Grade'],
+    ['teacher', 'Teacher'],
+  ] as const)
+    .filter(([key]) => !headers.includes(key))
+    .map(([, label]) => label);
+  if (missing.length === 0) return null;
+  return `This looks like the roster template, but it's missing a required column: ${missing.join(', ')}. Roster imports need Initials, Grade, and Teacher.`;
 }
 
 /**
