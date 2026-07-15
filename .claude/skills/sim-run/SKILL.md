@@ -36,7 +36,9 @@ meetings run that caught SPE-217) and the fixture smoke walk.
 ## Environment mechanics (Claude remote sandbox)
 
 - **Target the app locally.** The gateway usually blocks `www.speddy.xyz`
-  (403 CONNECT). Run current `main` against the prod DB — spec-sanctioned:
+  (403 CONNECT). Run the **checked-out worktree** against the prod DB — the
+  code under test (pre-merge that is the feature branch; post-merge, main) —
+  spec-sanctioned:
   ensure `.env.local` has `NEXT_PUBLIC_SUPABASE_URL` and
   `NEXT_PUBLIC_SUPABASE_ANON_KEY` (fetch the anon key with Supabase MCP
   `get_publishable_keys`; the file is gitignored), start `npm run dev` in the
@@ -71,8 +73,9 @@ the usual walk leads (email-local → who):
 | `siteadmin.willow` | Priya — site admin, Willow |
 | `rsp.willow` | Rachel — resource specialist, Willow (28 students; 12 with due dates; students 0–2 taught by Nora) |
 | `rsp.maple` | Alicia — resource specialist, Maple (cross-school negative space) |
-| `rsp.itinerant` | Tomás — multi-site provider (Willow/Juniper/Cedar) |
-| `slp.itinerant` / `ot.itinerant` | Maria (speech) / Jun (OT) |
+| `rsp.itinerant` | Maria — itinerant resource (Maple + Juniper) |
+| `slp.itinerant` | Tomás — itinerant speech (Willow/Juniper/Cedar) |
+| `ot.itinerant` | Jun — itinerant OT (Maple + Redwood) |
 | `sea.willow` | Leah — SEA (excluded from Chat/CARE/Schedule/Meetings nav; delegated sessions) |
 | `teacher.willow.1` | Nora — login teacher, Willow (availability prompt) |
 | `teacher.willow.2` | David — login teacher with ZERO students (empty state) |
