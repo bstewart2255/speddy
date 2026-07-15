@@ -5,6 +5,7 @@ import type { ReviewRow as ReviewRowData } from '@/lib/import/review-model';
 import { ReviewGoalList } from './review-goal-list';
 import { ReviewSignalIcon } from './review-signal';
 import type { ReviewSelection } from './use-review-selection';
+import { getIepDateWarning } from '@/lib/utils/iep-date-utils';
 
 const ACTION_BADGE: Record<ReviewRowData['action'], { label: string; className: string }> = {
   insert: { label: 'New', className: 'bg-green-100 text-green-800' },
@@ -32,6 +33,9 @@ export function ReviewRow({ row, selection, isExpanded, onToggleExpand, columnCo
   // supplied), so "imported without any goals" would be misleading.
   const noGoalsSelected =
     selected && goalCount > 0 && goalsSelected.size === 0 && row.action === 'insert';
+  // Pre-import caution when the incoming report's IEP date is stale/future
+  // (target-student mode only; bulk rows carry no iepDate).
+  const iepWarning = row.iepDate ? getIepDateWarning(row.iepDate) : null;
 
   return (
     <>
@@ -103,6 +107,14 @@ export function ReviewRow({ row, selection, isExpanded, onToggleExpand, columnCo
           </span>
         </td>
       </tr>
+
+      {iepWarning?.message && (
+        <tr>
+          <td colSpan={columnCount} className="px-3 pb-2 text-xs text-amber-700">
+            ⚠️ {iepWarning.message}
+          </td>
+        </tr>
+      )}
 
       {noGoalsSelected && (
         <tr>

@@ -5,7 +5,12 @@
  * update, deliveries-only "update mode"/Builder B, roster template/Builder C).
  */
 
-import { adaptBulkPreview, type BulkPreviewData } from '@/lib/import/review-model';
+import {
+  adaptBulkPreview,
+  adaptTargetStudentPreview,
+  type BulkPreviewData,
+  type TargetPreviewData,
+} from '@/lib/import/review-model';
 
 describe('adaptBulkPreview (SPE-227)', () => {
   it('normalizes a goals-only insert: goals marked added, stable new:N id, no exceptions', () => {
@@ -146,5 +151,50 @@ describe('adaptBulkPreview (SPE-227)', () => {
     expect(model.summary).toMatchObject({ totalStudents: 3, inserts: 1, updates: 1, skips: 1 });
     // skip row's goal is excluded from the total.
     expect(model.summary.totalGoals).toBe(3);
+  });
+});
+
+describe('adaptTargetStudentPreview (SPE-232)', () => {
+  it('normalizes a single matched student into target-student merge mode', () => {
+    const data: TargetPreviewData = {
+      matches: [
+        {
+          studentId: 'stu-7',
+          studentInitials: 'KL',
+          studentGrade: '4',
+          matchConfidence: 'high',
+          matchReason: 'Matched by initials and grade',
+          iepDate: '2027-03-15',
+          goals: [{ text: 'Read 90 wpm' }, { text: 'Solve 2-digit addition' }],
+        },
+      ],
+    };
+
+    const model = adaptTargetStudentPreview(data);
+
+    expect(model.mode).toBe('target-student');
+    expect(model.writeMode).toBe('merge');
+    expect(model.files).toEqual([]);
+    expect(model.exceptions).toHaveLength(0);
+    expect(model.rows).toHaveLength(1);
+
+    const row = model.rows[0];
+    expect(row.id).toBe('stu-7:0');
+    expect(row.action).toBe('update');
+    expect(row.targetStudentId).toBe('stu-7');
+    expect(row.displayName).toBe('KL');
+    // IEP date carries onto the row so the write isn't coupled to the raw payload.
+    expect(row.iepDate).toBe('2027-03-15');
+    // Merge: every incoming goal is an addition, nothing is removed.
+    expect(row.goals.every(g => g.status === 'added')).toBe(true);
+    expect(row.goalsRemoved).toEqual([]);
+
+    expect(model.summary).toMatchObject({
+      totalStudents: 1,
+      inserts: 0,
+      updates: 1,
+      skips: 0,
+      totalGoals: 2,
+    });
   });
 });

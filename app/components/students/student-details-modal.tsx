@@ -1,12 +1,18 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Button } from '../ui/button';
 import { Input, Label, FormGroup } from '../ui/form';
 import { getStudentDetails, upsertStudentDetails, StudentDetails, getMatchingProviderRoles } from '../../../lib/supabase/queries/student-details';
+import { createClient } from '@/lib/supabase/client';
+import { adaptTargetStudentPreview } from '@/lib/import/review-model';
 import AssessmentList from './assessment-list';
 import { IEPGoalsUploader } from './iep-goals-uploader';
-import { IEPGoalsPreviewModal } from './iep-goals-preview-modal';
+import {
+  StudentImportReview,
+  type ReviewConfirmSelection,
+  type ReviewWriteResult,
+} from './review/student-import-review';
 import { TeacherAutocomplete } from '../teachers/teacher-autocomplete';
 import { StudentProgressTab } from './student-progress-tab';
 import { StudentAttendanceTab } from './student-attendance-tab';
@@ -185,10 +191,9 @@ export function StudentDetailsModal({
   };
 
   const handleImportComplete = async () => {
-    setShowImportPreview(false);
-    setImportData(null);
-
-    // Reload student details to show the newly imported goals
+    // Refresh the details behind the review WITHOUT closing it, so a partial
+    // failure keeps the review open on its error list (mirrors the bulk caller).
+    // Closing is owned by onClose — full success, or the Done button.
     try {
       const existingDetails = await getStudentDetails(student.id);
       if (existingDetails) {
@@ -199,14 +204,90 @@ export function StudentDetailsModal({
     }
   };
 
+  // Per-student IEP goals import writes client-side today (server-side merge is
+  // SPE-234). Merge semantics: append each selected goal that isn't already on
+  // the student (case-insensitive), preserving goals_iep_date when the report
+  // carries one — the same stored result as the retired preview modal.
+  const handleTargetImport = async ({ rows }: ReviewConfirmSelection): Promise<ReviewWriteResult> => {
+    const supabase = createClient();
+    const outcomes: ReviewWriteResult['outcomes'] = [];
+
+    for (const { row, selectedGoalTexts } of rows) {
+      const studentId = row.targetStudentId;
+      // Skip a selected student with no selected goals: merging nothing is a
+      // no-op, and writing anyway would bump updated_at / overwrite goals_iep_date.
+      if (!studentId || selectedGoalTexts.length === 0) continue;
+
+      try {
+        const { data: currentDetails, error: readError } = await supabase
+          .from('student_details')
+          .select('iep_goals')
+          .eq('student_id', studentId)
+          .maybeSingle();
+        // Abort on a real read failure — never overwrite goals we couldn't read.
+        // maybeSingle returns null data + no error when the row simply doesn't
+        // exist yet, which is a legitimate "no existing goals" case.
+        if (readError) throw readError;
+
+        const existingGoals: string[] = currentDetails?.iep_goals || [];
+        const newGoals = [...existingGoals];
+        for (const goal of selectedGoalTexts) {
+          if (!newGoals.some(existing => existing.trim().toLowerCase() === goal.trim().toLowerCase())) {
+            newGoals.push(goal);
+          }
+        }
+
+        const upsertData: {
+          student_id: string;
+          iep_goals: string[];
+          updated_at: string;
+          goals_iep_date?: string;
+        } = {
+          student_id: studentId,
+          iep_goals: newGoals,
+          updated_at: new Date().toISOString(),
+        };
+        if (row.iepDate) upsertData.goals_iep_date = row.iepDate;
+
+        const { error } = await supabase
+          .from('student_details')
+          .upsert(upsertData, { onConflict: 'student_id' });
+        if (error) throw error;
+
+        outcomes.push({ rowId: row.id, success: true });
+      } catch (err) {
+        // Supabase/PostgREST errors are often plain objects (not Error
+        // instances), so read .message directly to keep the real DB error.
+        outcomes.push({
+          rowId: row.id,
+          success: false,
+          error: (err as { message?: string })?.message ?? 'Failed to save goals',
+        });
+      }
+    }
+
+    return {
+      outcomes,
+      succeeded: outcomes.filter(o => o.success).length,
+      failed: outcomes.filter(o => !o.success).length,
+    };
+  };
+
+  // Adapt the per-student IEP preview into the shared review model once per upload.
+  const reviewModel = useMemo(
+    () => (importData ? adaptTargetStudentPreview(importData) : null),
+    [importData],
+  );
+
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto">
+    <>
+    <div className={`fixed inset-0 z-50 overflow-y-auto ${showImportPreview ? 'hidden' : ''}`}>
       <div className="flex min-h-full items-center justify-center p-4">
         {/* Backdrop */}
-        <div 
-          className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" 
+        <div
+          className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"
           onClick={onClose}
         />
 
@@ -703,16 +784,23 @@ export function StudentDetailsModal({
           </div>
         </div>
       </div>
+    </div>
 
-      {/* IEP Goals Import Preview Modal */}
-      {importData && (
-        <IEPGoalsPreviewModal
+      {/* Per-student IEP goals review (SPE-232): the shared review screen in
+          target-student mode. The details panel above is hidden while this is
+          open, so there is no stacked modal (SPE-224 decision). */}
+      {importData && reviewModel && (
+        <StudentImportReview
           isOpen={showImportPreview}
-          onClose={() => setShowImportPreview(false)}
-          data={importData}
-          onImportComplete={handleImportComplete}
+          model={reviewModel}
+          onClose={() => {
+            setShowImportPreview(false);
+            setImportData(null);
+          }}
+          onConfirm={handleTargetImport}
+          onComplete={handleImportComplete}
         />
       )}
-    </div>
+    </>
   );
 }

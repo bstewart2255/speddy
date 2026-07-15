@@ -52,6 +52,8 @@ export function StudentImportReview({
   onComplete,
 }: StudentImportReviewProps) {
   const selection = useReviewSelection(model.rows);
+  // Per-student IEP import merges goals (adds, never removes); bulk replaces.
+  const isMerge = model.writeMode === 'merge';
   const [teacherOverrides, setTeacherOverrides] = useState<Record<string, TeacherResolution>>({});
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -99,8 +101,11 @@ export function StudentImportReview({
           .filter((o) => !o.success)
           .map((o) => o.error)
           .filter(Boolean);
-        const prefix =
-          result.succeeded > 0 ? "Some students couldn't be imported" : "No students could be imported";
+        const prefix = isMerge
+          ? "Couldn't save the goals"
+          : result.succeeded > 0
+            ? "Some students couldn't be imported"
+            : "No students could be imported";
         const detail = messages.length > 0 ? `: ${messages.join(', ')}` : '.';
         setError(`${prefix}${detail}`);
         if (result.succeeded > 0) {
@@ -118,6 +123,17 @@ export function StudentImportReview({
     }
   };
 
+  // The merge flow's primary action counts goals, not students.
+  const goalCount = selection.totalSelectedGoals;
+  const primaryDisabled = importing || (isMerge ? goalCount === 0 : selection.selectedCount === 0);
+  const primaryLabel = importing
+    ? isMerge
+      ? 'Adding…'
+      : 'Importing…'
+    : isMerge
+      ? `Add ${goalCount} goal${goalCount !== 1 ? 's' : ''}`
+      : `Import ${selection.selectedCount} student${selection.selectedCount !== 1 ? 's' : ''}`;
+
   const footer = importFinished ? (
     <Button ref={doneRef} variant="primary" onClick={onClose}>
       Done
@@ -125,19 +141,15 @@ export function StudentImportReview({
   ) : (
     <>
       <div className="mr-auto self-center text-sm tabular-nums text-gray-600">
-        {selection.selectedCount} selected · {selection.totalSelectedGoals} goals
+        {isMerge
+          ? `${goalCount} goal${goalCount !== 1 ? 's' : ''} selected`
+          : `${selection.selectedCount} selected · ${selection.totalSelectedGoals} goals`}
       </div>
       <Button variant="secondary" onClick={onClose} disabled={importing}>
         Cancel
       </Button>
-      <Button
-        variant="primary"
-        onClick={handleImport}
-        disabled={importing || selection.selectedCount === 0}
-      >
-        {importing
-          ? 'Importing…'
-          : `Import ${selection.selectedCount} student${selection.selectedCount !== 1 ? 's' : ''}`}
+      <Button variant="primary" onClick={handleImport} disabled={primaryDisabled}>
+        {primaryLabel}
       </Button>
     </>
   );
@@ -153,6 +165,11 @@ export function StudentImportReview({
     >
       <div className="space-y-5">
         <ReviewSummaryBar summary={model.summary} />
+        {isMerge && (
+          <p className="text-sm text-gray-600">
+            Adds new goals alongside existing ones — nothing is removed.
+          </p>
+        )}
         {error && (
           <div role="alert" className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">
             {error}
@@ -164,7 +181,13 @@ export function StudentImportReview({
           teacherOverrides={teacherOverrides}
           onResolveTeacher={resolveTeacher}
         />
-        {model.rows.length > 0 && <ReviewTable rows={model.rows} selection={selection} />}
+        {model.rows.length > 0 && (
+          <ReviewTable
+            rows={model.rows}
+            selection={selection}
+            defaultExpandedId={model.mode === 'target-student' ? model.rows[0]?.id : undefined}
+          />
+        )}
       </div>
     </Modal>
   );

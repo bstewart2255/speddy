@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef } from 'react';
+import { Upload, Loader2 } from 'lucide-react';
 import { Button } from '../ui/button';
 
 interface IEPGoalsUploaderProps {
@@ -27,14 +28,14 @@ export function IEPGoalsUploader({ onUploadComplete, disabled = false, targetStu
     const isCSV = file.name.endsWith('.csv');
 
     if (!isExcel && !isCSV) {
-      setError('Please select an Excel file (.xlsx or .xls) or CSV file (.csv)');
+      setError('Unsupported file type. Accepted: .xlsx, .xls, .csv');
       return;
     }
 
     // Validate file size (max 10MB)
     const maxSize = 10 * 1024 * 1024; // 10MB
     if (file.size > maxSize) {
-      setError('File is too large. Maximum size is 10MB.');
+      setError('File is larger than 10MB.');
       return;
     }
 
@@ -66,6 +67,18 @@ export function IEPGoalsUploader({ onUploadComplete, disabled = false, targetStu
       // Reset file input
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
+      }
+
+      // Nothing matched the caseload — the route returns 200 with matches:[] when
+      // it parsed rows but none matched (wrong initials/grade). Explain it here
+      // rather than open a blank review with no rows and no reason.
+      if (!result.data?.matches?.length) {
+        setError(
+          targetStudent
+            ? `We couldn't match ${targetStudent.initials} (Grade ${targetStudent.grade_level}) to anyone in that file. Check that the initials and grade match your records.`
+            : 'No students in that file matched your caseload. Check that initials and grades match your records.'
+        );
+        return;
       }
 
       // Pass data to parent
@@ -103,30 +116,14 @@ export function IEPGoalsUploader({ onUploadComplete, disabled = false, targetStu
       >
         {uploading ? (
           <>
-            <svg
-              className="animate-spin -ml-1 mr-2 h-4 w-4"
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-            >
-              <circle
-                className="opacity-25"
-                cx="12"
-                cy="12"
-                r="10"
-                stroke="currentColor"
-                strokeWidth="4"
-              ></circle>
-              <path
-                className="opacity-75"
-                fill="currentColor"
-                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-              ></path>
-            </svg>
-            {targetStudent ? `Importing goals for ${targetStudent.initials}...` : 'Processing...'}
+            <Loader2 className="animate-spin -ml-1 mr-2 h-4 w-4" aria-hidden="true" />
+            {targetStudent ? `Importing goals for ${targetStudent.initials}…` : 'Importing…'}
           </>
         ) : (
-          targetStudent ? `📄 Import IEP Goals for ${targetStudent.initials}` : '📄 Import from Excel/CSV'
+          <>
+            <Upload className="-ml-0.5 mr-2 h-4 w-4" aria-hidden="true" />
+            Import goals from a file
+          </>
         )}
       </Button>
 
