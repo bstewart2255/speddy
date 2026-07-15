@@ -318,9 +318,12 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
           }
           batchPayload.push(updatePayload);
         } else {
-          // Insert. `teacherName` is intentionally omitted to match the previous
-          // import_student_atomic behavior, which never wrote the deprecated
-          // teacher_name column on insert (teacher_id is the real link).
+          // Insert. Set `teacher_name` alongside `teacher_id` when a teacher
+          // resolved. The Students list (and teacher-name-based checks) still
+          // read the deprecated `teacher_name` column for display, so a matched
+          // teacher that set only `teacher_id` would otherwise render as "Not
+          // assigned" (SPE-251). Left null when no teacher matched — the student
+          // is then genuinely unassigned. Mirrors the update branch above.
           batchPayload.push({
             action: 'insert',
             initials: initialsNormalized,
@@ -332,6 +335,7 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
             sessionsPerWeek: student.sessionsPerWeek ?? null,
             minutesPerSession: student.minutesPerSession ?? null,
             teacherId: student.teacherId || null,
+            teacherName: student.teacherId ? (student.teacherName ?? null) : null,
             firstName: student.firstName,
             lastName: student.lastName,
             goals: student.goals
