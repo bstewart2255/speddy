@@ -35,7 +35,6 @@ This document defines all action buttons in the app and their tooltip descriptio
 
 | Button           | File                | Tooltip                                                                                                                   |
 | ---------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| Import CSV       | `students/page.tsx` | Import multiple students at once from a CSV file. Download the template first to ensure correct formatting.               |
 | File Upload      | `students/page.tsx` | Upload student data files using the guided import wizard. Supports various file formats.                                  |
 | Add Student      | `students/page.tsx` | Add a new student to your caseload. You'll need their name, grade, teacher, and service requirements.                     |
 | Close Add Form   | `students/page.tsx` | Close the add student form without saving. Any entered data will be lost.                                                 |
@@ -83,7 +82,7 @@ This document defines all action buttons in the app and their tooltip descriptio
 
 | Button                | File             | Tooltip                                                                                  |
 | --------------------- | ---------------- | ---------------------------------------------------------------------------------------- |
-| Download CSV Template | `csv-import.tsx` | Download a properly formatted CSV template with all required columns for student import. |
+| Download CSV Template | `student-import-modal.tsx` | Download a properly formatted CSV template with all required columns for student import. |
 
 ---
 

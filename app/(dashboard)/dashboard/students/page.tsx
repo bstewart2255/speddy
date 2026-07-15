@@ -9,7 +9,6 @@ import { StudentTag, StatusTag, GradeTag } from '../../../components/ui/tag';
 import { getStudents, createStudent, deleteStudent, updateStudent } from '../../../../lib/supabase/queries/students';
 import { getUnscheduledSessionsCount } from '../../../../lib/supabase/queries/schedule-sessions';
 import { loadStudentsForUser, getUserRole } from '../../../../lib/supabase/queries/sea-students';
-import StudentsCSVImport from '../../../components/students/csv-import';
 import { useSchool } from '../../../components/providers/school-context';
 import { createClient } from '@/lib/supabase/client';
 import { StudentDetailsModal } from '../../../components/students/student-details-modal';
@@ -60,7 +59,6 @@ export default function StudentsPage() {
   const [selectedTeacherName, setSelectedTeacherName] = useState<string | null>(null);
   const [unscheduledCount, setUnscheduledCount] = useState<number>(0);
   const [sortByGrade, setSortByGrade] = useState(false);
-  const [showImportSection, setShowImportSection] = useState(false);
   const [showFileUploadModal, setShowFileUploadModal] = useState(false);
   const [bulkImportPreviewData, setBulkImportPreviewData] = useState<any>(null);
   const [worksAtMultipleSchools, setWorksAtMultipleSchools] = useState(false);
@@ -295,17 +293,6 @@ export default function StudentsPage() {
           </div>
           {!isViewOnly && (
             <div className="flex items-center gap-3">
-              <LongHoverTooltip content="Import multiple students at once from a CSV file. Download the template first to ensure correct formatting.">
-                <Button
-                  variant="secondary"
-                  onClick={() => {
-                    setShowImportSection(!showImportSection);
-                    setShowAddForm(false);
-                  }}
-                >
-                  Import CSV
-                </Button>
-              </LongHoverTooltip>
               <LongHoverTooltip content="Import students from your SEIS and Aeries files. Drop everything at once — goals report, deliveries, and class list — and we detect each one.">
                 <Button
                   variant="secondary"
@@ -317,10 +304,7 @@ export default function StudentsPage() {
               <LongHoverTooltip content="Add a new student to your caseload. You'll need their name, grade, teacher, and service requirements.">
                 <Button
                   variant="primary"
-                  onClick={() => {
-                    setShowAddForm(true);
-                    setShowImportSection(false);
-                  }}
+                  onClick={() => setShowAddForm(true)}
                 >
                   + Add Student
                 </Button>
@@ -328,23 +312,6 @@ export default function StudentsPage() {
             </div>
           )}
         </div>
-
-        {/* Import Section */}
-        {!isViewOnly && showImportSection && (
-          <div className="mb-6">
-            <Card>
-              <CardBody className="p-6">
-                <StudentsCSVImport
-                  onSuccess={() => {
-                    fetchStudents();
-                    setShowImportSection(false);
-                  }}
-                  currentSchool={currentSchool}
-                />
-              </CardBody>
-            </Card>
-          </div>
-        )}
 
         {/* Unified Import Students Modal */}
         <StudentImportModal
