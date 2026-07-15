@@ -54,6 +54,7 @@ export function TeacherAutocomplete({
       if (searchTerm.length < 2) {
         setTeachers([]);
         setHighlightedIndex(-1);
+        setLoading(false);
         return;
       }
 
@@ -108,8 +109,14 @@ export function TeacherAutocomplete({
         handleSelect(teachers[highlightedIndex >= 0 ? highlightedIndex : 0]);
       }
     } else if (e.key === 'Escape') {
-      setIsOpen(false);
-      setHighlightedIndex(-1);
+      // Only consume Escape when there's a dropdown to close; otherwise let it
+      // bubble so a parent modal's Escape-to-close still works.
+      if (isOpen) {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsOpen(false);
+        setHighlightedIndex(-1);
+      }
     }
   };
 
@@ -154,7 +161,16 @@ export function TeacherAutocomplete({
             <input
               type="text"
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={(e) => {
+                const term = e.target.value;
+                setSearchTerm(term);
+                // Results belong to the previous term until the debounced search
+                // re-runs; clear them synchronously so a fast Enter can't select a
+                // stale teacher, and show "Searching…" rather than "no results".
+                setTeachers([]);
+                setHighlightedIndex(-1);
+                if (term.length >= 2) setLoading(true);
+              }}
               onFocus={() => searchTerm.length >= 2 && setIsOpen(true)}
               onKeyDown={handleKeyDown}
               placeholder={placeholder}
