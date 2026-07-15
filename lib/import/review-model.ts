@@ -1,0 +1,295 @@
+/**
+ * Normalized review model for the student-import review screen (SPE-227).
+ *
+ * The preview API returns four different payload shapes (main SEIS path,
+ * deliveries/class-list "update" mode, roster template, and the per-student IEP
+ * `matches` shape). Rather than teach the review UI all four, each wire payload
+ * is converted into this one `ReviewModel` by a pure adapter. The bulk adapter
+ * lives here; the per-student adapter (`adaptTargetStudentPreview`) arrives with
+ * SPE-232. Keeping this server-agnostic and adapter-driven is the "data contract
+ * before the per-flow reuse" gate.
+ */
+
+// One confidence vocabulary, rendered identically everywhere (✓ · ! · −).
+export type ReviewSignal = 'confident' | 'check' | 'removed';
+
+export type ReviewMode = 'bulk' | 'target-student';
+// bulk import replaces a student's goals; per-student IEP import merges (SPE-232/234).
+export type WriteMode = 'replace' | 'merge';
+export type RowAction = 'insert' | 'update' | 'skip';
+
+export type PreviewFileKey = 'studentsFile' | 'deliveriesFile' | 'classListFile';
+
+export interface ReviewGoal {
+  /** Verbatim goal text (SPE-238). */
+  text: string;
+  /** `added` = new to this student · `unchanged` = already present on an update. */
+  status: 'added' | 'unchanged';
+}
+
+export interface ReviewTeacher {
+  teacherId: string | null;
+  teacherName: string | null;
+  signal: ReviewSignal;
+  reason: string;
+}
+
+export interface ReviewRow {
+  /** Stable key: the matched student id, else `new:${srcIndex}`. */
+  id: string;
+  /** Position in the source payload — used to map input-ordered confirm results back. */
+  srcIndex: number;
+  action: RowAction;
+  firstName: string;
+  lastName: string;
+  /** "First Last", or the initials when the source has no name (roster template). */
+  displayName: string;
+  /** Editable in the UI, kept through confirm. */
+  initials: string;
+  gradeLevel: string;
+  schedule?: { sessionsPerWeek: number; minutesPerSession: number };
+  teacher?: ReviewTeacher;
+  /** Incoming goals being imported (selectable). */
+  goals: ReviewGoal[];
+  /** Existing goals dropped by an update's replace — shown struck-through + in the exceptions queue. */
+  goalsRemoved: string[];
+  /** Matched student id for updates (matchedStudentId ?? studentId). */
+  targetStudentId?: string;
+  matchConfidence?: 'high' | 'medium' | 'low' | 'none';
+  matchReason?: string;
+}
+
+export interface ReviewFileReceipt {
+  fileKey: PreviewFileKey;
+  /** e.g. "Student & goals report". */
+  label: string;
+  /** What this file fills in, e.g. "students & IEP goals". */
+  fills: string;
+  fileName: string;
+  read: number;
+  matched: number;
+  filtered: number;
+  /** Parse notes (skipped rows etc.) — demoted to a tertiary link in the receipt. */
+  notes: Array<{ row: number; message: string }>;
+}
+
+export type ReviewException =
+  | { kind: 'unmatched-student'; name: string; source: 'deliveries' | 'classList'; reason?: string }
+  | { kind: 'low-confidence-teacher'; rowId: string; studentLabel: string; suggestion: ReviewTeacher }
+  | { kind: 'goals-removed'; rowId: string; studentLabel: string; goals: string[] };
+
+export interface ReviewSummary {
+  totalStudents: number;
+  inserts: number;
+  updates: number;
+  skips: number;
+  totalGoals: number;
+  filteredOutBySchool?: number;
+  filteredOutSchools?: string[];
+}
+
+export interface ReviewModel {
+  mode: ReviewMode;
+  writeMode: WriteMode;
+  summary: ReviewSummary;
+  files: ReviewFileReceipt[];
+  exceptions: ReviewException[];
+  rows: ReviewRow[];
+}
+
+// ---------------------------------------------------------------------------
+// Wire-input types: the bulk preview payload shape (`result.data` from
+// /api/import-students). Mirrors the route's response builders. SPE-236 will
+// promote these to a module shared with the route; for now the adapter owns them.
+// ---------------------------------------------------------------------------
+
+export interface BulkGoal {
+  text: string;
+}
+
+interface BulkGoalChange {
+  added: string[];
+  removed: string[];
+  unchanged: string[];
+}
+
+export interface BulkStudentPreview {
+  firstName: string;
+  lastName: string;
+  initials: string;
+  gradeLevel: string;
+  goals?: BulkGoal[];
+  action?: RowAction;
+  /** Legacy field (removed in SPE-236); read `action` only. */
+  matchStatus?: 'new' | 'duplicate';
+  matchedStudentId?: string;
+  matchedStudentInitials?: string;
+  matchConfidence?: 'high' | 'medium' | 'low';
+  matchReason?: string;
+  /** Present in deliveries/class-list update mode instead of matchedStudentId. */
+  studentId?: string;
+  changes?: { goals?: BulkGoalChange };
+  goalsRemoved?: string[];
+  schedule?: { sessionsPerWeek: number; minutesPerSession: number };
+  teacher?: {
+    teacherId: string | null;
+    teacherName: string | null;
+    confidence: 'high' | 'medium' | 'low' | 'none';
+    reason: string;
+  };
+}
+
+export interface BulkFileReceipt {
+  fileKey: PreviewFileKey;
+  fileName: string;
+  read: number;
+  matched: number;
+  filtered: number;
+  notes?: Array<{ row: number; message: string }>;
+}
+
+export interface BulkPreviewData {
+  students: BulkStudentPreview[];
+  summary: {
+    total: number;
+    inserts?: number;
+    updates?: number;
+    skips?: number;
+    new?: number;
+    duplicates?: number;
+    filteredOutBySchool?: number;
+    filteredOutSchools?: string[];
+  };
+  unmatchedStudents?: Array<{ name: string; source: 'deliveries' | 'classList' }>;
+  parseErrors?: Array<{ row: number; message: string }>;
+  parseWarnings?: Array<{ row: number; message: string; source?: string }>;
+  files?: BulkFileReceipt[];
+  mode?: 'update';
+}
+
+// Receipt display labels keyed by the multipart form key each file submits under.
+const FILE_RECEIPT_META: Record<PreviewFileKey, { label: string; fills: string }> = {
+  studentsFile: { label: 'Student & goals report', fills: 'students & IEP goals' },
+  deliveriesFile: { label: 'Deliveries', fills: 'schedules' },
+  classListFile: { label: 'Class list', fills: 'teachers' },
+};
+
+const normalizeGoal = (s: string) => s.trim().toLowerCase();
+
+function toReviewTeacher(teacher: NonNullable<BulkStudentPreview['teacher']>): ReviewTeacher {
+  const signal: ReviewSignal =
+    teacher.confidence === 'high' || teacher.confidence === 'medium' ? 'confident' : 'check';
+  return {
+    teacherId: teacher.teacherId,
+    teacherName: teacher.teacherName,
+    signal,
+    reason: teacher.reason,
+  };
+}
+
+function toReviewRow(student: BulkStudentPreview, srcIndex: number): ReviewRow {
+  const action: RowAction =
+    student.action ?? (student.matchStatus === 'new' ? 'insert' : 'update');
+  const targetStudentId = student.matchedStudentId ?? student.studentId;
+
+  const fullName = `${student.firstName} ${student.lastName}`.trim();
+  const displayName = fullName || student.initials;
+
+  const addedSet = new Set((student.changes?.goals?.added ?? []).map(normalizeGoal));
+  const goals: ReviewGoal[] = (student.goals ?? []).map((goal) => ({
+    text: goal.text,
+    status:
+      action === 'insert' || addedSet.has(normalizeGoal(goal.text)) ? 'added' : 'unchanged',
+  }));
+
+  const goalsRemoved = student.goalsRemoved ?? student.changes?.goals?.removed ?? [];
+
+  return {
+    id: targetStudentId ?? `new:${srcIndex}`,
+    srcIndex,
+    action,
+    firstName: student.firstName,
+    lastName: student.lastName,
+    displayName,
+    initials: student.initials,
+    gradeLevel: student.gradeLevel,
+    schedule: student.schedule
+      ? {
+          sessionsPerWeek: student.schedule.sessionsPerWeek,
+          minutesPerSession: student.schedule.minutesPerSession,
+        }
+      : undefined,
+    teacher: student.teacher ? toReviewTeacher(student.teacher) : undefined,
+    goals,
+    goalsRemoved,
+    targetStudentId,
+    matchConfidence: student.matchConfidence,
+    matchReason: student.matchReason,
+  };
+}
+
+/**
+ * Convert a bulk preview payload (main SEIS path, deliveries/class-list update
+ * mode, or roster template) into the normalized `ReviewModel`. Pure — no I/O.
+ */
+export function adaptBulkPreview(data: BulkPreviewData): ReviewModel {
+  const rows = data.students.map((student, index) => toReviewRow(student, index));
+
+  const files: ReviewFileReceipt[] = (data.files ?? []).map((file) => ({
+    fileKey: file.fileKey,
+    label: FILE_RECEIPT_META[file.fileKey].label,
+    fills: FILE_RECEIPT_META[file.fileKey].fills,
+    fileName: file.fileName,
+    read: file.read,
+    matched: file.matched,
+    filtered: file.filtered,
+    notes: file.notes ?? [],
+  }));
+
+  const exceptions: ReviewException[] = [];
+  for (const unmatched of data.unmatchedStudents ?? []) {
+    exceptions.push({ kind: 'unmatched-student', name: unmatched.name, source: unmatched.source });
+  }
+  for (const row of rows) {
+    if (row.teacher && row.teacher.signal === 'check') {
+      exceptions.push({
+        kind: 'low-confidence-teacher',
+        rowId: row.id,
+        studentLabel: row.displayName,
+        suggestion: row.teacher,
+      });
+    }
+    if (row.goalsRemoved.length > 0) {
+      exceptions.push({
+        kind: 'goals-removed',
+        rowId: row.id,
+        studentLabel: row.displayName,
+        goals: row.goalsRemoved,
+      });
+    }
+  }
+
+  const inserts = rows.filter((r) => r.action === 'insert').length;
+  const updates = rows.filter((r) => r.action === 'update').length;
+  const skips = rows.filter((r) => r.action === 'skip').length;
+  const totalGoals = rows
+    .filter((r) => r.action !== 'skip')
+    .reduce((sum, r) => sum + r.goals.length, 0);
+
+  return {
+    mode: 'bulk',
+    writeMode: 'replace',
+    summary: {
+      totalStudents: rows.length,
+      inserts,
+      updates,
+      skips,
+      totalGoals,
+      filteredOutBySchool: data.summary.filteredOutBySchool,
+      filteredOutSchools: data.summary.filteredOutSchools,
+    },
+    files,
+    exceptions,
+    rows,
+  };
+}
