@@ -400,4 +400,29 @@ describe('POST /api/import-students — multi-school first-import regression (SP
     expect(goalText).toContain('Mt Diablo'); // its own goal
     expect(goalText).not.toContain('Bancroft'); // NOT the other student's goal
   });
+
+  it('errors with a clear "none are at your school" message (no misleading count) when the file has no selected-school students', async () => {
+    // Every student in the file is at another school; with Mt Diablo selected,
+    // all are scoped out. The message names the selected school and the schools
+    // actually found, and no longer leads with a confusing count.
+    const otherSchoolOnlyCsv = () =>
+      fileFrom(
+        buildSeisGoalsCsvFrom([
+          {
+            0: '2000401', 2: 'Torres', 3: 'Tina', 5: '02', 6: 'Bancroft Elementary School',
+            9: '05/01/2026', 11: 'Reading', 12: 'Academic #1: 2026 - 2027', 17: 'Resource Specialist',
+            14: 'By 5/1/2027, Tina will read 90 words per minute with 95% accuracy in 3 of 4 trials.',
+          },
+        ]),
+        'students.csv',
+        'text/csv',
+      );
+
+    const result = await runPost(bancroftProviderTables(), requestWith({ studentsFile: otherSchoolOnlyCsv() }, schoolCtx));
+    expect(result.status).toBe(400);
+    const error = (result.body as { error?: string }).error ?? '';
+    expect(error).toContain('None of the students in this file are at Mt Diablo Elementary');
+    expect(error).toContain('Bancroft Elementary School');
+    expect(error).not.toMatch(/All \d+ students/); // the misleading count is gone
+  });
 });

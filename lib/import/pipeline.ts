@@ -235,7 +235,7 @@ export async function runStudentsPreview(ctx: PipelineContext, file: File): Prom
     perf.end({ success: false });
     return NextResponse.json(
       {
-        error: `All ${filter.filteredOutCount} students in this file belong to other schools (${filter.filteredOutSchools.join(', ')}). Please switch to the correct school or upload a file with students from ${currentSchoolSite}.`,
+        error: `None of the students in this file are at ${currentSchoolSite} — they're at ${filter.filteredOutSchools.join(', ')}. Switch to the matching school in the top-bar selector, or upload a file that includes ${currentSchoolSite} students.`,
         filteredOutSchools: filter.filteredOutSchools,
       },
       { status: 400 },
