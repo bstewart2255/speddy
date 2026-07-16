@@ -32,7 +32,7 @@ jest.mock('@/lib/monitoring/performance-alerts', () => ({
 
 import { createClient } from '@/lib/supabase/server';
 import { POST } from '@/app/api/import-students/route';
-import { SEIS_GOALS_CSV, readFixture } from '../lib/parsers/fixtures/builders';
+import { SEIS_GOALS_CSV, buildSeisGoalsCsvFrom, readFixture } from '../lib/parsers/fixtures/builders';
 
 const USER_ID = 'provider-1';
 
@@ -285,5 +285,79 @@ describe('POST /api/import-students — upload size guard (SPE-260)', () => {
     } as unknown as Request;
     const res = await POST(req as unknown as Parameters<typeof POST>[0]);
     expect(res.status).toBe(413);
+  });
+});
+
+/**
+ * SPE-264 regression: a multi-school provider's FIRST import into a school where
+ * they have no students yet.
+ *
+ * Before the fix, the pipeline derived a parse-time school filter from the
+ * schools where the provider ALREADY had students. When the selected school was
+ * not among them (the first-import case), every student for that school was
+ * dropped before the real (selected-school) filter ran, and the request failed
+ * with a false "All N students belong to other schools" error. The scenario here
+ * — existing students only at Bancroft, importing into Mt Diablo — reproduced it:
+ * the Mt Diablo student was dropped at parse time, then the surviving Bancroft
+ * student was scoped out, yielding the false 400. School scoping now happens in
+ * exactly one place (applySchoolFilter), so the Mt Diablo student imports and
+ * Bancroft is correctly scoped out.
+ */
+const DB_STUDENTS_BANCROFT_ONLY = [
+  {
+    id: 'stu-bancroft-1', initials: 'ZZ', grade_level: '5',
+    school_site: 'Bancroft Elementary School', school_id: 'school-2',
+    sessions_per_week: null, minutes_per_session: null, teacher_id: null,
+  },
+];
+
+const bancroftProviderTables = (): TableData => ({
+  profiles: { data: { works_at_multiple_schools: true, role: 'resource' }, error: null },
+  students: { data: DB_STUDENTS_BANCROFT_ONLY, error: null },
+  student_details: { data: [], error: null },
+  teachers: { data: DB_TEACHERS, error: null },
+});
+
+// One student at the selected school (Mt Diablo), one at the provider's existing
+// school (Bancroft) — both with a resource-matching Reading goal.
+const firstImportCsv = () =>
+  fileFrom(
+    buildSeisGoalsCsvFrom([
+      {
+        0: '2000201', 2: 'Keller', 3: 'Kim', 5: '02', 6: 'Mt Diablo Elementary School',
+        9: '05/01/2026', 11: 'Reading', 12: 'Academic #1: 2026 - 2027', 17: 'Resource Specialist',
+        14: 'By 5/1/2027, given a grade-level passage, Kim will read 90 words per minute with 95% accuracy in 3 of 4 trials.',
+      },
+      {
+        0: '2000202', 2: 'Barnes', 3: 'Ben', 5: '03', 6: 'Bancroft Elementary School',
+        9: '05/01/2026', 11: 'Reading', 12: 'Academic #1: 2026 - 2027', 17: 'Resource Specialist',
+        14: 'By 5/1/2027, given a grade-level passage, Ben will read 100 words per minute with 95% accuracy in 3 of 4 trials.',
+      },
+    ]),
+    'students.csv',
+    'text/csv',
+  );
+
+describe('POST /api/import-students — multi-school first-import regression (SPE-264)', () => {
+  it('imports selected-school students even when the provider has no existing students there', async () => {
+    const result = await runPost(
+      bancroftProviderTables(),
+      requestWith({ studentsFile: firstImportCsv() }, schoolCtx),
+    );
+
+    // Must NOT be the false "all belong to other schools" 400.
+    expect(result.status).toBe(200);
+
+    const data = (result.body as {
+      data?: {
+        students?: Array<{ lastName?: string }>;
+        summary?: { filteredOutSchools?: string[] };
+      };
+    }).data;
+
+    const lastNames = (data?.students ?? []).map((s) => s.lastName);
+    expect(lastNames).toContain('Keller'); // selected-school student imports
+    expect(lastNames).not.toContain('Barnes'); // other-school student scoped out
+    expect(data?.summary?.filteredOutSchools).toContain('Bancroft Elementary School');
   });
 });

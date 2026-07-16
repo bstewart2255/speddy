@@ -574,10 +574,6 @@ exports[`POST /api/import-students — preview characterization (SPE-230) goals-
           "matched": 3,
           "notes": [
             {
-              "message": "Student "Drew Diaz" attends "Out of District- MOU" which doesn't match your school(s). Skipping.",
-              "row": 5,
-            },
-            {
               "message": "Goal for student GG (grade 1) has no Area of Need, Annual Goal #, or Person Responsible and could not be routed to a provider — please review and assign it manually.",
               "row": 8,
             },
@@ -587,10 +583,6 @@ exports[`POST /api/import-students — preview characterization (SPE-230) goals-
       ],
       "parseErrors": [],
       "parseWarnings": [
-        {
-          "message": "Student "Drew Diaz" attends "Out of District- MOU" which doesn't match your school(s). Skipping.",
-          "row": 5,
-        },
         {
           "message": "Goal for student GG (grade 1) has no Area of Need, Annual Goal #, or Person Responsible and could not be routed to a provider — please review and assign it manually.",
           "row": 8,

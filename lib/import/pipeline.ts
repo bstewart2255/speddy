@@ -179,24 +179,18 @@ export async function runStudentsPreview(ctx: PipelineContext, file: File): Prom
     return NextResponse.json({ error: 'Failed to fetch your students from database' }, { status: 500 });
   }
 
-  // Multi-school CSV users: derive their school sites so the parser can annotate
-  // school-of-attendance.
-  let userSchools: string[] | undefined;
-  if (isCSV && profile?.works_at_multiple_schools && dbStudents && dbStudents.length > 0) {
-    userSchools = Array.from(
-      new Set(
-        dbStudents
-          .map(s => s.school_site)
-          .filter((site): site is string => site !== null && site !== undefined && site.trim() !== ''),
-      ),
-    );
-  }
-
+  // Parse the whole file — do NOT pre-filter students by school here. Scoping to
+  // the provider's current school happens once, downstream, in applySchoolFilter
+  // (which keys off the selected school). A previous parse-time filter keyed off
+  // the schools where the provider ALREADY had students; when importing into a
+  // school with no students yet (the first-import case), it dropped every student
+  // in the file, producing a false "all belong to other schools" error. Keep
+  // school scoping in exactly one place (SPE-264).
   const fileType = isCSV ? 'CSV' : 'Excel';
   const parsePerf = measurePerformanceWithAlerts(`parse_${fileType.toLowerCase()}`, 'api');
   let parseResult;
   try {
-    parseResult = await parseStudentsFile(file, { isCSV, userSchools, providerRole: profile?.role ?? undefined });
+    parseResult = await parseStudentsFile(file, { isCSV, providerRole: profile?.role ?? undefined });
     parsePerf.end({ success: true });
   } catch (error) {
     parsePerf.end({ success: false });
