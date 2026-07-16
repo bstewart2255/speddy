@@ -93,3 +93,27 @@ describe('parseSEISReport — ~5 metadata rows above the header', () => {
     expect(result).toMatchSnapshot();
   });
 });
+
+describe('parseSEISReport — blank-metadata goal warning (SPE-248)', () => {
+  it('surfaces a blank-metadata goal row for a keyworded role (it would otherwise be filtered out)', async () => {
+    // 'resource' has a service code, so keyword filtering applies. The Gomez row
+    // has blank Area of Need / Annual Goal # / Person Responsible, so it has no
+    // routing signal and its goal is dropped — but surfaced as a review warning
+    // instead of vanishing silently (matches the CSV path).
+    const buffer = await buildSeisXlsxHeaderRow1();
+    const result = await parseSEISReport(buffer, { providerRole: 'resource' });
+
+    expect(result.warnings).toHaveLength(1);
+    expect(result.warnings[0].message).toMatch(
+      /^Goal for student GG \(grade .+?\) has no Area of Need, Annual Goal #, or Person Responsible/
+    );
+    // The unroutable goal itself is filtered from this role's import.
+    expect(result.students.some((s) => s.lastName === 'Gomez')).toBe(false);
+  });
+
+  it('emits no such warning for a role with no service code (psychologist imports everything)', async () => {
+    const buffer = await buildSeisXlsxHeaderRow1();
+    const result = await parseSEISReport(buffer, { providerRole: 'psychologist' });
+    expect(result.warnings).toEqual([]);
+  });
+});

@@ -6,7 +6,7 @@
 import { parse } from 'csv-parse/sync';
 import { TextDecoder } from 'util';
 import { normalizeSchoolName } from '../school-helpers';
-import { getServiceTypeCode, getServiceTypeNameForRole, isGoalForProviderByKeywords, hasNoProviderRoutingSignal } from './service-type-mapping';
+import { getServiceTypeCode, getServiceTypeNameForRole, isGoalForProviderByKeywords, hasNoProviderRoutingSignal, blankMetadataGoalWarning } from './service-type-mapping';
 import { normalizeGradeLevel } from '../utils/grade-parser';
 import { buildStudentDedupKey, normalizeInitialsForKey } from '../utils/student-dedup-key';
 
@@ -314,7 +314,7 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
           if (hasGoalText) {
             warnings.push({
               row: rowIndex + 1,
-              message: `Goal for student ${initials} (grade ${normalizedGrade}) has no Area of Need, Annual Goal #, or Person Responsible and could not be routed to a provider — please review and assign it manually.`,
+              message: blankMetadataGoalWarning(initials, normalizedGrade),
             });
           }
         }

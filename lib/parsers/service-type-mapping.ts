@@ -171,6 +171,15 @@ export function hasNoProviderRoutingSignal(
 }
 
 /**
+ * The single "needs review" message for a goal row that hasNoProviderRoutingSignal.
+ * Shared so the CSV (parseCSVReport) and XLSX (parseSEISReport) paths can't drift
+ * (SPE-247/SPE-248).
+ */
+export function blankMetadataGoalWarning(initials: string, gradeLevel: string): string {
+  return `Goal for student ${initials} (grade ${gradeLevel}) has no Area of Need, Annual Goal #, or Person Responsible and could not be routed to a provider — please review and assign it manually.`;
+}
+
+/**
  * Check if a goal belongs to a provider based on multiple column values
  * Checks Area of Need, Annual Goal #, and Person Responsible columns
  *

@@ -16,6 +16,7 @@ exports[`parseSEISReport — ~5 metadata rows above the header matches the golde
     "totalRows": 1,
   },
   "students": [],
+  "warnings": [],
 }
 `;
 
@@ -115,6 +116,7 @@ exports[`parseSEISReport — header on row 1 (row-skip fixed) matches the golden
       "schoolOfAttendance": "Mt Diablo Elementary School",
     },
   ],
+  "warnings": [],
 }
 `;
 
@@ -166,5 +168,6 @@ exports[`parseSEISReport — title rows then header on row 3 matches the golden 
       "schoolOfAttendance": "Mt Diablo Elementary School",
     },
   ],
+  "warnings": [],
 }
 `;
