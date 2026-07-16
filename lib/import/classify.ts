@@ -232,12 +232,7 @@ export function buildStudentPreviews(params: {
         matchedStudent,
         goalTexts,
         scheduleData,
-        // An unresolved class-list teacher (teacherId === null) means "no teacher
-        // info", not "clear the teacher". Pass undefined so it never counts as a
-        // change — otherwise a student with an existing teacher would show a
-        // spurious teacher change and, on confirm, have the link cleared. Mirrors
-        // the roster path's classifyRosterChange guard (SPE-260).
-        teacherMatchResult?.teacherId ?? undefined
+        teacherMatchResult?.teacherId
       );
 
       const goalComparison = compareGoals(matchedStudent.iep_goals, goalTexts);
