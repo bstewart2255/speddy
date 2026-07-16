@@ -328,7 +328,10 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
           index,
           student,
           initials: initialsNormalized,
-          gradeLevel: student.gradeLevel,
+          // Metadata only (feeds the "already exists" error message via
+          // mapUpsertResults, never a write) — the write payload above keeps the
+          // raw null so the RPC's COALESCE preserves an existing grade.
+          gradeLevel: student.gradeLevel ?? '',
           action,
           studentId: student.studentId,
           newRequirements: {
