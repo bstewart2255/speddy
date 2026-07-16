@@ -227,16 +227,34 @@ export function buildStudentPreviews(params: {
     let goalsRemoved: string[] | undefined;
 
     if (!isNew && matchedStudent) {
-      // Check for changes to determine if update or skip
+      // An unresolved class-list teacher (teacherId === null) is not a real
+      // change — pass undefined so hasChanges doesn't fabricate a "teacher → none"
+      // change (SPE-262). The row is still kept actionable below.
       const changeCheck = hasChanges(
         matchedStudent,
         goalTexts,
         scheduleData,
-        teacherMatchResult?.teacherId
+        teacherMatchResult?.teacherId ?? undefined
       );
 
       const goalComparison = compareGoals(matchedStudent.iep_goals, goalTexts);
-      const anyChanges = changeCheck.hasGoalChanges || changeCheck.hasScheduleChanges || changeCheck.hasTeacherChanges;
+      // A named class-list teacher that didn't resolve to a DB teacher is surfaced
+      // as a reviewable exception, so keep the row actionable (an 'update') even
+      // when nothing else changed: the user resolves it in the review's exceptions
+      // queue and it's applied on confirm. We deliberately do NOT fabricate a
+      // teacher change for it (the teacher block below only fires for a resolved
+      // teacher), so the preview shows no misleading "teacher → none" (SPE-262).
+      // The non-blank name check mirrors the exception-creation rule in
+      // adaptBulkPreview, so we never mark a row 'update' with nothing to act on.
+      const hasUnresolvedTeacher =
+        !!teacherMatchResult &&
+        teacherMatchResult.teacherId === null &&
+        !!teacherMatchResult.teacherName?.trim();
+      const anyChanges =
+        changeCheck.hasGoalChanges ||
+        changeCheck.hasScheduleChanges ||
+        changeCheck.hasTeacherChanges ||
+        hasUnresolvedTeacher;
 
       if (anyChanges) {
         action = 'update';

@@ -159,6 +159,62 @@ describe('buildStudentPreviews (main path)', () => {
     expect(p.action).toBe('update');
     expect(p.changes?.teacher?.new).toEqual({ teacherId: 't-barrera', teacherName: 'Elena Barrera' });
   });
+
+  // SPE-262: an unresolved class-list teacher keeps the row actionable (so it can
+  // be resolved in the review's exceptions queue) but is NOT shown as a change.
+  const ghost = () => classListStudent({ teacher: { rawName: 'Ghost Q', lastName: 'Ghost', firstInitial: 'Q', teacherNumber: '' } });
+
+  it('keeps a matched student actionable for an unresolved class-list teacher, without a fabricated teacher change', () => {
+    const { studentPreviews } = buildStudentPreviews({
+      parsedStudents: [parsed({ goals: ['G'] })],
+      databaseStudents: [dbStudent({ iep_goals: ['G'], teacher_id: 't-existing' })],
+      deliveriesData: null,
+      classListData: new Map([['doe_john', ghost()]]), // 'Ghost' won't resolve against TEACHERS
+      dbTeachers: TEACHERS,
+    });
+    const p = studentPreviews[0];
+    expect(p.action).toBe('update'); // stays selectable so the user can resolve the teacher
+    expect(p.changes?.teacher).toBeUndefined(); // no misleading "teacher → none"
+    expect(p.teacher).toMatchObject({ teacherId: null, teacherName: 'Ghost Q' }); // surfaced for resolution
+  });
+
+  it('omits an unresolved class-list teacher from changes even alongside a real goal change', () => {
+    const { studentPreviews } = buildStudentPreviews({
+      parsedStudents: [parsed({ goals: ['New goal'] })],
+      databaseStudents: [dbStudent({ iep_goals: ['Old goal'], teacher_id: 't-existing' })],
+      deliveriesData: null,
+      classListData: new Map([['doe_john', ghost()]]),
+      dbTeachers: TEACHERS,
+    });
+    const p = studentPreviews[0];
+    expect(p.action).toBe('update');
+    expect(p.changes?.goals).toBeDefined();
+    expect(p.changes?.teacher).toBeUndefined();
+  });
+
+  it('skips a matched student when the resolved teacher is unchanged and goals match', () => {
+    const { studentPreviews } = buildStudentPreviews({
+      parsedStudents: [parsed({ goals: ['G'] })],
+      databaseStudents: [dbStudent({ iep_goals: ['G'], teacher_id: 't-barrera' })], // already Barrera
+      deliveriesData: null,
+      classListData: new Map([['doe_john', classListStudent()]]), // resolves to Barrera
+      dbTeachers: TEACHERS,
+    });
+    const p = studentPreviews[0];
+    expect(p.action).toBe('skip'); // resolved teacher matches existing + goals match = no change
+    expect(p.changes).toBeUndefined();
+  });
+
+  it('does not force an update for a class-list match whose teacher name is blank (nothing to review)', () => {
+    const { studentPreviews } = buildStudentPreviews({
+      parsedStudents: [parsed({ goals: ['G'] })],
+      databaseStudents: [dbStudent({ iep_goals: ['G'], teacher_id: 't-existing' })],
+      deliveriesData: null,
+      classListData: new Map([['doe_john', classListStudent({ teacher: { rawName: '', lastName: '', firstInitial: '', teacherNumber: '' } })]]),
+      dbTeachers: TEACHERS,
+    });
+    expect(studentPreviews[0].action).toBe('skip'); // no teacher name to resolve + goals match = no change
+  });
 });
 
 describe('buildUpdatePreviews (deliveries/class-list update-only path)', () => {
