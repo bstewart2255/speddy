@@ -11,9 +11,11 @@
  *
  * The read-merge-write runs inside a single transactional RPC (`merge_iep_goals`,
  * SPE-259) so two concurrent confirmations for the same student can't overwrite
- * each other and drop a goal. Ownership is enforced inside the function by
- * scoping to the caller's students (`provider_id = userId`); RLS on
- * `student_details` (via the user-scoped client) is the backstop.
+ * each other and drop a goal. Ownership is enforced inside the function
+ * (`students.provider_id = p_provider_id`), where the route passes the
+ * authenticated user's id as `p_provider_id`. The RPC is SECURITY DEFINER, so it
+ * bypasses `student_details` RLS — the in-function ownership check is the guard,
+ * matching the other import RPCs (`import_student_atomic`, `upsert_students_atomic`).
  */
 
 import { NextResponse } from 'next/server';
