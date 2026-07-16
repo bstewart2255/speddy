@@ -1,0 +1,809 @@
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
+
+exports[`POST /api/import-students — preview characterization (SPE-230) all-three files: goals + deliveries + class list (full enrichment) 1`] = `
+{
+  "body": {
+    "data": {
+      "files": [
+        {
+          "fileKey": "studentsFile",
+          "fileName": "students.csv",
+          "filtered": 0,
+          "matched": 4,
+          "notes": [
+            {
+              "message": "Goal for student GG (grade 1) has no Area of Need, Annual Goal #, or Person Responsible and could not be routed to a provider — please review and assign it manually.",
+              "row": 8,
+            },
+          ],
+          "read": 4,
+        },
+        {
+          "fileKey": "deliveriesFile",
+          "fileName": "deliveries.csv",
+          "filtered": 5,
+          "matched": 2,
+          "notes": [
+            {
+              "message": "Monthly service (120 min/month) needs review — enter the weekly minutes manually: 120 min Monthly",
+              "row": 10,
+            },
+          ],
+          "read": 7,
+        },
+        {
+          "fileKey": "classListFile",
+          "fileName": "class-list.txt",
+          "filtered": 5,
+          "matched": 2,
+          "notes": [],
+          "read": 7,
+        },
+      ],
+      "parseErrors": [],
+      "parseWarnings": [
+        {
+          "message": "Goal for student GG (grade 1) has no Area of Need, Annual Goal #, or Person Responsible and could not be routed to a provider — please review and assign it manually.",
+          "row": 8,
+        },
+        {
+          "message": "Monthly service (120 min/month) needs review — enter the weekly minutes manually: 120 min Monthly",
+          "row": 10,
+          "source": "deliveries",
+        },
+      ],
+      "students": [
+        {
+          "action": "update",
+          "changes": {
+            "schedule": {
+              "new": {
+                "minutesPerSession": 45,
+                "sessionsPerWeek": 1,
+              },
+              "old": null,
+            },
+            "teacher": {
+              "new": {
+                "teacherId": "t-barrera",
+                "teacherName": "Elena Barrera",
+              },
+              "old": null,
+            },
+          },
+          "firstName": "Ana",
+          "goals": [
+            {
+              "text": "By 5/1/2027, given a grade-level passage, Ana will read 90 words per minute with 95% accuracy in 3 of 4 trials.",
+            },
+            {
+              "text": "By 5/1/2027, Ana will write a personal narrative with a beginning, middle, and end in 4 of 5 samples.",
+            },
+          ],
+          "gradeLevel": "1",
+          "initials": "AA",
+          "lastName": "Alvarez",
+          "matchConfidence": "high",
+          "matchReason": "Initials match: AA; Grade matches: 1; Full name matches",
+          "matchedStudentId": "stu-alvarez",
+          "matchedStudentInitials": "AA",
+          "schedule": {
+            "frequency": "45 min Weekly",
+            "minutesPerSession": 45,
+            "sessionsPerWeek": 1,
+            "weeklyMinutes": 45,
+          },
+          "teacher": {
+            "confidence": "high",
+            "reason": "Matched by last name and first initial",
+            "teacherId": "t-barrera",
+            "teacherName": "Elena Barrera",
+          },
+        },
+        {
+          "action": "update",
+          "changes": {
+            "goals": {
+              "added": [
+                "By 10/15/2026, given manipulatives, Ben will solve two-digit addition problems with 80% accuracy across 3 sessions.",
+              ],
+              "removed": [
+                "An old goal slated for removal.",
+              ],
+              "unchanged": [],
+            },
+            "schedule": {
+              "new": {
+                "minutesPerSession": 30,
+                "sessionsPerWeek": 5,
+              },
+              "old": {
+                "minutesPerSession": 60,
+                "sessionsPerWeek": 1,
+              },
+            },
+            "teacher": {
+              "new": {
+                "teacherId": "t-barrera",
+                "teacherName": "Elena Barrera",
+              },
+              "old": null,
+            },
+          },
+          "firstName": "Ben",
+          "goals": [
+            {
+              "text": "By 10/15/2026, given manipulatives, Ben will solve two-digit addition problems with 80% accuracy across 3 sessions.",
+            },
+          ],
+          "goalsRemoved": [
+            "An old goal slated for removal.",
+          ],
+          "gradeLevel": "2",
+          "initials": "BB",
+          "lastName": "Bishop",
+          "matchConfidence": "high",
+          "matchReason": "Initials match: BB; Grade matches: 2; Full name matches",
+          "matchedStudentId": "stu-bishop",
+          "matchedStudentInitials": "BB",
+          "schedule": {
+            "frequency": "30 min x 5 Times = 150 min Weekly",
+            "minutesPerSession": 30,
+            "sessionsPerWeek": 5,
+            "weeklyMinutes": 150,
+          },
+          "teacher": {
+            "confidence": "high",
+            "reason": "Matched by last name and first initial",
+            "teacherId": "t-barrera",
+            "teacherName": "Elena Barrera",
+          },
+        },
+        {
+          "action": "insert",
+          "firstName": "Ivan",
+          "goals": [
+            {
+              "text": "By 2/22/2027, Ivan will write a three-sentence paragraph with a topic sentence in 4 of 5 samples.",
+            },
+          ],
+          "gradeLevel": "3",
+          "initials": "II",
+          "lastName": "Ingram",
+        },
+        {
+          "action": "insert",
+          "firstName": "Jae",
+          "goals": [
+            {
+              "text": "By 6/1/2027 Jae will:
+- decode multisyllabic words
+- read 100 wpm with 95% accuracy",
+            },
+          ],
+          "gradeLevel": "4",
+          "initials": "JJ",
+          "lastName": "Jones",
+        },
+      ],
+      "summary": {
+        "filteredOutBySchool": 0,
+        "inserts": 2,
+        "skips": 0,
+        "total": 4,
+        "updates": 2,
+        "withGoalsRemoved": 1,
+        "withSchedule": 2,
+        "withTeacher": 2,
+      },
+      "unmatchedStudents": [
+        {
+          "name": "Foster, Finn",
+          "source": "deliveries",
+        },
+        {
+          "name": "Gomez, Gia",
+          "source": "deliveries",
+        },
+        {
+          "name": "Hunt, Hana",
+          "source": "deliveries",
+        },
+        {
+          "name": "Ng-Patel, Nadia",
+          "source": "deliveries",
+        },
+        {
+          "name": "Van Horn, Vera",
+          "source": "deliveries",
+        },
+        {
+          "name": "Cho, Cora",
+          "source": "classList",
+        },
+        {
+          "name": "Davis-Wong, Drew",
+          "source": "classList",
+        },
+        {
+          "name": "Evans, Ella",
+          "source": "classList",
+        },
+        {
+          "name": "Foster, Finn",
+          "source": "classList",
+        },
+        {
+          "name": "Van Horn, Vera",
+          "source": "classList",
+        },
+      ],
+    },
+    "success": true,
+  },
+  "status": 200,
+}
+`;
+
+exports[`POST /api/import-students — preview characterization (SPE-230) class-list-only: update-only mode with teacher matching 1`] = `
+{
+  "body": {
+    "data": {
+      "files": [
+        {
+          "fileKey": "classListFile",
+          "fileName": "class-list.txt",
+          "filtered": 5,
+          "matched": 2,
+          "notes": [],
+          "read": 7,
+        },
+      ],
+      "mode": "update",
+      "parseErrors": [],
+      "parseWarnings": [],
+      "students": [
+        {
+          "action": "update",
+          "firstName": "Ana",
+          "gradeLevel": "1",
+          "initials": "AA",
+          "lastName": "Alvarez",
+          "studentId": "stu-alvarez",
+          "teacher": {
+            "confidence": "high",
+            "reason": "Matched by last name and first initial",
+            "teacherId": "t-barrera",
+            "teacherName": "Elena Barrera",
+          },
+        },
+        {
+          "action": "update",
+          "firstName": "Vera",
+          "gradeLevel": "4",
+          "initials": "VV",
+          "lastName": "Van Horn",
+          "studentId": "stu-vanhorn",
+          "teacher": {
+            "confidence": "none",
+            "reason": "No match found for "Massey C"",
+            "teacherId": null,
+            "teacherName": "Massey,C",
+          },
+        },
+      ],
+      "summary": {
+        "inserts": 0,
+        "skips": 0,
+        "total": 2,
+        "updates": 2,
+        "withSchedule": 0,
+        "withTeacher": 2,
+      },
+      "unmatchedStudents": [
+        {
+          "name": "Bishop, Ben",
+          "source": "classList",
+        },
+        {
+          "name": "Cho, Cora",
+          "source": "classList",
+        },
+        {
+          "name": "Davis-Wong, Drew",
+          "source": "classList",
+        },
+        {
+          "name": "Evans, Ella",
+          "source": "classList",
+        },
+        {
+          "name": "Foster, Finn",
+          "source": "classList",
+        },
+      ],
+    },
+    "mode": "update",
+    "success": true,
+  },
+  "status": 200,
+}
+`;
+
+exports[`POST /api/import-students — preview characterization (SPE-230) deliveries-only: update-only mode (role-filtered deliveries matched to existing students) 1`] = `
+{
+  "body": {
+    "data": {
+      "files": [
+        {
+          "fileKey": "deliveriesFile",
+          "fileName": "deliveries.csv",
+          "filtered": 5,
+          "matched": 2,
+          "notes": [
+            {
+              "message": "Monthly service (120 min/month) needs review — enter the weekly minutes manually: 120 min Monthly",
+              "row": 10,
+            },
+          ],
+          "read": 7,
+        },
+      ],
+      "mode": "update",
+      "parseErrors": [],
+      "parseWarnings": [
+        {
+          "message": "Monthly service (120 min/month) needs review — enter the weekly minutes manually: 120 min Monthly",
+          "row": 10,
+          "source": "deliveries",
+        },
+      ],
+      "students": [
+        {
+          "action": "update",
+          "firstName": "Ana",
+          "gradeLevel": "1",
+          "initials": "AA",
+          "lastName": "Alvarez",
+          "schedule": {
+            "frequency": "45 min Weekly",
+            "minutesPerSession": 45,
+            "sessionsPerWeek": 1,
+            "weeklyMinutes": 45,
+          },
+          "studentId": "stu-alvarez",
+        },
+        {
+          "action": "update",
+          "firstName": "Vera",
+          "gradeLevel": "4",
+          "initials": "VV",
+          "lastName": "Van Horn",
+          "schedule": {
+            "frequency": "45 min Weekly",
+            "minutesPerSession": 45,
+            "sessionsPerWeek": 1,
+            "weeklyMinutes": 45,
+          },
+          "studentId": "stu-vanhorn",
+        },
+      ],
+      "summary": {
+        "inserts": 0,
+        "skips": 0,
+        "total": 2,
+        "updates": 2,
+        "withSchedule": 2,
+        "withTeacher": 0,
+      },
+      "unmatchedStudents": [
+        {
+          "name": "Bishop, Ben",
+          "source": "deliveries",
+        },
+        {
+          "name": "Foster, Finn",
+          "source": "deliveries",
+        },
+        {
+          "name": "Gomez, Gia",
+          "source": "deliveries",
+        },
+        {
+          "name": "Hunt, Hana",
+          "source": "deliveries",
+        },
+        {
+          "name": "Ng-Patel, Nadia",
+          "source": "deliveries",
+        },
+      ],
+    },
+    "mode": "update",
+    "success": true,
+  },
+  "status": 200,
+}
+`;
+
+exports[`POST /api/import-students — preview characterization (SPE-230) goals-only with multi-school filtering (works_at_multiple_schools) 1`] = `
+{
+  "body": {
+    "data": {
+      "files": [
+        {
+          "fileKey": "studentsFile",
+          "fileName": "students.csv",
+          "filtered": 1,
+          "matched": 3,
+          "notes": [
+            {
+              "message": "Student "Drew Diaz" attends "Out of District- MOU" which doesn't match your school(s). Skipping.",
+              "row": 5,
+            },
+            {
+              "message": "Goal for student GG (grade 1) has no Area of Need, Annual Goal #, or Person Responsible and could not be routed to a provider — please review and assign it manually.",
+              "row": 8,
+            },
+          ],
+          "read": 4,
+        },
+      ],
+      "parseErrors": [],
+      "parseWarnings": [
+        {
+          "message": "Student "Drew Diaz" attends "Out of District- MOU" which doesn't match your school(s). Skipping.",
+          "row": 5,
+        },
+        {
+          "message": "Goal for student GG (grade 1) has no Area of Need, Annual Goal #, or Person Responsible and could not be routed to a provider — please review and assign it manually.",
+          "row": 8,
+        },
+      ],
+      "students": [
+        {
+          "action": "skip",
+          "firstName": "Ana",
+          "goals": [
+            {
+              "text": "By 5/1/2027, given a grade-level passage, Ana will read 90 words per minute with 95% accuracy in 3 of 4 trials.",
+            },
+            {
+              "text": "By 5/1/2027, Ana will write a personal narrative with a beginning, middle, and end in 4 of 5 samples.",
+            },
+          ],
+          "gradeLevel": "1",
+          "initials": "AA",
+          "lastName": "Alvarez",
+          "matchConfidence": "high",
+          "matchReason": "Initials match: AA; Grade matches: 1; Full name matches",
+          "matchedStudentId": "stu-alvarez",
+          "matchedStudentInitials": "AA",
+        },
+        {
+          "action": "insert",
+          "firstName": "Ivan",
+          "goals": [
+            {
+              "text": "By 2/22/2027, Ivan will write a three-sentence paragraph with a topic sentence in 4 of 5 samples.",
+            },
+          ],
+          "gradeLevel": "3",
+          "initials": "II",
+          "lastName": "Ingram",
+        },
+        {
+          "action": "insert",
+          "firstName": "Jae",
+          "goals": [
+            {
+              "text": "By 6/1/2027 Jae will:
+- decode multisyllabic words
+- read 100 wpm with 95% accuracy",
+            },
+          ],
+          "gradeLevel": "4",
+          "initials": "JJ",
+          "lastName": "Jones",
+        },
+      ],
+      "summary": {
+        "filteredOutBySchool": 1,
+        "filteredOutSchools": [
+          "St Mary School",
+        ],
+        "inserts": 2,
+        "skips": 1,
+        "total": 3,
+        "updates": 0,
+        "withGoalsRemoved": 0,
+        "withSchedule": 0,
+        "withTeacher": 0,
+      },
+      "unmatchedStudents": [],
+    },
+    "success": true,
+  },
+  "status": 200,
+}
+`;
+
+exports[`POST /api/import-students — preview characterization (SPE-230) goals-only: SEIS student goals file, no enrichment 1`] = `
+{
+  "body": {
+    "data": {
+      "files": [
+        {
+          "fileKey": "studentsFile",
+          "fileName": "students.csv",
+          "filtered": 0,
+          "matched": 4,
+          "notes": [
+            {
+              "message": "Goal for student GG (grade 1) has no Area of Need, Annual Goal #, or Person Responsible and could not be routed to a provider — please review and assign it manually.",
+              "row": 8,
+            },
+          ],
+          "read": 4,
+        },
+      ],
+      "parseErrors": [],
+      "parseWarnings": [
+        {
+          "message": "Goal for student GG (grade 1) has no Area of Need, Annual Goal #, or Person Responsible and could not be routed to a provider — please review and assign it manually.",
+          "row": 8,
+        },
+      ],
+      "students": [
+        {
+          "action": "skip",
+          "firstName": "Ana",
+          "goals": [
+            {
+              "text": "By 5/1/2027, given a grade-level passage, Ana will read 90 words per minute with 95% accuracy in 3 of 4 trials.",
+            },
+            {
+              "text": "By 5/1/2027, Ana will write a personal narrative with a beginning, middle, and end in 4 of 5 samples.",
+            },
+          ],
+          "gradeLevel": "1",
+          "initials": "AA",
+          "lastName": "Alvarez",
+          "matchConfidence": "high",
+          "matchReason": "Initials match: AA; Grade matches: 1; Full name matches",
+          "matchedStudentId": "stu-alvarez",
+          "matchedStudentInitials": "AA",
+        },
+        {
+          "action": "update",
+          "changes": {
+            "goals": {
+              "added": [
+                "By 10/15/2026, given manipulatives, Ben will solve two-digit addition problems with 80% accuracy across 3 sessions.",
+              ],
+              "removed": [
+                "An old goal slated for removal.",
+              ],
+              "unchanged": [],
+            },
+          },
+          "firstName": "Ben",
+          "goals": [
+            {
+              "text": "By 10/15/2026, given manipulatives, Ben will solve two-digit addition problems with 80% accuracy across 3 sessions.",
+            },
+          ],
+          "goalsRemoved": [
+            "An old goal slated for removal.",
+          ],
+          "gradeLevel": "2",
+          "initials": "BB",
+          "lastName": "Bishop",
+          "matchConfidence": "high",
+          "matchReason": "Initials match: BB; Grade matches: 2; Full name matches",
+          "matchedStudentId": "stu-bishop",
+          "matchedStudentInitials": "BB",
+        },
+        {
+          "action": "insert",
+          "firstName": "Ivan",
+          "goals": [
+            {
+              "text": "By 2/22/2027, Ivan will write a three-sentence paragraph with a topic sentence in 4 of 5 samples.",
+            },
+          ],
+          "gradeLevel": "3",
+          "initials": "II",
+          "lastName": "Ingram",
+        },
+        {
+          "action": "insert",
+          "firstName": "Jae",
+          "goals": [
+            {
+              "text": "By 6/1/2027 Jae will:
+- decode multisyllabic words
+- read 100 wpm with 95% accuracy",
+            },
+          ],
+          "gradeLevel": "4",
+          "initials": "JJ",
+          "lastName": "Jones",
+        },
+      ],
+      "summary": {
+        "filteredOutBySchool": 0,
+        "inserts": 2,
+        "skips": 1,
+        "total": 4,
+        "updates": 1,
+        "withGoalsRemoved": 1,
+        "withSchedule": 0,
+        "withTeacher": 0,
+      },
+      "unmatchedStudents": [],
+    },
+    "success": true,
+  },
+  "status": 200,
+}
+`;
+
+exports[`POST /api/import-students — preview characterization (SPE-230) no files: 400 1`] = `
+{
+  "body": {
+    "error": "No files provided",
+  },
+  "status": 400,
+}
+`;
+
+exports[`POST /api/import-students — preview characterization (SPE-230) roster-template: Speddy template CSV (initials + grade + inline teacher/schedule) 1`] = `
+{
+  "body": {
+    "data": {
+      "files": [
+        {
+          "fileKey": "studentsFile",
+          "fileName": "roster.csv",
+          "filtered": 0,
+          "matched": 5,
+          "notes": [],
+          "read": 5,
+        },
+      ],
+      "parseErrors": [],
+      "parseWarnings": [],
+      "students": [
+        {
+          "action": "update",
+          "changes": {
+            "schedule": {
+              "new": {
+                "minutesPerSession": 30,
+                "sessionsPerWeek": 2,
+              },
+              "old": {
+                "minutesPerSession": 45,
+                "sessionsPerWeek": 1,
+              },
+            },
+          },
+          "firstName": "",
+          "goals": [],
+          "gradeLevel": "3",
+          "initials": "JD",
+          "lastName": "",
+          "matchReason": "Matched by initials and grade",
+          "matchedStudentId": "stu-jd",
+          "matchedStudentInitials": "JD",
+          "schedule": {
+            "frequency": "2x/week",
+            "minutesPerSession": 30,
+            "sessionsPerWeek": 2,
+            "weeklyMinutes": 60,
+          },
+          "teacher": {
+            "confidence": "none",
+            "reason": "No match found for "Smith"",
+            "teacherId": null,
+            "teacherName": "Smith",
+          },
+        },
+        {
+          "action": "insert",
+          "firstName": "",
+          "goals": [],
+          "gradeLevel": "K",
+          "initials": "AB",
+          "lastName": "",
+          "schedule": {
+            "frequency": "3x/week",
+            "minutesPerSession": 20,
+            "sessionsPerWeek": 3,
+            "weeklyMinutes": 60,
+          },
+          "teacher": {
+            "confidence": "none",
+            "reason": "No match found for "Johnson"",
+            "teacherId": null,
+            "teacherName": "Johnson",
+          },
+        },
+        {
+          "action": "insert",
+          "firstName": "",
+          "goals": [],
+          "gradeLevel": "5",
+          "initials": "CD",
+          "lastName": "",
+          "schedule": {
+            "frequency": "1x/week",
+            "minutesPerSession": 45,
+            "sessionsPerWeek": 1,
+            "weeklyMinutes": 45,
+          },
+          "teacher": {
+            "confidence": "none",
+            "reason": "No match found for "Davis"",
+            "teacherId": null,
+            "teacherName": "Davis",
+          },
+        },
+        {
+          "action": "insert",
+          "firstName": "",
+          "goals": [],
+          "gradeLevel": "2",
+          "initials": "EF",
+          "lastName": "",
+          "schedule": {
+            "frequency": "2x/week",
+            "minutesPerSession": 30,
+            "sessionsPerWeek": 2,
+            "weeklyMinutes": 60,
+          },
+          "teacher": {
+            "confidence": "none",
+            "reason": "No match found for "Wilson"",
+            "teacherId": null,
+            "teacherName": "Wilson",
+          },
+        },
+        {
+          "action": "insert",
+          "firstName": "",
+          "goals": [],
+          "gradeLevel": "4",
+          "initials": "GH",
+          "lastName": "",
+          "schedule": {
+            "frequency": "3x/week",
+            "minutesPerSession": 30,
+            "sessionsPerWeek": 3,
+            "weeklyMinutes": 90,
+          },
+          "teacher": {
+            "confidence": "none",
+            "reason": "No match found for "Garcia"",
+            "teacherId": null,
+            "teacherName": "Garcia",
+          },
+        },
+      ],
+      "summary": {
+        "inserts": 4,
+        "skips": 0,
+        "total": 5,
+        "updates": 1,
+        "withGoalsRemoved": 0,
+        "withSchedule": 5,
+        "withTeacher": 0,
+      },
+      "unmatchedStudents": [],
+    },
+    "success": true,
+  },
+  "status": 200,
+}
+`;
