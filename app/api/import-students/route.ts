@@ -18,7 +18,7 @@ import { createNormalizedKey } from '@/lib/parsers/name-utils';
 import { matchStudents, DatabaseStudent } from '@/lib/utils/student-matcher';
 import { buildStudentDedupKey } from '@/lib/utils/student-dedup-key';
 import { classifyRosterChange } from '@/lib/import/roster-preview';
-import type { BulkPreviewData } from '@/lib/types/student-import';
+import type { BulkPreviewData, BulkFileReceipt } from '@/lib/types/student-import';
 import { log } from '@/lib/monitoring/logger';
 import { track } from '@/lib/monitoring/analytics';
 import { measurePerformanceWithAlerts } from '@/lib/monitoring/performance-alerts';
@@ -90,16 +90,8 @@ interface UnmatchedStudent {
 }
 
 // SPE-227: per-file "receipt" for the rebuilt review screen — what each uploaded
-// file read / matched / filtered, plus any per-row notes. Additive to the preview
-// response; existing fields are unchanged.
-interface PreviewFileReceipt {
-  fileKey: 'studentsFile' | 'deliveriesFile' | 'classListFile';
-  fileName: string;
-  read: number;
-  matched: number;
-  filtered: number;
-  notes?: Array<{ row: number; message: string }>;
-}
+// file read / matched / filtered, plus any per-row notes. The shape is the
+// shared BulkFileReceipt (SPE-236), imported above.
 
 /**
  * Normalize school name for comparison by removing trailing "school" word
@@ -462,7 +454,7 @@ async function handleDeliveriesOrClassListOnly(
 
   // SPE-227: per-file receipts for the rebuilt review screen. Only deliveries
   // and/or class list apply here — there is no student goals file in this mode.
-  const files: PreviewFileReceipt[] = [];
+  const files: BulkFileReceipt[] = [];
   if (deliveriesFile) {
     files.push({
       fileKey: 'deliveriesFile',
@@ -673,7 +665,7 @@ async function handleTemplateRoster(
 
   // SPE-227: single-file receipt for the rebuilt review screen — the roster
   // template is the only uploaded file on this path.
-  const files: PreviewFileReceipt[] = [
+  const files: BulkFileReceipt[] = [
     {
       fileKey: 'studentsFile',
       fileName,
@@ -1313,7 +1305,7 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
     // file is always present on this path; deliveries/class list are optional. The
     // goals file may have been filtered in place (school scoping), so `read` adds
     // back `filteredOutCount` to reflect what the file actually contained.
-    const files: PreviewFileReceipt[] = [];
+    const files: BulkFileReceipt[] = [];
     files.push({
       fileKey: 'studentsFile',
       fileName: file.name,

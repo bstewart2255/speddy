@@ -5,12 +5,8 @@
  * update, deliveries-only "update mode"/Builder B, roster template/Builder C).
  */
 
-import {
-  adaptBulkPreview,
-  adaptTargetStudentPreview,
-  type BulkPreviewData,
-  type TargetPreviewData,
-} from '@/lib/import/review-model';
+import { adaptBulkPreview, adaptTargetStudentPreview } from '@/lib/import/review-model';
+import type { BulkPreviewData, TargetPreviewData } from '@/lib/types/student-import';
 
 describe('adaptBulkPreview (SPE-227)', () => {
   it('normalizes a goals-only insert: goals marked added, stable new:N id, no exceptions', () => {

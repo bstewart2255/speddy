@@ -18,19 +18,10 @@ import type {
   TargetPreviewData,
 } from '@/lib/types/student-import';
 
-// The preview/confirm wire contract lives in one shared module so the route
-// (producer) and this adapter (consumer) can't drift (SPE-236). Re-exported
-// here so existing importers of these names from this module keep working.
-export type {
-  RowAction,
-  PreviewFileKey,
-  BulkGoal,
-  BulkStudentPreview,
-  BulkFileReceipt,
-  BulkPreviewData,
-  TargetMatch,
-  TargetPreviewData,
-} from '@/lib/types/student-import';
+// The preview/confirm wire contract lives in one shared module (SPE-236) so the
+// route (producer) and this adapter (consumer) can't drift. This adapter imports
+// the wire types it consumes; every other consumer imports them from that module
+// directly (@/lib/types/student-import) rather than through this file.
 
 // One confidence vocabulary, rendered identically everywhere (✓ · ! · −).
 export type ReviewSignal = 'confident' | 'check' | 'removed';

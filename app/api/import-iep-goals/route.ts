@@ -12,19 +12,14 @@ import { matchStudents, DatabaseStudent } from '@/lib/utils/student-matcher';
 import { log } from '@/lib/monitoring/logger';
 import { track } from '@/lib/monitoring/analytics';
 import { measurePerformanceWithAlerts } from '@/lib/monitoring/performance-alerts';
+import type { TargetMatch } from '@/lib/types/student-import';
 
 export const runtime = 'nodejs';
 
-interface ProcessedMatch {
-  studentId: string;
-  studentInitials: string;
-  studentGrade: string;
-  matchConfidence: 'high' | 'medium' | 'low' | 'none';
-  matchReason: string;
-  iepDate?: string; // The IEP date from the parsed report, for validation warnings
-  // Goals are stored verbatim (SPE-238).
-  goals: Array<{ text: string }>;
-}
+// The preview match is the shared TargetMatch (SPE-236): building it here rather
+// than a local copy means a rename in the shared contract breaks this producer
+// too, matching the bulk preview route. The wire never carries a 'none'
+// confidence — those matches are filtered out before assembly (below).
 
 export const POST = withRoute({}, async ({ req: request, userId }) => {
   const perf = measurePerformanceWithAlerts('import_iep_goals', 'api');
@@ -321,7 +316,7 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
     });
 
     // Step 6: Assemble matched students with their verbatim goals (SPE-238).
-    const processedMatchesMap = new Map<string, ProcessedMatch>();
+    const processedMatchesMap = new Map<string, TargetMatch>();
 
     for (const match of matchResult.matches) {
       if (match.confidence === 'none' || !match.matchedStudent) {
