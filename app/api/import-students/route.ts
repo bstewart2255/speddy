@@ -15,7 +15,8 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { withRoute } from '@/lib/api/with-route';
-import { readImportForm } from '@/lib/import/parse-files';
+import { readImportForm, exceedsTotalUploadSize, findOversizedFile } from '@/lib/import/parse-files';
+import { MAX_FILE_SIZE_MB } from '@/lib/import/detect-import-file';
 import { runStudentsPreview, runUpdateOnlyPreview } from '@/lib/import/pipeline';
 import { log } from '@/lib/monitoring/logger';
 import { track } from '@/lib/monitoring/analytics';
@@ -27,6 +28,16 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
   const perf = measurePerformanceWithAlerts('import_students_preview', 'api');
 
   try {
+    // Reject an over-ceiling multipart body before formData() buffers it (SPE-260).
+    if (exceedsTotalUploadSize(request)) {
+      log.warn('Import upload rejected: body exceeds size ceiling', { userId });
+      perf.end({ success: false });
+      return NextResponse.json(
+        { error: `Upload too large. Each file must be under ${MAX_FILE_SIZE_MB} MB.` },
+        { status: 413 }
+      );
+    }
+
     const supabase = await createClient();
     const form = await readImportForm(request);
 
@@ -44,6 +55,17 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
       log.warn('No files provided in student import request', { userId });
       perf.end({ success: false });
       return NextResponse.json({ error: 'No files provided' }, { status: 400 });
+    }
+
+    // Enforce the per-file cap server-side (the 10 MB UI limit is client-only).
+    const oversized = findOversizedFile(form);
+    if (oversized) {
+      log.warn('Import upload rejected: file exceeds size limit', { userId, fileName: oversized.name });
+      perf.end({ success: false });
+      return NextResponse.json(
+        { error: `"${oversized.name}" exceeds the ${MAX_FILE_SIZE_MB} MB limit.` },
+        { status: 413 }
+      );
     }
 
     // No students file → deliveries/class-list "update-only" mode. Otherwise the
