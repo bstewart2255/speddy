@@ -4679,28 +4679,6 @@ export type Database = {
           state_id: string
         }[]
       }
-      import_student_atomic: {
-        Args: {
-          p_district_id?: string
-          p_first_name?: string
-          p_grade_level: string
-          p_iep_goals?: string[]
-          p_initials: string
-          p_last_name?: string
-          p_minutes_per_session?: number
-          p_provider_id: string
-          p_school_id?: string
-          p_school_site?: string
-          p_sessions_per_week?: number
-          p_state_id?: string
-          p_teacher_id?: string
-        }
-        Returns: {
-          error_message: string
-          student_id: string
-          success: boolean
-        }[]
-      }
       increment_referral_uses: {
         Args: { referrer_user_id: string }
         Returns: undefined
