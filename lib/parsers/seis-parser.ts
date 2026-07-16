@@ -4,7 +4,7 @@
  */
 
 import * as ExcelJS from 'exceljs';
-import { getServiceTypeCode, isGoalForProviderByKeywords } from './service-type-mapping';
+import { getServiceTypeCode, isGoalForProviderByKeywords, hasNoProviderRoutingSignal, blankMetadataGoalWarning } from './service-type-mapping';
 import { normalizeGradeLevel } from '../utils/grade-parser';
 
 // ExcelJS cell value types for rich text and formula results
@@ -30,6 +30,10 @@ export interface ParsedStudent {
 export interface ParseResult {
   students: ParsedStudent[];
   errors: Array<{ row: number; message: string }>;
+  /** Rows that parsed but need manual attention — e.g. a goal with no provider
+   *  routing signal that keyword filtering would otherwise silently drop.
+   *  Mirrors the CSV parser's `warnings` (SPE-248). */
+  warnings: Array<{ row: number; message: string }>;
   metadata: {
     totalRows: number;
     sheetsProcessed: string[];
@@ -69,6 +73,7 @@ export async function parseSEISReport(
 
   const students: ParsedStudent[] = [];
   const errors: Array<{ row: number; message: string }> = [];
+  const warnings: Array<{ row: number; message: string }> = [];
   const sheetsProcessed: string[] = [];
 
   // Get the service type code for the provider's role
@@ -143,6 +148,25 @@ export async function parseSEISReport(
             ? getCellValue(row, columnMapping.personResponsible)
             : undefined;
 
+          // Initials + normalized grade, used by the review warning below and the
+          // student key further down.
+          const initials = `${firstName.charAt(0).toUpperCase()}${lastName.charAt(0).toUpperCase()}`;
+          const normalizedGrade = normalizeGradeLevel(grade);
+
+          // A SEIS goal row with blank Area of Need, Annual Goal #, AND Person
+          // Responsible has no signal to route it to a keyworded provider role, so
+          // keyword filtering would silently drop it. Surface it for manual review
+          // instead (mirrors the CSV path, SPE-247/SPE-248). Roles with no service
+          // code (psychologist/specialist) import everything, so they're exempt.
+          if (serviceTypeCode && hasNoProviderRoutingSignal(areaOfNeed, goalType, personResponsible)) {
+            const hasGoalText = columnMapping.goalColumns.some(
+              (i) => getCellValue(row, i).trim().length > 10
+            );
+            if (hasGoalText) {
+              warnings.push({ row: rowNumber, message: blankMetadataGoalWarning(initials, normalizedGrade) });
+            }
+          }
+
           // Extract goals from all goal columns, filtering by provider type
           const goals: string[] = [];
           for (const goalColIndex of columnMapping.goalColumns) {
@@ -176,12 +200,6 @@ export async function parseSEISReport(
 
           // Only process if they have at least one goal
           if (goals.length === 0) return;
-
-          // Generate initials
-          const initials = `${firstName.charAt(0).toUpperCase()}${lastName.charAt(0).toUpperCase()}`;
-
-          // Normalize grade level
-          const normalizedGrade = normalizeGradeLevel(grade);
 
           // Create unique key for student (name + grade)
           const studentKey = `${firstName.trim().toLowerCase()}_${lastName.trim().toLowerCase()}_${normalizedGrade}`;
@@ -233,6 +251,7 @@ export async function parseSEISReport(
   return {
     students,
     errors,
+    warnings,
     metadata: {
       totalRows: students.length + errors.length,
       sheetsProcessed,
