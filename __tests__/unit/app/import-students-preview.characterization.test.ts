@@ -154,14 +154,12 @@ function requestWith(
     url: 'http://localhost/api/import-students',
     method: 'POST',
     formData: async () => fd,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  } as any;
+  } as unknown as Request;
 }
 
-async function runPost(supabaseTables: TableData, request: unknown): Promise<{ status: number; body: unknown }> {
+async function runPost(supabaseTables: TableData, request: Request): Promise<{ status: number; body: unknown }> {
   (createClient as jest.Mock).mockResolvedValue(makeSupabase(supabaseTables));
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const res = await POST(request as any);
+  const res = await POST(request as unknown as Parameters<typeof POST>[0]);
   const body = await res.json();
   return { status: res.status, body };
 }
