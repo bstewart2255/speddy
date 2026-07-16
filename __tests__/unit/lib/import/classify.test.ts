@@ -1,0 +1,280 @@
+/**
+ * Unit tests for the extracted import classification (SPE-230).
+ *
+ * Covers the pure change-detection helpers (compareGoals, hasChanges) and the
+ * three preview builders (main SEIS/CSV, deliveries/class-list update-only, and
+ * roster template), including the behaviors most at risk during the route
+ * split:
+ *   - the schedule weeklyMinutes divergence between the main path (a
+ *     `|| sessionsPerWeek*minutesPerSession` fallback) and the update-only path
+ *     (raw delivery weeklyMinutes, which can be 0 for monthly services),
+ *   - null-grade preservation in update-only rows,
+ *   - goals-removed surfacing,
+ *   - the roster rule that an unmatched teacher never clears an existing link.
+ *
+ * All data is fictional.
+ */
+import {
+  compareGoals,
+  hasChanges,
+  buildStudentPreviews,
+  buildUpdatePreviews,
+  buildStudentsByName,
+  buildRosterPreviews,
+} from '@/lib/import/classify';
+import type { DatabaseStudent } from '@/lib/utils/student-matcher';
+import type { ParsedStudent as SeisParsedStudent } from '@/lib/parsers/seis-parser';
+import type { ParsedStudent as CsvParsedStudent } from '@/lib/parsers/csv-parser';
+import type { DeliveryRecord } from '@/lib/parsers/deliveries-parser';
+import type { ClassListStudent } from '@/lib/parsers/class-list-parser';
+import type { DbTeacherRow, JoinedExistingStudent } from '@/lib/import/preview-types';
+
+// ---- factories ----
+const parsed = (over: Partial<SeisParsedStudent> = {}): SeisParsedStudent => ({
+  firstName: 'John', lastName: 'Doe', initials: 'JD', gradeLevel: '3', goals: [], rawRow: 1, ...over,
+});
+
+const dbStudent = (over: Partial<DatabaseStudent> = {}): DatabaseStudent => ({
+  id: 's1', initials: 'JD', grade_level: '3', first_name: 'John', last_name: 'Doe', ...over,
+});
+
+const delivery = (over: Partial<DeliveryRecord> = {}): DeliveryRecord => ({
+  normalizedName: 'doe_john', name: 'Doe, John', seisId: '1', service: '330',
+  startDate: new Date(0), endDate: new Date(0),
+  sessionsFrequency: '30 min Weekly', weeklyMinutes: 30, sessionsPerWeek: 1, minutesPerSession: 30, ...over,
+});
+
+const classListStudent = (over: Partial<ClassListStudent> = {}): ClassListStudent => ({
+  normalizedName: 'doe_john', name: 'Doe, John',
+  teacher: { rawName: 'Barrera E', lastName: 'Barrera', firstInitial: 'E', teacherNumber: '' },
+  ...over,
+});
+
+const TEACHERS: DbTeacherRow[] = [{ id: 't-barrera', first_name: 'Elena', last_name: 'Barrera' }];
+
+describe('compareGoals', () => {
+  it('reports all goals added when there are no existing goals', () => {
+    expect(compareGoals(undefined, ['A', 'B'])).toEqual({ added: ['A', 'B'], removed: [], unchanged: [] });
+    expect(compareGoals([], ['A'])).toEqual({ added: ['A'], removed: [], unchanged: [] });
+  });
+
+  it('reports unchanged when identical', () => {
+    expect(compareGoals(['A', 'B'], ['A', 'B'])).toEqual({ added: [], removed: [], unchanged: ['A', 'B'] });
+  });
+
+  it('splits added / removed / unchanged', () => {
+    expect(compareGoals(['A', 'B'], ['B', 'C'])).toEqual({ added: ['C'], removed: ['A'], unchanged: ['B'] });
+  });
+
+  it('compares case- and whitespace-insensitively but preserves original text', () => {
+    const r = compareGoals(['Read Fluently'], ['  read fluently  ', 'New Goal']);
+    expect(r.unchanged).toEqual(['  read fluently  ']); // incoming original text kept
+    expect(r.added).toEqual(['New Goal']);
+    expect(r.removed).toEqual([]);
+  });
+});
+
+describe('hasChanges', () => {
+  it('detects goal changes', () => {
+    expect(hasChanges(dbStudent({ iep_goals: ['A'] }), ['A', 'B']).hasGoalChanges).toBe(true);
+    expect(hasChanges(dbStudent({ iep_goals: ['A'] }), ['A']).hasGoalChanges).toBe(false);
+  });
+
+  it('detects schedule changes only when a new schedule is supplied', () => {
+    const s = dbStudent({ sessions_per_week: 2, minutes_per_session: 30 });
+    expect(hasChanges(s, [], { sessionsPerWeek: 3, minutesPerSession: 30 }).hasScheduleChanges).toBe(true);
+    expect(hasChanges(s, [], { sessionsPerWeek: 2, minutesPerSession: 30 }).hasScheduleChanges).toBe(false);
+    expect(hasChanges(s, []).hasScheduleChanges).toBe(false); // no new schedule
+  });
+
+  it('detects teacher changes only when a new teacherId is supplied (undefined skips)', () => {
+    const s = dbStudent({ teacher_id: 't1' });
+    expect(hasChanges(s, [], undefined, 't2').hasTeacherChanges).toBe(true);
+    expect(hasChanges(s, [], undefined, 't1').hasTeacherChanges).toBe(false);
+    expect(hasChanges(s, [], undefined, undefined).hasTeacherChanges).toBe(false); // teacher not evaluated
+    expect(hasChanges(s, [], undefined, null).hasTeacherChanges).toBe(true); // null clears -> change
+  });
+});
+
+describe('buildStudentPreviews (main path)', () => {
+  it('marks an unmatched student as insert', () => {
+    const { studentPreviews } = buildStudentPreviews({
+      parsedStudents: [parsed({ firstName: 'Zoe', lastName: 'Zulu', initials: 'ZZ', gradeLevel: '9', goals: ['G'] })],
+      databaseStudents: [],
+      deliveriesData: null, classListData: null, dbTeachers: [],
+    });
+    expect(studentPreviews).toHaveLength(1);
+    expect(studentPreviews[0].action).toBe('insert');
+    expect(studentPreviews[0].matchedStudentId).toBeUndefined();
+    expect(studentPreviews[0].goals).toEqual([{ text: 'G' }]);
+  });
+
+  it('marks a matched student with identical goals and no enrichment as skip', () => {
+    const { studentPreviews } = buildStudentPreviews({
+      parsedStudents: [parsed({ goals: ['Read fluently'] })],
+      databaseStudents: [dbStudent({ iep_goals: ['Read fluently'] })],
+      deliveriesData: null, classListData: null, dbTeachers: [],
+    });
+    expect(studentPreviews[0].action).toBe('skip');
+    expect(studentPreviews[0].matchedStudentId).toBe('s1');
+  });
+
+  it('marks a matched student with changed goals as update and surfaces goalsRemoved', () => {
+    const { studentPreviews } = buildStudentPreviews({
+      parsedStudents: [parsed({ goals: ['New goal'] })],
+      databaseStudents: [dbStudent({ iep_goals: ['Old goal'] })],
+      deliveriesData: null, classListData: null, dbTeachers: [],
+    });
+    const p = studentPreviews[0];
+    expect(p.action).toBe('update');
+    expect(p.changes?.goals).toEqual({ added: ['New goal'], removed: ['Old goal'], unchanged: [] });
+    expect(p.goalsRemoved).toEqual(['Old goal']);
+  });
+
+  it('enriches an insert with schedule and applies the weeklyMinutes fallback for a monthly (0) delivery', () => {
+    const { studentPreviews, matchedDeliveryNames } = buildStudentPreviews({
+      parsedStudents: [parsed({ goals: ['G'] })],
+      databaseStudents: [],
+      deliveriesData: new Map([['doe_john', delivery({ weeklyMinutes: 0, sessionsPerWeek: 2, minutesPerSession: 30, sessionsFrequency: '60 min Monthly' })]]),
+      classListData: null, dbTeachers: [],
+    });
+    expect(matchedDeliveryNames.has('doe_john')).toBe(true);
+    // Main path: weeklyMinutes 0 falls back to sessionsPerWeek * minutesPerSession.
+    expect(studentPreviews[0].schedule).toEqual({
+      sessionsPerWeek: 2, minutesPerSession: 30, weeklyMinutes: 60, frequency: '60 min Monthly',
+    });
+  });
+
+  it('resolves the class-list teacher and tracks a teacher change', () => {
+    const { studentPreviews, matchedClassListNames } = buildStudentPreviews({
+      parsedStudents: [parsed({ goals: ['G'] })],
+      databaseStudents: [dbStudent({ iep_goals: ['G'], teacher_id: undefined })],
+      deliveriesData: null,
+      classListData: new Map([['doe_john', classListStudent()]]),
+      dbTeachers: TEACHERS,
+    });
+    expect(matchedClassListNames.has('doe_john')).toBe(true);
+    const p = studentPreviews[0];
+    expect(p.teacher).toMatchObject({ teacherId: 't-barrera', teacherName: 'Elena Barrera' });
+    expect(p.action).toBe('update');
+    expect(p.changes?.teacher?.new).toEqual({ teacherId: 't-barrera', teacherName: 'Elena Barrera' });
+  });
+});
+
+describe('buildUpdatePreviews (deliveries/class-list update-only path)', () => {
+  const studentsByName = () => buildStudentsByName([
+    { id: 's1', initials: 'JD', grade_level: null, school_site: null, school_id: 'sch1', student_details: { first_name: 'John', last_name: 'Doe' } } as JoinedExistingStudent,
+  ]);
+
+  it('preserves a null grade on the update row', () => {
+    const { studentUpdates } = buildUpdatePreviews({
+      studentsByName: studentsByName(),
+      deliveriesData: new Map([['doe_john', delivery()]]),
+      classListData: null, dbTeachers: [],
+    });
+    expect(studentUpdates).toHaveLength(1);
+    expect(studentUpdates[0].studentId).toBe('s1');
+    expect(studentUpdates[0].gradeLevel).toBeNull();
+    expect(studentUpdates[0].action).toBe('update');
+  });
+
+  it('uses the RAW delivery weeklyMinutes (no fallback) — 0 for a monthly service', () => {
+    const { studentUpdates } = buildUpdatePreviews({
+      studentsByName: studentsByName(),
+      deliveriesData: new Map([['doe_john', delivery({ weeklyMinutes: 0, sessionsPerWeek: 2, minutesPerSession: 30, sessionsFrequency: '60 min Monthly' })]]),
+      classListData: null, dbTeachers: [],
+    });
+    // Divergence from the main path: raw 0 is kept, not replaced by 2*30.
+    expect(studentUpdates[0].schedule).toEqual({
+      sessionsPerWeek: 2, minutesPerSession: 30, weeklyMinutes: 0, frequency: '60 min Monthly',
+    });
+  });
+
+  it('merges deliveries + class list onto one row (dedup by studentId) and resolves the teacher', () => {
+    const { studentUpdates, matchedDeliveryNames, matchedClassListNames } = buildUpdatePreviews({
+      studentsByName: studentsByName(),
+      deliveriesData: new Map([['doe_john', delivery()]]),
+      classListData: new Map([['doe_john', classListStudent()]]),
+      dbTeachers: TEACHERS,
+    });
+    expect(studentUpdates).toHaveLength(1);
+    expect(studentUpdates[0].schedule).toBeDefined();
+    expect(studentUpdates[0].teacher).toMatchObject({ teacherId: 't-barrera', teacherName: 'Elena Barrera' });
+    expect(matchedDeliveryNames.has('doe_john')).toBe(true);
+    expect(matchedClassListNames.has('doe_john')).toBe(true);
+  });
+
+  it('falls back to the raw class-list name when no DB teacher resolves', () => {
+    const { studentUpdates } = buildUpdatePreviews({
+      studentsByName: studentsByName(),
+      deliveriesData: null,
+      classListData: new Map([['doe_john', classListStudent({ teacher: { rawName: 'Unknown Q', lastName: 'Unknown', firstInitial: 'Q', teacherNumber: '' } })]]),
+      dbTeachers: TEACHERS,
+    });
+    expect(studentUpdates[0].teacher).toMatchObject({ teacherId: null, teacherName: 'Unknown Q', confidence: 'none' });
+  });
+
+  it('collects enrichment rows with no existing student as unmatched', () => {
+    const { studentUpdates, unmatchedStudents } = buildUpdatePreviews({
+      studentsByName: studentsByName(),
+      deliveriesData: new Map([['nobody_here', delivery({ normalizedName: 'nobody_here', name: 'Here, Nobody' })]]),
+      classListData: null, dbTeachers: [],
+    });
+    expect(studentUpdates).toHaveLength(0);
+    expect(unmatchedStudents).toEqual([{ name: 'Here, Nobody', source: 'deliveries' }]);
+  });
+});
+
+describe('buildRosterPreviews (roster template path)', () => {
+  const rosterStudent = (over: Partial<CsvParsedStudent> = {}): CsvParsedStudent => ({
+    firstName: '', lastName: '', initials: 'JD', gradeLevel: '3', goals: [], rawRow: 1,
+    teacherName: 'Smith', sessionsPerWeek: 2, minutesPerSession: 30, ...over,
+  });
+  const existing = (over: Record<string, unknown> = {}) => ({
+    id: 's1', initials: 'JD', grade_level: '3', school_id: 'sch1',
+    sessions_per_week: 2, minutes_per_session: 30, teacher_id: 't1', ...over,
+  });
+  const smithTeacher: DbTeacherRow[] = [{ id: 't1', first_name: 'Sam', last_name: 'Smith' }];
+
+  it('inserts a roster row with no existing match', () => {
+    const previews = buildRosterPreviews({ students: [rosterStudent()], dbStudents: [], currentSchoolId: 'sch1', dbTeachers: smithTeacher });
+    expect(previews[0].action).toBe('insert');
+    expect(previews[0].matchedStudentId).toBeUndefined();
+    expect(previews[0].teacher?.teacherId).toBe('t1');
+    expect(previews[0].schedule).toMatchObject({ sessionsPerWeek: 2, minutesPerSession: 30, weeklyMinutes: 60 });
+  });
+
+  it('skips when schedule matches and an unmatched teacher does NOT clear the existing link', () => {
+    const previews = buildRosterPreviews({
+      students: [rosterStudent({ teacherName: 'Ghost' })], // Ghost not in dbTeachers
+      dbStudents: [existing()],
+      currentSchoolId: 'sch1',
+      dbTeachers: smithTeacher,
+    });
+    expect(previews[0].action).toBe('skip');
+    expect(previews[0].changes).toBeUndefined();
+    expect(previews[0].teacher).toMatchObject({ teacherId: null, teacherName: 'Ghost' });
+  });
+
+  it('updates when the schedule differs', () => {
+    const previews = buildRosterPreviews({
+      students: [rosterStudent({ sessionsPerWeek: 3 })],
+      dbStudents: [existing({ sessions_per_week: 2 })],
+      currentSchoolId: 'sch1',
+      dbTeachers: smithTeacher,
+    });
+    expect(previews[0].action).toBe('update');
+    expect(previews[0].changes?.schedule?.new).toEqual({ sessionsPerWeek: 3, minutesPerSession: 30 });
+  });
+
+  it('does not match an existing student at a different school (scoped to currentSchoolId)', () => {
+    const previews = buildRosterPreviews({
+      students: [rosterStudent()],
+      dbStudents: [existing({ school_id: 'other-school' })],
+      currentSchoolId: 'sch1',
+      dbTeachers: smithTeacher,
+    });
+    expect(previews[0].action).toBe('insert');
+    expect(previews[0].matchedStudentId).toBeUndefined();
+  });
+});

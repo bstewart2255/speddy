@@ -25,28 +25,11 @@ import {
   parseStudentName,
 } from '@/lib/parsers/name-utils';
 import { normalizeSchoolName as normalizeSchoolNameHelper } from '@/lib/school-helpers';
+// SPE-230 extracted the route's private copy into a shared pipeline module;
+// import it directly (replacing the former mirror) and keep the divergence
+// assertions below.
+import { normalizeSchoolName as normalizeSchoolNameRoute } from '@/lib/import/normalize-school-name';
 import { SEIS_HEADERS } from './fixtures/builders';
-
-/**
- * Mirror of the private normalizeSchoolName in app/api/import-students/route.ts
- * as of SPE-239. That copy lives in a server route module that can't be
- * imported into a jsdom unit test, so it is reproduced here to document the
- * divergence from lib/school-helpers.ts. When SPE-230 extracts the route into
- * pipeline modules, replace this mirror with a direct import of the extracted
- * helper and keep the divergence assertions below.
- */
-function normalizeSchoolNameRoute(name: string): string {
-  let normalized = name.toLowerCase().trim();
-  normalized = normalized
-    .replace(/\bmt\.?\s/g, 'mount ')
-    .replace(/\bst\.?\s/g, 'saint ')
-    .replace(/\belem\.?\s/g, 'elementary ')
-    .replace(/\belem\.?$/g, 'elementary');
-  if (normalized.endsWith(' school')) {
-    normalized = normalized.slice(0, -7).trim();
-  }
-  return normalized;
-}
 
 describe('normalizeGradeLevel — CSV copy (lib/parsers/csv-parser.ts)', () => {
   it('applies the SEIS-specific special cases (grade 18 -> TK, grade 0 -> K)', () => {
