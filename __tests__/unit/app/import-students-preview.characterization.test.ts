@@ -263,3 +263,27 @@ describe('POST /api/import-students — preview characterization (SPE-230)', () 
     expect(result).toMatchSnapshot();
   });
 });
+
+describe('POST /api/import-students — upload size guard (SPE-260)', () => {
+  // The size is checked before the file is buffered, so arrayBuffer() is never called.
+  const bigFile = (name = 'big.csv') =>
+    ({ name, type: 'text/csv', size: 11 * 1024 * 1024, arrayBuffer: async () => new ArrayBuffer(0) }) as unknown as FileLike;
+
+  it('rejects a file over the per-file cap with 413 (before parsing)', async () => {
+    const result = await runPost(mainTables(), requestWith({ studentsFile: bigFile() }, schoolCtx));
+    expect(result.status).toBe(413);
+    expect((result.body as { error?: string }).error).toMatch(/exceeds the 10 MB limit/);
+  });
+
+  it('rejects an over-ceiling body by Content-Length before formData() is read', async () => {
+    (createClient as jest.Mock).mockResolvedValue(makeSupabase(mainTables()));
+    const req = {
+      url: 'http://localhost/api/import-students',
+      method: 'POST',
+      headers: { get: (k: string) => (k.toLowerCase() === 'content-length' ? String(50 * 1024 * 1024) : null) },
+      formData: async () => { throw new Error('formData must not be read when the body is too large'); },
+    } as unknown as Request;
+    const res = await POST(req as unknown as Parameters<typeof POST>[0]);
+    expect(res.status).toBe(413);
+  });
+});

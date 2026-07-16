@@ -159,6 +159,37 @@ describe('buildStudentPreviews (main path)', () => {
     expect(p.action).toBe('update');
     expect(p.changes?.teacher?.new).toEqual({ teacherId: 't-barrera', teacherName: 'Elena Barrera' });
   });
+
+  // SPE-260 #1: an unresolved class-list teacher must NOT clear an existing link.
+  const ghost = () => classListStudent({ teacher: { rawName: 'Ghost Q', lastName: 'Ghost', firstInitial: 'Q', teacherNumber: '' } });
+
+  it('does NOT treat an unresolved class-list teacher as a change (keeps the existing link)', () => {
+    const { studentPreviews } = buildStudentPreviews({
+      parsedStudents: [parsed({ goals: ['G'] })],
+      databaseStudents: [dbStudent({ iep_goals: ['G'], teacher_id: 't-existing' })],
+      deliveriesData: null,
+      classListData: new Map([['doe_john', ghost()]]), // 'Ghost' won't resolve against TEACHERS
+      dbTeachers: TEACHERS,
+    });
+    const p = studentPreviews[0];
+    expect(p.action).toBe('skip'); // goals identical + unresolved teacher = no change
+    expect(p.changes).toBeUndefined();
+    expect(p.teacher).toMatchObject({ teacherId: null }); // still surfaced for display, not as a change
+  });
+
+  it('with a real goal change, omits an unresolved class-list teacher from the changes', () => {
+    const { studentPreviews } = buildStudentPreviews({
+      parsedStudents: [parsed({ goals: ['New goal'] })],
+      databaseStudents: [dbStudent({ iep_goals: ['Old goal'], teacher_id: 't-existing' })],
+      deliveriesData: null,
+      classListData: new Map([['doe_john', ghost()]]),
+      dbTeachers: TEACHERS,
+    });
+    const p = studentPreviews[0];
+    expect(p.action).toBe('update');
+    expect(p.changes?.goals).toBeDefined();
+    expect(p.changes?.teacher).toBeUndefined(); // unresolved teacher is not a change
+  });
 });
 
 describe('buildUpdatePreviews (deliveries/class-list update-only path)', () => {

@@ -12,6 +12,7 @@ import { parseCSVReport, ParseResult as CSVParseResult } from '@/lib/parsers/csv
 import { parseDeliveriesCSV, DeliveryRecord } from '@/lib/parsers/deliveries-parser';
 import { parseClassListTXT, ClassListStudent } from '@/lib/parsers/class-list-parser';
 import { normalizeSchoolName } from '@/lib/import/normalize-school-name';
+import { MAX_FILE_SIZE_MB } from '@/lib/import/detect-import-file';
 
 export interface ImportForm {
   studentsFile: File | null;
@@ -31,6 +32,37 @@ export async function readImportForm(request: Request): Promise<ImportForm> {
     currentSchoolId: formData.get('currentSchoolId') as string | null,
     currentSchoolSite: formData.get('currentSchoolSite') as string | null,
   };
+}
+
+/**
+ * Server-side upload-size guard (SPE-260). The UI caps uploads at
+ * MAX_FILE_SIZE_MB, but a client bypassing it can POST an arbitrarily large
+ * multipart body, and the route buffers each file in memory. Enforce the cap
+ * server-side: reject an over-ceiling body by Content-Length *before*
+ * formData() buffers it, and reject any individual file over the per-file cap
+ * after the form is read.
+ */
+export const MAX_UPLOAD_FILE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
+
+/** Ceiling for the whole multipart body: the 3 optional files at the per-file
+ *  cap, plus ~1 MB for multipart framing. */
+export const MAX_TOTAL_UPLOAD_BYTES = MAX_UPLOAD_FILE_BYTES * 3 + 1024 * 1024;
+
+/** True when the request's Content-Length exceeds the total-body ceiling. */
+export function exceedsTotalUploadSize(request: Request): boolean {
+  const raw = request.headers?.get?.('content-length');
+  const len = raw == null ? NaN : Number(raw);
+  return Number.isFinite(len) && len > MAX_TOTAL_UPLOAD_BYTES;
+}
+
+/** The first present file over the per-file cap, or null if all are within it. */
+export function findOversizedFile(form: ImportForm): File | null {
+  for (const file of [form.studentsFile, form.deliveriesFile, form.classListFile]) {
+    if (file && typeof file.size === 'number' && file.size > MAX_UPLOAD_FILE_BYTES) {
+      return file;
+    }
+  }
+  return null;
 }
 
 /** Excel vs CSV detection for the students file, by MIME type or extension. */
