@@ -137,10 +137,11 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
       results.push({ success: true });
       succeeded++;
     } catch (err) {
-      results.push({
-        success: false,
-        error: (err as { message?: string })?.message ?? 'Failed to save goals',
-      });
+      // Never surface the raw DB/PostgREST error to the browser — log it
+      // server-side (with the provider for correlation) and return a neutral
+      // per-row message.
+      log.error('IEP goals confirm: write failed', err, { userId, studentId });
+      results.push({ success: false, error: 'Failed to save goals' });
     }
   }
 
