@@ -169,7 +169,9 @@ export async function runStudentsPreview(ctx: PipelineContext, file: File): Prom
 
   const profile = await loadProfile(supabase, userId);
 
+  const dbPerf = measurePerformanceWithAlerts('fetch_students', 'database');
   const { data: dbStudents, error: dbError } = await loadExistingStudents(supabase, userId);
+  dbPerf.end({ success: !dbError });
   if (dbError) {
     log.error('Failed to fetch students', dbError instanceof Error ? dbError : null, { userId });
     return NextResponse.json({ error: 'Failed to fetch your students from database' }, { status: 500 });
@@ -189,10 +191,13 @@ export async function runStudentsPreview(ctx: PipelineContext, file: File): Prom
   }
 
   const fileType = isCSV ? 'CSV' : 'Excel';
+  const parsePerf = measurePerformanceWithAlerts(`parse_${fileType.toLowerCase()}`, 'api');
   let parseResult;
   try {
     parseResult = await parseStudentsFile(file, { isCSV, userSchools, providerRole: profile?.role ?? undefined });
+    parsePerf.end({ success: true });
   } catch (error) {
+    parsePerf.end({ success: false });
     log.error(`${fileType} parsing failed`, error instanceof Error ? error : null, { userId, fileName: file.name });
     return NextResponse.json(
       { error: `Failed to parse ${fileType} file: ${errorMessage(error)}. Please ensure the file contains student names, grades, and IEP goals.` },
