@@ -360,4 +360,44 @@ describe('POST /api/import-students — multi-school first-import regression (SP
     expect(lastNames).not.toContain('Barnes'); // other-school student scoped out
     expect(data?.summary?.filteredOutSchools).toContain('Bancroft Elementary School');
   });
+
+  it('does not merge same-name/same-grade students from different schools (no cross-school goal contamination)', async () => {
+    // Two DIFFERENT students share first name, last name, and grade but attend
+    // different schools. The selected-school (Mt Diablo) row appears first, so
+    // before the dedup-key fix its record would absorb the Bancroft namesake's
+    // goal (the parser merged by name+grade only, keeping the first row's
+    // school). After the fix, school is part of the consolidation key, so the
+    // two stay distinct and only the Mt Diablo student's own goal imports.
+    const collidingCsv = () =>
+      fileFrom(
+        buildSeisGoalsCsvFrom([
+          {
+            0: '2000301', 2: 'Rivers', 3: 'Sam', 5: '04', 6: 'Mt Diablo Elementary School',
+            9: '05/01/2026', 11: 'Reading', 12: 'Academic #1: 2026 - 2027', 17: 'Resource Specialist',
+            14: 'By 5/1/2027, Sam at Mt Diablo will read 90 words per minute with 95% accuracy in 3 of 4 trials.',
+          },
+          {
+            0: '2000302', 2: 'Rivers', 3: 'Sam', 5: '04', 6: 'Bancroft Elementary School',
+            9: '05/01/2026', 11: 'Reading', 12: 'Academic #1: 2026 - 2027', 17: 'Resource Specialist',
+            14: 'By 5/1/2027, Sam at Bancroft will read 80 words per minute with 90% accuracy in 3 of 4 trials.',
+          },
+        ]),
+        'students.csv',
+        'text/csv',
+      );
+
+    const result = await runPost(bancroftProviderTables(), requestWith({ studentsFile: collidingCsv() }, schoolCtx));
+    expect(result.status).toBe(200);
+
+    const data = (result.body as {
+      data?: { students?: Array<{ lastName?: string; goals?: Array<{ text?: string }> }> };
+    }).data;
+
+    const rivers = (data?.students ?? []).filter((s) => s.lastName === 'Rivers');
+    // Exactly one Rivers imports (the Mt Diablo one); the Bancroft namesake is scoped out.
+    expect(rivers).toHaveLength(1);
+    const goalText = (rivers[0]?.goals ?? []).map((g) => g.text).join(' | ');
+    expect(goalText).toContain('Mt Diablo'); // its own goal
+    expect(goalText).not.toContain('Bancroft'); // NOT the other student's goal
+  });
 });
