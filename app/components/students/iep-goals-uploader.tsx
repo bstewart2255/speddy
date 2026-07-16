@@ -4,9 +4,10 @@ import { useState, useRef } from 'react';
 import { Upload } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Spinner } from '../ui/spinner';
+import type { TargetPreviewData } from '@/lib/types/student-import';
 
 interface IEPGoalsUploaderProps {
-  onUploadComplete: (data: any) => void;
+  onUploadComplete: (data: TargetPreviewData) => void;
   disabled?: boolean;
   targetStudent?: {
     id: string;
@@ -83,7 +84,7 @@ export function IEPGoalsUploader({ onUploadComplete, disabled = false, targetStu
       }
 
       // Pass data to parent
-      onUploadComplete(result.data);
+      onUploadComplete(result.data as TargetPreviewData);
     } catch (err: any) {
       console.error('Upload error:', err);
       setError(err.message || 'Failed to upload file. Please try again.');

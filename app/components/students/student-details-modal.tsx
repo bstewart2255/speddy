@@ -5,6 +5,7 @@ import { Button } from '../ui/button';
 import { Input, Label, FormGroup } from '../ui/form';
 import { getStudentDetails, upsertStudentDetails, StudentDetails, getMatchingProviderRoles } from '../../../lib/supabase/queries/student-details';
 import { adaptTargetStudentPreview } from '@/lib/import/review-model';
+import type { TargetPreviewData } from '@/lib/types/student-import';
 import AssessmentList from './assessment-list';
 import { IEPGoalsUploader } from './iep-goals-uploader';
 import {
@@ -66,7 +67,7 @@ export function StudentDetailsModal({
   });
   const [loading, setLoading] = useState(false);
   const [showImportPreview, setShowImportPreview] = useState(false);
-  const [importData, setImportData] = useState<any>(null);
+  const [importData, setImportData] = useState<TargetPreviewData | null>(null);
   const [activeTab, setActiveTab] = useState<'current' | 'iep' | 'assessments' | 'progress' | 'attendance' | 'accommodations'>('current');
   const [matchingRoles, setMatchingRoles] = useState<string[]>([]);
 
@@ -184,7 +185,7 @@ export function StudentDetailsModal({
     }
   };
 
-  const handleUploadComplete = (data: any) => {
+  const handleUploadComplete = (data: TargetPreviewData) => {
     setImportData(data);
     setShowImportPreview(true);
   };

@@ -12,28 +12,9 @@ import { measurePerformanceWithAlerts } from '@/lib/monitoring/performance-alert
 import { updateExistingSessionsForStudent } from '@/lib/scheduling/session-requirement-sync';
 import { buildStudentDedupKey } from '@/lib/utils/student-dedup-key';
 import { mapUpsertResults, PendingUpsert, ImportResult } from '@/lib/import/upsert-result-mapper';
+import type { StudentToImport } from '@/lib/types/student-import';
 
 export const runtime = 'nodejs';
-
-interface StudentToImport {
-  firstName: string;
-  lastName: string;
-  initials: string; // User-edited initials
-  gradeLevel: string;
-  goals: string[]; // Verbatim goal text, selected in the review screen
-  schoolSite?: string;
-  schoolId?: string;
-  districtId?: string;
-  stateId?: string;
-  // New fields from multi-file upload
-  sessionsPerWeek?: number;
-  minutesPerSession?: number;
-  teacherId?: string;
-  teacherName?: string; // For updating the deprecated teacher_name column
-  // UPSERT fields
-  action?: 'insert' | 'update' | 'skip'; // Defaults to 'insert' for backward compatibility
-  studentId?: string; // Required for 'update' action
-}
 
 // Canonical UUID form; mirrors the check in app/api/sessions/ungroup/route.ts.
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -347,7 +328,10 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
           index,
           student,
           initials: initialsNormalized,
-          gradeLevel: student.gradeLevel,
+          // Metadata only (feeds the "already exists" error message via
+          // mapUpsertResults, never a write) — the write payload above keeps the
+          // raw null so the RPC's COALESCE preserves an existing grade.
+          gradeLevel: student.gradeLevel ?? '',
           action,
           studentId: student.studentId,
           newRequirements: {

@@ -18,6 +18,7 @@ import { createNormalizedKey } from '@/lib/parsers/name-utils';
 import { matchStudents, DatabaseStudent } from '@/lib/utils/student-matcher';
 import { buildStudentDedupKey } from '@/lib/utils/student-dedup-key';
 import { classifyRosterChange } from '@/lib/import/roster-preview';
+import type { BulkPreviewData, BulkFileReceipt } from '@/lib/types/student-import';
 import { log } from '@/lib/monitoring/logger';
 import { track } from '@/lib/monitoring/analytics';
 import { measurePerformanceWithAlerts } from '@/lib/monitoring/performance-alerts';
@@ -69,8 +70,6 @@ interface StudentPreview {
   goals: Array<{ text: string }>;
   // UPSERT action: insert (new), update (existing with changes), skip (existing, no changes)
   action: 'insert' | 'update' | 'skip';
-  // Legacy field for backward compatibility
-  matchStatus: 'new' | 'duplicate';
   matchedStudentId?: string; // If duplicate/update, the ID of existing student
   matchedStudentInitials?: string; // If duplicate/update, the initials of existing student
   matchConfidence?: 'high' | 'medium' | 'low'; // If duplicate/update, confidence level
@@ -91,16 +90,8 @@ interface UnmatchedStudent {
 }
 
 // SPE-227: per-file "receipt" for the rebuilt review screen — what each uploaded
-// file read / matched / filtered, plus any per-row notes. Additive to the preview
-// response; existing fields are unchanged.
-interface PreviewFileReceipt {
-  fileKey: 'studentsFile' | 'deliveriesFile' | 'classListFile';
-  fileName: string;
-  read: number;
-  matched: number;
-  filtered: number;
-  notes?: Array<{ row: number; message: string }>;
-}
+// file read / matched / filtered, plus any per-row notes. The shape is the
+// shared BulkFileReceipt (SPE-236), imported above.
 
 /**
  * Normalize school name for comparison by removing trailing "school" word
@@ -339,7 +330,6 @@ async function handleDeliveriesOrClassListOnly(
     lastName: string;
     gradeLevel: string | null;
     action: 'update'; // Always 'update' for Deliveries/ClassList-only mode
-    matchStatus: 'duplicate'; // These are existing students being updated
     schedule?: {
       sessionsPerWeek: number;
       minutesPerSession: number;
@@ -376,8 +366,7 @@ async function handleDeliveriesOrClassListOnly(
             firstName: details.first_name,
             lastName: details.last_name,
             gradeLevel: existingStudent.grade_level,
-            action: 'update',
-            matchStatus: 'duplicate'
+            action: 'update'
           };
           studentUpdates.push(update);
         }
@@ -414,8 +403,7 @@ async function handleDeliveriesOrClassListOnly(
             firstName: details.first_name,
             lastName: details.last_name,
             gradeLevel: existingStudent.grade_level,
-            action: 'update',
-            matchStatus: 'duplicate'
+            action: 'update'
           };
           studentUpdates.push(update);
         }
@@ -466,7 +454,7 @@ async function handleDeliveriesOrClassListOnly(
 
   // SPE-227: per-file receipts for the rebuilt review screen. Only deliveries
   // and/or class list apply here — there is no student goals file in this mode.
-  const files: PreviewFileReceipt[] = [];
+  const files: BulkFileReceipt[] = [];
   if (deliveriesFile) {
     files.push({
       fileKey: 'deliveriesFile',
@@ -499,9 +487,7 @@ async function handleDeliveriesOrClassListOnly(
       students: studentUpdates,
       summary: {
         total: studentUpdates.length,
-        new: 0,
-        duplicates: studentUpdates.length,
-        // UPSERT counts for consistency
+        // UPSERT counts
         inserts: 0,
         updates: studentUpdates.length,
         skips: 0,
@@ -511,7 +497,7 @@ async function handleDeliveriesOrClassListOnly(
       unmatchedStudents: unmatchedStudents.length > 0 ? unmatchedStudents.slice(0, 20) : [],
       parseErrors: [],
       parseWarnings: allWarnings.length > 0 ? allWarnings.slice(0, 10) : []
-    }
+    } satisfies BulkPreviewData
   });
 }
 
@@ -637,7 +623,6 @@ async function handleTemplateRoster(
       gradeLevel: student.gradeLevel,
       goals: [],
       action,
-      matchStatus: existing ? 'duplicate' : 'new',
       matchedStudentId: existing?.id,
       matchedStudentInitials: existing?.initials || undefined,
       matchConfidence: undefined,
@@ -680,7 +665,7 @@ async function handleTemplateRoster(
 
   // SPE-227: single-file receipt for the rebuilt review screen — the roster
   // template is the only uploaded file on this path.
-  const files: PreviewFileReceipt[] = [
+  const files: BulkFileReceipt[] = [
     {
       fileKey: 'studentsFile',
       fileName,
@@ -702,8 +687,6 @@ async function handleTemplateRoster(
       students: studentPreviews,
       summary: {
         total: studentPreviews.length,
-        new: studentPreviews.filter((s) => s.matchStatus === 'new').length,
-        duplicates: studentPreviews.filter((s) => s.matchStatus === 'duplicate').length,
         inserts: insertCount,
         updates: updateCount,
         skips: skipCount,
@@ -714,7 +697,7 @@ async function handleTemplateRoster(
       unmatchedStudents: [],
       parseErrors: [],
       parseWarnings: parseWarnings.length > 0 ? parseWarnings.slice(0, 10) : []
-    }
+    } satisfies BulkPreviewData
   });
 }
 
@@ -732,9 +715,7 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
     const currentSchoolId = formData.get('currentSchoolId') as string | null;
     const currentSchoolSite = formData.get('currentSchoolSite') as string | null;
 
-    // Backward compatibility: also check for 'file' key
-    const legacyFile = formData.get('file') as File | null;
-    const file = studentsFile || legacyFile;
+    const file = studentsFile;
 
     log.info('Processing student import preview', {
       userId,
@@ -1227,7 +1208,6 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
         gradeLevel: student.gradeLevel,
         goals: goalTexts.map((text) => ({ text })),
         action,
-        matchStatus: isNew ? 'new' : 'duplicate',
         matchedStudentId: isNew ? undefined : matchedStudent?.id,
         matchedStudentInitials: isNew ? undefined : matchedStudent?.initials,
         matchConfidence: isNew ? undefined : (match.confidence === 'none' ? undefined : match.confidence as 'high' | 'medium' | 'low'),
@@ -1325,7 +1305,7 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
     // file is always present on this path; deliveries/class list are optional. The
     // goals file may have been filtered in place (school scoping), so `read` adds
     // back `filteredOutCount` to reflect what the file actually contained.
-    const files: PreviewFileReceipt[] = [];
+    const files: BulkFileReceipt[] = [];
     files.push({
       fileKey: 'studentsFile',
       fileName: file.name,
@@ -1362,9 +1342,6 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
         students: studentPreviews,
         summary: {
           total: studentPreviews.length,
-          // Legacy fields for backward compatibility
-          new: studentPreviews.filter(s => s.matchStatus === 'new').length,
-          duplicates: studentPreviews.filter(s => s.matchStatus === 'duplicate').length,
           // UPSERT counts
           inserts: insertCount,
           updates: updateCount,
@@ -1382,7 +1359,7 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
         parseErrors: parseResult.errors.length > 0 ? parseResult.errors.slice(0, 10) : [],
         parseWarnings: allWarnings.length > 0 ? allWarnings.slice(0, 10) : [],
         files
-      }
+      } satisfies BulkPreviewData
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown error';
