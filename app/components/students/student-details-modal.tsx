@@ -4,7 +4,6 @@ import { useState, useEffect, useMemo } from 'react';
 import { Button } from '../ui/button';
 import { Input, Label, FormGroup } from '../ui/form';
 import { getStudentDetails, upsertStudentDetails, StudentDetails, getMatchingProviderRoles } from '../../../lib/supabase/queries/student-details';
-import { createClient } from '@/lib/supabase/client';
 import { adaptTargetStudentPreview } from '@/lib/import/review-model';
 import AssessmentList from './assessment-list';
 import { IEPGoalsUploader } from './iep-goals-uploader';
@@ -204,73 +203,55 @@ export function StudentDetailsModal({
     }
   };
 
-  // Per-student IEP goals import writes client-side today (server-side merge is
-  // SPE-234). Merge semantics: append each selected goal that isn't already on
-  // the student (case-insensitive), preserving goals_iep_date when the report
-  // carries one — the same stored result as the retired preview modal.
+  // Per-student IEP goals import (SPE-234): the write runs server-side at
+  // /api/import-iep-goals/confirm (provider-scoped, RLS-backstopped), which
+  // merges the selected goals into each student — nothing is removed. A selected
+  // row with no goals is a no-op (skipped, not sent).
   const handleTargetImport = async ({ rows }: ReviewConfirmSelection): Promise<ReviewWriteResult> => {
-    const supabase = createClient();
-    const outcomes: ReviewWriteResult['outcomes'] = [];
+    const entries = rows
+      .filter(({ row, selectedGoalTexts }) => row.targetStudentId && selectedGoalTexts.length > 0)
+      .map(({ row, selectedGoalTexts }) => ({
+        rowId: row.id,
+        studentId: row.targetStudentId as string,
+        goals: selectedGoalTexts,
+        iepDate: row.iepDate,
+      }));
 
-    for (const { row, selectedGoalTexts } of rows) {
-      const studentId = row.targetStudentId;
-      // Skip a selected student with no selected goals: merging nothing is a
-      // no-op, and writing anyway would bump updated_at / overwrite goals_iep_date.
-      if (!studentId || selectedGoalTexts.length === 0) continue;
-
-      try {
-        const { data: currentDetails, error: readError } = await supabase
-          .from('student_details')
-          .select('iep_goals')
-          .eq('student_id', studentId)
-          .maybeSingle();
-        // Abort on a real read failure — never overwrite goals we couldn't read.
-        // maybeSingle returns null data + no error when the row simply doesn't
-        // exist yet, which is a legitimate "no existing goals" case.
-        if (readError) throw readError;
-
-        const existingGoals: string[] = currentDetails?.iep_goals || [];
-        const newGoals = [...existingGoals];
-        for (const goal of selectedGoalTexts) {
-          if (!newGoals.some(existing => existing.trim().toLowerCase() === goal.trim().toLowerCase())) {
-            newGoals.push(goal);
-          }
-        }
-
-        const upsertData: {
-          student_id: string;
-          iep_goals: string[];
-          updated_at: string;
-          goals_iep_date?: string;
-        } = {
-          student_id: studentId,
-          iep_goals: newGoals,
-          updated_at: new Date().toISOString(),
-        };
-        if (row.iepDate) upsertData.goals_iep_date = row.iepDate;
-
-        const { error } = await supabase
-          .from('student_details')
-          .upsert(upsertData, { onConflict: 'student_id' });
-        if (error) throw error;
-
-        outcomes.push({ rowId: row.id, success: true });
-      } catch (err) {
-        // Supabase/PostgREST errors are often plain objects (not Error
-        // instances), so read .message directly to keep the real DB error.
-        outcomes.push({
-          rowId: row.id,
-          success: false,
-          error: (err as { message?: string })?.message ?? 'Failed to save goals',
-        });
-      }
+    if (entries.length === 0) {
+      return { outcomes: [], succeeded: 0, failed: 0 };
     }
 
-    return {
-      outcomes,
-      succeeded: outcomes.filter(o => o.success).length,
-      failed: outcomes.filter(o => !o.success).length,
-    };
+    try {
+      const response = await fetch('/api/import-iep-goals/confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          students: entries.map(({ studentId, goals, iepDate }) => ({ studentId, goals, iepDate })),
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to save goals');
+      }
+
+      // The route returns input-ordered results; map each back to its row.
+      const serverResults: Array<{ success: boolean; error?: string }> = result.data?.results ?? [];
+      const outcomes = entries.map((entry, i) => ({
+        rowId: entry.rowId,
+        success: serverResults[i]?.success ?? false,
+        error: serverResults[i]?.error,
+      }));
+      return {
+        outcomes,
+        succeeded: outcomes.filter(o => o.success).length,
+        failed: outcomes.filter(o => !o.success).length,
+      };
+    } catch (err) {
+      // Whole-request failure (network / non-OK) — every submitted row failed.
+      const message = err instanceof Error ? err.message : 'Failed to save goals';
+      const outcomes = entries.map(entry => ({ rowId: entry.rowId, success: false, error: message }));
+      return { outcomes, succeeded: 0, failed: outcomes.length };
+    }
   };
 
   // Adapt the per-student IEP preview into the shared review model once per upload.
