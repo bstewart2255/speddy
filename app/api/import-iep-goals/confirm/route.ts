@@ -13,9 +13,9 @@
  * SPE-259) so two concurrent confirmations for the same student can't overwrite
  * each other and drop a goal. Ownership is enforced inside the function
  * (`students.provider_id = p_provider_id`), where the route passes the
- * authenticated user's id as `p_provider_id`. The RPC is SECURITY DEFINER, so it
- * bypasses `student_details` RLS — the in-function ownership check is the guard,
- * matching the other import RPCs (`import_student_atomic`, `upsert_students_atomic`).
+ * authenticated user's id as `p_provider_id`. The RPC is SECURITY DEFINER (so it
+ * bypasses `student_details` RLS); it binds `p_provider_id` to `auth.uid()` and
+ * is not anon-callable, so it can only ever write to the caller's own students.
  */
 
 import { NextResponse } from 'next/server';

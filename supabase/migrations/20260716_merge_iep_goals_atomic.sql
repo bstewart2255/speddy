@@ -88,6 +88,16 @@ DECLARE
   v_iep_date text;
   v_owned boolean;
 BEGIN
+  -- Defense-in-depth (SPE-259 review): this SECURITY DEFINER function bypasses
+  -- RLS, so bind it to the caller — reject any p_provider_id that isn't the
+  -- authenticated user, and fail closed when there is no JWT. The route always
+  -- passes the authenticated user's id, so legitimate calls are unaffected; this
+  -- stops a signed-in client from calling the RPC directly with someone else's
+  -- provider id.
+  IF auth.uid() IS NULL OR p_provider_id IS DISTINCT FROM auth.uid() THEN
+    RAISE EXCEPTION 'Unauthorized' USING ERRCODE = '42501';
+  END IF;
+
   IF p_entries IS NULL OR jsonb_typeof(p_entries) <> 'array' THEN
     RETURN;
   END IF;
@@ -172,8 +182,12 @@ $$;
 COMMENT ON FUNCTION public.merge_iep_goals(uuid, jsonb) IS
   'Atomically merges selected IEP goals into each student owned by p_provider_id. Per-student import (append + de-dupe), the atomic replacement for the app-side read-merge-write (SPE-259). Returns one row per input entry (ord = input index).';
 
--- Match the grant pattern of the other import RPCs (import_student_atomic,
--- upsert_students_atomic): callable by authenticated users, ownership enforced
--- inside the function via p_provider_id.
-GRANT EXECUTE ON FUNCTION public.merge_iep_goals_array(text[], text[]) TO authenticated;
+-- SECURITY DEFINER bypasses RLS, so don't leave anon able to call it (SPE-10,
+-- migration 20260529). Supabase's default privileges grant EXECUTE to anon and
+-- authenticated *directly* (not only via PUBLIC), so revoking from PUBLIC alone
+-- is not enough — revoke anon explicitly. Only authenticated may call the RPC;
+-- postgres (owner) and service_role retain access. The pure array helper is
+-- internal (called by the SECURITY DEFINER owner) and needs no external grant.
+REVOKE ALL ON FUNCTION public.merge_iep_goals_array(text[], text[]) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.merge_iep_goals(uuid, jsonb) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.merge_iep_goals(uuid, jsonb) TO authenticated;
