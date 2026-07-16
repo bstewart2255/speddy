@@ -84,11 +84,14 @@ export function classifyStudentsFileType(file: File): { isExcel: boolean; isCSV:
  */
 export async function parseStudentsFile(
   file: File,
-  opts: { isCSV: boolean; userSchools?: string[]; providerRole?: string }
+  opts: { isCSV: boolean; providerRole?: string }
 ): Promise<SEISParseResult | CSVParseResult> {
   const buffer = Buffer.from(await file.arrayBuffer());
   if (opts.isCSV) {
-    return parseCSVReport(buffer, { userSchools: opts.userSchools, providerRole: opts.providerRole });
+    // No `userSchools` school filter here on purpose: scoping students to the
+    // provider's current school is done once, downstream, by applySchoolFilter.
+    // See the note in runStudentsPreview (SPE-264).
+    return parseCSVReport(buffer, { providerRole: opts.providerRole });
   }
   return parseSEISReport(buffer, { providerRole: opts.providerRole });
 }

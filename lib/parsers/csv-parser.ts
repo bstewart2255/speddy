@@ -340,8 +340,16 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
           continue;
         }
 
-        // Create unique key for student (name + grade)
-        const studentKey = `${firstName.trim().toLowerCase()}_${lastName.trim().toLowerCase()}_${normalizedGrade}`;
+        // Create unique key for consolidating a student's goal rows: name +
+        // grade + school. School is part of the key because two DIFFERENT
+        // students who share first name, last name, and grade but attend
+        // different schools must NOT merge — merging would drop one student or
+        // graft the other's IEP goals onto the wrong student once the
+        // selected-school filter runs downstream. A single student's goal rows
+        // all carry the same School of Attendance, so intended merges are
+        // unaffected. (SPE-264)
+        const schoolKeyPart = schoolOfAttendance ? normalizeSchoolName(schoolOfAttendance.trim()) : '';
+        const studentKey = `${firstName.trim().toLowerCase()}_${lastName.trim().toLowerCase()}_${normalizedGrade}_${schoolKeyPart}`;
 
         // Check if student already exists
         if (studentMap.has(studentKey)) {

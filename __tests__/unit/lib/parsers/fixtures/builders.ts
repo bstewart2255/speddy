@@ -217,6 +217,22 @@ export const SEIS_GOALS_CSV_BOM = (): Buffer =>
   Buffer.concat([UTF8_BOM, Buffer.from(buildSeisGoalsCsv(), 'utf-8')]);
 
 /**
+ * Build a SEIS goals CSV from caller-supplied sparse rows (same 59-column width
+ * and \r\n format as SEIS_GOALS_CSV). For targeted school-scoping tests that need
+ * students at specific School-of-Attendance values — e.g. the multi-school
+ * first-import regression (SPE-264). Fill positions per SEIS_HEADERS: Last @ 2,
+ * First @ 3, Grade @ 5, School @ 6, IEP Date @ 9, Area Of Need @ 11,
+ * Annual Goal # @ 12, Goal @ 14, Person Responsible @ 17.
+ */
+export function buildSeisGoalsCsvFrom(rows: Array<Record<number, string>>): Buffer {
+  const lines = [
+    SEIS_HEADERS.map(csvCell).join(','),
+    ...rows.map((r) => seisCsvLine(r)),
+  ];
+  return Buffer.from(lines.join('\r\n'), 'utf-8');
+}
+
+/**
  * A column-shifted SEIS export (every column moved right by one) so the fixed
  * position detector matches fewer than 5 of its 6 key columns and falls back
  * to the generic parser. Pins the 5-of-6 detection boundary at the file level.
