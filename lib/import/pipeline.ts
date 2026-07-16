@@ -161,6 +161,7 @@ export async function runStudentsPreview(ctx: PipelineContext, file: File): Prom
 
   const { isExcel, isCSV } = classifyStudentsFileType(file);
   if (!isExcel && !isCSV) {
+    perf.end({ success: false });
     return NextResponse.json(
       { error: 'Invalid file type. Please upload an Excel file (.xlsx or .xls) or CSV file (.csv)' },
       { status: 400 },
@@ -174,6 +175,7 @@ export async function runStudentsPreview(ctx: PipelineContext, file: File): Prom
   dbPerf.end({ success: !dbError });
   if (dbError) {
     log.error('Failed to fetch students', dbError instanceof Error ? dbError : null, { userId });
+    perf.end({ success: false });
     return NextResponse.json({ error: 'Failed to fetch your students from database' }, { status: 500 });
   }
 
@@ -199,6 +201,7 @@ export async function runStudentsPreview(ctx: PipelineContext, file: File): Prom
   } catch (error) {
     parsePerf.end({ success: false });
     log.error(`${fileType} parsing failed`, error instanceof Error ? error : null, { userId, fileName: file.name });
+    perf.end({ success: false });
     return NextResponse.json(
       { error: `Failed to parse ${fileType} file: ${errorMessage(error)}. Please ensure the file contains student names, grades, and IEP goals.` },
       { status: 400 },
@@ -216,6 +219,7 @@ export async function runStudentsPreview(ctx: PipelineContext, file: File): Prom
     // column message) as the top-level error; SEIS per-sheet/per-row errors are
     // excluded on purpose.
     const detectionError = isCSV ? parseResult.errors.find(e => e.row === 0)?.message : undefined;
+    perf.end({ success: false });
     return NextResponse.json(
       {
         error:
@@ -234,6 +238,7 @@ export async function runStudentsPreview(ctx: PipelineContext, file: File): Prom
   const filter = applySchoolFilter(parseResult.students, currentSchoolSite, profile?.works_at_multiple_schools);
   const filteredStudents = filter.students;
   if (filteredStudents.length === 0 && filter.filteredOutCount > 0) {
+    perf.end({ success: false });
     return NextResponse.json(
       {
         error: `All ${filter.filteredOutCount} students in this file belong to other schools (${filter.filteredOutSchools.join(', ')}). Please switch to the correct school or upload a file with students from ${currentSchoolSite}.`,

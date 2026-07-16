@@ -229,6 +229,34 @@ describe('POST /api/import-students — preview characterization (SPE-230)', () 
     expect(result).toMatchSnapshot();
   });
 
+  it('students + deliveries (no class list)', async () => {
+    const result = await runPost(
+      mainTables(),
+      requestWith({ studentsFile: studentsCsv(), deliveriesFile: deliveriesCsv() }, schoolCtx),
+    );
+    expect(result.status).toBe(200);
+    expect(result).toMatchSnapshot();
+  });
+
+  it('students + class list (no deliveries)', async () => {
+    const result = await runPost(
+      mainTables(),
+      requestWith({ studentsFile: studentsCsv(), classListFile: classListTxt() }, schoolCtx),
+    );
+    expect(result.status).toBe(200);
+    expect(result).toMatchSnapshot();
+  });
+
+  it('deliveries + class list (no students): update-only, both enrichment files', async () => {
+    const result = await runPost(
+      updateOnlyTables(),
+      requestWith({ deliveriesFile: deliveriesCsv(), classListFile: classListTxt() }, schoolCtx),
+    );
+    expect(result.status).toBe(200);
+    expect((result.body as { mode?: string }).mode).toBe('update');
+    expect(result).toMatchSnapshot();
+  });
+
   it('no files: 400', async () => {
     const result = await runPost(mainTables(), requestWith({}));
     expect(result.status).toBe(400);

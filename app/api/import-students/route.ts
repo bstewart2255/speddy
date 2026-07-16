@@ -42,6 +42,7 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
     // At least one file is required.
     if (!form.studentsFile && !form.deliveriesFile && !form.classListFile) {
       log.warn('No files provided in student import request', { userId });
+      perf.end({ success: false });
       return NextResponse.json({ error: 'No files provided' }, { status: 400 });
     }
 
