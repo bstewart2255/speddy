@@ -115,7 +115,9 @@ export interface StudentToImport {
   lastName: string;
   /** User-edited initials from the review screen. */
   initials: string;
-  gradeLevel: string;
+  /** Null for an update row whose existing student has no grade — the confirm
+   *  RPC COALESCEs, so null leaves the stored grade untouched. */
+  gradeLevel: string | null;
   /** Verbatim goal text, selected in the review screen. */
   goals: string[];
   schoolSite?: string;

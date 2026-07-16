@@ -56,7 +56,9 @@ export interface ReviewRow {
   displayName: string;
   /** Editable in the UI, kept through confirm. */
   initials: string;
-  gradeLevel: string;
+  /** Null for a deliveries/class-list update row whose existing student has no
+   *  grade — preserved (not coerced) so confirm never overwrites it. */
+  gradeLevel: string | null;
   schedule?: { sessionsPerWeek: number; minutesPerSession: number };
   teacher?: ReviewTeacher;
   /** Incoming goals being imported (selectable). */
@@ -169,7 +171,10 @@ function toReviewRow(student: BulkStudentPreview, srcIndex: number): ReviewRow {
     lastName: student.lastName,
     displayName,
     initials: student.initials,
-    gradeLevel: student.gradeLevel ?? '',
+    // Preserve null (don't coerce to ''): the confirm RPC COALESCEs grade_level,
+    // so sending '' would overwrite an existing student's grade, but null leaves
+    // it untouched (SPE-236 review fix). null renders as a blank cell.
+    gradeLevel: student.gradeLevel,
     schedule: student.schedule
       ? {
           sessionsPerWeek: student.schedule.sessionsPerWeek,

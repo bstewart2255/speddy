@@ -76,8 +76,10 @@ describe('student-import shared contract (SPE-236)', () => {
     } satisfies BulkPreviewData;
 
     const model = adaptBulkPreview(payload);
-    // The adapter narrows a null grade to '' for the UI model.
-    expect(model.rows[0].gradeLevel).toBe('');
+    // A null grade is PRESERVED (not coerced to ''): the confirm RPC COALESCEs
+    // grade_level, so '' would overwrite an existing student's grade while null
+    // leaves it untouched (SPE-236 review fix). It renders as a blank cell.
+    expect(model.rows[0].gradeLevel).toBeNull();
     expect(model.rows[0].targetStudentId).toBe('stu-3');
   });
 
