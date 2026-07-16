@@ -13,11 +13,12 @@ import {
   ACCEPTED_EXTENSIONS,
   type DetectedImportType,
 } from '../../../lib/import/detect-import-file';
+import type { BulkPreviewData } from '../../../lib/types/student-import';
 
 interface StudentImportModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onUploadComplete: (data: unknown) => void;
+  onUploadComplete: (data: BulkPreviewData) => void;
   currentSchool?: {
     school_id?: string | null;
     school_site?: string | null;
@@ -211,7 +212,7 @@ export function StudentImportModal({
         throw new Error(result.error || 'Failed to process files');
       }
 
-      onUploadComplete(result.data);
+      onUploadComplete(result.data as BulkPreviewData);
       resetState();
       onClose();
     } catch (err) {

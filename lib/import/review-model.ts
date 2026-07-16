@@ -10,15 +10,34 @@
  * before the per-flow reuse" gate.
  */
 
+import type {
+  RowAction,
+  PreviewFileKey,
+  BulkStudentPreview,
+  BulkPreviewData,
+  TargetPreviewData,
+} from '@/lib/types/student-import';
+
+// The preview/confirm wire contract lives in one shared module so the route
+// (producer) and this adapter (consumer) can't drift (SPE-236). Re-exported
+// here so existing importers of these names from this module keep working.
+export type {
+  RowAction,
+  PreviewFileKey,
+  BulkGoal,
+  BulkStudentPreview,
+  BulkFileReceipt,
+  BulkPreviewData,
+  TargetMatch,
+  TargetPreviewData,
+} from '@/lib/types/student-import';
+
 // One confidence vocabulary, rendered identically everywhere (✓ · ! · −).
 export type ReviewSignal = 'confident' | 'check' | 'removed';
 
 export type ReviewMode = 'bulk' | 'target-student';
 // bulk import replaces a student's goals; per-student IEP import merges (SPE-232/234).
 export type WriteMode = 'replace' | 'merge';
-export type RowAction = 'insert' | 'update' | 'skip';
-
-export type PreviewFileKey = 'studentsFile' | 'deliveriesFile' | 'classListFile';
 
 export interface ReviewGoal {
   /** Verbatim goal text (SPE-238). */
@@ -100,75 +119,9 @@ export interface ReviewModel {
   rows: ReviewRow[];
 }
 
-// ---------------------------------------------------------------------------
-// Wire-input types: the bulk preview payload shape (`result.data` from
-// /api/import-students). Mirrors the route's response builders. SPE-236 will
-// promote these to a module shared with the route; for now the adapter owns them.
-// ---------------------------------------------------------------------------
-
-export interface BulkGoal {
-  text: string;
-}
-
-interface BulkGoalChange {
-  added: string[];
-  removed: string[];
-  unchanged: string[];
-}
-
-export interface BulkStudentPreview {
-  firstName: string;
-  lastName: string;
-  initials: string;
-  gradeLevel: string;
-  goals?: BulkGoal[];
-  action?: RowAction;
-  /** Legacy field (removed in SPE-236); read `action` only. */
-  matchStatus?: 'new' | 'duplicate';
-  matchedStudentId?: string;
-  matchedStudentInitials?: string;
-  matchConfidence?: 'high' | 'medium' | 'low';
-  matchReason?: string;
-  /** Present in deliveries/class-list update mode instead of matchedStudentId. */
-  studentId?: string;
-  changes?: { goals?: BulkGoalChange };
-  goalsRemoved?: string[];
-  schedule?: { sessionsPerWeek: number; minutesPerSession: number };
-  teacher?: {
-    teacherId: string | null;
-    teacherName: string | null;
-    confidence: 'high' | 'medium' | 'low' | 'none';
-    reason: string;
-  };
-}
-
-export interface BulkFileReceipt {
-  fileKey: PreviewFileKey;
-  fileName: string;
-  read: number;
-  matched: number;
-  filtered: number;
-  notes?: Array<{ row: number; message: string }>;
-}
-
-export interface BulkPreviewData {
-  students: BulkStudentPreview[];
-  summary: {
-    total: number;
-    inserts?: number;
-    updates?: number;
-    skips?: number;
-    new?: number;
-    duplicates?: number;
-    filteredOutBySchool?: number;
-    filteredOutSchools?: string[];
-  };
-  unmatchedStudents?: Array<{ name: string; source: 'deliveries' | 'classList' }>;
-  parseErrors?: Array<{ row: number; message: string }>;
-  parseWarnings?: Array<{ row: number; message: string; source?: string }>;
-  files?: BulkFileReceipt[];
-  mode?: 'update';
-}
+// The bulk preview wire types (BulkStudentPreview, BulkPreviewData, …) and the
+// target preview types further down are imported from @/lib/types/student-import
+// (the single contract shared with the route). This adapter consumes them.
 
 // Receipt display labels keyed by the multipart form key each file submits under.
 const FILE_RECEIPT_META: Record<PreviewFileKey, { label: string; fills: string }> = {
@@ -191,8 +144,7 @@ function toReviewTeacher(teacher: NonNullable<BulkStudentPreview['teacher']>): R
 }
 
 function toReviewRow(student: BulkStudentPreview, srcIndex: number): ReviewRow {
-  const action: RowAction =
-    student.action ?? (student.matchStatus === 'new' ? 'insert' : 'update');
+  const action: RowAction = student.action;
   const targetStudentId = student.matchedStudentId ?? student.studentId;
 
   const fullName = `${student.firstName} ${student.lastName}`.trim();
@@ -226,7 +178,7 @@ function toReviewRow(student: BulkStudentPreview, srcIndex: number): ReviewRow {
     lastName: student.lastName,
     displayName,
     initials: student.initials,
-    gradeLevel: student.gradeLevel,
+    gradeLevel: student.gradeLevel ?? '',
     schedule: student.schedule
       ? {
           sessionsPerWeek: student.schedule.sessionsPerWeek,
@@ -308,28 +260,9 @@ export function adaptBulkPreview(data: BulkPreviewData): ReviewModel {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Wire-input types: the per-student IEP goals preview payload (`result.data`
-// from /api/import-iep-goals). One matched student whose goals merge into their
-// record — nothing is removed (SPE-232). Only the fields the review screen uses
-// are modeled; the route returns more (summary counts, unmatched list) that the
-// single-student target flow doesn't surface.
-// ---------------------------------------------------------------------------
-
-export interface TargetMatch {
-  studentId: string;
-  studentInitials: string;
-  studentGrade: string;
-  matchConfidence: 'high' | 'medium' | 'low';
-  matchReason: string;
-  /** IEP date from the report, carried through to the write (goals_iep_date). */
-  iepDate?: string;
-  goals: Array<{ text: string }>;
-}
-
-export interface TargetPreviewData {
-  matches: TargetMatch[];
-}
+// The per-student IEP goals preview wire types (TargetMatch, TargetPreviewData)
+// are imported from @/lib/types/student-import. One matched student whose goals
+// merge into their record — nothing is removed (SPE-232).
 
 /**
  * Convert a per-student IEP goals preview (the `/api/import-iep-goals` `matches`

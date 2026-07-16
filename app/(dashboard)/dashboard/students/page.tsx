@@ -18,6 +18,7 @@ import { useRouter } from 'next/navigation';
 import { StudentImportModal } from '../../../components/students/student-import-modal';
 import { StudentImportReview } from '../../../components/students/review/student-import-review';
 import { adaptBulkPreview } from '@/lib/import/review-model';
+import type { BulkPreviewData } from '@/lib/types/student-import';
 
 type Student = {
   id: string;
@@ -74,7 +75,7 @@ export default function StudentsPage() {
   const [unscheduledCount, setUnscheduledCount] = useState<number>(0);
   const [sortByGrade, setSortByGrade] = useState(false);
   const [showFileUploadModal, setShowFileUploadModal] = useState(false);
-  const [bulkImportPreviewData, setBulkImportPreviewData] = useState<any>(null);
+  const [bulkImportPreviewData, setBulkImportPreviewData] = useState<BulkPreviewData | null>(null);
   // Adapt the wire payload into the review model once per preview, not on every
   // render (each render would otherwise rebuild every row/exception).
   const bulkModel = useMemo(
