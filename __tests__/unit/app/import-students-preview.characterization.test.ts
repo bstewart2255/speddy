@@ -426,3 +426,56 @@ describe('POST /api/import-students — multi-school first-import regression (SP
     expect(error).not.toMatch(/All \d+ students/); // the misleading count is gone
   });
 });
+
+/**
+ * SPE-269 — cross-school candidate scoping. Even with name-based matching
+ * (SPE-266), a same-name student can exist at two schools, so match candidates
+ * are scoped to the selected school. A Mt Diablo import must NOT match — and on
+ * confirm update — a same-name/grade student stored at Bancroft.
+ */
+describe('POST /api/import-students — cross-school candidate scoping (SPE-269)', () => {
+  it('does not match a same-name/grade student stored at a different school (scoped out → insert)', async () => {
+    const dbAtOtherSchool = [
+      {
+        id: 'stu-other', initials: 'SR', grade_level: '3',
+        school_site: 'Bancroft Elementary School', school_id: 'school-2',
+        sessions_per_week: null, minutes_per_session: null, teacher_id: null,
+      },
+    ];
+    const tables = (): TableData => ({
+      profiles: { data: { works_at_multiple_schools: true, role: 'resource' }, error: null },
+      students: { data: dbAtOtherSchool, error: null },
+      student_details: {
+        data: [{ student_id: 'stu-other', first_name: 'Sam', last_name: 'Rivers', iep_goals: ['An old Bancroft goal.'] }],
+        error: null,
+      },
+      teachers: { data: DB_TEACHERS, error: null },
+    });
+
+    // Same student name + grade as the Bancroft record, but at the selected
+    // school (Mt Diablo). Without scoping, name+grade would match cross-school.
+    const csv = () =>
+      fileFrom(
+        buildSeisGoalsCsvFrom([
+          {
+            0: '2000501', 2: 'Rivers', 3: 'Sam', 5: '03', 6: 'Mt Diablo Elementary School',
+            9: '05/01/2026', 11: 'Reading', 12: 'Academic #1: 2026 - 2027', 17: 'Resource Specialist',
+            14: 'By 5/1/2027, Sam will read 90 words per minute with 95% accuracy in 3 of 4 trials.',
+          },
+        ]),
+        'students.csv',
+        'text/csv',
+      );
+
+    const result = await runPost(tables(), requestWith({ studentsFile: csv() }, schoolCtx));
+    expect(result.status).toBe(200);
+
+    const data = (result.body as {
+      data?: { students?: Array<{ lastName?: string; action?: string; goals?: Array<{ text?: string }> }> };
+    }).data;
+    const rivers = (data?.students ?? []).find((s) => s.lastName === 'Rivers');
+    expect(rivers?.action).toBe('insert'); // NOT matched to the Bancroft Sam Rivers
+    // And no cross-school goal contamination.
+    expect((rivers?.goals ?? []).map((g) => g.text).join(' ')).not.toContain('Bancroft');
+  });
+});

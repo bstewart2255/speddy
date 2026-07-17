@@ -268,8 +268,14 @@ export async function runStudentsPreview(ctx: PipelineContext, file: File): Prom
   }
 
   const dbTeachers = classList && classList.students.size > 0 ? await fetchTeachers(supabase, currentSchoolId) : [];
-  const studentDetails = await loadStudentDetails(supabase, dbStudents);
-  const databaseStudents = toDatabaseStudents(dbStudents, studentDetails);
+
+  // Scope match candidates to the selected school (SPE-269), mirroring the roster
+  // path (buildRosterPreviews). Identity is name+grade (SPE-266), but a same-name
+  // student can exist at two schools, so a Mt-Diablo import must not match — and
+  // on confirm update — a same-name student at another school. Same-school only.
+  const dbStudentsInSchool = (dbStudents ?? []).filter(s => s.school_id === currentSchoolId);
+  const studentDetails = await loadStudentDetails(supabase, dbStudentsInSchool);
+  const databaseStudents = toDatabaseStudents(dbStudentsInSchool, studentDetails);
 
   const { studentPreviews, matchedDeliveryNames, matchedClassListNames } = buildStudentPreviews({
     parsedStudents: filteredStudents,

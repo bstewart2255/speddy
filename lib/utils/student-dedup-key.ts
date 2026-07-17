@@ -27,3 +27,21 @@ export function buildStudentDedupKey(
 ): string {
   return `${normalizeInitialsForKey(initials)}-${normalizeGradeLevel(String(gradeLevel ?? ''))}`;
 }
+
+/**
+ * School-scoped duplicate-detection key (SPE-269): `buildStudentDedupKey`
+ * prefixed with the school, matching the `(provider_id, school_id, grade_level,
+ * initials)` DB uniqueness. A null/absent school collapses to one bucket so the
+ * app-level check lines up with the index's `NULLS NOT DISTINCT` (all
+ * school-less rows for a provider dedup together on grade+initials).
+ *
+ * Used by the import confirm route so a same-initials+grade student at a
+ * *different* school is not wrongly rejected as a duplicate on insert.
+ */
+export function buildSchoolScopedDedupKey(
+  schoolId: string | null | undefined,
+  initials: string | null | undefined,
+  gradeLevel: string | null | undefined,
+): string {
+  return `${schoolId ?? ''}::${buildStudentDedupKey(initials, gradeLevel)}`;
+}

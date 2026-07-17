@@ -10,7 +10,7 @@ import { log } from '@/lib/monitoring/logger';
 import { track } from '@/lib/monitoring/analytics';
 import { measurePerformanceWithAlerts } from '@/lib/monitoring/performance-alerts';
 import { updateExistingSessionsForStudent } from '@/lib/scheduling/session-requirement-sync';
-import { buildStudentDedupKey } from '@/lib/utils/student-dedup-key';
+import { buildSchoolScopedDedupKey } from '@/lib/utils/student-dedup-key';
 import { mapUpsertResults, PendingUpsert, ImportResult } from '@/lib/import/upsert-result-mapper';
 import type { StudentToImport } from '@/lib/types/student-import';
 
@@ -51,21 +51,24 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
         .select('school_id, district_id, state_id, school_site')
         .eq('id', userId)
         .single(),
-      // 2. Batch fetch ALL existing students for this provider (for duplicate checking)
+      // 2. Batch fetch ALL existing students for this provider (for duplicate
+      //    checking). school_id is included so duplicate detection is school-aware
+      //    (SPE-269) — the same initials+grade can legitimately exist at two schools.
       supabase
         .from('students')
-        .select('id, initials, grade_level')
+        .select('id, initials, grade_level, school_id')
         .eq('provider_id', userId),
       // 3. Fetch accessible schools once
       supabase.rpc('user_accessible_school_ids')
     ]);
 
-    // Build lookup map for O(1) duplicate detection: key = "INITIALS-GRADE".
-    // The key normalizes both components so a stored legacy SEIS grade
-    // (grade_level '18'/'0') still matches an incoming normalized 'TK'/'K'.
+    // Build lookup map for O(1) duplicate detection: key = "SCHOOL::INITIALS-GRADE".
+    // The initials/grade components normalize so a stored legacy SEIS grade
+    // (grade_level '18'/'0') still matches an incoming normalized 'TK'/'K'; the
+    // school prefix keeps the check school-aware (SPE-269).
     const existingStudentMap = new Map<string, boolean>();
     for (const student of existingStudents || []) {
-      const key = buildStudentDedupKey(student.initials, student.grade_level);
+      const key = buildSchoolScopedDedupKey(student.school_id, student.initials, student.grade_level);
       existingStudentMap.set(key, true);
     }
 
@@ -184,7 +187,12 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
           continue;
         }
 
-        const duplicateKey = buildStudentDedupKey(initialsNormalized, student.gradeLevel);
+        // Determine school context up front so the duplicate key is school-aware
+        // (matches the (provider, school_id, grade, initials) DB uniqueness, SPE-269).
+        // Priority: student-specific (current school selection) > user profile > null.
+        // Access to this school is validated below before the row is queued.
+        const requestedSchoolId = student.schoolId || userProfile?.school_id || null;
+        const duplicateKey = buildSchoolScopedDedupKey(requestedSchoolId, initialsNormalized, student.gradeLevel);
 
         // For inserts, check for duplicates (against existing DB rows and earlier
         // rows in this same batch) - O(1) instead of a database query.
@@ -212,12 +220,8 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
           }
         }
 
-        // Determine school context
-        // Priority: student-specific (from current school selection) > user profile > null
-        // IMPORTANT: Must validate user has access to the school for security
-        const requestedSchoolId = student.schoolId || userProfile?.school_id || null;
-
-        // Validate user has access to the requested school using Set - O(1)
+        // Validate user has access to the requested school using Set - O(1).
+        // (requestedSchoolId is computed above so the duplicate key can be school-aware.)
         if (requestedSchoolId) {
           if (schoolsError) {
             log.error('Failed to fetch accessible schools', schoolsError, {

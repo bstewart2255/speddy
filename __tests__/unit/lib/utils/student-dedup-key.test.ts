@@ -8,6 +8,7 @@
 
 import {
   buildStudentDedupKey,
+  buildSchoolScopedDedupKey,
   normalizeInitialsForKey,
 } from '@/lib/utils/student-dedup-key';
 
@@ -48,5 +49,30 @@ describe('normalizeInitialsForKey', () => {
     expect(normalizeInitialsForKey('j.s.')).toBe('JS');
     expect(normalizeInitialsForKey(' a-b ')).toBe('AB');
     expect(normalizeInitialsForKey(null)).toBe('');
+  });
+});
+
+describe('buildSchoolScopedDedupKey (SPE-269)', () => {
+  it('keeps the same initials+grade distinct across different schools', () => {
+    expect(buildSchoolScopedDedupKey('school-a', 'ML', '3'))
+      .not.toBe(buildSchoolScopedDedupKey('school-b', 'ML', '3'));
+  });
+
+  it('dedups the same initials+grade within the same school', () => {
+    expect(buildSchoolScopedDedupKey('school-a', 'ML', '3'))
+      .toBe(buildSchoolScopedDedupKey('school-a', 'ml', '3'));
+  });
+
+  it('collapses null/undefined school to one bucket (matches the index NULLS NOT DISTINCT)', () => {
+    expect(buildSchoolScopedDedupKey(null, 'ML', '3'))
+      .toBe(buildSchoolScopedDedupKey(undefined, 'ML', '3'));
+    // ...and a null-school key differs from a real-school one.
+    expect(buildSchoolScopedDedupKey(null, 'ML', '3'))
+      .not.toBe(buildSchoolScopedDedupKey('school-a', 'ML', '3'));
+  });
+
+  it('still reconciles legacy SEIS grades within a school (18/TK)', () => {
+    expect(buildSchoolScopedDedupKey('school-a', 'JS', '18'))
+      .toBe(buildSchoolScopedDedupKey('school-a', 'JS', 'TK'));
   });
 });
