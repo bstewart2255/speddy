@@ -11,11 +11,13 @@ import { ReviewSignalIcon } from './review-signal';
 interface ReviewGoalListProps {
   row: ReviewRow;
   goalsSelected: Set<number>;
+  /** Goal indices whose target date is already past — unchecked by default (SPE-267). */
+  pastDatedGoals: Set<number>;
   onToggleGoal: (goalIndex: number) => void;
   onToggleAllGoals: () => void;
 }
 
-export function ReviewGoalList({ row, goalsSelected, onToggleGoal, onToggleAllGoals }: ReviewGoalListProps) {
+export function ReviewGoalList({ row, goalsSelected, pastDatedGoals, onToggleGoal, onToggleAllGoals }: ReviewGoalListProps) {
   const hasGoals = row.goals.length > 0;
   const allSelected = hasGoals && goalsSelected.size === row.goals.length;
 
@@ -50,6 +52,14 @@ export function ReviewGoalList({ row, goalsSelected, onToggleGoal, onToggleAllGo
               className="mt-0.5 h-4 w-4 shrink-0 rounded border-gray-300 text-blue-600"
             />
             <span className="flex-1 text-gray-900">{goal.text}</span>
+            {pastDatedGoals.has(i) && (
+              <span
+                className="inline-flex shrink-0 items-center rounded-full bg-amber-50 px-1.5 py-0.5 text-xs font-medium text-amber-700"
+                title="This goal's target date has already passed. Left unchecked by default — check it to import anyway."
+              >
+                past date
+              </span>
+            )}
             {goal.status === 'added' && row.action === 'update' && (
               <span className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-green-50 px-1.5 py-0.5 text-xs font-medium text-green-700">
                 <ReviewSignalIcon signal="confident" className="h-3 w-3" decorative /> added

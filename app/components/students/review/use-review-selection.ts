@@ -2,6 +2,7 @@
 
 import { useCallback, useMemo, useState } from 'react';
 import type { ReviewRow } from '@/lib/import/review-model';
+import { isGoalTargetDatePast } from '@/lib/import/goal-target-date';
 
 /**
  * Selection state for the import review screen (SPE-227), keyed by stable
@@ -16,11 +17,35 @@ export function useReviewSelection(rows: ReviewRow[]) {
     [rows]
   );
 
+  // Goal indices whose target date is already in the past, keyed by row id.
+  // Computed once from "now" and used as the single source of truth for both the
+  // default-unselect below and the "past date" hint in the goal list, so the two
+  // can never disagree (SPE-267).
+  const pastDatedGoals = useMemo(() => {
+    const now = new Date();
+    const map: Record<string, Set<number>> = {};
+    for (const row of rows) {
+      const past = new Set<number>();
+      row.goals.forEach((goal, i) => {
+        if (isGoalTargetDatePast(goal.text, now)) past.add(i);
+      });
+      map[row.id] = past;
+    }
+    return map;
+  }, [rows]);
+
   const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(() => new Set(selectableIds));
   const [editedInitials, setEditedInitials] = useState<Record<string, string>>({});
   const [selectedGoals, setSelectedGoals] = useState<Record<string, Set<number>>>(() => {
+    // Default-select every incoming goal EXCEPT ones whose target date is already
+    // past: SEIS exports sometimes carry expired goals, and auto-importing them
+    // silently adds stale goals (SPE-267). The provider can still opt in by
+    // checking the box; a goal with no parseable date stays selected.
     const initial: Record<string, Set<number>> = {};
-    for (const row of rows) initial[row.id] = new Set(row.goals.map((_, i) => i));
+    for (const row of rows) {
+      const past = pastDatedGoals[row.id];
+      initial[row.id] = new Set(row.goals.map((_, i) => i).filter((i) => !past?.has(i)));
+    }
     return initial;
   });
 
@@ -58,6 +83,11 @@ export function useReviewSelection(rows: ReviewRow[]) {
   const goalsSelectedFor = useCallback(
     (rowId: string): Set<number> => selectedGoals[rowId] ?? new Set<number>(),
     [selectedGoals]
+  );
+
+  const pastDatedGoalsFor = useCallback(
+    (rowId: string): Set<number> => pastDatedGoals[rowId] ?? new Set<number>(),
+    [pastDatedGoals]
   );
 
   const toggleGoal = useCallback((rowId: string, goalIndex: number) => {
@@ -104,6 +134,7 @@ export function useReviewSelection(rows: ReviewRow[]) {
     initialsFor,
     setInitials,
     goalsSelectedFor,
+    pastDatedGoalsFor,
     toggleGoal,
     toggleAllGoals,
     selectedRows,
