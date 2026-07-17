@@ -135,6 +135,10 @@ export async function parseClassListFile(file: File): Promise<ParsedClassList> {
 
 export interface SchoolFilterResult<T> {
   students: T[];
+  /** The students excluded by school — used to reclassify enrichment rows (e.g.
+   *  Deliveries) for other-school students as "filtered out" rather than
+   *  "needs review" (SPE-268). Empty when no filtering was applied. */
+  filteredOutStudents: T[];
   filteredOutCount: number;
   filteredOutSchools: string[];
 }
@@ -142,9 +146,9 @@ export interface SchoolFilterResult<T> {
 /**
  * Scope parsed students to the current school for a multi-school provider.
  * Students without a school-of-attendance are kept (assigned to the current
- * school). `filteredOutSchools` is derived from the ORIGINAL (pre-filter) list,
- * preserving the previous behavior. Returns the filtered list + counts; the
- * caller decides whether an all-filtered-out result is an error.
+ * school). Returns the kept list, the excluded (filtered-out) list, and derived
+ * counts/schools; the caller decides whether an all-filtered-out result is an
+ * error.
  */
 export function applySchoolFilter<T extends { schoolOfAttendance?: string }>(
   students: T[],
@@ -152,33 +156,31 @@ export function applySchoolFilter<T extends { schoolOfAttendance?: string }>(
   worksAtMultipleSchools: boolean | null | undefined
 ): SchoolFilterResult<T> {
   if (!currentSchoolSite || !worksAtMultipleSchools) {
-    return { students, filteredOutCount: 0, filteredOutSchools: [] };
+    return { students, filteredOutStudents: [], filteredOutCount: 0, filteredOutSchools: [] };
   }
 
   const normalizedCurrentSchool = normalizeSchoolName(currentSchoolSite);
-  const beforeCount = students.length;
 
-  const filteredStudents = students.filter(student => {
-    // If student has no school info, include them (they'll be assigned to current school)
-    if (!student.schoolOfAttendance) return true;
-    return normalizeSchoolName(student.schoolOfAttendance) === normalizedCurrentSchool;
-  });
-
-  const filteredOutCount = beforeCount - filteredStudents.length;
-
-  let filteredOutSchools: string[] = [];
-  if (filteredOutCount > 0) {
-    const otherSchools = new Set<string>();
-    for (const student of students) {
-      if (student.schoolOfAttendance) {
-        const studentSchool = normalizeSchoolName(student.schoolOfAttendance);
-        if (studentSchool !== normalizedCurrentSchool) {
-          otherSchools.add(student.schoolOfAttendance);
-        }
-      }
-    }
-    filteredOutSchools = Array.from(otherSchools);
+  const filteredStudents: T[] = [];
+  const filteredOutStudents: T[] = [];
+  for (const student of students) {
+    // A student with no school info is kept (assigned to the current school).
+    const keep =
+      !student.schoolOfAttendance ||
+      normalizeSchoolName(student.schoolOfAttendance) === normalizedCurrentSchool;
+    (keep ? filteredStudents : filteredOutStudents).push(student);
   }
 
-  return { students: filteredStudents, filteredOutCount, filteredOutSchools };
+  // Distinct other-school labels (raw casing) come from exactly the excluded
+  // students — every filtered-out student has a non-current schoolOfAttendance.
+  const filteredOutSchools = Array.from(
+    new Set(filteredOutStudents.map(s => s.schoolOfAttendance).filter((s): s is string => !!s))
+  );
+
+  return {
+    students: filteredStudents,
+    filteredOutStudents,
+    filteredOutCount: filteredOutStudents.length,
+    filteredOutSchools,
+  };
 }

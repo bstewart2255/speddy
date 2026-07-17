@@ -52,13 +52,21 @@ export function collectUnmatched(
   deliveriesData: Map<string, DeliveryRecord> | null,
   classListData: Map<string, ClassListStudent> | null,
   matchedDeliveryNames: Set<string>,
-  matchedClassListNames: Set<string>
+  matchedClassListNames: Set<string>,
+  // Normalized names (createNormalizedKey) of goals-report students excluded by
+  // school. An enrichment row for one of them isn't a genuine "needs review" —
+  // the student was correctly set aside by school and there's nothing to add, so
+  // suppress it instead of flagging it (SPE-268). The Deliveries/Class List files
+  // carry no school column, so this is the only way to tell an other-school
+  // student apart from one genuinely missing at the selected school.
+  filteredOutNames?: Set<string>
 ): UnmatchedStudent[] {
+  const suppressed = filteredOutNames ?? new Set<string>();
   const unmatchedStudents: UnmatchedStudent[] = [];
 
   if (deliveriesData) {
     for (const [normalizedName, record] of deliveriesData) {
-      if (!matchedDeliveryNames.has(normalizedName)) {
+      if (!matchedDeliveryNames.has(normalizedName) && !suppressed.has(normalizedName)) {
         unmatchedStudents.push({ name: record.name, source: 'deliveries' });
       }
     }
@@ -66,7 +74,7 @@ export function collectUnmatched(
 
   if (classListData) {
     for (const [normalizedName, student] of classListData) {
-      if (!matchedClassListNames.has(normalizedName)) {
+      if (!matchedClassListNames.has(normalizedName) && !suppressed.has(normalizedName)) {
         unmatchedStudents.push({ name: student.name, source: 'classList' });
       }
     }
