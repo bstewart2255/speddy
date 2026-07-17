@@ -41,7 +41,75 @@ describe('matchStudents — legacy SEIS grade reconciliation (SPE-240)', () => {
       [{ id: 'db-1', initials: 'JS', grade_level: '18', first_name: 'Other', last_name: 'Person' }],
     );
 
-    // Initials match (50) but grade and name do not -> not a high-confidence dupe.
+    // Initials match but grade and name do not -> not a high-confidence dupe.
     expect(result.matches[0].confidence).not.toBe('high');
+  });
+});
+
+/**
+ * SPE-266: identity is full name + grade — initials alone never establish a
+ * match. Initials were a privacy-era proxy for identity; a lone initials
+ * collision could match (and on confirm overwrite) a *different* student who
+ * merely shares initials. These pin the new behavior.
+ */
+describe('matchStudents — name-based identity (SPE-266)', () => {
+  it('does NOT match two different students that share initials AND grade (different names)', () => {
+    // The old scorer gave initials (+50) + grade (+40) = 90 = "high" here, which
+    // would merge two different children. Now names must agree.
+    const result = matchStudents(
+      [{ initials: 'ML', gradeLevel: '3', firstName: 'Mary', lastName: 'Lee', goals: [] }] as any,
+      [{ id: 'db-1', initials: 'ML', grade_level: '3', first_name: 'Mark', last_name: 'Lopez' }],
+    );
+
+    expect(result.matches[0].matchedStudent).toBeNull();
+    expect(result.matches[0].confidence).toBe('none');
+    expect(result.summary.noMatch).toBe(1);
+  });
+
+  it('does NOT match when the DB student has no stored name (the reported incident)', () => {
+    // A Mt Diablo import student vs a different-school student stored with only
+    // initials (blank name) and a different grade — must be a new insert, never
+    // an update that would overwrite the other student's record.
+    const result = matchStudents(
+      [{ initials: 'ML', gradeLevel: 'TK', firstName: 'Mateo', lastName: 'Landavazo', goals: [] }] as any,
+      [{ id: 'db-bancroft', initials: 'ML', grade_level: '1', first_name: '', last_name: '' }],
+    );
+
+    expect(result.matches[0].matchedStudent).toBeNull();
+    expect(result.matches[0].confidence).toBe('none');
+  });
+
+  it('matches when full name + grade agree (a real re-import updates the existing row)', () => {
+    const result = matchStudents(
+      [{ initials: 'ML', gradeLevel: '3', firstName: 'Marlow', lastName: 'Ljungkull', goals: [] }] as any,
+      [{ id: 'db-marlow', initials: 'ML', grade_level: '3', first_name: 'Marlow', last_name: 'Ljungkull' }],
+    );
+
+    expect(result.matches[0].matchedStudent?.id).toBe('db-marlow');
+    expect(result.matches[0].confidence).toBe('high');
+  });
+
+  it('does NOT match an incoming record with a blank name component (avoids empty-fuzzy false match)', () => {
+    // compareNames' fuzzy path treats '' as a prefix of anything, so without the
+    // incoming-name guard "John" (blank last name) would false-match "John Smith".
+    const result = matchStudents(
+      [{ initials: 'J', gradeLevel: '3', firstName: 'John', lastName: '', goals: [] }] as any,
+      [{ id: 'db-1', initials: 'JS', grade_level: '3', first_name: 'John', last_name: 'Smith' }],
+    );
+
+    expect(result.matches[0].matchedStudent).toBeNull();
+    expect(result.matches[0].confidence).toBe('none');
+  });
+
+  it('does NOT match a DB student whose stored name is whitespace-only', () => {
+    // A whitespace-only stored name is truthy but normalizes to '' — it must be
+    // rejected before matching, or it would false-match via the empty-fuzzy path.
+    const result = matchStudents(
+      [{ initials: 'JS', gradeLevel: '3', firstName: 'John', lastName: 'Smith', goals: [] }] as any,
+      [{ id: 'db-1', initials: 'JS', grade_level: '3', first_name: '   ', last_name: ' ' }],
+    );
+
+    expect(result.matches[0].matchedStudent).toBeNull();
+    expect(result.matches[0].confidence).toBe('none');
   });
 });
