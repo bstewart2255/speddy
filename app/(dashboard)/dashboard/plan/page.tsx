@@ -12,6 +12,7 @@ import { ToastProvider } from "../../../contexts/toast-context";
 import type { Database } from "../../../../src/types/database";
 import { getSchoolSite, getSchoolDistrict } from "@/lib/types/school";
 import { SessionWithCurriculum, SessionGenerator } from "@/lib/services/session-generator";
+import { filterSessionsBySchool } from "@/lib/utils/session-filters";
 
 type ViewType = 'day' | 'week' | 'month';
 
@@ -201,8 +202,14 @@ export default function CalendarPage() {
         fetchHolidays()
       ]);
 
-      // Process sessions
-      setSessions(sessionsResult);
+      // Process sessions — getSessionsForDateRange has no school scoping, so
+      // filter here or the calendar views receive cross-school data (SPE-270)
+      const schoolScopedSessions = await filterSessionsBySchool(
+        supabase,
+        sessionsResult,
+        currentSchool
+      );
+      setSessions(schoolScopedSessions);
 
       // Process students
       if (studentsResult.error) {

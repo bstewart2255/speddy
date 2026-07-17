@@ -115,7 +115,9 @@ export function CalendarWeekView({
   const [selectedSession, setSelectedSession] = useState<SessionWithCurriculum | null>(null);
   const [notesValue, setNotesValue] = useState('');
   const [savingNotes, setSavingNotes] = useState(false);
-  const [sessionsState, setSessionsState] = useState<SessionWithCurriculum[]>(sessions);
+  // Starts empty (like the day view): seeding from the `sessions` prop would
+  // paint it before the load effect applies school/view-mode filtering (SPE-270)
+  const [sessionsState, setSessionsState] = useState<SessionWithCurriculum[]>([]);
   
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
