@@ -100,4 +100,16 @@ describe('matchStudents — name-based identity (SPE-266)', () => {
     expect(result.matches[0].matchedStudent).toBeNull();
     expect(result.matches[0].confidence).toBe('none');
   });
+
+  it('does NOT match a DB student whose stored name is whitespace-only', () => {
+    // A whitespace-only stored name is truthy but normalizes to '' — it must be
+    // rejected before matching, or it would false-match via the empty-fuzzy path.
+    const result = matchStudents(
+      [{ initials: 'JS', gradeLevel: '3', firstName: 'John', lastName: 'Smith', goals: [] }] as any,
+      [{ id: 'db-1', initials: 'JS', grade_level: '3', first_name: '   ', last_name: ' ' }],
+    );
+
+    expect(result.matches[0].matchedStudent).toBeNull();
+    expect(result.matches[0].confidence).toBe('none');
+  });
 });

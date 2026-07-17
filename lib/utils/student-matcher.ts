@@ -95,8 +95,10 @@ function findBestMatch(
   }
 
   for (const dbStudent of databaseStudents) {
-    // A stored name is required to match — no name, no match.
-    if (!dbStudent.first_name || !dbStudent.last_name) {
+    // A stored name is required to match — no (or whitespace-only) name, no
+    // match. Trim so a blank-but-present name can't slip past this guard and
+    // then false-match through compareNames' empty-component fuzzy path.
+    if (!dbStudent.first_name?.trim() || !dbStudent.last_name?.trim()) {
       continue;
     }
 
@@ -118,10 +120,9 @@ function findBestMatch(
     }
 
     // Exact-name matches outrank close-name matches when several qualify.
-    const exactName = nameMatch.reason === 'Full name matches';
     possibleMatches.push({
       student: dbStudent,
-      score: exactName ? 100 : 80,
+      score: nameMatch.exact ? 100 : 80,
       reasons: [nameMatch.reason, gradeMatch.reason],
     });
   }
@@ -173,14 +174,16 @@ function compareGrades(
 }
 
 /**
- * Compare full names
+ * Compare full names. `exact` distinguishes a full exact match from a close
+ * (fuzzy) one, so the caller scores match strength off a structured flag rather
+ * than the human-readable `reason` text.
  */
 function compareNames(
   excelFirst: string,
   excelLast: string,
   dbFirst: string,
   dbLast: string
-): { matches: boolean; reason: string } {
+): { matches: boolean; exact: boolean; reason: string } {
   const excelFirstNorm = normalizeName(excelFirst);
   const excelLastNorm = normalizeName(excelLast);
   const dbFirstNorm = normalizeName(dbFirst);
@@ -188,20 +191,20 @@ function compareNames(
 
   // Exact match
   if (excelFirstNorm === dbFirstNorm && excelLastNorm === dbLastNorm) {
-    return { matches: true, reason: 'Full name matches' };
+    return { matches: true, exact: true, reason: 'Full name matches' };
   }
 
   // First name matches, last name similar
   if (excelFirstNorm === dbFirstNorm && isSimilarString(excelLastNorm, dbLastNorm)) {
-    return { matches: true, reason: 'Name closely matches' };
+    return { matches: true, exact: false, reason: 'Name closely matches' };
   }
 
   // Last name matches, first name similar
   if (excelLastNorm === dbLastNorm && isSimilarString(excelFirstNorm, dbFirstNorm)) {
-    return { matches: true, reason: 'Name closely matches' };
+    return { matches: true, exact: false, reason: 'Name closely matches' };
   }
 
-  return { matches: false, reason: 'Names do not match' };
+  return { matches: false, exact: false, reason: 'Names do not match' };
 }
 
 /**
