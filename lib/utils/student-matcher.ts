@@ -63,7 +63,16 @@ export function matchStudents(
 }
 
 /**
- * Find the best matching student from database
+ * Find the best matching student from database.
+ *
+ * Identity is **full name + grade** (SPE-266). Initials are never sufficient to
+ * establish a match on their own: they were a privacy-era proxy for identity
+ * (when the product avoided storing names), but a lone initials collision could
+ * match — and on confirm overwrite — a *different* student who merely shares
+ * initials (e.g. a same-initials student at another school). Now that names are
+ * stored, a candidate counts as "the same student" only when both the full name
+ * and the grade agree. A DB student with no stored name can't be name-matched,
+ * so it's treated as a non-match (→ the incoming student is a new insert).
  */
 function findBestMatch(
   excelStudent: ParsedStudent,
@@ -71,88 +80,71 @@ function findBestMatch(
 ): StudentMatch {
   const possibleMatches: Array<{ student: DatabaseStudent; score: number; reasons: string[] }> = [];
 
+  // A full name is required on BOTH sides. Without a first AND last name on the
+  // incoming record we can't match by name — and compareNames' fuzzy path would
+  // false-match an empty component against any value (`x.startsWith('')` is
+  // true), matching the wrong student. So an unnamed incoming record is a new
+  // student, never a match.
+  if (!excelStudent.firstName?.trim() || !excelStudent.lastName?.trim()) {
+    return {
+      excelStudent,
+      matchedStudent: null,
+      confidence: 'none',
+      reason: 'Incoming record has no full name — cannot match by name',
+    };
+  }
+
   for (const dbStudent of databaseStudents) {
-    let score = 0;
-    const reasons: string[] = [];
-
-    // Match by initials (most important) - pass first name for smart 3-char matching
-    const initialsMatch = compareInitials(excelStudent.initials, dbStudent.initials, excelStudent.firstName);
-    if (initialsMatch.matches) {
-      score += 50;
-      reasons.push(initialsMatch.reason);
+    // A stored name is required to match — no name, no match.
+    if (!dbStudent.first_name || !dbStudent.last_name) {
+      continue;
     }
 
-    // Match by grade level (very important)
+    // Grade must agree.
     const gradeMatch = compareGrades(excelStudent.gradeLevel, dbStudent.grade_level);
-    if (gradeMatch.matches) {
-      score += 40;
-      reasons.push(gradeMatch.reason);
+    if (!gradeMatch.matches) {
+      continue;
     }
 
-    // Match by full name if available (bonus points)
-    let nameMatches = false;
-    if (dbStudent.first_name && dbStudent.last_name) {
-      const nameMatch = compareNames(
-        excelStudent.firstName,
-        excelStudent.lastName,
-        dbStudent.first_name,
-        dbStudent.last_name
-      );
-      if (nameMatch.matches) {
-        score += 10;
-        reasons.push(nameMatch.reason);
-        nameMatches = true;
-      }
+    // Full name must agree (exact or close, per compareNames).
+    const nameMatch = compareNames(
+      excelStudent.firstName,
+      excelStudent.lastName,
+      dbStudent.first_name,
+      dbStudent.last_name
+    );
+    if (!nameMatch.matches) {
+      continue;
     }
 
-    // Only consider as a potential duplicate if:
-    // 1. Initials match (at least partially), OR
-    // 2. Full names match
-    // Grade alone is not enough to flag as duplicate
-    if (score > 0 && (initialsMatch.matches || nameMatches)) {
-      possibleMatches.push({ student: dbStudent, score, reasons });
-    }
+    // Exact-name matches outrank close-name matches when several qualify.
+    const exactName = nameMatch.reason === 'Full name matches';
+    possibleMatches.push({
+      student: dbStudent,
+      score: exactName ? 100 : 80,
+      reasons: [nameMatch.reason, gradeMatch.reason],
+    });
   }
 
   // Sort by score (highest first)
   possibleMatches.sort((a, b) => b.score - a.score);
 
-  // No matches found
+  // No name+grade match → treat as a new student.
   if (possibleMatches.length === 0) {
     return {
       excelStudent,
       matchedStudent: null,
       confidence: 'none',
-      reason: `No students found with initials "${excelStudent.initials}" in grade "${excelStudent.gradeLevel}"`
+      reason: `No existing student matches "${excelStudent.firstName} ${excelStudent.lastName}" in grade "${excelStudent.gradeLevel}"`
     };
   }
 
   const bestMatch = possibleMatches[0];
-
-  // Determine confidence level
-  let confidence: 'high' | 'medium' | 'low';
-  let reason: string;
-
-  if (bestMatch.score >= 90) {
-    // Perfect match: initials + grade + name
-    confidence = 'high';
-    reason = bestMatch.reasons.join('; ');
-  } else if (bestMatch.score >= 80) {
-    // Good match: initials + grade
-    confidence = 'high';
-    reason = bestMatch.reasons.join('; ');
-  } else if (bestMatch.score >= 40 && possibleMatches.length === 1) {
-    // Only one possibility
-    confidence = 'medium';
-    reason = `${bestMatch.reasons.join('; ')} (only match found)`;
-  } else if (possibleMatches.length > 1) {
-    // Multiple possible matches
-    confidence = 'low';
-    reason = `Multiple possible matches found. ${bestMatch.reasons.join('; ')} (${possibleMatches.length} total candidates)`;
-  } else {
-    confidence = 'low';
-    reason = bestMatch.reasons.join('; ');
-  }
+  const confidence: 'high' | 'medium' = bestMatch.score >= 100 ? 'high' : 'medium';
+  const reason =
+    possibleMatches.length > 1
+      ? `${bestMatch.reasons.join('; ')} (${possibleMatches.length} candidates)`
+      : bestMatch.reasons.join('; ');
 
   return {
     excelStudent,
@@ -161,76 +153,6 @@ function findBestMatch(
     reason,
     allPossibleMatches: possibleMatches.map(m => m.student)
   };
-}
-
-/**
- * Compare student initials
- * Supports both 2-char (JS) and 3-char (JoS) initials
- * When comparing 2-char to 3-char, uses the first name to verify the middle character
- */
-function compareInitials(
-  excelInitials: string,
-  dbInitials: string,
-  excelFirstName?: string
-): { matches: boolean; reason: string } {
-  const excel = normalizeInitials(excelInitials);
-  const db = normalizeInitials(dbInitials);
-
-  // Exact match
-  if (excel === db) {
-    return { matches: true, reason: `Initials match: ${excelInitials}` };
-  }
-
-  // Check if one is a subset of the other (e.g., "JD" matches "JDM")
-  if (excel.length >= 2 && db.length >= 2) {
-    if (excel.startsWith(db.substring(0, 2)) || db.startsWith(excel.substring(0, 2))) {
-      return { matches: true, reason: `Initials partially match: ${excelInitials} ≈ ${dbInitials}` };
-    }
-  }
-
-  // Smart 3-char matching: compare 2-char to 3-char initials using first name
-  // Example: Excel has "JS" (John Smith), DB has "JoS" -> check if John's 2nd letter is 'o'
-  if (excelFirstName && excelFirstName.length >= 2) {
-    const excelFirstLetter = excel[0];
-    const excelLastLetter = excel[excel.length - 1];
-    const dbFirstLetter = db[0];
-    const dbLastLetter = db[db.length - 1];
-
-    // Normalize first name to handle special characters (e.g., O'Brien -> OBRIEN)
-    const normalizedFirstName = excelFirstName.toUpperCase().replace(/[^A-Z]/g, '');
-    const safeSecondLetter = normalizedFirstName.length >= 2 ? normalizedFirstName[1] : null;
-
-    // Skip 3-char matching if first name doesn't have enough alphabetic characters
-    if (!safeSecondLetter) {
-      return { matches: false, reason: 'Initials do not match' };
-    }
-
-    // Case 1: Excel has 2-char (JS), DB has 3-char (JoS)
-    if (excel.length === 2 && db.length === 3) {
-      if (excelFirstLetter === dbFirstLetter &&
-          excelLastLetter === dbLastLetter &&
-          safeSecondLetter === db[1]) {
-        return {
-          matches: true,
-          reason: `Initials match with extended format: ${excelInitials} matches ${dbInitials} (verified via first name)`
-        };
-      }
-    }
-
-    // Case 2: Excel has 3-char (JoS), DB has 2-char (JS)
-    if (excel.length === 3 && db.length === 2) {
-      if (excelFirstLetter === dbFirstLetter &&
-          excelLastLetter === dbLastLetter &&
-          excel[1] === safeSecondLetter) {
-        return {
-          matches: true,
-          reason: `Initials match with extended format: ${excelInitials} matches ${dbInitials}`
-        };
-      }
-    }
-  }
-
-  return { matches: false, reason: 'Initials do not match' };
 }
 
 /**
@@ -280,13 +202,6 @@ function compareNames(
   }
 
   return { matches: false, reason: 'Names do not match' };
-}
-
-/**
- * Normalize initials for comparison
- */
-function normalizeInitials(initials: string): string {
-  return initials.toUpperCase().replace(/[^A-Z]/g, '');
 }
 
 /**
