@@ -30,6 +30,8 @@ export async function filterSessionsBySchool<T extends Session>(
   // Normalize null to undefined for consistent checks
   const schoolId = currentSchool.school_id ?? undefined;
   const districtId = currentSchool.district_id ?? undefined;
+  const schoolSite = currentSchool.school_site ?? undefined;
+  const schoolDistrict = currentSchool.school_district ?? undefined;
 
   // Dedupe student IDs before querying
   const studentIds = Array.from(new Set(
@@ -62,8 +64,6 @@ export async function filterSessionsBySchool<T extends Session>(
     return sessions.filter(s => schoolStudentIds.has(s.student_id));
   } else if (districtId) {
     // Fall back to district_id if school_id not available
-    const schoolSite = currentSchool.school_site ?? undefined;
-
     // Build query with district filter
     let query = supabase
       .from('students')
@@ -100,8 +100,37 @@ export async function filterSessionsBySchool<T extends Session>(
 
     const schoolStudentIds = new Set(studentsData?.map(s => s.id) || []);
     return sessions.filter(s => schoolStudentIds.has(s.student_id));
+  } else if (schoolSite) {
+    // Legacy context: the selected school has no school_id/district_id, only
+    // the site/district strings — scope by those, matching how legacy student
+    // rows are keyed. Without this branch, legacy multi-school accounts get
+    // no filtering at all.
+    let query = supabase
+      .from('students')
+      .select('id')
+      .eq('school_site', schoolSite)
+      .in('id', studentIds);
+
+    if (schoolDistrict) {
+      query = query.eq('school_district', schoolDistrict);
+    }
+
+    const { data: studentsData, error } = await query;
+
+    // Graceful degradation: return original sessions on error
+    if (error) {
+      log.error('Failed to filter sessions by school_site', error, {
+        schoolSite,
+        schoolDistrict,
+        studentCount: studentIds.length
+      });
+      return sessions;
+    }
+
+    const schoolStudentIds = new Set(studentsData?.map(s => s.id) || []);
+    return sessions.filter(s => schoolStudentIds.has(s.student_id));
   }
 
-  // No school_id or district_id - return all sessions
+  // No school identifiers at all - return all sessions
   return sessions;
 }
