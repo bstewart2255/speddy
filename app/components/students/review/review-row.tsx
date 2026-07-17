@@ -130,6 +130,7 @@ export function ReviewRow({ row, selection, isExpanded, onToggleExpand, columnCo
             <ReviewGoalList
               row={row}
               goalsSelected={goalsSelected}
+              pastDatedGoals={selection.pastDatedGoalsFor(row.id)}
               onToggleGoal={(i) => selection.toggleGoal(row.id, i)}
               onToggleAllGoals={() => selection.toggleAllGoals(row)}
             />
