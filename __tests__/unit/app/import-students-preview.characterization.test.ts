@@ -479,3 +479,88 @@ describe('POST /api/import-students — cross-school candidate scoping (SPE-269)
     expect((rivers?.goals ?? []).map((g) => g.text).join(' ')).not.toContain('Bancroft');
   });
 });
+
+/**
+ * SPE-269 (Codex follow-up) — the deliveries/class-list-only update path scopes
+ * to the selected school too. buildStudentsByName keys by normalized full name
+ * and overwrites collisions, so without scoping a deliveries upload could match —
+ * and update — a same-name student at a different school.
+ */
+describe('POST /api/import-students — cross-school update-only scoping (SPE-269)', () => {
+  it("deliveries-only updates the selected school's student, not a same-name student elsewhere", async () => {
+    // Same name ("Van Horn, Vera" — a weekly delivery, so it yields an update) at two
+    // schools; the other-school row is listed LAST so an unscoped name map
+    // (last-write-wins) would resolve the delivery to it.
+    const joinedCrossSchool = [
+      { id: 'stu-vanhorn-mtdiablo', initials: 'VV', grade_level: '4', school_site: 'Mt Diablo Elementary', school_id: 'school-1', student_details: { first_name: 'Vera', last_name: 'Van Horn' } },
+      { id: 'stu-vanhorn-bancroft', initials: 'VV', grade_level: '4', school_site: 'Bancroft Elementary School', school_id: 'school-2', student_details: { first_name: 'Vera', last_name: 'Van Horn' } },
+    ];
+    const tables = (): TableData => ({
+      profiles: { data: { role: 'resource' }, error: null },
+      students: { data: joinedCrossSchool, error: null },
+      teachers: { data: DB_TEACHERS, error: null },
+    });
+
+    const result = await runPost(tables(), requestWith({ deliveriesFile: deliveriesCsv() }, schoolCtx));
+    expect(result.status).toBe(200);
+    expect((result.body as { mode?: string }).mode).toBe('update');
+
+    const data = (result.body as { data?: { students?: Array<{ studentId?: string }> } }).data;
+    const ids = (data?.students ?? []).map((s) => s.studentId);
+    expect(ids).toContain('stu-vanhorn-mtdiablo'); // selected school updated
+    expect(ids).not.toContain('stu-vanhorn-bancroft'); // other-school same-name student not touched
+  });
+});
+
+/**
+ * SPE-269 (Codex follow-up) — a school with no school_id is submitted by the
+ * modal as currentSchoolId '' (`school_id || ''`), while legacy student rows
+ * carry school_id null. Those collapse to one bucket so a re-import of a legacy
+ * null-school student is matched, not previewed as a spurious insert that then
+ * dead-ends on confirm ("already exists").
+ */
+describe('POST /api/import-students — text-only school (null school_id) scoping (SPE-269)', () => {
+  it('matches a legacy null-school student when the selected school submits currentSchoolId ""', async () => {
+    const dbLegacy = [
+      {
+        id: 'stu-legacy', initials: 'SR', grade_level: '3',
+        school_site: 'Mt Diablo Elementary', school_id: null,
+        sessions_per_week: null, minutes_per_session: null, teacher_id: null,
+      },
+    ];
+    const tables = (): TableData => ({
+      profiles: { data: { works_at_multiple_schools: false, role: 'resource' }, error: null },
+      students: { data: dbLegacy, error: null },
+      student_details: {
+        data: [{ student_id: 'stu-legacy', first_name: 'Sam', last_name: 'Rivers', iep_goals: ['An existing goal.'] }],
+        error: null,
+      },
+      teachers: { data: DB_TEACHERS, error: null },
+    });
+
+    const csv = () =>
+      fileFrom(
+        buildSeisGoalsCsvFrom([
+          {
+            0: '2000501', 2: 'Rivers', 3: 'Sam', 5: '03', 6: 'Mt Diablo Elementary School',
+            9: '05/01/2026', 11: 'Reading', 12: 'Academic #1: 2026 - 2027', 17: 'Resource Specialist',
+            14: 'By 5/1/2027, Sam will read 90 words per minute with 95% accuracy in 3 of 4 trials.',
+          },
+        ]),
+        'students.csv',
+        'text/csv',
+      );
+
+    // Text-only school: the modal submits currentSchoolId '' (school_id || '').
+    const textOnlyCtx = { currentSchoolId: '', currentSchoolSite: 'Mt Diablo Elementary' };
+    const result = await runPost(tables(), requestWith({ studentsFile: csv() }, textOnlyCtx));
+    expect(result.status).toBe(200);
+
+    const data = (result.body as {
+      data?: { students?: Array<{ lastName?: string; action?: string }> };
+    }).data;
+    const rivers = (data?.students ?? []).find((s) => s.lastName === 'Rivers');
+    // The legacy null-school row is in the candidate set → matched, not a spurious insert.
+    expect(rivers?.action).not.toBe('insert');
+  });
+});
