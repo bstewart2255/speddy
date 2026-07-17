@@ -498,9 +498,11 @@ export function buildRosterPreviews(params: {
   // the active school: a roster row is keyed only by initials+grade (no names),
   // so for a multi-school provider an unscoped match could update a same-initials
   // student at a different school.
+  // Null school_id / empty currentSchoolId collapse to one bucket, matching the
+  // main path and the confirm dedup key (buildSchoolScopedDedupKey).
   const existingByKey = new Map<string, RosterExistingStudentRow>();
   for (const s of dbStudents) {
-    if (s.school_id !== currentSchoolId) continue;
+    if ((s.school_id ?? '') !== (currentSchoolId ?? '')) continue;
     existingByKey.set(buildStudentDedupKey(s.initials, s.grade_level), s);
   }
 

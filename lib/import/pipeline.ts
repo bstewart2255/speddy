@@ -90,7 +90,15 @@ export async function runUpdateOnlyPreview(ctx: PipelineContext): Promise<NextRe
     );
   }
 
-  const studentsByName = buildStudentsByName(dbStudents);
+  // Scope to the selected school (SPE-269) before name-keying. buildStudentsByName
+  // keys by normalized full name and overwrites collisions, so for a multi-school
+  // provider an unscoped map could match — and update — a same-name student at a
+  // different school. Null school_id / empty currentSchoolId collapse to one bucket,
+  // consistent with the main path and the confirm dedup key.
+  const dbStudentsInSchool = dbStudents.filter(
+    s => (s.school_id ?? '') === (currentSchoolId ?? ''),
+  );
+  const studentsByName = buildStudentsByName(dbStudentsInSchool);
 
   // Parse enrichment files. Update-only hard-fails on a parse error (there is no
   // other data to preview).
@@ -268,8 +276,19 @@ export async function runStudentsPreview(ctx: PipelineContext, file: File): Prom
   }
 
   const dbTeachers = classList && classList.students.size > 0 ? await fetchTeachers(supabase, currentSchoolId) : [];
-  const studentDetails = await loadStudentDetails(supabase, dbStudents);
-  const databaseStudents = toDatabaseStudents(dbStudents, studentDetails);
+
+  // Scope match candidates to the selected school (SPE-269), mirroring the roster
+  // path (buildRosterPreviews). Identity is name+grade (SPE-266), but a same-name
+  // student can exist at two schools, so a Mt-Diablo import must not match — and
+  // on confirm update — a same-name student at another school. Same-school only.
+  // A null school_id and an empty currentSchoolId ('' — what the modal submits for
+  // a school with no school_id) collapse to one bucket, matching the confirm dedup
+  // key (buildSchoolScopedDedupKey) and the DB index's NULLS NOT DISTINCT.
+  const dbStudentsInSchool = (dbStudents ?? []).filter(
+    s => (s.school_id ?? '') === (currentSchoolId ?? ''),
+  );
+  const studentDetails = await loadStudentDetails(supabase, dbStudentsInSchool);
+  const databaseStudents = toDatabaseStudents(dbStudentsInSchool, studentDetails);
 
   const { studentPreviews, matchedDeliveryNames, matchedClassListNames } = buildStudentPreviews({
     parsedStudents: filteredStudents,
