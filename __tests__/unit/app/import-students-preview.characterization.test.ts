@@ -564,3 +564,86 @@ describe('POST /api/import-students — text-only school (null school_id) scopin
     expect(rivers?.action).not.toBe('insert');
   });
 });
+
+/**
+ * SPE-268 — a Deliveries/Class List row for a student the goals report placed at
+ * ANOTHER school (correctly filtered out by school) must not be flagged as "needs
+ * your review." The Deliveries file has no school column, so an other-school
+ * student's schedule would otherwise be swept into the review queue as
+ * "add via roster" even though it was correctly excluded. Only students genuinely
+ * unknown at the selected school should remain.
+ */
+describe('POST /api/import-students — suppress filtered-out deliveries from review (SPE-268)', () => {
+  it('drops a deliveries row for an other-school (filtered-out) student, still flags a genuinely unknown one', async () => {
+    // Multi-school provider importing Mt Diablo. Goals report has one Mt Diablo
+    // student (kept) and one Bancroft student (filtered out by school).
+    const goalsCsv = () =>
+      fileFrom(
+        buildSeisGoalsCsvFrom([
+          {
+            0: '2000001', 2: 'Alvarez', 3: 'Ana', 5: '01', 6: 'Mt Diablo Elementary School',
+            9: '05/01/2026', 11: 'Reading', 12: 'Academic #1: 2026 - 2027', 17: 'Resource Specialist',
+            14: 'By 5/1/2027, Ana will read 90 words per minute.',
+          },
+          {
+            0: '2000002', 2: 'Bishop', 3: 'Ben', 5: '02', 6: 'Bancroft Elementary School',
+            9: '05/01/2026', 11: 'Reading', 12: 'Academic #1: 2026 - 2027', 17: 'Resource Specialist',
+            14: 'By 5/1/2027, Ben will read 80 words per minute.',
+          },
+        ]),
+        'students.csv',
+        'text/csv',
+      );
+
+    // Deliveries (no school column): Ana matches the imported Mt Diablo student;
+    // Ben matches the FILTERED-OUT Bancroft student (suppress); Uma is unknown (flag).
+    const dHeader =
+      'Name,SEIS ID,Service,Delivery,Start Date,End Date,Sessions / Frequency,Location,Total Minutes (min/year),Total Delivered,Medi-Cal Billing Consent';
+    const dRow = (name: string, id: string, room: string) =>
+      `"${name}",${id},330 - Specialized Academic Instruction,Direct,08/15/2025,06/10/2026,45 min Weekly,${room},1620,0,Yes`;
+    const deliveries = () =>
+      fileFrom(
+        Buffer.from(
+          [
+            dHeader,
+            dRow('Alvarez, Ana', '2000001', 'Room 1'),
+            dRow('Bishop, Ben', '2000002', 'Room 2'),
+            dRow('Unknown, Uma', '2000003', 'Room 3'),
+          ].join('\n'),
+        ),
+        'deliveries.csv',
+        'text/csv',
+      );
+
+    const tables = (): TableData => ({
+      profiles: { data: { works_at_multiple_schools: true, role: 'resource' }, error: null },
+      students: { data: [], error: null },
+      student_details: { data: [], error: null },
+      teachers: { data: DB_TEACHERS, error: null },
+    });
+
+    const result = await runPost(
+      tables(),
+      requestWith({ studentsFile: goalsCsv(), deliveriesFile: deliveries() }, schoolCtx),
+    );
+    expect(result.status).toBe(200);
+
+    const data = (result.body as {
+      data?: {
+        students?: Array<{ lastName?: string }>;
+        unmatchedStudents?: Array<{ name?: string; source?: string }>;
+      };
+    }).data;
+
+    // Bishop was filtered out by school (not imported) — this is the case the fix
+    // targets. Asserting it means the test can only pass via suppression, not
+    // because Bishop happened to be matched/imported.
+    expect((data?.students ?? []).some((s) => s.lastName === 'Bishop')).toBe(false);
+
+    const unmatchedNames = (data?.unmatchedStudents ?? []).map((u) => u.name);
+    // The genuinely-unknown deliveries student is still surfaced for review ...
+    expect(unmatchedNames).toContain('Unknown, Uma');
+    // ... but the other-school (filtered-out) student is NOT flagged (suppressed).
+    expect(unmatchedNames).not.toContain('Bishop, Ben');
+  });
+});

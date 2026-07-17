@@ -45,6 +45,7 @@ import {
   summarizePreviews,
 } from '@/lib/import/respond';
 import type { ImportSupabaseClient } from '@/lib/import/preview-types';
+import { createNormalizedKey } from '@/lib/parsers/name-utils';
 
 type Perf = ReturnType<typeof measurePerformanceWithAlerts>;
 type Note = { row: number; message: string };
@@ -298,11 +299,21 @@ export async function runStudentsPreview(ctx: PipelineContext, file: File): Prom
     dbTeachers,
   });
 
+  // A Deliveries/Class List row for a student the goals report placed at another
+  // school was correctly set aside by school (the top banner already reports it),
+  // not genuinely missing — suppress it from the review queue rather than flag it
+  // as "needs review / add via roster" (SPE-268). Keyed the same way the deliveries
+  // map is (createNormalizedKey), so the names line up.
+  const filteredOutNames = new Set(
+    filter.filteredOutStudents.map(s => createNormalizedKey(s.firstName, s.lastName)),
+  );
+
   const unmatchedStudents = collectUnmatched(
     deliveries?.deliveries ?? null,
     classList?.students ?? null,
     matchedDeliveryNames,
     matchedClassListNames,
+    filteredOutNames,
   );
 
   const counts = summarizePreviews(studentPreviews);
