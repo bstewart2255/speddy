@@ -51,6 +51,13 @@ describe('parseGoalTargetDate', () => {
     expect(parseGoalTargetDate('2/30/2026')).toBeNull();
   });
 
+  it('does not misread the D/YYYY tail of an invalid M/D/YYYY as a month/year', () => {
+    // Regression: month 13 is invalid, so M/D/YYYY fails; the "1/2026" tail must
+    // NOT then parse as Jan 2026 and wrongly expire the goal.
+    expect(parseGoalTargetDate('by 13/1/2026, the student will ...')).toBeNull();
+    expect(parseGoalTargetDate('99/2/2027')).toBeNull();
+  });
+
   it('handles null/undefined/empty without throwing', () => {
     expect(parseGoalTargetDate(null)).toBeNull();
     expect(parseGoalTargetDate(undefined)).toBeNull();

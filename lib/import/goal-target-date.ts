@@ -72,7 +72,13 @@ export function parseGoalTargetDate(text: string | null | undefined): Date | nul
   }
 
   // 3) Numeric month/year with no day, e.g. "by 5/2027" → end of that month.
-  const monthYear = lower.match(/\b(\d{1,2})\/(\d{4})\b/);
+  //    The leading `(?:^|[^\d/])` guard stops this from matching the `D/YYYY`
+  //    tail of a malformed `M/D/YYYY` (e.g. "13/1/2026" must stay unparsed, not
+  //    become Jan 2026): pattern 1 already consumed any real M/D/YYYY, so a slash
+  //    immediately before the month here means we're on the tail of a bad date,
+  //    not a standalone M/YYYY. (A lookbehind would be cleaner but isn't supported
+  //    on older Safari, and this parser runs client-side.)
+  const monthYear = lower.match(/(?:^|[^\d/])(\d{1,2})\/(\d{4})\b/);
   if (monthYear) {
     const monthIndex = parseInt(monthYear[1], 10) - 1;
     const year = parseInt(monthYear[2], 10);
