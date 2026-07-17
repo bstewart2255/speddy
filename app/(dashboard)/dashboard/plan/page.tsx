@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { createClient } from '@/lib/supabase/client';
 import { Card, CardBody } from "../../../components/ui/card";
 import { CalendarDayView } from "../../../components/calendar/calendar-day-view";
@@ -12,6 +12,7 @@ import { ToastProvider } from "../../../contexts/toast-context";
 import type { Database } from "../../../../src/types/database";
 import { getSchoolSite, getSchoolDistrict } from "@/lib/types/school";
 import { SessionWithCurriculum, SessionGenerator } from "@/lib/services/session-generator";
+import { filterSessionsBySchool } from "@/lib/utils/session-filters";
 
 type ViewType = 'day' | 'week' | 'month';
 
@@ -46,6 +47,9 @@ export default function CalendarPage() {
   const [selectedEventDate, setSelectedEventDate] = useState<Date>(new Date());
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [providerId, setProviderId] = useState<string>('');
+  // Monotonic id per fetchData run: a school switch mid-flight must not let
+  // the older run's results overwrite the newer school's data (SPE-270)
+  const fetchSeqRef = useRef(0);
 
   // Helper function to fetch calendar events
   const getCalendarEvents = useCallback(async (providerIdParam?: string) => {
@@ -120,6 +124,7 @@ export default function CalendarPage() {
   };
 
   const fetchData = useCallback(async () => {
+    const seq = ++fetchSeqRef.current;
     try {
       // Get user profile first (needed for role-based decisions)
       const { data: { user } } = await supabase.auth.getUser();
@@ -195,11 +200,18 @@ export default function CalendarPage() {
 
       // Run sessions, students, calendar events, and holidays queries in parallel
       const [sessionsResult, studentsResult, eventsResult, holidaysResult] = await Promise.all([
-        sessionGenerator.getSessionsForDateRange(user.id, startDate, endDate, profile?.role),
+        sessionGenerator
+          .getSessionsForDateRange(user.id, startDate, endDate, profile?.role)
+          // getSessionsForDateRange has no school scoping — filter here or the
+          // calendar views receive cross-school data (SPE-270)
+          .then(result => filterSessionsBySchool(supabase, result, currentSchool)),
         fetchStudents(),
         getCalendarEvents(user.id),
         fetchHolidays()
       ]);
+
+      // A newer run (e.g. school switch) owns the state now — drop this one
+      if (seq !== fetchSeqRef.current) return;
 
       // Process sessions
       setSessions(sessionsResult);
@@ -229,6 +241,21 @@ export default function CalendarPage() {
       setLoading(false);
     }
   }, [currentSchool, supabase, getCalendarEvents]);
+
+  // When the selected school changes, drop the previous school's data right
+  // away instead of leaving it on screen while the refetch runs (SPE-270)
+  const schoolKey = currentSchool
+    ? currentSchool.school_id ?? `${getSchoolSite(currentSchool)}|${getSchoolDistrict(currentSchool)}`
+    : null;
+  const prevSchoolKeyRef = useRef(schoolKey);
+  useEffect(() => {
+    if (prevSchoolKeyRef.current === schoolKey) return;
+    prevSchoolKeyRef.current = schoolKey;
+    setSessions([]);
+    setStudents(new Map());
+    setCalendarEvents([]);
+    setHolidays([]);
+  }, [schoolKey]);
 
   useEffect(() => {
     fetchData();

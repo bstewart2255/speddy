@@ -115,7 +115,9 @@ export function CalendarWeekView({
   const [selectedSession, setSelectedSession] = useState<SessionWithCurriculum | null>(null);
   const [notesValue, setNotesValue] = useState('');
   const [savingNotes, setSavingNotes] = useState(false);
-  const [sessionsState, setSessionsState] = useState<SessionWithCurriculum[]>(sessions);
+  // Starts empty (like the day view): seeding from the `sessions` prop would
+  // paint it before the load effect applies school/view-mode filtering (SPE-270)
+  const [sessionsState, setSessionsState] = useState<SessionWithCurriculum[]>([]);
   
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
@@ -123,6 +125,11 @@ export function CalendarWeekView({
   const [sessionConflicts, setSessionConflicts] = useState<Record<string, boolean>>({});
   // Track previous session states to only validate changed sessions (prevents excessive API calls)
   const prevSessionsRef = useRef<Map<string, string>>(new Map());
+  // Monotonic id per loadSessions run + last loaded school: a school switch
+  // mid-flight must not let an older load overwrite the newer school's grid,
+  // and the old school's grid should clear as soon as the school changes (SPE-270)
+  const loadSeqRef = useRef(0);
+  const loadedSchoolKeyRef = useRef<string | null | undefined>(undefined);
   const [additionalStudents, setAdditionalStudents] = useState<Map<string, { initials: string; grade_level?: string }>>(new Map());
   
   // State for manual lesson creation
@@ -292,6 +299,15 @@ export function CalendarWeekView({
 
   // Replace the useEffect that loads sessions
   React.useEffect(() => {
+    const seq = ++loadSeqRef.current;
+    const schoolKey = currentSchool
+      ? currentSchool.school_id ?? `${currentSchool.school_site}|${currentSchool.school_district}`
+      : null;
+    if (loadedSchoolKeyRef.current !== undefined && loadedSchoolKeyRef.current !== schoolKey) {
+      setSessionsState([]);
+    }
+    loadedSchoolKeyRef.current = schoolKey;
+
     const sessionGenerator = new SessionGenerator();
     const loadSessions = async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -380,6 +396,9 @@ export function CalendarWeekView({
 
       // Apply school filtering if current school is set
       filteredSessions = await filterSessionsBySchool(supabase, filteredSessions, currentSchool) as ScheduleSession[];
+
+      // A newer load (e.g. school switch) owns the state now — drop this one
+      if (seq !== loadSeqRef.current) return;
 
       setSessionsState(filteredSessions);
     };
