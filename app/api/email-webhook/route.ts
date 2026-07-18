@@ -3,7 +3,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { Resend } from 'resend';
 
-const resend = new Resend(process.env['RESEND_API_KEY']);
+// Lazy-init so the Resend client isn't constructed at module load — its
+// constructor throws on a missing key, which breaks `next build` in CI when
+// RESEND_API_KEY isn't set (SPE-113).
+let resendClient: Resend | null = null;
+function getResend(): Resend {
+  if (!resendClient) {
+    resendClient = new Resend(process.env['RESEND_API_KEY']);
+  }
+  return resendClient;
+}
 
 // SPE-128: The inbound email -> worksheet flow is not live, and this endpoint
 // had NO sender verification — an unauthenticated POST could trigger outbound
@@ -43,7 +52,7 @@ export async function POST(request: NextRequest) {
     // Process attachments (images)
     if (!attachments || attachments.length === 0) {
       // Send error email back
-      await resend.emails.send({
+      await getResend().emails.send({
         from: 'IEP Progress <progress@speddy.xyz>',
         to: from,
         subject: 'No image attached - Please resend',
@@ -93,7 +102,7 @@ export async function POST(request: NextRequest) {
 
         // Send success confirmation
         if (result.success) {
-          await resend.emails.send({
+          await getResend().emails.send({
             from: 'IEP Progress <progress@speddy.xyz>',
             to: from,
             subject: 'Worksheet processed successfully!',
@@ -232,7 +241,7 @@ async function processWorksheetSubmission(
 // Send error email
 async function sendErrorEmail(to: string, message: string) {
   try {
-    await resend.emails.send({
+    await getResend().emails.send({
       from: 'IEP Progress <progress@speddy.xyz>',
       to: to,
       subject: 'Error processing worksheet',
