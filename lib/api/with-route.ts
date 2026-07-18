@@ -62,6 +62,18 @@ export function withRoute<
   handler: Handler<TBody, TQuery, TParams>
 ) {
   return async (req: NextRequest, context?: NextContext<TParams>): Promise<NextResponse> => {
+    // Emit one consistent telemetry line whenever the wrapper rejects a request
+    // before the handler runs (auth / validation / rate-limit). Handlers own
+    // their own success/error telemetry, so these early returns previously went
+    // unrecorded (SPE-81). Responses are unchanged — this only adds a log line.
+    const logRejection = (status: number, reason: string) =>
+      log.warn('API route rejected', {
+        endpoint: req.nextUrl.pathname,
+        method: req.method,
+        status,
+        reason,
+      });
+
     try {
       // AI kill-switch: gated routes do not exist while AI features are off.
       // Checked before auth so the feature is fully hidden and makes no
@@ -75,6 +87,7 @@ export function withRoute<
         const supabase = await createClient();
         const { data: { user }, error } = await supabase.auth.getUser();
         if (error || !user) {
+          logRejection(401, 'unauthorized');
           return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
         userId = user.id;
@@ -88,10 +101,14 @@ export function withRoute<
         try {
           raw = await req.json();
         } catch {
+          logRejection(400, 'invalid_json');
           return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
         }
         const parsed = config.body.safeParse(raw);
-        if (!parsed.success) return validationError(parsed.error.flatten());
+        if (!parsed.success) {
+          logRejection(400, 'body_validation');
+          return validationError(parsed.error.flatten());
+        }
         body = parsed.data;
       }
 
@@ -99,7 +116,10 @@ export function withRoute<
       if (config.query) {
         const raw = Object.fromEntries(req.nextUrl.searchParams.entries());
         const parsed = config.query.safeParse(raw);
-        if (!parsed.success) return validationError(parsed.error.flatten());
+        if (!parsed.success) {
+          logRejection(400, 'query_validation');
+          return validationError(parsed.error.flatten());
+        }
         query = parsed.data;
       }
 
@@ -107,6 +127,7 @@ export function withRoute<
         const endpoint = config.rateLimit.name ?? req.nextUrl.pathname;
         const outcome = await checkUserRateLimit(userId, endpoint, config.rateLimit);
         if (!outcome.allowed) {
+          logRejection(429, 'rate_limited');
           return NextResponse.json(
             { error: 'Too many requests. Please try again later.' },
             { status: 429, headers: { 'Retry-After': String(outcome.resetSeconds) } }
