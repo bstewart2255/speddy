@@ -11,6 +11,7 @@ import {
   getWhiteboardExampleRange,
   getBaseMinimum
 } from './duration-constants';
+import { escapeRegExp } from '../utils/regex';
 
 export interface ValidationResult {
   isValid: boolean;
@@ -38,10 +39,6 @@ const COMPOUND_MATERIAL_PHRASES = [
 ];
 
 export class MaterialsValidator {
-  // Helper to escape special regex characters
-  private escapeRegExp(string: string): string {
-    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  }
 
   /**
    * Validates that a lesson response follows zero-prep rules
@@ -162,13 +159,13 @@ export class MaterialsValidator {
     
     for (const phrase of COMPOUND_MATERIAL_PHRASES) {
       // Use word boundaries and escape special characters for safety
-      const regex = new RegExp(`\\b${this.escapeRegExp(phrase)}\\b`, 'gi');
+      const regex = new RegExp(`\\b${escapeRegExp(phrase)}\\b`, 'gi');
       const matches = processedMaterials.match(regex);
       if (matches) {
         foundPhrases.push(...matches.map(m => m.toLowerCase()));
         // Replace with space to maintain word boundaries
         // Create a new RegExp instance for replace to avoid state issues
-        processedMaterials = processedMaterials.replace(new RegExp(`\\b${this.escapeRegExp(phrase)}\\b`, 'gi'), ' ');
+        processedMaterials = processedMaterials.replace(new RegExp(`\\b${escapeRegExp(phrase)}\\b`, 'gi'), ' ');
       }
     }
     
@@ -514,7 +511,7 @@ export class MaterialsValidator {
       
       // Use word boundaries for short words to reduce false positives
       if (forbiddenLower.length <= 3) {
-        const pattern = new RegExp(`\\b${this.escapeRegExp(forbiddenLower)}\\b`, 'i');
+        const pattern = new RegExp(`\\b${escapeRegExp(forbiddenLower)}\\b`, 'i');
         if (pattern.test(textLower)) {
           errors.push(`${context}: Contains forbidden term "${forbidden}"`);
         }

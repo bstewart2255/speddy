@@ -2,6 +2,8 @@
  * Utility for classifying IEP goals by subject area (Math vs ELA)
  */
 
+import { escapeRegExp } from './regex';
+
 // Keywords to identify Math goals in IEP text
 const MATH_KEYWORDS = [
   'math', 'mathematics', 'number', 'numeral', 'computation', 'calculate', 
@@ -39,11 +41,11 @@ export interface ClassifiedIEPGoals {
 
 // Pre-compile regex patterns for better performance
 const MATH_PATTERNS = MATH_KEYWORDS.map(keyword => 
-  new RegExp(`\\b${keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i')
+  new RegExp(`\\b${escapeRegExp(keyword)}\\b`, 'i')
 );
 
 const ELA_PATTERNS = ELA_KEYWORDS.map(keyword => 
-  new RegExp(`\\b${keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i')
+  new RegExp(`\\b${escapeRegExp(keyword)}\\b`, 'i')
 );
 
 /**
