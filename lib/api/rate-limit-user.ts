@@ -20,6 +20,13 @@ export interface RateLimitOutcome {
   remaining: number;
   /** Seconds until the window resets (used for the Retry-After header). */
   resetSeconds: number;
+  /**
+   * When `allowed` is false, why it was denied: `rate_limited` for a genuinely
+   * exhausted quota, or `rate_limiter_error` when the limiter itself failed
+   * closed (a DB/storage error on a `failClosed` endpoint). Lets callers keep
+   * the two apart in telemetry. Undefined when the request is allowed.
+   */
+  reason?: 'rate_limited' | 'rate_limiter_error';
 }
 
 /**
@@ -44,7 +51,7 @@ export async function checkUserRateLimit(
   // fail open (allow) so a transient DB issue doesn't block cheap traffic.
   const onError = (): RateLimitOutcome =>
     rule.failClosed
-      ? { allowed: false, remaining: 0, resetSeconds: rule.windowSeconds }
+      ? { allowed: false, remaining: 0, resetSeconds: rule.windowSeconds, reason: 'rate_limiter_error' }
       : allow();
 
   try {
@@ -74,7 +81,7 @@ export async function checkUserRateLimit(
 
     const used = count ?? 0;
     if (used >= rule.requests) {
-      return { allowed: false, remaining: 0, resetSeconds: rule.windowSeconds };
+      return { allowed: false, remaining: 0, resetSeconds: rule.windowSeconds, reason: 'rate_limited' };
     }
 
     const { error: insertError } = await supabase

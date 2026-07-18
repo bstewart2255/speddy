@@ -127,7 +127,7 @@ export function withRoute<
         const endpoint = config.rateLimit.name ?? req.nextUrl.pathname;
         const outcome = await checkUserRateLimit(userId, endpoint, config.rateLimit);
         if (!outcome.allowed) {
-          logRejection(429, 'rate_limited');
+          logRejection(429, outcome.reason ?? 'rate_limited');
           return NextResponse.json(
             { error: 'Too many requests. Please try again later.' },
             { status: 429, headers: { 'Retry-After': String(outcome.resetSeconds) } }
