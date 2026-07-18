@@ -99,6 +99,33 @@ standing rule for the work at hand (then merge on green without checking back).
 The purely-internal, non-UX, all-gates-green case above is the standing
 exception where that go-ahead is already granted.
 
+## How we use Linear (issue statuses)
+
+The workflow is one director (me) and one executor (Claude Code), and work
+usually goes from decided to shipped in a single focused push. So statuses stay
+deliberately minimal — and, above all, honest. The failure mode here is a
+*drifting board* (a ticket stuck "In Progress" long after it shipped; finished
+tickets never archived), not too few columns. Keep the statuses true and they
+cost nothing.
+
+- **Backlog** — not started. The pool, including follow-ups you discover
+  mid-task and log instead of doing right then.
+- **In Progress** — actively being worked right now. Usually short-lived.
+- **In Review** — a finished, green PR waiting on my merge call. This is the one
+  genuine "ball's in my court" state (see "merging is the pause point" above).
+- **Done** — merged / shipped.
+- **To-do** — NOT a required step. Optional only, to stage a visible short-list
+  when we deliberately line up a multi-ticket initiative. Don't pre-stage a
+  queue by default; the next thing is whatever I point you at.
+
+**Move your own ticket as you work** — this is the habit that keeps the board
+honest: to **In Progress** when you start it, to **In Review** once its PR is up
+*and green* (the merge decision is now mine), to **Done** when it merges. Never
+leave a ticket **In Progress** after its work has shipped.
+
+Auto-archive is on, so completed tickets clear themselves — don't hand-manage
+done-ticket clutter.
+
 ## Standing rule: deep self-review before any substantive PR
 
 Before marking any substantive PR ready for review (features, bug fixes,
