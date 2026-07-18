@@ -99,6 +99,16 @@ standing rule for the work at hand (then merge on green without checking back).
 The purely-internal, non-UX, all-gates-green case above is the standing
 exception where that go-ahead is already granted.
 
+**Tracked in Linear via the `auto-deployable` label.** A ticket carries this
+label only if it meets the bar above: purely internal/technical, no user-facing
+or UX change, no schema/data migration, no dependency/security/auth/infra
+change, CI-verifiable, reversible. Apply it when you file or groom a qualifying
+ticket (and strip it if scope grows past the bar); filter to it to find work you
+can take to merge without me. Per the standing exception above, `auto-deployable`
+tickets may be cleared end-to-end — implement → verify → PR → merge once every
+gate is green (typecheck, lint, tests, CI, and zero unresolved review threads) —
+without checking back. When in doubt, leave the label off.
+
 ## How we use Linear (issue statuses)
 
 The workflow is one director (me) and one executor (Claude Code), and work
