@@ -105,7 +105,8 @@ or UX change, no schema/data migration, no dependency/security/auth/infra
 change, CI-verifiable, reversible. Apply it when you file or groom a qualifying
 ticket (and strip it if scope grows past the bar); filter to it to find work you
 can take to merge without me. Per the standing exception above, `auto-deployable`
-tickets may be cleared end-to-end — implement → verify → PR → merge on green —
+tickets may be cleared end-to-end — implement → verify → PR → merge once every
+gate is green (typecheck, lint, tests, CI, and zero unresolved review threads) —
 without checking back. When in doubt, leave the label off.
 
 ## How we use Linear (issue statuses)
