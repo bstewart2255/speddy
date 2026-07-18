@@ -7,6 +7,7 @@
 
 import { getSanitizedHTML } from '../sanitize-html';
 import { formatLessonContent } from './lesson-formatter';
+import { escapeRegExp } from './regex';
 // MERGED: standardizeLessonStructure functionality integrated directly to avoid duplicate processing (Issue #268)
 
 interface Student {
@@ -62,7 +63,6 @@ export function processAILessonContent(content: string, students: Student[] = []
       const colorClass = colors[index % colors.length];
       
       // Replace student references with styled badges - escape special RegExp characters
-      const escapeRegExp = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       const studentRegex = new RegExp(`\\b(${escapeRegExp(student.initials)}|Student ${index + 1})\\b`, 'g');
       processedContent = processedContent.replace(
         studentRegex,
@@ -125,7 +125,6 @@ export function processAILessonContentForPrint(content: string, students: Studen
   
   // For print, use simpler student name formatting
   if (students && students.length > 0) {
-    const escapeRegExp = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     students.forEach((student, index) => {
       const studentRegex = new RegExp(`\\b(${escapeRegExp(student.initials)}|Student ${index + 1})\\b`, 'g');
       processedContent = processedContent.replace(

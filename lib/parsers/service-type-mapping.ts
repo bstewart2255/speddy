@@ -3,6 +3,8 @@
  * Maps provider roles to SEIS service type codes for IEP goal filtering
  */
 
+import { escapeRegExp } from '../utils/regex';
+
 export const SERVICE_TYPE_CODES = {
   resource: '330',      // Specialized Academic Instruction
   speech: '415',        // Language and Speech
@@ -113,11 +115,6 @@ export const PROVIDER_KEYWORDS: Record<string, string[]> = {
     'counseling',
   ],
 };
-
-/** Escape a keyword so it can be embedded literally in a RegExp. */
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
 
 /**
  * One word-boundary-anchored alternation per role, compiled once from
