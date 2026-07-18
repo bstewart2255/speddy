@@ -119,9 +119,9 @@ cost nothing.
   queue by default; the next thing is whatever I point you at.
 
 **Move your own ticket as you work** — this is the habit that keeps the board
-honest: to **In Progress** when you start it, to **In Review** when you open its
-PR, to **Done** when it merges. Never leave a ticket **In Progress** after its
-work has shipped.
+honest: to **In Progress** when you start it, to **In Review** once its PR is up
+*and green* (the merge decision is now mine), to **Done** when it merges. Never
+leave a ticket **In Progress** after its work has shipped.
 
 Auto-archive is on, so completed tickets clear themselves — don't hand-manage
 done-ticket clutter.
