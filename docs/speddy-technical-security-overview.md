@@ -43,7 +43,7 @@ Speddy offers a companion Chrome extension that, with the provider's authorizati
 ### Authentication Method
 
 - **Email/password authentication** via Supabase Auth
-- **Self-signup restricted to educational email domains** (`.edu`, `.org`, `.k12.*`, `.gov`, `.us`); other roles are admin-provisioned
+- **Administrator-provisioned accounts** — the public self-registration flow has been removed; district and site administrators create staff accounts, and Google SSO can sign in an existing user but never creates a new account
 - **JWT tokens** for session management
 - **Secure cookies** with `httpOnly`, `secure`, and `sameSite` attributes
 - **Session validation** on every request via middleware
@@ -227,7 +227,7 @@ Speddy executes the **California Student Data Privacy Agreement (CA-NDPA)** via 
 ### Input Validation
 
 - All user input validated server-side
-- Self-signup restricted to educational email domains
+- Accounts are administrator-provisioned (the self-registration flow has been removed)
 - File upload type validation and upload rate limiting
 - HTML content sanitized using DOMPurify to prevent XSS attacks
 
@@ -356,8 +356,8 @@ A: Yes. Speddy executes the CA-NDPA (Standard Version 1.5) via CITE / the Califo
 
 | Item             | Value         |
 | ---------------- | ------------- |
-| Document Version | 2.0           |
-| Last Updated     | June 2026     |
+| Document Version | 2.1           |
+| Last Updated     | July 2026     |
 | Review Frequency | Quarterly     |
 
 ---

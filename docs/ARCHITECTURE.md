@@ -274,7 +274,7 @@ flowchart TD
     A["Admin creates teacher"] -->|"/api/admin/create-teacher-account"| OK["auth user + profile + teacher row<br/>site-admin gated, rollback on failure,<br/>returns one-time temp password to admin"]
     OK --> T
 
-    B["Self-signup /signup"] --> GONE["REMOVED at app level (SPE-111, PR #678)<br/>⚠ Supabase Auth enable_signup still TRUE →<br/>direct /auth/v1/signup via anon key still creates<br/>an account until disabled in the dashboard"]
+    B["Self-signup /signup"] --> GONE["REMOVED at app level (SPE-111, PR #678)<br/>Auth-level enable_signup DISABLED in prod (2026-07-20)<br/>→ direct /auth/v1/signup no longer creates an account;<br/>admin-only enforced"]
 
     C["send_invite checkbox"] -->|"admin-accounts.ts:436-440"| NOOP["SILENT NO-OP — only console.warn<br/>(SPE-95: admin thinks invite sent)"]
 
@@ -297,12 +297,13 @@ flowchart TD
   `app/api/auth/signup/route.ts`, the auth-provider `signUp()`, and the `/signup`
   route-allowlist entries are **deleted** — account creation is admin-only. (There
   were no real subscription/billing remnants — only an unused `STRIPE_ERROR` enum.)
-  > **Residual gap (open):** the app-level removal does **not** disable Supabase
-  > Auth itself. `enable_signup = true` (`supabase/config.toml`) plus the
-  > `handle_new_user` trigger means a direct `POST /auth/v1/signup` with the public
-  > anon key still creates an auth user + profile. To fully enforce admin-only,
-  > **disable Auth-level email signup in the production Supabase dashboard.** Safe:
-  > all admin flows use `auth.admin.createUser`, which bypasses `enable_signup`.
+  > **Residual gap — CLOSED 2026-07-20:** production Supabase Auth email signup was
+  > **disabled in the dashboard**, so a direct `POST /auth/v1/signup` with the public
+  > anon key no longer creates an account — admin-only provisioning is now enforced
+  > at the auth layer. Admin flows use `auth.admin.createUser`, which bypasses this
+  > setting, so account creation is unaffected. (Note: `supabase/config.toml` still
+  > shows `enable_signup = true`; that is the local-CLI config and does not govern
+  > the hosted project — the dashboard setting is authoritative.)
 - **Broken — SPE-95 (Urgent):** the `send_invite` branch in
   `lib/supabase/queries/admin-accounts.ts:436-440` only `console.warn`s — no
   invite, no auth user. Admins believe a teacher was invited when nothing
@@ -608,13 +609,14 @@ of school (Master Schedule stays), and Internal sets the `school_type` /
 
 ## Appendix A — Known gaps (open Linear tickets)
 
-Captured while mapping the model (the board + this doc). Status as of
-2026-06-26 — re-check Linear for current state.
+Captured while mapping the model (the board + this doc). Table snapshot as of
+2026-06-26; individual rows may note later updates (e.g., SPE-111 on 2026-07-20).
+Re-check Linear for current state.
 
 | Ticket | Pri | Area | Summary |
 |---|---|---|---|
 | **SPE-95** | Urgent | Account creation | `send_invite` teacher flow is a silent no-op (`admin-accounts.ts:436-440`). |
-| **SPE-111** | High | Cleanup / Security | ✅ App-level self-signup removed (PR #678). **Still open:** disable production Supabase Auth `enable_signup` — a direct `/auth/v1/signup` via the anon key still creates an account (see §4 residual gap). No real billing remnants existed. |
+| **SPE-111** | High | Cleanup / Security | ✅ App-level self-signup removed (PR #678); production Supabase Auth `enable_signup` **disabled in the dashboard 2026-07-20** → direct `/auth/v1/signup` no longer creates an account; admin-only enforced. No real billing remnants existed. |
 | **SPE-169** | High | Security/FERPA | Build real audit logging; `audit_logs` table + `logAccess()` exist but are unwired/empty. |
 | **SPE-187** | Medium | Security | AI generation routes have no role authz; `withRoute` has no `roles` option. Not live (AI off). |
 | **SPE-188** | Low | Security | Idle logout is client-side only; no server-side session-lifetime backstop. |

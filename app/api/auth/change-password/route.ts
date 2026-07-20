@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { validatePassword } from '@/lib/utils/password-validation';
 import { log } from '@/lib/monitoring/logger';
 import { withRoute } from '@/lib/api/with-route';
@@ -50,17 +50,33 @@ export const POST = withRoute({ body: bodySchema }, async ({ userId, body }) => 
       return NextResponse.json({ error: 'Failed to update password' }, { status: 500 });
     }
 
-    // Clear the must_change_password flag
-    const { error: clearFlagError } = await supabase
-      .from('profiles')
-      .update({ must_change_password: false })
-      .eq('id', userId);
+    // Clear the must_change_password flag using a service-role client.
+    // updateUser() above rotates the user's session tokens; reusing the
+    // request-scoped (user) client here stalls on a token refresh against the
+    // now-stale session and hangs the request indefinitely (SPE-280). The
+    // service client carries no session, so it completes cleanly.
+    // Wrapped so a service-client/config failure here cannot 500 the request
+    // after the password was already changed — same "log but don't fail" intent
+    // as the query error below (the password change is the important part).
+    try {
+      const serviceClient = createServiceClient();
+      const { error: clearFlagError } = await serviceClient
+        .from('profiles')
+        .update({ must_change_password: false })
+        .eq('id', userId);
 
-    if (clearFlagError) {
+      if (clearFlagError) {
+        // Log but don't fail - password was already changed successfully
+        log.warn('Failed to clear must_change_password flag', {
+          userId,
+          error: clearFlagError.message,
+        });
+      }
+    } catch (clientError) {
       // Log but don't fail - password was already changed successfully
-      log.warn('Failed to clear must_change_password flag', {
+      log.warn('Failed to create service client to clear must_change_password flag', {
         userId,
-        error: clearFlagError.message,
+        error: clientError instanceof Error ? clientError.message : String(clientError),
       });
     }
 
