@@ -55,17 +55,28 @@ export const POST = withRoute({ body: bodySchema }, async ({ userId, body }) => 
     // request-scoped (user) client here stalls on a token refresh against the
     // now-stale session and hangs the request indefinitely (SPE-280). The
     // service client carries no session, so it completes cleanly.
-    const serviceClient = createServiceClient();
-    const { error: clearFlagError } = await serviceClient
-      .from('profiles')
-      .update({ must_change_password: false })
-      .eq('id', userId);
+    // Wrapped so a service-client/config failure here cannot 500 the request
+    // after the password was already changed — same "log but don't fail" intent
+    // as the query error below (the password change is the important part).
+    try {
+      const serviceClient = createServiceClient();
+      const { error: clearFlagError } = await serviceClient
+        .from('profiles')
+        .update({ must_change_password: false })
+        .eq('id', userId);
 
-    if (clearFlagError) {
+      if (clearFlagError) {
+        // Log but don't fail - password was already changed successfully
+        log.warn('Failed to clear must_change_password flag', {
+          userId,
+          error: clearFlagError.message,
+        });
+      }
+    } catch (clientError) {
       // Log but don't fail - password was already changed successfully
-      log.warn('Failed to clear must_change_password flag', {
+      log.warn('Failed to create service client to clear must_change_password flag', {
         userId,
-        error: clearFlagError.message,
+        error: clientError instanceof Error ? clientError.message : String(clientError),
       });
     }
 
