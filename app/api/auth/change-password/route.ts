@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { validatePassword } from '@/lib/utils/password-validation';
 import { log } from '@/lib/monitoring/logger';
 import { withRoute } from '@/lib/api/with-route';
@@ -50,8 +50,13 @@ export const POST = withRoute({ body: bodySchema }, async ({ userId, body }) => 
       return NextResponse.json({ error: 'Failed to update password' }, { status: 500 });
     }
 
-    // Clear the must_change_password flag
-    const { error: clearFlagError } = await supabase
+    // Clear the must_change_password flag using a service-role client.
+    // updateUser() above rotates the user's session tokens; reusing the
+    // request-scoped (user) client here stalls on a token refresh against the
+    // now-stale session and hangs the request indefinitely (SPE-280). The
+    // service client carries no session, so it completes cleanly.
+    const serviceClient = createServiceClient();
+    const { error: clearFlagError } = await serviceClient
       .from('profiles')
       .update({ must_change_password: false })
       .eq('id', userId);
