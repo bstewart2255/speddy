@@ -609,8 +609,9 @@ of school (Master Schedule stays), and Internal sets the `school_type` /
 
 ## Appendix A — Known gaps (open Linear tickets)
 
-Captured while mapping the model (the board + this doc). Status as of
-2026-06-26 — re-check Linear for current state.
+Captured while mapping the model (the board + this doc). Table snapshot as of
+2026-06-26; individual rows may note later updates (e.g., SPE-111 on 2026-07-20).
+Re-check Linear for current state.
 
 | Ticket | Pri | Area | Summary |
 |---|---|---|---|
