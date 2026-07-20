@@ -147,3 +147,11 @@ html-report/
 
 # Local reference files (PDFs, Excel, CSV samples, etc.)
 /reference-local/
+
+# Scratch dirs, build artifacts, and regenerated outputs — keep out of git (SPE-96)
+/temp/
+/cache/
+/performance-report.json
+/test-lesson-output.json
+/speddy-chrome-extension.tar.gz
+/speddy-extension-v2.0.0.zip
