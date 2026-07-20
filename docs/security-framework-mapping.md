@@ -37,7 +37,7 @@ detail), `data-inventory.md`, `subprocessors.md`, `offboarding-runbook.md`,
 
 | CSF category | Speddy implementation |
 | --- | --- |
-| Identity & Access Control (PR.AC) | Supabase Auth (JWT); educational-domain-restricted self-signup; role-based access control with admin scoping; PostgreSQL Row-Level Security on every application table; per-provider hashed API keys for the extension (revocable); 45-minute inactivity logout; password complexity rules |
+| Identity & Access Control (PR.AC) | Supabase Auth (JWT); administrator-provisioned accounts (self-registration flow removed); role-based access control with admin scoping; PostgreSQL Row-Level Security on every application table; per-provider hashed API keys for the extension (revocable); 45-minute inactivity logout; password complexity rules |
 | Data Security (PR.DS) | TLS 1.2+ in transit; AES-256 at rest (Supabase-managed); private storage buckets with short-lived signed URLs; service-role credentials server-side only; data minimization (no parent/student contact info, no SSN, no demographics) |
 | Information Protection (PR.IP) | Retention TTLs enforced by scheduled jobs (12-month worksheet images, 7-day rate-limit rows, 90-day analytics); deletion/offboarding tooling (`offboarding-runbook.md`); environment-variable secrets management (Vercel); AI feature gate default-off |
 | Protective Technology (PR.PT) | Server-side input validation; DOMPurify HTML sanitization; upload type validation and rate limiting; cron endpoints secret-gated; inbound email webhook disabled by default |

@@ -38,7 +38,7 @@ deletion runbook (`docs/offboarding-runbook.md`).
 |------|--------|--------|
 | District record | ✅ Created | `John Swett Unified` — NCES `0618990`, state `CA`, Contra Costa |
 | Schools | ✅ Created | Rodeo Hills Elementary (K–5), Carquinez Middle (6–8), John Swett High (9–12) — real NCES IDs |
-| District admin — **Megan Tucker** (`mtucker@jsusd.org`) | ⏳ Pending | Created by a Speddy admin via `/internal` → district → **Create District Admin** (one-time temp password shown once) |
+| District admin — **Megan Tucker** (`mtucker@jsusd.org`) | ⏳ Not yet created | **To be created** by a Speddy admin via `/internal` → district → **Create District Admin**. After creation, set `must_change_password` on her profile so she must rotate the one-time temp password at first login (SPE-190 mitigation). |
 
 The middle and high schools are typed `Middle` / `High`, so they get the
 secondary-school experience; Rodeo Hills gets the full elementary experience.
@@ -65,7 +65,14 @@ secondary-school experience; Rodeo Hills gets the full elementary experience.
 ## 4. Notes
 
 - The Technical & Security Overview was corrected (v2.1, Jul 2026): it previously
-  described "self-signup restricted to educational email domains"; accounts are in
-  fact administrator-provisioned only, which is the stronger posture.
-- Megan's temp password is **not** force-rotated on first login (SPE-190) — have
-  her change it immediately after signing in.
+  described "self-signup restricted to educational email domains"; the
+  self-registration flow was removed, so accounts are administrator-provisioned.
+  **Residual gap (SPE-111):** production Supabase Auth still has `enable_signup =
+  true`, so a direct `POST /auth/v1/signup` via the public anon key can still
+  create an account. Disable Auth-level signup in the Supabase dashboard to fully
+  enforce admin-only — until then the overview is worded to not overstate the
+  posture (flagged by Codex on PR #758).
+- The portal's temp password is **not** force-rotated by default (SPE-190).
+  Mitigation for this account: after Megan is created, set `must_change_password =
+  true` on her profile so she is locked to `/change-password` and must rotate the
+  bootstrap password before using the app.
