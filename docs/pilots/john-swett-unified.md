@@ -67,11 +67,11 @@ secondary-school experience; Rodeo Hills gets the full elementary experience.
 - The Technical & Security Overview was corrected (v2.1, Jul 2026): it previously
   described "self-signup restricted to educational email domains"; the
   self-registration flow was removed, so accounts are administrator-provisioned.
-  **Residual gap (SPE-111):** production Supabase Auth still has `enable_signup =
-  true`, so a direct `POST /auth/v1/signup` via the public anon key can still
-  create an account. Disable Auth-level signup in the Supabase dashboard to fully
-  enforce admin-only — until then the overview is worded to not overstate the
-  posture (flagged by Codex on PR #758).
+  **Residual gap closed 2026-07-20 (SPE-111):** production Supabase Auth
+  `enable_signup` was disabled in the dashboard, so admin-only provisioning is now
+  enforced at the authentication layer (admin creation uses `auth.admin.createUser`,
+  which is unaffected). The overview's "administrator-provisioned" wording is now
+  fully backed.
 - The portal's temp password is **not** force-rotated by default (SPE-190).
   Mitigation for this account: after Megan is created, set `must_change_password =
   true` on her profile so she is locked to `/change-password` and must rotate the
