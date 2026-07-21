@@ -3,6 +3,7 @@ import { ScheduleSession, BellSchedule, SpecialActivity } from '@/src/types';
 import { DEFAULT_SCHEDULING_CONFIG } from '@/lib/scheduling/scheduling-config';
 import { requireNonNull } from '@/lib/types/utils';
 import { formatDateLocal } from '@/lib/utils/date-helpers';
+import { formatRoleLabel } from '@/lib/utils/role-utils';
 
 // Helper functions for time conversion
 const timeToMinutes = (time: string): number => {
@@ -16,6 +17,98 @@ const addMinutesToTime = (time: string, minutesToAdd: number): string => {
   const minutes = totalMinutes % 60;
   return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:00`;
 };
+
+/** SPE-255: a matched other-provider session (shape from find_matching_provider_sessions). */
+export interface OtherProviderSessionLite {
+  day_of_week: number | null;
+  start_time: string | null;
+  end_time: string | null;
+  provider_role: string | null;
+}
+
+/**
+ * SPE-255: the first other-provider session that overlaps [startTime, endTime) on
+ * `day`, else null. Pure (no I/O) so the cross-provider double-book rule is
+ * unit-testable without a Supabase mock. Half-open overlap, matching
+ * SessionUpdateService.hasTimeOverlap.
+ */
+export function findOverlappingOtherProviderSession(
+  sessions: OtherProviderSessionLite[],
+  day: number,
+  startTime: string,
+  endTime: string,
+): OtherProviderSessionLite | null {
+  const start = timeToMinutes(startTime);
+  const end = timeToMinutes(endTime);
+  for (const s of sessions) {
+    if (s.day_of_week !== day || !s.start_time || !s.end_time) continue;
+    if (start < timeToMinutes(s.end_time) && end > timeToMinutes(s.start_time)) {
+      return s;
+    }
+  }
+  return null;
+}
+
+/** Minimal shape of a same-provider session weighed during stale-conflict cleanup. */
+export interface SameProviderSessionLite {
+  id: string;
+  start_time: string | null;
+  end_time: string | null;
+}
+
+/**
+ * SPE-255: does a flagged session STILL have a real conflict? True when it overlaps
+ * another of the same provider's sessions for the student, OR double-books the same
+ * student with another provider. Stale-conflict cleanup uses this so it never erases
+ * a cross-provider flag the same-provider scan alone can't see — moving or
+ * unscheduling a *sibling* session of the same student must not silently clear the
+ * double-book warning on another. Pure (no I/O), half-open intervals, self-excluding.
+ */
+export function flaggedSessionStillConflicts(
+  flagged: { id: string; day_of_week: number | null; start_time: string | null; end_time: string | null },
+  sameProviderSessions: SameProviderSessionLite[],
+  otherProviderSessions: OtherProviderSessionLite[],
+): boolean {
+  if (flagged.day_of_week === null || !flagged.start_time || !flagged.end_time) {
+    return false;
+  }
+  const start = timeToMinutes(flagged.start_time);
+  const end = timeToMinutes(flagged.end_time);
+  // Same-provider overlap (excluding the flagged session itself).
+  for (const s of sameProviderSessions) {
+    if (s.id === flagged.id || !s.start_time || !s.end_time) continue;
+    if (start < timeToMinutes(s.end_time) && end > timeToMinutes(s.start_time)) {
+      return true;
+    }
+  }
+  // Cross-provider double-book (same student, another provider).
+  return (
+    findOverlappingOtherProviderSession(
+      otherProviderSessions,
+      flagged.day_of_week,
+      flagged.start_time,
+      flagged.end_time,
+    ) !== null
+  );
+}
+
+/**
+ * SPE-255 fail-safe: interpret a find_matching_provider_sessions result for stale-
+ * conflict cleanup. `failed` is true when cross-provider status is UNVERIFIABLE — an
+ * RPC error OR an unexpected non-array shape (e.g. null from a driver quirk or a
+ * future signature change) — so cleanup keeps flags rather than risk clearing a real
+ * double-book. A successful empty array is a genuine "no matches", not a failure.
+ * (The commit-path check can treat non-array as "no data" safely because it only
+ * suppresses a NEW warning; here it could erase an EXISTING one, so it must not.)
+ */
+export function interpretCrossProviderStaleCheck(
+  data: unknown,
+  error: unknown,
+): { sessions: OtherProviderSessionLite[]; failed: boolean } {
+  if (error) return { sessions: [], failed: true };
+  if (Array.isArray(data)) return { sessions: data as OtherProviderSessionLite[], failed: false };
+  return { sessions: [], failed: true }; // no error but non-array → unverifiable
+}
 
 export interface SessionUpdateParams {
   sessionId: string;
@@ -118,14 +211,16 @@ export class SessionUpdateService {
         return { success: false, error: 'Session not found' };
       }
 
-      // Validate the move before updating
+      // Validate the move before updating. This is the commit path, so include the
+      // cross-provider double-book check (SPE-255) — the per-student RPC it runs is
+      // skipped on the higher-frequency drag-preview / batch-marking paths.
       const validation = await this.validateSessionMove({
         session,
         targetDay: newDay,
         targetStartTime: newStartTime,
         targetEndTime: newEndTime,
         studentMinutes: Math.floor((timeToMinutes(newEndTime) - timeToMinutes(newStartTime)))
-      });
+      }, { checkCrossProvider: true });
 
       // If validation fails and force update is not set, return without updating
       if (!validation.valid && validation.conflicts && !forceUpdate) {
@@ -178,7 +273,11 @@ export class SessionUpdateService {
         newEndTime
       });
 
-      // Clear stale conflicts on other sessions that may have been resolved by this move
+      // Clear stale conflicts for this student that this move may have resolved.
+      // clearStaleConflictsForStudent re-checks BOTH same-provider overlaps and the
+      // cross-provider double-book (SPE-255), so it won't erase a live cross-provider
+      // flag on a sibling session — and the just-moved session keeps whatever flag the
+      // validation above set, because that same authoritative check still sees it.
       if (session.student_id && session.provider_id) {
         // Always check the new day for stale conflicts
         await this.clearStaleConflictsForStudent(session.student_id, session.provider_id, newDay);
@@ -291,7 +390,10 @@ export class SessionUpdateService {
   /**
    * Validates if a session can be moved to a new time slot
    */
-  async validateSessionMove(params: SessionMoveValidation): Promise<ValidationResult> {
+  async validateSessionMove(
+    params: SessionMoveValidation,
+    opts?: { checkCrossProvider?: boolean },
+  ): Promise<ValidationResult> {
     const { session, targetDay, targetStartTime, targetEndTime, studentMinutes } = params;
     const conflicts: ValidationResult['conflicts'] = [];
 
@@ -325,32 +427,26 @@ export class SessionUpdateService {
       }
     }
 
-    // Run the independent conflict checks concurrently. Promise.all preserves array
-    // order, so conflict priority (and the conflicts[0] surfaced as `error`) is unchanged.
-    const [
-      bellScheduleConflict,
-      specialActivityConflict,
-      concurrentConflict,
-      consecutiveConflict,
-      breakConflict,
-      overlapConflict
-    ] = await Promise.all([
+    // Run the independent conflict checks concurrently. Order is preserved so
+    // conflict priority (the conflicts[0] surfaced as `error`) is unchanged.
+    const checks: Array<Promise<NonNullable<ValidationResult['conflicts']>[0] | null>> = [
       this.checkBellScheduleConflicts(providerId, studentId, targetDay, targetStartTime, targetEndTime),
       this.checkSpecialActivityConflicts(providerId, studentId, targetDay, targetStartTime, targetEndTime),
       this.checkConcurrentSessionLimit(providerId, targetDay, targetStartTime, targetEndTime, session.id),
       this.checkConsecutiveSessionRules(providerId, studentId, targetDay, targetStartTime, targetEndTime, session.id),
       this.checkBreakRequirements(providerId, studentId, targetDay, targetStartTime, targetEndTime, session.id),
-      this.checkStudentSessionOverlap(studentId, targetDay, targetStartTime, targetEndTime, session.id)
-    ]);
+      this.checkStudentSessionOverlap(studentId, targetDay, targetStartTime, targetEndTime, session.id),
+    ];
 
-    for (const conflict of [
-      bellScheduleConflict,
-      specialActivityConflict,
-      concurrentConflict,
-      consecutiveConflict,
-      breakConflict,
-      overlapConflict
-    ]) {
+    // SPE-255: the cross-provider double-book check hits a per-student RPC, so it
+    // runs ONLY on an actual commit (updateSessionTime passes checkCrossProvider).
+    // Drag-preview (validateOnly) and the per-session batch conflict-marking loops
+    // call validateSessionMove many times and must not fire one RPC each.
+    if (opts?.checkCrossProvider) {
+      checks.push(this.checkCrossProviderStudentOverlap(studentId, targetDay, targetStartTime, targetEndTime));
+    }
+
+    for (const conflict of await Promise.all(checks)) {
       if (conflict) {
         conflicts.push(conflict);
       }
@@ -675,6 +771,52 @@ export class SessionUpdateService {
   }
 
   /**
+   * SPE-255: warn when placing this session would overlap a session the SAME
+   * student has with ANOTHER provider (a shared elementary student — e.g. RSP +
+   * Speech). checkStudentSessionOverlap catches own-provider overlaps; RLS hides
+   * the other provider's rows from a direct query, so we resolve the shared
+   * student via the SECURITY DEFINER find_matching_provider_sessions RPC (the same
+   * matched sessions already drawn as grey "other provider" bands on the grid).
+   *
+   * Surfaced as an override-able warning like every other conflict here — the
+   * cross-provider identity match is a best-guess (initials+grade+school+teacher),
+   * so a wrong guess must be dismissable, never a hard block. Fails open: a
+   * warning we couldn't compute must not turn into a false block.
+   *
+   * Limitation: the RPC only returns data when the caller OWNS the student, so a
+   * non-owning viewer (SEA/specialist moving an assigned session) gets no warning.
+   * That's fail-safe (never a false block) and matches the grey-bands display,
+   * which uses the same RPC; the owning provider still sees the warning.
+   */
+  private async checkCrossProviderStudentOverlap(
+    studentId: string,
+    day: number,
+    startTime: string,
+    endTime: string,
+  ): Promise<NonNullable<ValidationResult['conflicts']>[0] | null> {
+    try {
+      const { data, error } = await this.supabase.rpc('find_matching_provider_sessions', {
+        p_student_id: studentId,
+      });
+      if (error) {
+        console.error('Cross-provider overlap check failed:', error);
+        return null;
+      }
+      if (!Array.isArray(data)) return null;
+      const hit = findOverlappingOtherProviderSession(data, day, startTime, endTime);
+      if (!hit || !hit.start_time || !hit.end_time) return null;
+      return {
+        type: 'session',
+        description: `This student is also scheduled with ${formatRoleLabel(hit.provider_role)} at ${hit.start_time.slice(0, 5)} - ${hit.end_time.slice(0, 5)} — placing here would double-book them`,
+        conflictingItem: hit,
+      };
+    } catch (e) {
+      console.error('Cross-provider overlap check threw:', e);
+      return null;
+    }
+  }
+
+  /**
    * Check if two time periods overlap
    */
   private hasTimeOverlap(
@@ -748,29 +890,42 @@ export class SessionUpdateService {
         return;
       }
 
-      // For each flagged session, check if it still has an actual overlap
+      // SPE-255: a flag may exist because this session double-books the SAME student
+      // with ANOTHER provider — which the same-provider scan below cannot see. Fetch
+      // the cross-provider matches once (the same RPC the commit path validates
+      // against) so cleanup never erases a live cross-provider warning when the
+      // provider moves or unschedules a *sibling* session of the same student on this
+      // day. Fail safe: if cross-provider status can't be determined, keep every flag
+      // rather than risk silently hiding a real double-book.
+      let otherProviderSessions: OtherProviderSessionLite[] = [];
+      let crossCheckFailed = false;
+      try {
+        const { data: matches, error: rpcError } = await this.supabase.rpc(
+          'find_matching_provider_sessions',
+          { p_student_id: studentId },
+        );
+        const interpreted = interpretCrossProviderStaleCheck(matches, rpcError);
+        otherProviderSessions = interpreted.sessions;
+        crossCheckFailed = interpreted.failed;
+        if (crossCheckFailed) {
+          console.error('Cross-provider stale-check unusable (error or unexpected shape):', rpcError ?? matches);
+        }
+      } catch (e) {
+        console.error('Cross-provider stale-check threw:', e);
+        crossCheckFailed = true;
+      }
+
+      // Clear a flag only when the session no longer overlaps ANY same-provider
+      // session AND no longer double-books across providers.
       for (const flaggedSession of flaggedSessions) {
         if (!flaggedSession.start_time || !flaggedSession.end_time) {
           continue;
         }
 
-        let stillHasOverlap = false;
-
-        for (const otherSession of allSessions) {
-          if (otherSession.id === flaggedSession.id) {
-            continue;
-          }
-
-          if (this.hasTimeOverlap(
-            flaggedSession.start_time,
-            flaggedSession.end_time,
-            otherSession.start_time,
-            otherSession.end_time
-          )) {
-            stillHasOverlap = true;
-            break;
-          }
-        }
+        // Fail safe: an unverifiable cross-provider status keeps the flag.
+        const stillHasOverlap =
+          crossCheckFailed ||
+          flaggedSessionStillConflicts(flaggedSession, allSessions, otherProviderSessions);
 
         // If no longer overlapping, clear the conflict flag
         if (!stillHasOverlap) {
