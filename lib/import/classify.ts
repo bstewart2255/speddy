@@ -265,13 +265,17 @@ export function buildStudentPreviews(params: {
         teacherMatchResult.teacherId === null &&
         !!teacherMatchResult.teacherName?.trim();
       // SPE-284: fill an existing initials-only record's empty name from a named
-      // upload (enrichment). Only fills a blank name — never overwrites an
+      // upload (enrichment). Only fills a fully-blank name — never overwrites an
       // existing one (correcting a stored name is out of scope for the
       // foundation). This is what turns an otherwise-unchanged enrichment match
       // into an 'update' instead of a 'skip', so the name is applied on confirm.
+      // Any non-blank stored name (even a partial first-XOR-last) counts as an
+      // existing identity and blocks enrichment. The matcher already restricts
+      // enrichment matches to both-blank rows, so this is defense-in-depth —
+      // classify stays correct even if that upstream guarantee ever changes.
       const incomingHasName = !!(student.firstName?.trim() && student.lastName?.trim());
-      const existingHasName = !!(matchedStudent.first_name?.trim() && matchedStudent.last_name?.trim());
-      const hasNameChange = incomingHasName && !existingHasName;
+      const existingHasAnyName = !!(matchedStudent.first_name?.trim() || matchedStudent.last_name?.trim());
+      const hasNameChange = incomingHasName && !existingHasAnyName;
       const anyChanges =
         changeCheck.hasGoalChanges ||
         changeCheck.hasScheduleChanges ||
