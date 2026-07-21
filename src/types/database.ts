@@ -4439,6 +4439,16 @@ export type Database = {
           start_time: string
         }[]
       }
+      find_matching_provider_sessions_batch: {
+        Args: { p_student_ids: string[] }
+        Returns: {
+          day_of_week: number
+          end_time: string
+          provider_role: string
+          source_student_id: string
+          start_time: string
+        }[]
+      }
       find_school_ids_by_names: {
         Args: {
           p_school_district_name: string

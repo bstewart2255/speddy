@@ -4,6 +4,7 @@ import { Database } from "../../src/types/database";
 import { SchedulingDataManager } from './scheduling-data-manager';
 import { ManualPlacementService } from '../services/manual-placement-service';
 import { filterScheduledSessions, type ScheduledSession } from '../utils/session-helpers';
+import { findOverlappingOtherProviderSession, type OtherProviderSessionLite } from '../services/session-update-service';
 import type {
   Student,
   ScheduleSession,
@@ -43,7 +44,12 @@ interface SchedulingContext {
     end_time: string;
   }>;
   studentGradeMap: Map<string, string>; // Map student ID to grade level
-  
+
+  // SPE-287: cross-provider template sessions per owned student (studentId -> the other
+  // provider's sessions for the SAME shared child). Used to hard-avoid double-booking a
+  // shared student across providers. Only shared students have entries.
+  crossProviderSessionsByStudent: Map<string, OtherProviderSessionLite[]>;
+
   // Enhanced caching structures for O(1) lookups
   providerAvailability: Map<string, Map<number, AvailabilitySlot[]>>; // provider -> day -> slots
   bellSchedulesByGrade: Map<string, Map<number, BellSchedule[]>>; // grade -> day -> schedules
@@ -129,6 +135,9 @@ export class OptimizedScheduler {
 
     // Get all existing sessions (filter to only scheduled sessions with non-null day/time fields)
     const existingSessions = filterScheduledSessions(this.dataManager.getExistingSessions());
+
+    // SPE-287: cross-provider sessions for shared students (loaded once by the DataManager).
+    const crossProviderSessionsByStudent = this.dataManager.getCrossProviderSessions();
     
     // Get bell schedules for all grades
     const bellSchedules: BellSchedule[] = [];
@@ -160,10 +169,11 @@ export class OptimizedScheduler {
       bellSchedules,
       specialActivities,
       existingSessions,
-      schoolHours
+      schoolHours,
+      crossProviderSessionsByStudent
     };
   }
-  
+
   /**
    * Validate that cache is populated and not stale
    */
@@ -274,7 +284,8 @@ export class OptimizedScheduler {
       validSlots: new Map(),
       schoolHours: preloadedData.schoolHours || [],
       studentGradeMap: new Map(),
-      
+      crossProviderSessionsByStudent: preloadedData.crossProviderSessionsByStudent || new Map(),
+
       // Enhanced caching structures
       providerAvailability,
       bellSchedulesByGrade,
@@ -920,6 +931,15 @@ export class OptimizedScheduler {
           continue;
         }
 
+        // SPE-287: hard-avoid double-booking a SHARED student across providers. The other
+        // provider's session is blocked time for THIS child (one kid can't be in two rooms
+        // at once), so the auto-scheduler never places on top of it — unlike the interactive
+        // drag, which warns but lets the provider override.
+        if (this.hasCrossProviderConflict(student.id, day, slot.startTime, endTime)) {
+          this.log(`    ❌ Cross-provider double-book (shared student with another provider)`);
+          continue;
+        }
+
         // Check consecutive session rules (max 60 minutes without break)
         if (!this.validateConsecutiveSessionRules(student, day, slot.startTime, endTime, [...existingFoundSlots, ...foundSlots])) {
           this.log(`    ❌ Consecutive session rule violation`);
@@ -998,7 +1018,25 @@ export class OptimizedScheduler {
 
     return true;
   }
-  
+
+  /**
+   * SPE-287: does placing this student here double-book them with ANOTHER provider?
+   * True when the slot overlaps one of the student's cross-provider sessions (a shared
+   * child, e.g. RSP + Speech). Reuses findOverlappingOtherProviderSession so the
+   * auto-scheduler, the interactive drag warning, and the grey "other provider" bands
+   * share identical overlap semantics. No entry for a student => never a conflict.
+   */
+  private hasCrossProviderConflict(
+    studentId: string,
+    day: number,
+    startTime: string,
+    endTime: string
+  ): boolean {
+    const sessions = this.context!.crossProviderSessionsByStudent.get(studentId);
+    if (!sessions || sessions.length === 0) return false;
+    return findOverlappingOtherProviderSession(sessions, day, startTime, endTime) !== null;
+  }
+
   /**
    * Validate consecutive session rules (max 60 minutes without break)
    */
