@@ -31,13 +31,16 @@ export default function PrivacyPage() {
             <h3 className="text-lg font-semibold text-gray-800 mt-6 mb-3">2.2 Student Educational Data</h3>
             <p className="text-gray-700 mb-4">As an authorized education professional, you may input student data including:</p>
             <ul className="list-disc pl-6 mb-4 text-gray-700">
-              <li>Student identifiers (typically initials or student IDs)</li>
+              <li>Student names (first and last) and other identifiers such as student IDs</li>
               <li>Grade level and program information</li>
               <li>Service schedules and appointments</li>
               <li>IEP goals and progress data (when authorized)</li>
               <li>Session notes and service documentation</li>
               <li>Assessment data (when authorized)</li>
             </ul>
+            <p className="text-gray-700 mb-4">
+              Speddy stores each student's full name and protects it with database access controls (row-level security): a student's records are visible only to their assigned provider(s), any delegated staff, and authorized school or district administrators, and student data is encrypted at rest. To limit on-screen exposure, scheduling and planning views show initials — the full name appears on the student's own record.
+            </p>
             <p className="text-gray-700 mb-4">
               <strong>Important:</strong> You are responsible for ensuring you are authorized to access and input all student data you enter into Speddy.
             </p>

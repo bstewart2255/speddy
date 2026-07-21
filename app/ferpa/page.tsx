@@ -133,7 +133,7 @@ export default function FERPAPage() {
                 <li>Use professional, objective language in all documentation</li>
                 <li>Enter only information necessary for service delivery</li>
                 <li>Double-check accuracy of all data entered</li>
-                <li>Use privacy-protective identifiers when possible (initials, student IDs)</li>
+                <li>Rely on Speddy's role-based access controls to protect student names and records — access is limited to authorized staff, and shared scheduling views display initials to minimize on-screen exposure</li>
               </ul>
 
               <h3 className="text-lg font-semibold text-gray-800 mt-6 mb-3">When Sharing Information</h3>
