@@ -170,16 +170,24 @@ export function buildStudentPreviews(params: {
   deliveriesData: Map<string, DeliveryRecord> | null;
   classListData: Map<string, ClassListStudent> | null;
   dbTeachers: DbTeacherRow[];
+  /**
+   * Opt into the SPE-284 initials-enrichment fallback. Safe only when the caller
+   * fed school-scoped candidates AND confirmed student_details loaded (so a
+   * missing name means "no details row", not "load failed"). The pipeline sets
+   * this; defaults off for other/unscoped callers.
+   */
+  enrichNoNameByInitials?: boolean;
 }): MainPreviewResult {
-  const { parsedStudents, databaseStudents, deliveriesData, classListData, dbTeachers } = params;
+  const {
+    parsedStudents,
+    databaseStudents,
+    deliveriesData,
+    classListData,
+    dbTeachers,
+    enrichNoNameByInitials = false,
+  } = params;
 
-  // Opt into the SPE-284 initials-enrichment fallback: this path is fed
-  // school-scoped candidates by the pipeline, so matching a NAMED upload to an
-  // existing no-name row by initials+grade is safe here (unlike the unscoped
-  // per-student IEP goals import, which must not enable it).
-  const matchResult = matchStudents(parsedStudents, databaseStudents, {
-    enrichNoNameByInitials: true,
-  });
+  const matchResult = matchStudents(parsedStudents, databaseStudents, { enrichNoNameByInitials });
 
   // Track which students from deliveries/classList were matched
   const matchedDeliveryNames = new Set<string>();

@@ -131,11 +131,12 @@ describe('buildStudentPreviews (main path)', () => {
     expect(p.goalsRemoved).toEqual(['Old goal']);
   });
 
-  it('enriches an initials-only existing student with the incoming name (SPE-284)', () => {
+  it('enriches an initials-only existing student with the incoming name when opted in (SPE-284)', () => {
     const { studentPreviews } = buildStudentPreviews({
       parsedStudents: [parsed({ goals: [] })],
       databaseStudents: [dbStudent({ first_name: '', last_name: '' })],
       deliveriesData: null, classListData: null, dbTeachers: [],
+      enrichNoNameByInitials: true,
     });
     const p = studentPreviews[0];
     expect(p.action).toBe('update');
@@ -144,6 +145,19 @@ describe('buildStudentPreviews (main path)', () => {
     // The incoming name flows through for the confirm write + review display.
     expect(p.firstName).toBe('John');
     expect(p.lastName).toBe('Doe');
+  });
+
+  it('does NOT enrich a no-name row when enrichment is off (fail-safe default)', () => {
+    // The pipeline turns enrichment off when student_details failed to load, so a
+    // merely-unloaded name can't be overwritten. Default off → treat as a new insert.
+    const { studentPreviews } = buildStudentPreviews({
+      parsedStudents: [parsed({ goals: [] })],
+      databaseStudents: [dbStudent({ first_name: '', last_name: '' })],
+      deliveriesData: null, classListData: null, dbTeachers: [],
+    });
+    const p = studentPreviews[0];
+    expect(p.action).toBe('insert');
+    expect(p.matchedStudentId).toBeUndefined();
   });
 
   it('does not fabricate a change when the existing student already has that name', () => {
