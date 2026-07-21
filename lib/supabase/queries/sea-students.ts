@@ -8,7 +8,9 @@ export interface StudentData {
   school_id?: string;
   provider_id?: string;
   iep_goals?: string[]; // Always normalized to array at top level
-  student_details?: { iep_goals?: string[] }; // Optional nested format for compatibility
+  // Nested details (SPE-284 identity anchor). Full name is populated whenever known
+  // so the shared Students page can render it for SEAs; iep_goals only when requested.
+  student_details?: { iep_goals?: string[]; first_name?: string | null; last_name?: string | null };
 }
 
 export interface LoadStudentsOptions {
@@ -81,7 +83,13 @@ export async function loadStudentsForUser(
             created_at: student.created_at,
             updated_at: student.updated_at,
             iep_goals: iepGoals,
-            student_details: includeIEPGoals ? { iep_goals: iepGoals } : undefined,
+            // SPE-286: get_sea_students now returns first_name/last_name for the SEA's
+            // assigned students, so the Students page can show the full name.
+            student_details: {
+              first_name: student.first_name ?? null,
+              last_name: student.last_name ?? null,
+              ...(includeIEPGoals ? { iep_goals: iepGoals } : {}),
+            },
           } as StudentData;
         });
         return { data: transformedData, error: null };
@@ -101,9 +109,10 @@ export async function loadStudentsForUser(
       let fallbackQuery = supabase
         .from('students')
         .select(
+          // Always embed the name (SPE-286); iep_goals only when requested.
           includeIEPGoals
-            ? 'id, initials, grade_level, teacher_name, teacher_id, sessions_per_week, minutes_per_session, school_id, provider_id, created_at, updated_at, student_details(iep_goals)'
-            : 'id, initials, grade_level, teacher_name, teacher_id, sessions_per_week, minutes_per_session, school_id, provider_id, created_at, updated_at'
+            ? 'id, initials, grade_level, teacher_name, teacher_id, sessions_per_week, minutes_per_session, school_id, provider_id, created_at, updated_at, student_details(iep_goals, first_name, last_name)'
+            : 'id, initials, grade_level, teacher_name, teacher_id, sessions_per_week, minutes_per_session, school_id, provider_id, created_at, updated_at, student_details(first_name, last_name)'
         )
         .order('initials');
 
@@ -144,7 +153,12 @@ export async function loadStudentsForUser(
           created_at: student.created_at,
           updated_at: student.updated_at,
           iep_goals: iepGoals,
-          student_details: includeIEPGoals ? { iep_goals: iepGoals } : undefined,
+          // SPE-286: surface the full name (RLS-scoped to the SEA's assigned students).
+          student_details: {
+            first_name: studentDetails?.first_name ?? null,
+            last_name: studentDetails?.last_name ?? null,
+            ...(includeIEPGoals ? { iep_goals: iepGoals } : {}),
+          },
         } as StudentData;
       });
 
