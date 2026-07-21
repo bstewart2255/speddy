@@ -1,6 +1,8 @@
 import {
   findOverlappingOtherProviderSession,
+  flaggedSessionStillConflicts,
   OtherProviderSessionLite,
+  SameProviderSessionLite,
 } from '@/lib/services/session-update-service';
 
 // Default: Monday 09:00–09:30 Speech session belonging to another provider.
@@ -48,5 +50,64 @@ describe('findOverlappingOtherProviderSession (SPE-255)', () => {
     ];
     const hit = findOverlappingOtherProviderSession(list, 1, '09:10:00', '09:20:00');
     expect(hit?.provider_role).toBe('speech');
+  });
+});
+
+describe('flaggedSessionStillConflicts (SPE-255)', () => {
+  // Flagged session under cleanup: Monday 09:00–09:30, id 'A'.
+  const flagged = (over: Partial<{ id: string; day_of_week: number | null; start_time: string | null; end_time: string | null }> = {}) => ({
+    id: 'A',
+    day_of_week: 1,
+    start_time: '09:00:00',
+    end_time: '09:30:00',
+    ...over,
+  });
+
+  const sameProv = (over: Partial<SameProviderSessionLite> = {}): SameProviderSessionLite => ({
+    id: 'B',
+    start_time: '09:15:00',
+    end_time: '09:45:00',
+    ...over,
+  });
+
+  it('keeps a flag that still overlaps another same-provider session', () => {
+    expect(flaggedSessionStillConflicts(flagged(), [sameProv()], [])).toBe(true);
+  });
+
+  it('keeps a cross-provider-only flag with NO same-provider overlap (sibling-move regression)', () => {
+    // The core SPE-255 fix: A double-books another provider but has no same-provider
+    // overlap, so same-provider cleanup alone would wrongly clear it.
+    const otherProvider: OtherProviderSessionLite[] = [
+      { day_of_week: 1, start_time: '09:10:00', end_time: '09:40:00', provider_role: 'speech' },
+    ];
+    expect(flaggedSessionStillConflicts(flagged(), [], otherProvider)).toBe(true);
+  });
+
+  it('clears a flag with neither same- nor cross-provider overlap', () => {
+    const otherProvider: OtherProviderSessionLite[] = [
+      { day_of_week: 1, start_time: '11:00:00', end_time: '11:30:00', provider_role: 'ot' },
+    ];
+    expect(flaggedSessionStillConflicts(flagged(), [sameProv({ start_time: '13:00:00', end_time: '13:30:00' })], otherProvider)).toBe(false);
+  });
+
+  it('does not treat the flagged session as overlapping itself', () => {
+    // Same id present in the same-provider list (the row queries include the flag).
+    expect(flaggedSessionStillConflicts(flagged(), [sameProv({ id: 'A' })], [])).toBe(false);
+  });
+
+  it('treats adjacent same-provider slots as non-overlapping (half-open)', () => {
+    expect(flaggedSessionStillConflicts(flagged(), [sameProv({ start_time: '09:30:00', end_time: '10:00:00' })], [])).toBe(false);
+  });
+
+  it('ignores a cross-provider match on a different day', () => {
+    const otherProvider: OtherProviderSessionLite[] = [
+      { day_of_week: 2, start_time: '09:10:00', end_time: '09:40:00', provider_role: 'speech' },
+    ];
+    expect(flaggedSessionStillConflicts(flagged(), [], otherProvider)).toBe(false);
+  });
+
+  it('returns false for a flagged session missing day or times', () => {
+    expect(flaggedSessionStillConflicts(flagged({ day_of_week: null }), [sameProv()], [])).toBe(false);
+    expect(flaggedSessionStillConflicts(flagged({ start_time: null }), [sameProv()], [])).toBe(false);
   });
 });
