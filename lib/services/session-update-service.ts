@@ -110,40 +110,6 @@ export function interpretCrossProviderStaleCheck(
   return { sessions: [], failed: true }; // no error but non-array → unverifiable
 }
 
-/**
- * SPE-288 (pull-on-view): of a provider's flagged template sessions, which flags are now
- * STALE — i.e. the session no longer overlaps any same-provider session AND no longer
- * double-books across providers. Pure so the reconciliation is unit-testable. Inputs are
- * pre-grouped: `sameProviderByStudentDay` keyed `${student_id}|${day_of_week}` (all of the
- * provider's scheduled sessions), `otherProviderByStudent` keyed by student_id (cross-provider
- * matches). Fail-safe: if cross-provider status is unverifiable (`crossCheckFailed`), clear
- * NOTHING — an over-warning beats hiding a real double-book, matching clearStaleConflictsForStudent.
- */
-export function staleCrossProviderFlagsToClear(
-  flagged: Array<{
-    id: string;
-    student_id: string | null;
-    day_of_week: number | null;
-    start_time: string | null;
-    end_time: string | null;
-  }>,
-  sameProviderByStudentDay: Map<string, SameProviderSessionLite[]>,
-  otherProviderByStudent: Map<string, OtherProviderSessionLite[]>,
-  crossCheckFailed: boolean,
-): string[] {
-  if (crossCheckFailed) return [];
-  const toClear: string[] = [];
-  for (const f of flagged) {
-    if (!f.student_id || f.day_of_week === null || !f.start_time || !f.end_time) continue;
-    const same = sameProviderByStudentDay.get(`${f.student_id}|${f.day_of_week}`) ?? [];
-    const cross = otherProviderByStudent.get(f.student_id) ?? [];
-    if (!flaggedSessionStillConflicts(f, same, cross)) {
-      toClear.push(f.id);
-    }
-  }
-  return toClear;
-}
-
 export interface SessionUpdateParams {
   sessionId: string;
   newDay: number;
@@ -991,104 +957,88 @@ export class SessionUpdateService {
    * schedule: re-check every flagged template session against current same-provider and
    * cross-provider state, and clear the ones no longer in conflict.
    *
-   * Safety mirrors clearStaleConflictsForStudent: it only ever clears an over-warning, never
-   * creates one, and fails safe — if the cross-provider read is unverifiable, nothing is cleared.
-   * Best-effort (never throws); returns the count cleared so the caller can refresh only when needed.
-   * No cross-provider writes: a provider only clears their OWN flags (RLS-writable); the cross-
-   * provider read uses the SECURITY DEFINER batch RPC. providerId must be the caller (auth.uid()).
+   * Safety: a flag clears ONLY when the FULL validation (validateSessionMove) passes on every
+   * rule — bell schedule, special activity, capacity, consecutive/break, same-provider overlap,
+   * and cross-provider double-book — so it never erases a live conflict of any type (has_conflict
+   * is a generic flag). It only ever clears an over-warning, never creates one, and fails safe:
+   * any re-validation error leaves the flag untouched. Best-effort (never throws); returns the
+   * count cleared so the caller can refresh only when needed. No cross-provider writes — a provider
+   * only clears their OWN flags (RLS-writable). providerId must be the caller (auth.uid()).
    */
   async reconcileStaleConflictsForProvider(providerId: string): Promise<{ cleared: number }> {
     try {
-      // 1. This provider's flagged template sessions (the only ones that can be stale).
+      // This provider's flagged template sessions (the only ones that can be stale).
       const { data: flagged, error: flaggedError } = await this.supabase
         .from('schedule_sessions')
-        .select('id, student_id, day_of_week, start_time, end_time')
+        .select('*')
         .eq('provider_id', providerId)
         .eq('has_conflict', true)
         .is('session_date', null)
         .is('deleted_at', null)
         .not('start_time', 'is', null)
-        .not('end_time', 'is', null);
+        .not('end_time', 'is', null)
+        .limit(10000); // match the codebase's session-fetch cap; flagged rows are far fewer
 
       if (flaggedError || !flagged || flagged.length === 0) {
         return { cleared: 0 };
       }
 
-      // 2. All this provider's scheduled template sessions, grouped by student+day, for the
-      //    same-provider overlap check.
-      const { data: scheduled, error: scheduledError } = await this.supabase
-        .from('schedule_sessions')
-        .select('id, student_id, day_of_week, start_time, end_time')
-        .eq('provider_id', providerId)
-        .is('session_date', null)
-        .is('deleted_at', null)
-        .not('start_time', 'is', null)
-        .not('end_time', 'is', null);
+      // Re-validate each flagged session in place and collect the genuinely-stale ones.
+      const staleIds: string[] = [];
+      for (const session of flagged) {
+        if (session.day_of_week === null || !session.start_time || !session.end_time) continue;
 
-      if (scheduledError) {
-        return { cleared: 0 }; // can't verify same-provider overlaps → keep every flag
-      }
-
-      const sameByStudentDay = new Map<string, SameProviderSessionLite[]>();
-      for (const s of scheduled ?? []) {
-        if (!s.student_id || s.day_of_week === null) continue;
-        const key = `${s.student_id}|${s.day_of_week}`;
-        const list = sameByStudentDay.get(key) ?? [];
-        list.push({ id: s.id, start_time: s.start_time, end_time: s.end_time });
-        sameByStudentDay.set(key, list);
-      }
-
-      // 3. Cross-provider sessions for all flagged students in ONE call (SPE-287 batch RPC),
-      //    grouped by student. Fail-safe on error / unexpected shape.
-      const flaggedStudentIds = [
-        ...new Set(flagged.map(f => f.student_id).filter((id): id is string => !!id)),
-      ];
-      const otherByStudent = new Map<string, OtherProviderSessionLite[]>();
-      let crossCheckFailed = false;
-      try {
-        const { data: matches, error: rpcError } = await this.supabase.rpc(
-          'find_matching_provider_sessions_batch',
-          { p_student_ids: flaggedStudentIds },
-        );
-        if (rpcError || !Array.isArray(matches)) {
-          crossCheckFailed = true;
-          console.error('SPE-288 cross-provider reconcile unusable (error or unexpected shape):', rpcError ?? matches);
-        } else {
-          for (const m of matches as Array<{
-            source_student_id: string;
-            day_of_week: number;
-            start_time: string;
-            end_time: string;
-            provider_role: string;
-          }>) {
-            const list = otherByStudent.get(m.source_student_id) ?? [];
-            list.push({ day_of_week: m.day_of_week, start_time: m.start_time, end_time: m.end_time, provider_role: m.provider_role });
-            otherByStudent.set(m.source_student_id, list);
-          }
+        // Re-run the FULL authoritative validation in place — bell schedule, special activity,
+        // capacity, consecutive/break, same-provider overlap, AND cross-provider double-book
+        // (the overlap/capacity checks exclude this session by id). A flag is stale ONLY when
+        // the session is now valid on EVERY rule; a still-real conflict of ANY type keeps its
+        // flag. This is what makes the clear safe: has_conflict is a GENERIC flag, so
+        // re-checking only session overlaps would wrongly erase a live bell/activity/capacity
+        // warning. Fail-safe: any error leaves the flag untouched.
+        let validation: ValidationResult;
+        try {
+          validation = await this.validateSessionMove(
+            {
+              session,
+              targetDay: session.day_of_week,
+              targetStartTime: session.start_time,
+              targetEndTime: session.end_time,
+              studentMinutes: timeToMinutes(session.end_time) - timeToMinutes(session.start_time),
+            },
+            { checkCrossProvider: true },
+          );
+        } catch (e) {
+          console.error('SPE-288 re-validation threw for session', session.id, e);
+          continue; // fail-safe: keep the flag when we cannot re-verify
         }
-      } catch (e) {
-        crossCheckFailed = true;
-        console.error('SPE-288 cross-provider reconcile RPC threw:', e);
+
+        if (validation.valid) staleIds.push(session.id);
       }
 
-      // 4. Decide (pure) then clear only the genuinely-stale flags.
-      const toClear = staleCrossProviderFlagsToClear(flagged, sameByStudentDay, otherByStudent, crossCheckFailed);
-      let cleared = 0;
-      for (const id of toClear) {
-        const { error: updateError } = await this.supabase
-          .from('schedule_sessions')
-          .update({
-            status: 'active',
-            has_conflict: false,
-            conflict_reason: null,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', id);
-        if (!updateError) cleared++;
+      if (staleIds.length === 0) {
+        return { cleared: 0 };
       }
 
+      // Clear all genuinely-stale flags in one round trip.
+      const { data: clearedRows, error: updateError } = await this.supabase
+        .from('schedule_sessions')
+        .update({
+          status: 'active',
+          has_conflict: false,
+          conflict_reason: null,
+          updated_at: new Date().toISOString(),
+        })
+        .in('id', staleIds)
+        .select('id');
+
+      if (updateError) {
+        console.error('SPE-288 batch clear failed:', updateError);
+        return { cleared: 0 };
+      }
+
+      const cleared = clearedRows?.length ?? 0;
       if (cleared > 0) {
-        console.log(`[SPE-288] Cleared ${cleared} stale cross-provider conflict flag(s) for provider ${providerId}`);
+        console.log(`[SPE-288] Cleared ${cleared} stale conflict flag(s) for provider ${providerId}`);
       }
       return { cleared };
     } catch (error) {

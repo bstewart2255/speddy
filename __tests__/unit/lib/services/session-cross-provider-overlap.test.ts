@@ -2,7 +2,6 @@ import {
   findOverlappingOtherProviderSession,
   flaggedSessionStillConflicts,
   interpretCrossProviderStaleCheck,
-  staleCrossProviderFlagsToClear,
   OtherProviderSessionLite,
   SameProviderSessionLite,
 } from '@/lib/services/session-update-service';
@@ -136,73 +135,5 @@ describe('interpretCrossProviderStaleCheck (SPE-255 fail-safe)', () => {
     expect(interpretCrossProviderStaleCheck(null, null)).toEqual({ sessions: [], failed: true });
     expect(interpretCrossProviderStaleCheck(undefined, null)).toEqual({ sessions: [], failed: true });
     expect(interpretCrossProviderStaleCheck({ unexpected: true }, null)).toEqual({ sessions: [], failed: true });
-  });
-});
-
-describe('staleCrossProviderFlagsToClear (SPE-288 pull-on-view)', () => {
-  // Flagged template session: student 'stu1', Monday 09:00–09:30.
-  const flag = (over: Partial<{ id: string; student_id: string | null; day_of_week: number | null; start_time: string | null; end_time: string | null }> = {}) => ({
-    id: 'A',
-    student_id: 'stu1',
-    day_of_week: 1,
-    start_time: '09:00:00',
-    end_time: '09:30:00',
-    ...over,
-  });
-  const sameMap = (entries: Array<[string, SameProviderSessionLite[]]> = []) =>
-    new Map<string, SameProviderSessionLite[]>(entries);
-  const crossMap = (entries: Array<[string, OtherProviderSessionLite[]]> = []) =>
-    new Map<string, OtherProviderSessionLite[]>(entries);
-
-  it('clears a flag with neither same- nor cross-provider overlap', () => {
-    // same-provider map contains only the flag itself (queries include it) -> self-excluded.
-    const same = sameMap([['stu1|1', [{ id: 'A', start_time: '09:00:00', end_time: '09:30:00' }]]]);
-    expect(staleCrossProviderFlagsToClear([flag()], same, crossMap(), false)).toEqual(['A']);
-  });
-
-  it('keeps a flag that still overlaps a same-provider session', () => {
-    const same = sameMap([['stu1|1', [
-      { id: 'A', start_time: '09:00:00', end_time: '09:30:00' },
-      { id: 'B', start_time: '09:15:00', end_time: '09:45:00' },
-    ]]]);
-    expect(staleCrossProviderFlagsToClear([flag()], same, crossMap(), false)).toEqual([]);
-  });
-
-  it('keeps a flag that still double-books across providers (no same-provider overlap)', () => {
-    const cross = crossMap([['stu1', [{ day_of_week: 1, start_time: '09:10:00', end_time: '09:40:00', provider_role: 'speech' }]]]);
-    expect(staleCrossProviderFlagsToClear([flag()], sameMap(), cross, false)).toEqual([]);
-  });
-
-  it('fails safe: clears NOTHING when the cross-provider check is unverifiable', () => {
-    // Even a flag that looks fully resolved must be kept when crossCheckFailed is true.
-    expect(staleCrossProviderFlagsToClear([flag()], sameMap(), crossMap(), true)).toEqual([]);
-  });
-
-  it('clears only the stale flags in a mixed batch', () => {
-    const flags = [
-      flag({ id: 'A', student_id: 'stu1' }),                 // resolved -> clear
-      flag({ id: 'C', student_id: 'stu2' }),                 // still cross-conflict -> keep
-      flag({ id: 'D', student_id: 'stu3', day_of_week: 2 }), // still same-conflict -> keep
-    ];
-    const same = sameMap([
-      ['stu1|1', [{ id: 'A', start_time: '09:00:00', end_time: '09:30:00' }]],
-      ['stu3|2', [
-        { id: 'D', start_time: '09:00:00', end_time: '09:30:00' },
-        { id: 'E', start_time: '09:20:00', end_time: '09:50:00' },
-      ]],
-    ]);
-    const cross = crossMap([
-      ['stu2', [{ day_of_week: 1, start_time: '09:05:00', end_time: '09:35:00', provider_role: 'ot' }]],
-    ]);
-    expect(staleCrossProviderFlagsToClear(flags, same, cross, false)).toEqual(['A']);
-  });
-
-  it('skips malformed flags (missing student, day, or times) without clearing them', () => {
-    const flags = [
-      flag({ id: 'A', student_id: null }),
-      flag({ id: 'B', day_of_week: null }),
-      flag({ id: 'C', start_time: null }),
-    ];
-    expect(staleCrossProviderFlagsToClear(flags, sameMap(), crossMap(), false)).toEqual([]);
   });
 });
