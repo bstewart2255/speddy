@@ -131,6 +131,30 @@ describe('buildStudentPreviews (main path)', () => {
     expect(p.goalsRemoved).toEqual(['Old goal']);
   });
 
+  it('enriches an initials-only existing student with the incoming name (SPE-284)', () => {
+    const { studentPreviews } = buildStudentPreviews({
+      parsedStudents: [parsed({ goals: [] })],
+      databaseStudents: [dbStudent({ first_name: '', last_name: '' })],
+      deliveriesData: null, classListData: null, dbTeachers: [],
+    });
+    const p = studentPreviews[0];
+    expect(p.action).toBe('update');
+    expect(p.matchedStudentId).toBe('s1');
+    expect(p.matchConfidence).toBe('low');
+    expect(p.changes?.name).toEqual({ old: null, new: 'John Doe' });
+  });
+
+  it('does not fabricate a name change when the existing student already has that name', () => {
+    const { studentPreviews } = buildStudentPreviews({
+      parsedStudents: [parsed({ goals: [] })],
+      databaseStudents: [dbStudent()], // already John Doe, JD, grade 3
+      deliveriesData: null, classListData: null, dbTeachers: [],
+    });
+    const p = studentPreviews[0];
+    expect(p.action).toBe('skip');
+    expect(p.changes?.name).toBeUndefined();
+  });
+
   it('enriches an insert with schedule and applies the weeklyMinutes fallback for a monthly (0) delivery', () => {
     const { studentPreviews, matchedDeliveryNames } = buildStudentPreviews({
       parsedStudents: [parsed({ goals: ['G'] })],
