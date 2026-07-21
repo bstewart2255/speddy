@@ -414,22 +414,33 @@ erDiagram
 - **Completion & grouping:** `is_completed` / `completed_at` / `completed_by` /
   `session_notes`; group sessions via `group_id` / `group_name` / `group_color`.
 - **Soft delete:** `deleted_at` (rows are not always hard-deleted here).
+- **Instance horizon (SPE-291):** dated instances are materialized to a
+  **rolling 12-week horizon** by `topup_session_instances()` (set-based,
+  `ON CONFLICT DO NOTHING`), triggered daily from the `cleanup-uploads` cron.
+  Scheduling a template by drag also generates instances immediately
+  (`/api/sessions/generate-instances`, legacy school-year-end horizon); the
+  calendar's client-side virtual layer renders slots beyond the horizon and
+  persists them on first touch (`lib/services/session-persistence.ts`).
 
 **Source of truth:** live `schedule_sessions` table + `session_status` enum;
-`lib/scheduling/`; `lib/auth/role-utils.ts` (delivered_by derivation).
+`lib/scheduling/`; `lib/auth/role-utils.ts` (delivered_by derivation);
+`lib/services/session-instance-topup.ts` + `topup_session_instances()` fn
+(rolling horizon).
 
 ---
 
 ## 7. Data Lifecycle & Retention
 
 ### Scheduled cleanup (cron)
-Both cron routes authenticate with a shared `CRON_SECRET` (header
-`x-cron-secret` or `Authorization: Bearer …`) and are scheduled in `vercel.json`.
+All cron routes authenticate with a shared `CRON_SECRET` (header
+`x-cron-secret` or `Authorization: Bearer …`); the scheduled ones live in
+`vercel.json`.
 
-| Job | Schedule (UTC) | What it deletes |
+| Job | Schedule (UTC) | What it does |
 |---|---|---|
-| `cleanup-uploads` | `0 8 * * *` (08:00 daily) | `upload_rate_limits` older than **7 days**; optionally `analytics_events` older than **90 days** when `CLEANUP_ANALYTICS=true`. |
-| `cleanup-worksheet-images` | `0 9 * * *` (09:00 daily) | `worksheet_submissions` older than **12 months** + their Storage objects (storage-first, chunked, `moreRemaining` flag for backlog). |
+| `cleanup-uploads` | `0 8 * * *` (08:00 daily) | Deletes `upload_rate_limits` older than **7 days**; optionally `analytics_events` older than **90 days** when `CLEANUP_ANALYTICS=true`. Then runs the **session-instance top-up** (SPE-291): extends every active scheduled template's dated instances to a rolling 12-week horizon. |
+| `topup-session-instances` | — (not scheduled) | Same top-up, standalone. Manual/ops trigger only — Vercel Hobby caps cron jobs at two, so the daily trigger rides on `cleanup-uploads`; becomes its own cron slot on a paid plan. |
+| `cleanup-worksheet-images` | `0 9 * * *` (09:00 daily) | Deletes `worksheet_submissions` older than **12 months** + their Storage objects (storage-first, chunked, `moreRemaining` flag for backlog). |
 | `health` | — | unauthenticated, read-only status. |
 
 ### Deletion semantics

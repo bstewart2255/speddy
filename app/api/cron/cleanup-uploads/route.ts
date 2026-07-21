@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
+import {
+  runSessionInstanceTopup,
+  SESSION_TOPUP_WEEKS_AHEAD
+} from '@/lib/services/session-instance-topup';
 
 export async function GET(request: NextRequest) {
   const startTime = Date.now();
@@ -92,13 +96,41 @@ export async function GET(request: NextRequest) {
       }
     }
     
+    // SPE-291: daily session-instance top-up rides along with this cron.
+    // Vercel Hobby allows only two cron jobs (both slots used), so this daily
+    // job is the trigger; /api/cron/topup-session-instances remains available
+    // for manual runs. Idempotent and set-based, so daily execution is cheap.
+    const topupResult = await runSessionInstanceTopup(supabase);
+
+    if (!topupResult.success) {
+      console.error('Error running session instance top-up:', topupResult.error);
+      // Fail loud (5xx) so a broken top-up is visible instead of the future-
+      // instance supply quietly running dry behind a 200.
+      return NextResponse.json({
+        success: false,
+        error: 'Database error during session top-up',
+        details: topupResult.error,
+        deleted: deletedCount,
+        timestamp: new Date().toISOString()
+      }, { status: 500 });
+    }
+
+    console.log(
+      `Session top-up completed: ${topupResult.instancesCreated} instances created from ${topupResult.templatesProcessed} templates (${SESSION_TOPUP_WEEKS_AHEAD}w horizon)`
+    );
+
     // Return success response
     return NextResponse.json({
       success: true,
       deleted: deletedCount,
       analyticsDeleted: analyticsEnabled ? analyticsDeleted : undefined,
+      sessionTopup: {
+        templatesProcessed: topupResult.templatesProcessed,
+        instancesCreated: topupResult.instancesCreated,
+        weeksAhead: SESSION_TOPUP_WEEKS_AHEAD
+      },
       cutoffDate: cutoffDate.toISOString(),
-      processingTimeMs: processingTime,
+      processingTimeMs: Date.now() - startTime,
       timestamp: new Date().toISOString()
     }, { status: 200 });
     
