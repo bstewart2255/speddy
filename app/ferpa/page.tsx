@@ -6,7 +6,7 @@ export default function FERPAPage() {
           {/* Header */}
           <div className="mb-8 text-center">
             <h1 className="text-3xl font-bold text-gray-900 mb-2">FERPA Compliance Notice</h1>
-            <p className="text-gray-600">Last Updated: January 19, 2026</p>
+            <p className="text-gray-600">Last Updated: July 21, 2026</p>
           </div>
 
           {/* Content */}
@@ -133,7 +133,7 @@ export default function FERPAPage() {
                 <li>Use professional, objective language in all documentation</li>
                 <li>Enter only information necessary for service delivery</li>
                 <li>Double-check accuracy of all data entered</li>
-                <li>Use privacy-protective identifiers when possible (initials, student IDs)</li>
+                <li>Rely on Speddy's role-based access controls to protect student names and records — access is limited to authorized staff, and shared scheduling views display initials to minimize on-screen exposure</li>
               </ul>
 
               <h3 className="text-lg font-semibold text-gray-800 mt-6 mb-3">When Sharing Information</h3>
