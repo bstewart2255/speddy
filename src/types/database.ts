@@ -4729,6 +4729,13 @@ export type Database = {
         Args: { p_minutes_per_session: number; p_start_time: string }
         Returns: string
       }
+      topup_session_instances: {
+        Args: { p_weeks_ahead?: number }
+        Returns: {
+          instances_created: number
+          templates_processed: number
+        }[]
+      }
       upsert_bell_schedule:
         | {
             Args: {

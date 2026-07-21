@@ -102,12 +102,21 @@ Dated instances generated for upcoming weeks
 ```
 Scheduled template (e.g., Monday 9:00-9:30)
     ↓
-Generate instances for next 8 weeks
+Instances generated two ways:
+  a) On manual scheduling: /api/sessions/generate-instances
+     (through school-year end — legacy horizon)
+  b) Daily top-up cron: topup_session_instances() extends EVERY active
+     scheduled template to a rolling 12-week horizon (SPE-291) —
+     covers auto-scheduled templates and the school-year rollover
     ↓
 Dated instances created (e.g., 2024-12-09, 2024-12-16, ...)
     ↓
 Instances appear in Calendar view and Today's Schedule
 ```
+
+Beyond the materialized horizon, calendar views fabricate virtual `temp-`
+sessions from templates for display and persist them on first interaction
+(`lib/services/session-persistence.ts`).
 
 ### 4. Session Delivery
 
