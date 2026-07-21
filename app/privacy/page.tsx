@@ -6,7 +6,7 @@ export default function PrivacyPage() {
           {/* Header */}
           <div className="mb-8 text-center">
             <h1 className="text-3xl font-bold text-gray-900 mb-2">Privacy Policy</h1>
-            <p className="text-gray-600">Last Updated: July 11, 2026</p>
+            <p className="text-gray-600">Last Updated: July 21, 2026</p>
           </div>
 
           {/* Content */}
@@ -39,7 +39,7 @@ export default function PrivacyPage() {
               <li>Assessment data (when authorized)</li>
             </ul>
             <p className="text-gray-700 mb-4">
-              Speddy stores each student's full name and protects it with database access controls (row-level security): a student's records are visible only to their assigned provider(s), any delegated staff, and authorized school or district administrators, and student data is encrypted at rest. To limit on-screen exposure, scheduling and planning views show initials — the full name appears on the student's own record.
+              Speddy stores each student's full name and protects it with database access controls (row-level security): a student's records are visible only to their assigned provider(s), any delegated staff, and authorized school or district administrators, and student data is encrypted at rest. To limit on-screen exposure, scheduling and planning views show only initials; the full name appears on the Students page — both in the caseload list and on each student's record.
             </p>
             <p className="text-gray-700 mb-4">
               <strong>Important:</strong> You are responsible for ensuring you are authorized to access and input all student data you enter into Speddy.
