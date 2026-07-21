@@ -1,6 +1,7 @@
 import {
   findOverlappingOtherProviderSession,
   flaggedSessionStillConflicts,
+  interpretCrossProviderStaleCheck,
   OtherProviderSessionLite,
   SameProviderSessionLite,
 } from '@/lib/services/session-update-service';
@@ -109,5 +110,30 @@ describe('flaggedSessionStillConflicts (SPE-255)', () => {
   it('returns false for a flagged session missing day or times', () => {
     expect(flaggedSessionStillConflicts(flagged({ day_of_week: null }), [sameProv()], [])).toBe(false);
     expect(flaggedSessionStillConflicts(flagged({ start_time: null }), [sameProv()], [])).toBe(false);
+  });
+});
+
+describe('interpretCrossProviderStaleCheck (SPE-255 fail-safe)', () => {
+  it('returns the matches for a successful array result', () => {
+    const rows: OtherProviderSessionLite[] = [
+      { day_of_week: 1, start_time: '09:00:00', end_time: '09:30:00', provider_role: 'speech' },
+    ];
+    expect(interpretCrossProviderStaleCheck(rows, null)).toEqual({ sessions: rows, failed: false });
+  });
+
+  it('treats a successful EMPTY array as a genuine "no matches" (not a failure)', () => {
+    expect(interpretCrossProviderStaleCheck([], null)).toEqual({ sessions: [], failed: false });
+  });
+
+  it('fails (keeps flags) on an RPC error', () => {
+    expect(interpretCrossProviderStaleCheck(null, { message: 'boom' })).toEqual({ sessions: [], failed: true });
+  });
+
+  it('fails (keeps flags) when there is no error but data is not an array', () => {
+    // The regression this guards: null/undefined/object must NOT be read as "no matches",
+    // which would silently clear a real cross-provider double-book flag.
+    expect(interpretCrossProviderStaleCheck(null, null)).toEqual({ sessions: [], failed: true });
+    expect(interpretCrossProviderStaleCheck(undefined, null)).toEqual({ sessions: [], failed: true });
+    expect(interpretCrossProviderStaleCheck({ unexpected: true }, null)).toEqual({ sessions: [], failed: true });
   });
 });

@@ -92,6 +92,24 @@ export function flaggedSessionStillConflicts(
   );
 }
 
+/**
+ * SPE-255 fail-safe: interpret a find_matching_provider_sessions result for stale-
+ * conflict cleanup. `failed` is true when cross-provider status is UNVERIFIABLE — an
+ * RPC error OR an unexpected non-array shape (e.g. null from a driver quirk or a
+ * future signature change) — so cleanup keeps flags rather than risk clearing a real
+ * double-book. A successful empty array is a genuine "no matches", not a failure.
+ * (The commit-path check can treat non-array as "no data" safely because it only
+ * suppresses a NEW warning; here it could erase an EXISTING one, so it must not.)
+ */
+export function interpretCrossProviderStaleCheck(
+  data: unknown,
+  error: unknown,
+): { sessions: OtherProviderSessionLite[]; failed: boolean } {
+  if (error) return { sessions: [], failed: true };
+  if (Array.isArray(data)) return { sessions: data as OtherProviderSessionLite[], failed: false };
+  return { sessions: [], failed: true }; // no error but non-array → unverifiable
+}
+
 export interface SessionUpdateParams {
   sessionId: string;
   newDay: number;
@@ -886,11 +904,11 @@ export class SessionUpdateService {
           'find_matching_provider_sessions',
           { p_student_id: studentId },
         );
-        if (rpcError) {
-          console.error('Cross-provider stale-check RPC failed:', rpcError);
-          crossCheckFailed = true;
-        } else if (Array.isArray(matches)) {
-          otherProviderSessions = matches;
+        const interpreted = interpretCrossProviderStaleCheck(matches, rpcError);
+        otherProviderSessions = interpreted.sessions;
+        crossCheckFailed = interpreted.failed;
+        if (crossCheckFailed) {
+          console.error('Cross-provider stale-check unusable (error or unexpected shape):', rpcError ?? matches);
         }
       } catch (e) {
         console.error('Cross-provider stale-check threw:', e);
