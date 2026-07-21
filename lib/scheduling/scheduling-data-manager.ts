@@ -16,6 +16,7 @@ import type {
   SchedulingConflict,
   SchedulingDataManagerInterface
 } from './types/scheduling-data';
+import type { OtherProviderSessionLite } from '@/lib/services/session-update-service';
 
 const DEFAULT_CONFIG: DataManagerConfig = {
   maxCacheAge: 15 * 60 * 1000, // 15 minutes
@@ -69,7 +70,12 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
   
   // Conflict tracking
   private conflicts: SchedulingConflict[] = [];
-  
+
+  // SPE-287: cross-provider template sessions per owned student (studentId -> the other
+  // provider's sessions for the SAME shared child), so the auto-scheduler can hard-avoid
+  // double-booking that child. Loaded once per context; only shared students appear.
+  private crossProviderSessions: Map<string, OtherProviderSessionLite[]> = new Map();
+
   private constructor(config?: DataManagerConfig) {
     this.config = { ...DEFAULT_CONFIG, ...config };
   }
@@ -137,7 +143,11 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
       } else {
         this.processBatchData(data);
       }
-      
+
+      // SPE-287: load cross-provider sessions regardless of which path above ran (the
+      // batch RPC does not include them). Best-effort — never blocks the main load.
+      await this.loadCrossProviderSessions();
+
       this.cacheMetadata.lastFetched = new Date();
       this.cacheMetadata.isStale = false;
       this.cacheMetadata.queryCount++;
@@ -390,7 +400,78 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
     console.log(`[DataManager] Fetched ${sessionsResult.data?.length || 0} sessions for ${studentIds.length} students at ${this.schoolSite}`);
     return sessionsResult.data || [];
   }
-  
+
+  /**
+   * SPE-287: the provider's own student ids at the current school (school_id when available,
+   * else legacy school_site/district). Scopes the batched cross-provider read.
+   */
+  private async fetchProviderStudentIds(): Promise<string[]> {
+    let studentQuery = this.supabase
+      .from('students')
+      .select('id')
+      .eq('provider_id', this.providerId!);
+
+    if (this.schoolId) {
+      studentQuery = studentQuery.eq('school_id', this.schoolId);
+    } else {
+      studentQuery = studentQuery
+        .eq('school_site', this.schoolSite!)
+        .eq('school_district', this.schoolDistrict!);
+    }
+
+    const { data, error } = await studentQuery;
+    if (error) {
+      this.cacheMetadata.fetchErrors.push(`Provider student ids: ${error.message}`);
+      return [];
+    }
+    return (data || []).map((s: { id: string }) => s.id);
+  }
+
+  /**
+   * SPE-287: load cross-provider template sessions for the provider's students at this
+   * school, so the auto-scheduler can hard-avoid double-booking a shared child across
+   * providers. ONE batched RPC (find_matching_provider_sessions_batch) reusing the SPE-290
+   * shared matcher — never a per-student call. Best-effort: on error the map stays empty
+   * (scheduler falls back to today's own-provider-only behavior) and the error is recorded.
+   */
+  private async loadCrossProviderSessions(): Promise<void> {
+    this.crossProviderSessions.clear();
+    try {
+      const studentIds = await this.fetchProviderStudentIds();
+      if (studentIds.length === 0) return;
+
+      const { data, error } = await this.supabase.rpc('find_matching_provider_sessions_batch', {
+        p_student_ids: studentIds,
+      });
+
+      if (error) {
+        this.cacheMetadata.fetchErrors.push(`Cross-provider sessions: ${error.message}`);
+        return;
+      }
+
+      (data || []).forEach((row: {
+        source_student_id: string;
+        day_of_week: number | null;
+        start_time: string | null;
+        end_time: string | null;
+        provider_role: string | null;
+      }) => {
+        const list = this.crossProviderSessions.get(row.source_student_id) ?? [];
+        list.push({
+          day_of_week: row.day_of_week,
+          start_time: row.start_time,
+          end_time: row.end_time,
+          provider_role: row.provider_role,
+        });
+        this.crossProviderSessions.set(row.source_student_id, list);
+      });
+
+      console.log(`[DataManager] Loaded cross-provider sessions for ${this.crossProviderSessions.size} shared students`);
+    } catch (e) {
+      this.cacheMetadata.fetchErrors.push(`Cross-provider sessions: ${e instanceof Error ? e.message : 'unknown error'}`);
+    }
+  }
+
   /**
    * Fetch school hours
    */
@@ -662,7 +743,16 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
     this.metrics.cacheHits++;
     return sessions;
   }
-  
+
+  /**
+   * SPE-287: cross-provider template sessions per owned student (studentId -> the other
+   * provider's sessions for the same shared child). Consumed by the auto-scheduler to
+   * hard-avoid double-booking. Only shared students have entries.
+   */
+  public getCrossProviderSessions(): Map<string, OtherProviderSessionLite[]> {
+    return this.crossProviderSessions;
+  }
+
   /**
    * Check if a time slot is available (respecting 8 concurrent session limit)
    */
@@ -756,7 +846,8 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
     this.data.data.specialActivities.clear();
     this.data.data.existingSessions.clear();
     this.data.data.schoolHours = [];
-    
+    this.crossProviderSessions.clear();
+
     this.cacheMetadata.isStale = true;
     this.conflicts = [];
     
