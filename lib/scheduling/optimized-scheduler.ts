@@ -137,7 +137,10 @@ export class OptimizedScheduler {
     const existingSessions = filterScheduledSessions(this.dataManager.getExistingSessions());
 
     // SPE-287: cross-provider sessions for shared students (loaded once by the DataManager).
-    const crossProviderSessionsByStudent = this.dataManager.getCrossProviderSessions();
+    // Snapshot per run (mirrors the existingSessions copy) so a concurrent DataManager
+    // refresh — which clears then repopulates the shared singleton map — cannot empty it
+    // mid-run and cause a missed hard-avoid.
+    const crossProviderSessionsByStudent = new Map(this.dataManager.getCrossProviderSessions());
     
     // Get bell schedules for all grades
     const bellSchedules: BellSchedule[] = [];

@@ -79,3 +79,52 @@ describe('OptimizedScheduler.hasCrossProviderConflict (SPE-287)', () => {
     expect(withContext(map).conflicts(SHARED, 1, '09:10', '09:20:00')).toBe(true);
   });
 });
+
+/**
+ * SPE-287: guard the WIRING, not just the decision. A unit test of hasCrossProviderConflict
+ * alone would still pass if someone deleted its call site in the slot search — so exercise
+ * findSlotsWithCapacityLimit (the single choke point both scheduling passes flow through)
+ * with a minimal context and assert an otherwise-valid slot is dropped iff a shared
+ * student's cross-provider session overlaps it.
+ */
+describe('OptimizedScheduler slot search consults the hard-avoid (SPE-287)', () => {
+  const SHARED = 'shared-student';
+  // One free Monday 09:00 slot, wide-open school hours, no bells/activities/own-sessions.
+  const schedulerWith = (crossMap: Map<string, OtherProviderSessionLite[]>) => {
+    const scheduler = new OptimizedScheduler('provider-1', 'resource') as any;
+    scheduler.context = {
+      schoolSite: 'Willow',
+      workDays: [1],
+      bellSchedules: [],
+      specialActivities: [],
+      existingSessions: [],
+      validSlots: new Map([
+        ['1-09:00', { dayOfWeek: 1, startTime: '09:00', endTime: '', available: true, capacity: 8, conflicts: [] }],
+      ]),
+      schoolHours: [],
+      studentGradeMap: new Map(),
+      crossProviderSessionsByStudent: crossMap,
+      providerAvailability: new Map(),
+      bellSchedulesByGrade: new Map(),
+      specialActivitiesByTeacher: new Map(),
+      cacheMetadata: { lastFetched: new Date(), isStale: false, fetchErrors: [], queryCount: 0 },
+    };
+    return scheduler;
+  };
+  const student = { id: SHARED, grade_level: '3', teacher_name: 'Teacher A', initials: 'AB' };
+
+  it('places the slot when the shared student has no overlapping cross-provider session', () => {
+    const slots = schedulerWith(new Map()).findSlotsWithCapacityLimit(student, 30, 1, [1], 8, []);
+    expect(slots).toHaveLength(1);
+    expect(slots[0].startTime).toBe('09:00');
+  });
+
+  it('drops the only slot when a cross-provider session overlaps it (hard-avoid engaged)', () => {
+    const blocked = new Map<string, OtherProviderSessionLite[]>([[
+      SHARED,
+      [{ day_of_week: 1, start_time: '09:00:00', end_time: '09:30:00', provider_role: 'speech' }],
+    ]]);
+    const slots = schedulerWith(blocked).findSlotsWithCapacityLimit(student, 30, 1, [1], 8, []);
+    expect(slots).toHaveLength(0);
+  });
+});
