@@ -4626,10 +4626,12 @@ export type Database = {
         }
         Returns: {
           created_at: string
+          first_name: string
           grade_level: string
           id: string
           iep_goals: string[]
           initials: string
+          last_name: string
           minutes_per_session: number
           provider_id: string
           school_id: string
