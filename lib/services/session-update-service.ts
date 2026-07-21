@@ -948,6 +948,106 @@ export class SessionUpdateService {
   }
 
   /**
+   * SPE-288 (pull-on-view): reconcile THIS provider's stale cross-provider conflict flags.
+   *
+   * When a provider overrides the cross-provider double-book warning, their session keeps a
+   * has_conflict flag. That flag was only re-evaluated when the OWNING provider next moved or
+   * unscheduled a session for the student — so if the OTHER provider resolved the overlap, the
+   * flag lingered (an over-warning) until the owner acted. Call this when the owner VIEWS their
+   * schedule: re-check every flagged template session against current same-provider and
+   * cross-provider state, and clear the ones no longer in conflict.
+   *
+   * Safety: a flag clears ONLY when the FULL validation (validateSessionMove) passes on every
+   * rule — bell schedule, special activity, capacity, consecutive/break, same-provider overlap,
+   * and cross-provider double-book — so it never erases a live conflict of any type (has_conflict
+   * is a generic flag). It only ever clears an over-warning, never creates one, and fails safe:
+   * any re-validation error leaves the flag untouched. Best-effort (never throws); returns the
+   * count cleared so the caller can refresh only when needed. No cross-provider writes — a provider
+   * only clears their OWN flags (RLS-writable). providerId must be the caller (auth.uid()).
+   */
+  async reconcileStaleConflictsForProvider(providerId: string): Promise<{ cleared: number }> {
+    try {
+      // This provider's flagged template sessions (the only ones that can be stale).
+      const { data: flagged, error: flaggedError } = await this.supabase
+        .from('schedule_sessions')
+        .select('*')
+        .eq('provider_id', providerId)
+        .eq('has_conflict', true)
+        .is('session_date', null)
+        .is('deleted_at', null)
+        .not('start_time', 'is', null)
+        .not('end_time', 'is', null)
+        .limit(10000); // match the codebase's session-fetch cap; flagged rows are far fewer
+
+      if (flaggedError || !flagged || flagged.length === 0) {
+        return { cleared: 0 };
+      }
+
+      // Re-validate each flagged session in place and collect the genuinely-stale ones.
+      const staleIds: string[] = [];
+      for (const session of flagged) {
+        if (session.day_of_week === null || !session.start_time || !session.end_time) continue;
+
+        // Re-run the FULL authoritative validation in place — bell schedule, special activity,
+        // capacity, consecutive/break, same-provider overlap, AND cross-provider double-book
+        // (the overlap/capacity checks exclude this session by id). A flag is stale ONLY when
+        // the session is now valid on EVERY rule; a still-real conflict of ANY type keeps its
+        // flag. This is what makes the clear safe: has_conflict is a GENERIC flag, so
+        // re-checking only session overlaps would wrongly erase a live bell/activity/capacity
+        // warning. Fail-safe: any error leaves the flag untouched.
+        let validation: ValidationResult;
+        try {
+          validation = await this.validateSessionMove(
+            {
+              session,
+              targetDay: session.day_of_week,
+              targetStartTime: session.start_time,
+              targetEndTime: session.end_time,
+              studentMinutes: timeToMinutes(session.end_time) - timeToMinutes(session.start_time),
+            },
+            { checkCrossProvider: true },
+          );
+        } catch (e) {
+          console.error('SPE-288 re-validation threw for session', session.id, e);
+          continue; // fail-safe: keep the flag when we cannot re-verify
+        }
+
+        if (validation.valid) staleIds.push(session.id);
+      }
+
+      if (staleIds.length === 0) {
+        return { cleared: 0 };
+      }
+
+      // Clear all genuinely-stale flags in one round trip.
+      const { data: clearedRows, error: updateError } = await this.supabase
+        .from('schedule_sessions')
+        .update({
+          status: 'active',
+          has_conflict: false,
+          conflict_reason: null,
+          updated_at: new Date().toISOString(),
+        })
+        .in('id', staleIds)
+        .select('id');
+
+      if (updateError) {
+        console.error('SPE-288 batch clear failed:', updateError);
+        return { cleared: 0 };
+      }
+
+      const cleared = clearedRows?.length ?? 0;
+      if (cleared > 0) {
+        console.log(`[SPE-288] Cleared ${cleared} stale conflict flag(s) for provider ${providerId}`);
+      }
+      return { cleared };
+    } catch (error) {
+      console.error('SPE-288 reconcileStaleConflictsForProvider failed:', error);
+      return { cleared: 0 }; // best-effort cleanup, never blocks the schedule view
+    }
+  }
+
+  /**
    * Unschedules a session by setting day_of_week, start_time, and end_time to NULL
    * Status is set to 'active' since unscheduled sessions can't have conflicts or need attention
    * (those statuses only apply to scheduled sessions)

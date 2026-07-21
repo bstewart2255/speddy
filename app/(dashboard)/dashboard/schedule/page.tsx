@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useScheduleState, type ScheduleDragPosition } from './hooks/use-schedule-state';
 import { useScheduleData } from '../../../../lib/supabase/hooks/use-schedule-data';
 import { useScheduleOperations } from '../../../../lib/supabase/hooks/use-schedule-operations';
@@ -48,6 +48,22 @@ export default function SchedulePage() {
     refreshUnscheduledCount,
     optimisticUpdateSession,
   } = useScheduleData();
+
+  // SPE-288 (pull-on-view): when this provider opens their schedule, clear any of THEIR
+  // cross-provider conflict flags that the OTHER provider has since resolved. The flag
+  // otherwise lingers until the owner next moves a session (an over-warning). Runs once per
+  // mount; refreshes only if something was actually cleared. Best-effort — never blocks the view.
+  const staleReconcileRef = useRef(false);
+  useEffect(() => {
+    if (!currentUserId || staleReconcileRef.current) return;
+    staleReconcileRef.current = true;
+    sessionUpdateService
+      .reconcileStaleConflictsForProvider(currentUserId)
+      .then(({ cleared }) => {
+        if (cleared > 0) refreshSessions();
+      })
+      .catch((err) => console.error('[schedule] stale-conflict reconcile failed:', err));
+  }, [currentUserId, refreshSessions]);
 
   // Visual filters hook - needs students for validation
   const { visualFilters, setVisualFilters } = useVisualFilters(
