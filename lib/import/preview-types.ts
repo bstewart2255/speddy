@@ -47,10 +47,22 @@ export interface TeacherChange {
   new: { teacherId: string | null; teacherName: string | null } | null;
 }
 
+/**
+ * A student's full name being added on an enrichment update (SPE-284). Today
+ * only used to fill an existing initials-only record's empty name — `old` is
+ * therefore always null; the field exists so the review can show the name that
+ * will be added.
+ */
+export interface NameChange {
+  old: string | null;
+  new: string | null;
+}
+
 export interface StudentChanges {
   goals?: GoalChange;
   schedule?: ScheduleChange;
   teacher?: TeacherChange;
+  name?: NameChange;
 }
 
 /** A preview row from the main SEIS path and the roster-template path. */

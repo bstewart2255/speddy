@@ -101,15 +101,86 @@ describe('matchStudents — name-based identity (SPE-266)', () => {
     expect(result.matches[0].confidence).toBe('none');
   });
 
-  it('does NOT match a DB student whose stored name is whitespace-only', () => {
-    // A whitespace-only stored name is truthy but normalizes to '' — it must be
-    // rejected before matching, or it would false-match via the empty-fuzzy path.
+  it('never name-matches a whitespace-only stored name via the empty-fuzzy path', () => {
+    // A whitespace-only stored name normalizes to '' — it must never satisfy the
+    // NAME match (which would false-match via compareNames' empty-prefix path).
+    // It is instead treated as a no-name record and only reached by the explicit
+    // initials-enrichment fallback below (SPE-284), never scored as a name match.
     const result = matchStudents(
       [{ initials: 'JS', gradeLevel: '3', firstName: 'John', lastName: 'Smith', goals: [] }] as any,
       [{ id: 'db-1', initials: 'JS', grade_level: '3', first_name: '   ', last_name: ' ' }],
     );
 
+    // Matched (for enrichment, see SPE-284 block) but NOT as a name match:
+    // a name match would be 'high'/'medium'; the enrichment fallback is 'low'.
+    expect(result.matches[0].confidence).not.toBe('high');
+    expect(result.matches[0].confidence).not.toBe('medium');
+  });
+});
+
+/**
+ * SPE-284: full name is becoming the identity anchor, but existing rows may still
+ * be initials-only during the transition. A NAMED upload must ENRICH the existing
+ * initials-only record (add the name) instead of erroring "already exists" or
+ * creating a duplicate. The fallback is deliberately narrow so SPE-266's core
+ * guarantee — a stored *real* name is never overwritten via an initials collision
+ * — still holds.
+ */
+describe('matchStudents — initials enrichment fallback (SPE-284)', () => {
+  it('enriches a no-name existing record by initials + grade (low confidence)', () => {
+    const result = matchStudents(
+      [{ initials: 'JS', gradeLevel: '3', firstName: 'John', lastName: 'Smith', goals: [] }] as any,
+      [{ id: 'db-1', initials: 'JS', grade_level: '3', first_name: '', last_name: '' }],
+    );
+
+    expect(result.matches[0].matchedStudent?.id).toBe('db-1');
+    expect(result.matches[0].confidence).toBe('low');
+    expect(result.summary.noMatch).toBe(0);
+  });
+
+  it('does NOT enrich when the grade differs (guards the reported incident)', () => {
+    const result = matchStudents(
+      [{ initials: 'JS', gradeLevel: 'TK', firstName: 'John', lastName: 'Smith', goals: [] }] as any,
+      [{ id: 'db-1', initials: 'JS', grade_level: '3', first_name: '', last_name: '' }],
+    );
+
     expect(result.matches[0].matchedStudent).toBeNull();
     expect(result.matches[0].confidence).toBe('none');
+  });
+
+  it('does NOT initials-match a candidate that HAS a real (differing) name (SPE-266 preserved)', () => {
+    const result = matchStudents(
+      [{ initials: 'JS', gradeLevel: '3', firstName: 'John', lastName: 'Smith', goals: [] }] as any,
+      [{ id: 'db-1', initials: 'JS', grade_level: '3', first_name: 'Jane', last_name: 'Sparrow' }],
+    );
+
+    expect(result.matches[0].matchedStudent).toBeNull();
+    expect(result.matches[0].confidence).toBe('none');
+  });
+
+  it('bails on ambiguity — two no-name candidates share initials + grade (no guess)', () => {
+    const result = matchStudents(
+      [{ initials: 'JS', gradeLevel: '3', firstName: 'John', lastName: 'Smith', goals: [] }] as any,
+      [
+        { id: 'db-1', initials: 'JS', grade_level: '3', first_name: '', last_name: '' },
+        { id: 'db-2', initials: 'JS', grade_level: '3', first_name: '', last_name: '' },
+      ],
+    );
+
+    expect(result.matches[0].matchedStudent).toBeNull();
+    expect(result.matches[0].confidence).toBe('none');
+  });
+
+  it('prefers a full-name match over the initials fallback when both are possible', () => {
+    const result = matchStudents(
+      [{ initials: 'JS', gradeLevel: '3', firstName: 'John', lastName: 'Smith', goals: [] }] as any,
+      [
+        { id: 'db-noname', initials: 'JS', grade_level: '3', first_name: '', last_name: '' },
+        { id: 'db-named', initials: 'JS', grade_level: '3', first_name: 'John', last_name: 'Smith' },
+      ],
+    );
+
+    expect(result.matches[0].matchedStudent?.id).toBe('db-named');
+    expect(result.matches[0].confidence).toBe('high');
   });
 });

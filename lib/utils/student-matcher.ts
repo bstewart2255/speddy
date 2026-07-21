@@ -130,29 +130,62 @@ function findBestMatch(
   // Sort by score (highest first)
   possibleMatches.sort((a, b) => b.score - a.score);
 
-  // No name+grade match → treat as a new student.
-  if (possibleMatches.length === 0) {
+  // Prefer a full-name match when one exists (SPE-266).
+  if (possibleMatches.length > 0) {
+    const bestMatch = possibleMatches[0];
+    const confidence: 'high' | 'medium' = bestMatch.score >= 100 ? 'high' : 'medium';
+    const reason =
+      possibleMatches.length > 1
+        ? `${bestMatch.reasons.join('; ')} (${possibleMatches.length} candidates)`
+        : bestMatch.reasons.join('; ');
+
     return {
       excelStudent,
-      matchedStudent: null,
-      confidence: 'none',
-      reason: `No existing student matches "${excelStudent.firstName} ${excelStudent.lastName}" in grade "${excelStudent.gradeLevel}"`
+      matchedStudent: bestMatch.student,
+      confidence,
+      reason,
+      allPossibleMatches: possibleMatches.map(m => m.student)
     };
   }
 
-  const bestMatch = possibleMatches[0];
-  const confidence: 'high' | 'medium' = bestMatch.score >= 100 ? 'high' : 'medium';
-  const reason =
-    possibleMatches.length > 1
-      ? `${bestMatch.reasons.join('; ')} (${possibleMatches.length} candidates)`
-      : bestMatch.reasons.join('; ');
+  // SPE-284 enrichment fallback: no full-name match, but during the transition
+  // to storing names an existing row may still be initials-only (its name was
+  // never captured). Match it by initials + grade so a later NAMED upload
+  // ENRICHES that row (adds the name) instead of erroring "already exists" or
+  // creating a duplicate. Deliberately narrow:
+  //   - only candidates with NO stored name — a named candidate that failed the
+  //     name check above is a genuinely different student (SPE-266), never a
+  //     silent initials overwrite;
+  //   - only when exactly one such candidate exists. The
+  //     (provider, school_id, grade, initials) unique index guarantees at most
+  //     one, and the caller has already scoped candidates to the active school;
+  //     bail on any ambiguity rather than guess.
+  const incomingInitials = normalizeInitials(excelStudent.initials);
+  if (incomingInitials.length > 0) {
+    const initialsOnlyMatches = databaseStudents.filter(
+      dbStudent =>
+        (!dbStudent.first_name?.trim() || !dbStudent.last_name?.trim()) &&
+        normalizeInitials(dbStudent.initials) === incomingInitials &&
+        compareGrades(excelStudent.gradeLevel, dbStudent.grade_level).matches
+    );
+    if (initialsOnlyMatches.length === 1) {
+      return {
+        excelStudent,
+        matchedStudent: initialsOnlyMatches[0],
+        confidence: 'low',
+        reason:
+          'Matched by initials + grade — existing record has no name yet; the name will be added',
+        allPossibleMatches: initialsOnlyMatches,
+      };
+    }
+  }
 
+  // Nothing matched → treat as a new student.
   return {
     excelStudent,
-    matchedStudent: bestMatch.student,
-    confidence,
-    reason,
-    allPossibleMatches: possibleMatches.map(m => m.student)
+    matchedStudent: null,
+    confidence: 'none',
+    reason: `No existing student matches "${excelStudent.firstName} ${excelStudent.lastName}" in grade "${excelStudent.gradeLevel}"`
   };
 }
 
@@ -225,6 +258,15 @@ function normalizeGrade(grade: string): string {
  */
 function normalizeName(name: string): string {
   return name.toLowerCase().trim().replace(/[^a-z]/g, '');
+}
+
+/**
+ * Normalize initials for comparison — uppercase A–Z only, matching the
+ * normalization the confirm route and the school-scoped dedup key use, so the
+ * enrichment fallback lines up with the DB uniqueness backstop.
+ */
+function normalizeInitials(initials: string | undefined | null): string {
+  return (initials || '').toUpperCase().replace(/[^A-Z]/g, '');
 }
 
 /**

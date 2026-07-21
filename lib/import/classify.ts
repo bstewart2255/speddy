@@ -250,11 +250,20 @@ export function buildStudentPreviews(params: {
         !!teacherMatchResult &&
         teacherMatchResult.teacherId === null &&
         !!teacherMatchResult.teacherName?.trim();
+      // SPE-284: fill an existing initials-only record's empty name from a named
+      // upload (enrichment). Only fills a blank name — never overwrites an
+      // existing one (correcting a stored name is out of scope for the
+      // foundation). This is what turns an otherwise-unchanged enrichment match
+      // into an 'update' instead of a 'skip', so the name is applied on confirm.
+      const incomingHasName = !!(student.firstName?.trim() && student.lastName?.trim());
+      const existingHasName = !!(matchedStudent.first_name?.trim() && matchedStudent.last_name?.trim());
+      const hasNameChange = incomingHasName && !existingHasName;
       const anyChanges =
         changeCheck.hasGoalChanges ||
         changeCheck.hasScheduleChanges ||
         changeCheck.hasTeacherChanges ||
-        hasUnresolvedTeacher;
+        hasUnresolvedTeacher ||
+        hasNameChange;
 
       if (anyChanges) {
         action = 'update';
@@ -301,6 +310,16 @@ export function buildStudentPreviews(params: {
               teacherId: teacherMatchResult.teacherId,
               teacherName: teacherMatchResult.teacherName
             }
+          };
+        }
+
+        // Track name enrichment (SPE-284): the name being added to a previously
+        // initials-only record. `old` is null by construction (hasNameChange
+        // only fires when the existing name is blank).
+        if (hasNameChange) {
+          changes.name = {
+            old: null,
+            new: `${student.firstName} ${student.lastName}`.trim(),
           };
         }
       } else {
