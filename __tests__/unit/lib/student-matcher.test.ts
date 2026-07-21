@@ -101,20 +101,18 @@ describe('matchStudents — name-based identity (SPE-266)', () => {
     expect(result.matches[0].confidence).toBe('none');
   });
 
-  it('never name-matches a whitespace-only stored name via the empty-fuzzy path', () => {
+  it('does NOT match a DB student whose stored name is whitespace-only (default: no enrichment)', () => {
     // A whitespace-only stored name normalizes to '' — it must never satisfy the
-    // NAME match (which would false-match via compareNames' empty-prefix path).
-    // It is instead treated as a no-name record and only reached by the explicit
-    // initials-enrichment fallback below (SPE-284), never scored as a name match.
+    // NAME match (compareNames' empty-prefix path would false-match). With the
+    // SPE-284 enrichment fallback OFF (the default, used by unscoped callers), it
+    // stays a non-match.
     const result = matchStudents(
       [{ initials: 'JS', gradeLevel: '3', firstName: 'John', lastName: 'Smith', goals: [] }] as any,
       [{ id: 'db-1', initials: 'JS', grade_level: '3', first_name: '   ', last_name: ' ' }],
     );
 
-    // Matched (for enrichment, see SPE-284 block) but NOT as a name match:
-    // a name match would be 'high'/'medium'; the enrichment fallback is 'low'.
-    expect(result.matches[0].confidence).not.toBe('high');
-    expect(result.matches[0].confidence).not.toBe('medium');
+    expect(result.matches[0].matchedStudent).toBeNull();
+    expect(result.matches[0].confidence).toBe('none');
   });
 });
 
@@ -127,10 +125,26 @@ describe('matchStudents — name-based identity (SPE-266)', () => {
  * — still holds.
  */
 describe('matchStudents — initials enrichment fallback (SPE-284)', () => {
-  it('enriches a no-name existing record by initials + grade (low confidence)', () => {
+  const ENRICH = { enrichNoNameByInitials: true };
+
+  it('is OFF by default — an unscoped caller never initials-matches a no-name row', () => {
+    // Guards the reported risk: the per-student IEP-goals import calls
+    // matchStudents WITHOUT opting in and against an unscoped roster; it must not
+    // silently misfile goals onto a same-initials child at another school.
     const result = matchStudents(
       [{ initials: 'JS', gradeLevel: '3', firstName: 'John', lastName: 'Smith', goals: [] }] as any,
       [{ id: 'db-1', initials: 'JS', grade_level: '3', first_name: '', last_name: '' }],
+    );
+
+    expect(result.matches[0].matchedStudent).toBeNull();
+    expect(result.matches[0].confidence).toBe('none');
+  });
+
+  it('enriches a no-name existing record by initials + grade when opted in (low confidence)', () => {
+    const result = matchStudents(
+      [{ initials: 'JS', gradeLevel: '3', firstName: 'John', lastName: 'Smith', goals: [] }] as any,
+      [{ id: 'db-1', initials: 'JS', grade_level: '3', first_name: '', last_name: '' }],
+      ENRICH,
     );
 
     expect(result.matches[0].matchedStudent?.id).toBe('db-1');
@@ -142,6 +156,7 @@ describe('matchStudents — initials enrichment fallback (SPE-284)', () => {
     const result = matchStudents(
       [{ initials: 'JS', gradeLevel: 'TK', firstName: 'John', lastName: 'Smith', goals: [] }] as any,
       [{ id: 'db-1', initials: 'JS', grade_level: '3', first_name: '', last_name: '' }],
+      ENRICH,
     );
 
     expect(result.matches[0].matchedStudent).toBeNull();
@@ -152,6 +167,20 @@ describe('matchStudents — initials enrichment fallback (SPE-284)', () => {
     const result = matchStudents(
       [{ initials: 'JS', gradeLevel: '3', firstName: 'John', lastName: 'Smith', goals: [] }] as any,
       [{ id: 'db-1', initials: 'JS', grade_level: '3', first_name: 'Jane', last_name: 'Sparrow' }],
+      ENRICH,
+    );
+
+    expect(result.matches[0].matchedStudent).toBeNull();
+    expect(result.matches[0].confidence).toBe('none');
+  });
+
+  it('does NOT initials-match a candidate with a partial name (first XOR last set)', () => {
+    // The no-name filter is `!first && !last`, so a partial-name row is not
+    // eligible for enrichment — its (partial) real name can never be overwritten.
+    const result = matchStudents(
+      [{ initials: 'JS', gradeLevel: '3', firstName: 'John', lastName: 'Smith', goals: [] }] as any,
+      [{ id: 'db-1', initials: 'JS', grade_level: '3', first_name: 'Jane', last_name: '' }],
+      ENRICH,
     );
 
     expect(result.matches[0].matchedStudent).toBeNull();
@@ -165,6 +194,7 @@ describe('matchStudents — initials enrichment fallback (SPE-284)', () => {
         { id: 'db-1', initials: 'JS', grade_level: '3', first_name: '', last_name: '' },
         { id: 'db-2', initials: 'JS', grade_level: '3', first_name: '', last_name: '' },
       ],
+      ENRICH,
     );
 
     expect(result.matches[0].matchedStudent).toBeNull();
@@ -178,6 +208,7 @@ describe('matchStudents — initials enrichment fallback (SPE-284)', () => {
         { id: 'db-noname', initials: 'JS', grade_level: '3', first_name: '', last_name: '' },
         { id: 'db-named', initials: 'JS', grade_level: '3', first_name: 'John', last_name: 'Smith' },
       ],
+      ENRICH,
     );
 
     expect(result.matches[0].matchedStudent?.id).toBe('db-named');

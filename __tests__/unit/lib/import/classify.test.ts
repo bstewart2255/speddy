@@ -141,10 +141,12 @@ describe('buildStudentPreviews (main path)', () => {
     expect(p.action).toBe('update');
     expect(p.matchedStudentId).toBe('s1');
     expect(p.matchConfidence).toBe('low');
-    expect(p.changes?.name).toEqual({ old: null, new: 'John Doe' });
+    // The incoming name flows through for the confirm write + review display.
+    expect(p.firstName).toBe('John');
+    expect(p.lastName).toBe('Doe');
   });
 
-  it('does not fabricate a name change when the existing student already has that name', () => {
+  it('does not fabricate a change when the existing student already has that name', () => {
     const { studentPreviews } = buildStudentPreviews({
       parsedStudents: [parsed({ goals: [] })],
       databaseStudents: [dbStudent()], // already John Doe, JD, grade 3
@@ -152,7 +154,6 @@ describe('buildStudentPreviews (main path)', () => {
     });
     const p = studentPreviews[0];
     expect(p.action).toBe('skip');
-    expect(p.changes?.name).toBeUndefined();
   });
 
   it('enriches an insert with schedule and applies the weeklyMinutes fallback for a monthly (0) delivery', () => {

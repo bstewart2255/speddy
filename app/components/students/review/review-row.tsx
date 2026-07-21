@@ -124,6 +124,18 @@ export function ReviewRow({ row, selection, isExpanded, onToggleExpand, columnCo
         </tr>
       )}
 
+      {/* SPE-284: an initials-only existing record matched by initials + grade
+          (not by name). Surface it so a "select all → confirm" can't silently
+          enrich the wrong same-initials child. */}
+      {row.matchConfidence === 'low' && (
+        <tr>
+          <td colSpan={columnCount} className="px-3 pb-2 text-xs text-amber-700">
+            ⚠️ Matched by initials + grade to an existing record with no name yet —
+            &ldquo;{row.displayName}&rdquo; will be saved as its name. Confirm it&rsquo;s the same student.
+          </td>
+        </tr>
+      )}
+
       {isExpanded && (goalCount > 0 || row.goalsRemoved.length > 0) && (
         <tr>
           <td colSpan={columnCount} className="p-0">

@@ -173,7 +173,13 @@ export function buildStudentPreviews(params: {
 }): MainPreviewResult {
   const { parsedStudents, databaseStudents, deliveriesData, classListData, dbTeachers } = params;
 
-  const matchResult = matchStudents(parsedStudents, databaseStudents);
+  // Opt into the SPE-284 initials-enrichment fallback: this path is fed
+  // school-scoped candidates by the pipeline, so matching a NAMED upload to an
+  // existing no-name row by initials+grade is safe here (unlike the unscoped
+  // per-student IEP goals import, which must not enable it).
+  const matchResult = matchStudents(parsedStudents, databaseStudents, {
+    enrichNoNameByInitials: true,
+  });
 
   // Track which students from deliveries/classList were matched
   const matchedDeliveryNames = new Set<string>();
@@ -312,16 +318,9 @@ export function buildStudentPreviews(params: {
             }
           };
         }
-
-        // Track name enrichment (SPE-284): the name being added to a previously
-        // initials-only record. `old` is null by construction (hasNameChange
-        // only fires when the existing name is blank).
-        if (hasNameChange) {
-          changes.name = {
-            old: null,
-            new: `${student.firstName} ${student.lastName}`.trim(),
-          };
-        }
+        // A name-only enrichment (SPE-284) carries no entry in `changes` — it is
+        // surfaced in the review via the row's low match confidence + the name in
+        // displayName, so a "select all → confirm" can't silently enrich by a guess.
       } else {
         action = 'skip';
       }
