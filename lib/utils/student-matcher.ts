@@ -38,16 +38,35 @@ export interface MatchResult {
 }
 
 /**
+ * Matcher options.
+ *
+ * `enrichNoNameByInitials` opts INTO the SPE-284 fallback that matches an
+ * incoming NAMED record to an existing NO-NAME record by initials+grade (so a
+ * later named upload enriches the record instead of duplicating). It is OFF by
+ * default: a caller that matches against an UNSCOPED roster — e.g. the
+ * per-student IEP goals import (`app/api/import-iep-goals/route.ts`), which
+ * fetches candidates by `provider_id` only — must keep SPE-266's strict
+ * name-only identity, or it could initials-match (and misfile goals onto) a
+ * different, same-initials child at another school. Only the school-scoped bulk
+ * import (`buildStudentPreviews`, fed school-filtered candidates in
+ * `lib/import/pipeline.ts`) opts in.
+ */
+export interface MatchOptions {
+  enrichNoNameByInitials?: boolean;
+}
+
+/**
  * Match parsed students to database students
  */
 export function matchStudents(
   parsedStudents: ParsedStudent[],
-  databaseStudents: DatabaseStudent[]
+  databaseStudents: DatabaseStudent[],
+  options: MatchOptions = {}
 ): MatchResult {
   const matches: StudentMatch[] = [];
 
   for (const excelStudent of parsedStudents) {
-    const match = findBestMatch(excelStudent, databaseStudents);
+    const match = findBestMatch(excelStudent, databaseStudents, options);
     matches.push(match);
   }
 
@@ -72,11 +91,15 @@ export function matchStudents(
  * initials (e.g. a same-initials student at another school). Now that names are
  * stored, a candidate counts as "the same student" only when both the full name
  * and the grade agree. A DB student with no stored name can't be name-matched,
- * so it's treated as a non-match (→ the incoming student is a new insert).
+ * so it's treated as a non-match (→ the incoming student is a new insert) —
+ * UNLESS the caller opts into the SPE-284 initials-enrichment fallback below
+ * (`options.enrichNoNameByInitials`), which is reserved for the school-scoped
+ * bulk import.
  */
 function findBestMatch(
   excelStudent: ParsedStudent,
-  databaseStudents: DatabaseStudent[]
+  databaseStudents: DatabaseStudent[],
+  options: MatchOptions = {}
 ): StudentMatch {
   const possibleMatches: Array<{ student: DatabaseStudent; score: number; reasons: string[] }> = [];
 
@@ -130,29 +153,67 @@ function findBestMatch(
   // Sort by score (highest first)
   possibleMatches.sort((a, b) => b.score - a.score);
 
-  // No name+grade match → treat as a new student.
-  if (possibleMatches.length === 0) {
+  // Prefer a full-name match when one exists (SPE-266).
+  if (possibleMatches.length > 0) {
+    const bestMatch = possibleMatches[0];
+    const confidence: 'high' | 'medium' = bestMatch.score >= 100 ? 'high' : 'medium';
+    const reason =
+      possibleMatches.length > 1
+        ? `${bestMatch.reasons.join('; ')} (${possibleMatches.length} candidates)`
+        : bestMatch.reasons.join('; ');
+
     return {
       excelStudent,
-      matchedStudent: null,
-      confidence: 'none',
-      reason: `No existing student matches "${excelStudent.firstName} ${excelStudent.lastName}" in grade "${excelStudent.gradeLevel}"`
+      matchedStudent: bestMatch.student,
+      confidence,
+      reason,
+      allPossibleMatches: possibleMatches.map(m => m.student)
     };
   }
 
-  const bestMatch = possibleMatches[0];
-  const confidence: 'high' | 'medium' = bestMatch.score >= 100 ? 'high' : 'medium';
-  const reason =
-    possibleMatches.length > 1
-      ? `${bestMatch.reasons.join('; ')} (${possibleMatches.length} candidates)`
-      : bestMatch.reasons.join('; ');
+  // SPE-284 enrichment fallback (opt-in via options.enrichNoNameByInitials): no
+  // full-name match, but during the transition to storing names an existing row
+  // may still be initials-only (its name was never captured). Match it by
+  // initials + grade so a later NAMED upload ENRICHES that row (adds the name)
+  // instead of erroring "already exists" or creating a duplicate. Deliberately
+  // narrow:
+  //   - opt-in only, because it relies on the caller having school-scoped its
+  //     candidates (the bulk pipeline does; the unscoped IEP-goals import does
+  //     not and must NOT enable this);
+  //   - only candidates with NO stored name at all (both first AND last blank) —
+  //     a candidate with any real name that failed the name check above is a
+  //     genuinely different student (SPE-266) and is never initials-matched, so
+  //     no real (even partial) name can be silently overwritten;
+  //   - only when exactly one such candidate exists. The
+  //     (provider, school_id, grade, initials) unique index guarantees at most
+  //     one within a school; bail on any ambiguity rather than guess.
+  const incomingInitials = normalizeInitials(excelStudent.initials);
+  if (options.enrichNoNameByInitials && incomingInitials.length > 0) {
+    const initialsOnlyMatches = databaseStudents.filter(
+      dbStudent =>
+        !dbStudent.first_name?.trim() &&
+        !dbStudent.last_name?.trim() &&
+        normalizeInitials(dbStudent.initials) === incomingInitials &&
+        compareGrades(excelStudent.gradeLevel, dbStudent.grade_level).matches
+    );
+    if (initialsOnlyMatches.length === 1) {
+      return {
+        excelStudent,
+        matchedStudent: initialsOnlyMatches[0],
+        confidence: 'low',
+        reason:
+          'Matched by initials + grade — existing record has no name yet; the name will be added',
+        allPossibleMatches: initialsOnlyMatches,
+      };
+    }
+  }
 
+  // Nothing matched → treat as a new student.
   return {
     excelStudent,
-    matchedStudent: bestMatch.student,
-    confidence,
-    reason,
-    allPossibleMatches: possibleMatches.map(m => m.student)
+    matchedStudent: null,
+    confidence: 'none',
+    reason: `No existing student matches "${excelStudent.firstName} ${excelStudent.lastName}" in grade "${excelStudent.gradeLevel}"`
   };
 }
 
@@ -225,6 +286,15 @@ function normalizeGrade(grade: string): string {
  */
 function normalizeName(name: string): string {
   return name.toLowerCase().trim().replace(/[^a-z]/g, '');
+}
+
+/**
+ * Normalize initials for comparison — uppercase A–Z only, matching the
+ * normalization the confirm route and the school-scoped dedup key use, so the
+ * enrichment fallback lines up with the DB uniqueness backstop.
+ */
+function normalizeInitials(initials: string | undefined | null): string {
+  return (initials || '').toUpperCase().replace(/[^A-Z]/g, '');
 }
 
 /**

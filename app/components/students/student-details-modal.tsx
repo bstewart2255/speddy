@@ -279,7 +279,13 @@ export function StudentDetailsModal({
           <div className="flex items-center justify-between p-6 border-b">
             <div className="flex items-center gap-3">
               <h2 className="text-xl font-semibold text-gray-900">
-                Student Details: {student.initials}
+                {/* SPE-284: lead with the full name (identity anchor) once loaded;
+                    fall back to initials for unnamed students. */}
+                Student Details:{' '}
+                {[details.first_name, details.last_name]
+                  .filter((n) => n?.trim())
+                  .join(' ')
+                  .trim() || student.initials}
               </h2>
               <SharedStudentBadge roles={matchingRoles} />
               <TeamChatButton studentId={student.id} onNavigate={onClose} />

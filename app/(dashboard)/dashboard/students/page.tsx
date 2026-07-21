@@ -35,7 +35,37 @@ type Student = {
   school_id?: string | null;
   district_id?: string | null;
   school_district?: string | null;
+  // Full name lives in student_details (the identity anchor, SPE-284). PostgREST
+  // returns the one-to-one embed as an object, but tolerate an array too.
+  student_details?:
+    | { first_name: string | null; last_name: string | null }
+    | Array<{ first_name: string | null; last_name: string | null }>
+    | null;
 };
+
+/** The student's full name from the joined details, or null when unnamed. */
+function studentFullName(student: Student): string | null {
+  const details = Array.isArray(student.student_details)
+    ? student.student_details[0]
+    : student.student_details;
+  const full = `${details?.first_name ?? ''} ${details?.last_name ?? ''}`.trim();
+  return full || null;
+}
+
+/**
+ * Student identity cell for the Students list (SPE-284): the initials tag plus
+ * the full name when we have one. Schedule surfaces intentionally show only the
+ * initials tag; the full name appears here on the Students page.
+ */
+function StudentIdentityCell({ student }: { student: Student }) {
+  const name = studentFullName(student);
+  return (
+    <span className="flex items-center gap-2">
+      <StudentTag initials={student.initials} />
+      {name ? <span className="text-sm font-medium text-gray-900">{name}</span> : null}
+    </span>
+  );
+}
 
 export default function StudentsPage() {
   const [showAddForm, setShowAddForm] = useState(false);
@@ -694,7 +724,7 @@ export default function StudentsPage() {
                         onClick={() => setSelectedStudent(student)}
                         className="hover:opacity-80 transition-opacity"
                       >
-                        <StudentTag initials={student.initials} />
+                        <StudentIdentityCell student={student} />
                       </button>
                     </TableCell>
                     <TableCell>

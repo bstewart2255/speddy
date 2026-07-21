@@ -170,10 +170,24 @@ export function buildStudentPreviews(params: {
   deliveriesData: Map<string, DeliveryRecord> | null;
   classListData: Map<string, ClassListStudent> | null;
   dbTeachers: DbTeacherRow[];
+  /**
+   * Opt into the SPE-284 initials-enrichment fallback. Safe only when the caller
+   * fed school-scoped candidates AND confirmed student_details loaded (so a
+   * missing name means "no details row", not "load failed"). The pipeline sets
+   * this; defaults off for other/unscoped callers.
+   */
+  enrichNoNameByInitials?: boolean;
 }): MainPreviewResult {
-  const { parsedStudents, databaseStudents, deliveriesData, classListData, dbTeachers } = params;
+  const {
+    parsedStudents,
+    databaseStudents,
+    deliveriesData,
+    classListData,
+    dbTeachers,
+    enrichNoNameByInitials = false,
+  } = params;
 
-  const matchResult = matchStudents(parsedStudents, databaseStudents);
+  const matchResult = matchStudents(parsedStudents, databaseStudents, { enrichNoNameByInitials });
 
   // Track which students from deliveries/classList were matched
   const matchedDeliveryNames = new Set<string>();
@@ -250,11 +264,24 @@ export function buildStudentPreviews(params: {
         !!teacherMatchResult &&
         teacherMatchResult.teacherId === null &&
         !!teacherMatchResult.teacherName?.trim();
+      // SPE-284: fill an existing initials-only record's empty name from a named
+      // upload (enrichment). Only fills a fully-blank name — never overwrites an
+      // existing one (correcting a stored name is out of scope for the
+      // foundation). This is what turns an otherwise-unchanged enrichment match
+      // into an 'update' instead of a 'skip', so the name is applied on confirm.
+      // Any non-blank stored name (even a partial first-XOR-last) counts as an
+      // existing identity and blocks enrichment. The matcher already restricts
+      // enrichment matches to both-blank rows, so this is defense-in-depth —
+      // classify stays correct even if that upstream guarantee ever changes.
+      const incomingHasName = !!(student.firstName?.trim() && student.lastName?.trim());
+      const existingHasAnyName = !!(matchedStudent.first_name?.trim() || matchedStudent.last_name?.trim());
+      const hasNameChange = incomingHasName && !existingHasAnyName;
       const anyChanges =
         changeCheck.hasGoalChanges ||
         changeCheck.hasScheduleChanges ||
         changeCheck.hasTeacherChanges ||
-        hasUnresolvedTeacher;
+        hasUnresolvedTeacher ||
+        hasNameChange;
 
       if (anyChanges) {
         action = 'update';
@@ -303,6 +330,9 @@ export function buildStudentPreviews(params: {
             }
           };
         }
+        // A name-only enrichment (SPE-284) carries no entry in `changes` — it is
+        // surfaced in the review via the row's low match confidence + the name in
+        // displayName, so a "select all → confirm" can't silently enrich by a guess.
       } else {
         action = 'skip';
       }

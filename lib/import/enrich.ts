@@ -57,17 +57,23 @@ export async function loadExistingStudents(
   return { data: (data as unknown as ExistingStudentRow[] | null), error };
 }
 
-/** Fetch student details (names + goals) for the given students, for matching. */
+/**
+ * Fetch student details (names + goals) for the given students, for matching.
+ * Surfaces the query error (SPE-284): the caller must know whether a null result
+ * means "no details rows" vs "the load failed" — treating a failed load as
+ * "every student is nameless" would let the initials-enrichment fallback
+ * overwrite a real (merely-unloaded) name.
+ */
 export async function loadStudentDetails(
   supabase: ImportSupabaseClient,
   dbStudents: Array<{ id: string }> | null | undefined
-): Promise<StudentDetailRow[] | null> {
-  if (!dbStudents || dbStudents.length === 0) return null;
-  const { data } = await supabase
+): Promise<{ data: StudentDetailRow[] | null; error: unknown }> {
+  if (!dbStudents || dbStudents.length === 0) return { data: null, error: null };
+  const { data, error } = await supabase
     .from('student_details')
     .select('student_id, first_name, last_name, iep_goals')
     .in('student_id', dbStudents.map(s => s.id));
-  return (data as unknown as StudentDetailRow[] | null);
+  return { data: (data as unknown as StudentDetailRow[] | null), error };
 }
 
 /** Fetch the provider's existing students joined to details (update-only path). */

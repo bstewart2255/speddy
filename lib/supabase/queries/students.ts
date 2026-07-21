@@ -204,9 +204,14 @@ export async function getStudents(school?: SchoolIdentifier) {
   const fetchPerf = measurePerformanceWithAlerts('fetch_students', 'database');
   const fetchResult = await safeQuery(
     async () => {
+      // Join student_details for the full name (SPE-284). The name is the
+      // identity anchor and is shown on the Students page; schedule surfaces keep
+      // using the derived `initials`. Additive — existing callers ignore the
+      // nested field. student_details.student_id is UNIQUE, so PostgREST returns
+      // it as a single embedded object (nullable when the row has no details).
       let query = supabase
         .from('students')
-        .select('*')
+        .select('*, student_details(first_name, last_name)')
         .eq('provider_id', user.id);
 
       // Apply intelligent school filter for optimal performance

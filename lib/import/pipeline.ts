@@ -288,7 +288,18 @@ export async function runStudentsPreview(ctx: PipelineContext, file: File): Prom
   const dbStudentsInSchool = (dbStudents ?? []).filter(
     s => (s.school_id ?? '') === (currentSchoolId ?? ''),
   );
-  const studentDetails = await loadStudentDetails(supabase, dbStudentsInSchool);
+  const { data: studentDetails, error: detailsError } = await loadStudentDetails(supabase, dbStudentsInSchool);
+  if (detailsError) {
+    // Fail safe (SPE-284): if the details query failed, every student looks
+    // nameless. Log it and disable initials-enrichment below so an unloaded real
+    // name can't be overwritten — unmatched rows just fall through as inserts,
+    // the pre-existing degraded behavior.
+    log.error(
+      'Failed to load student details for import matching',
+      detailsError instanceof Error ? detailsError : null,
+      { userId },
+    );
+  }
   const databaseStudents = toDatabaseStudents(dbStudentsInSchool, studentDetails);
 
   const { studentPreviews, matchedDeliveryNames, matchedClassListNames } = buildStudentPreviews({
@@ -297,6 +308,9 @@ export async function runStudentsPreview(ctx: PipelineContext, file: File): Prom
     deliveriesData: deliveries?.deliveries ?? null,
     classListData: classList?.students ?? null,
     dbTeachers,
+    // Only enrich no-name rows by initials+grade when details actually loaded
+    // (otherwise a merely-unloaded name would look blank and could be overwritten).
+    enrichNoNameByInitials: !detailsError,
   });
 
   // A Deliveries/Class List row for a student the goals report placed at another
