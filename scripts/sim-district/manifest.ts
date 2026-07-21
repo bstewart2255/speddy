@@ -334,6 +334,13 @@ export function detailsCount(rule: CaseloadRule): number {
 }
 
 export function studentFullName(providerKey: string, schoolId: string, index: number): { firstName: string; lastName: string } {
+  // "Same child on two caseloads" (spec §6): Tomás's first two Willow students
+  // mirror Rachel's first two on initials + grade + teacher. SPE-290 makes the
+  // cross-provider match prefer the FULL NAME, so the shared pair must share the
+  // name too — otherwise the (correct) name-based match no longer recognizes them.
+  if (providerKey === 'tomas' && schoolId === WILLOW && index < 2) {
+    return studentFullName('rachel', WILLOW, index);
+  }
   const seed = createHash('sha1').update(`name:${providerKey}:${schoolId}:${index}`).digest();
   return {
     firstName: FIRST_NAMES[seed[0] % FIRST_NAMES.length],
