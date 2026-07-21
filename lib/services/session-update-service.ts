@@ -212,14 +212,17 @@ export class SessionUpdateService {
         newEndTime
       });
 
-      // Clear stale conflicts on other sessions that may have been resolved by this move
+      // Clear stale conflicts on OTHER sessions that may have been resolved by this
+      // move. Exclude the just-moved session (sessionId): its conflict state was set
+      // above from the full validation, which includes the cross-provider double-book
+      // check (SPE-255); the same-provider-only cleanup must not overwrite it.
       if (session.student_id && session.provider_id) {
         // Always check the new day for stale conflicts
-        await this.clearStaleConflictsForStudent(session.student_id, session.provider_id, newDay);
+        await this.clearStaleConflictsForStudent(session.student_id, session.provider_id, newDay, sessionId);
 
         // If the day changed, also check the old day
         if (session.day_of_week !== null && session.day_of_week !== newDay) {
-          await this.clearStaleConflictsForStudent(session.student_id, session.provider_id, session.day_of_week);
+          await this.clearStaleConflictsForStudent(session.student_id, session.provider_id, session.day_of_week, sessionId);
         }
       }
 
@@ -791,7 +794,8 @@ export class SessionUpdateService {
   private async clearStaleConflictsForStudent(
     studentId: string,
     providerId: string,
-    day: number
+    day: number,
+    excludeSessionId?: string
   ): Promise<void> {
     try {
       // Find all sessions for this student/provider/day that have conflict flags
@@ -827,6 +831,15 @@ export class SessionUpdateService {
 
       // For each flagged session, check if it still has an actual overlap
       for (const flaggedSession of flaggedSessions) {
+        // Skip the session that was just moved: its conflict state was set
+        // authoritatively by validateSessionMove, which includes the
+        // cross-provider double-book check (SPE-255). The same-provider-only
+        // overlap logic below can't see cross-provider conflicts, so
+        // re-evaluating it here would erase a legitimate cross-provider flag.
+        // Other flagged sessions are still re-checked and cleared as normal.
+        if (excludeSessionId && flaggedSession.id === excludeSessionId) {
+          continue;
+        }
         if (!flaggedSession.start_time || !flaggedSession.end_time) {
           continue;
         }
