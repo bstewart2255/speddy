@@ -44,8 +44,11 @@ BEGIN
   WHERE src.id = ANY(p_student_ids)
     AND src.provider_id = auth.uid()
     -- Template (unscheduled-date) sessions only, actually scheduled, not soft-deleted — same
-    -- session predicates as find_matching_provider_sessions (SPE-255/290).
+    -- session predicates as find_matching_provider_sessions (SPE-255/290). day_of_week is also
+    -- required non-null so results honor the RETURNS TABLE contract (day_of_week integer) and
+    -- only usable per-day conflicts come back (a slotless template can't block a specific day).
     AND ss.session_date IS NULL
+    AND ss.day_of_week IS NOT NULL
     AND ss.start_time IS NOT NULL
     AND ss.end_time IS NOT NULL
     AND ss.deleted_at IS NULL;

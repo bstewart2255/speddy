@@ -1,11 +1,13 @@
-import { createMockSupabaseClient } from '@/test-utils/supabase-test-helpers';
+// Aliased with a `mock` prefix so the jest.mock factory (hoisted above imports by
+// babel-plugin-jest-hoist) may reference it.
+import { createMockSupabaseClient as mockCreateSupabaseClient } from '@/test-utils/supabase-test-helpers';
 import type { OtherProviderSessionLite } from '@/lib/services/session-update-service';
 
 // The scheduler constructs a Supabase client and the singleton data manager on
 // construction; mock the client module so both resolve to a harmless stub. This test
 // exercises the pure hard-avoid decision (hasCrossProviderConflict), not any I/O.
 jest.mock('@/lib/supabase/client', () => ({
-  createClient: () => createMockSupabaseClient(),
+  createClient: () => mockCreateSupabaseClient(),
 }));
 
 import { OptimizedScheduler } from '@/lib/scheduling/optimized-scheduler';
