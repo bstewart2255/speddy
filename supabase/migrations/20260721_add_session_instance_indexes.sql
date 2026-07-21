@@ -17,6 +17,14 @@
 -- Note: 20250813_performance_optimization.sql promised similar indexes but
 -- referenced columns that don't exist (`date`, `completed`), so they were
 -- never created (cleanup tracked in SPE-299).
+--
+-- Deliberately NOT `CONCURRENTLY`: this migration is applied transactionally
+-- (CONCURRENTLY cannot run inside a transaction — 20250813 made that exact
+-- mistake and silently built nothing), the table was ~3.4MB/16k rows at apply
+-- time (write-blocking ShareLock held ~100ms), and IF NOT EXISTS makes any
+-- replay a no-op against the already-built indexes. If this table is ever
+-- orders of magnitude larger, future index work needs a non-transactional
+-- CONCURRENTLY path instead.
 
 CREATE INDEX IF NOT EXISTS idx_schedule_sessions_provider_session_date
   ON schedule_sessions (provider_id, session_date);
