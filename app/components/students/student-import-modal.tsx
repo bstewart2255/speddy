@@ -382,9 +382,10 @@ export function StudentImportModal({
           <Info className="mt-0.5 h-4 w-4 shrink-0 text-blue-500" aria-hidden="true" />
           <p>
             <span className="font-semibold text-gray-900">Start with the Student Goals report</span> — it&rsquo;s
-            the only one of these that creates your students. The other three just add details (schedules, dates,
-            teachers) to students Speddy already has, so on their own they have nothing to attach to. Uploading
-            everything at once works perfectly: Goals creates each student, the rest fill in the details.
+            the only one of these that creates students; the other three just add details (schedules, dates,
+            teachers) to students you already have. On a new caseload, upload Goals first or drop everything in
+            together: Goals creates each student and the rest fill in the details. Already have students? You can
+            upload just the file you need to update them.
           </p>
         </div>
 
