@@ -2,8 +2,8 @@ import { createClient } from '@/lib/supabase/client';
 import { ScheduleSession, BellSchedule, SpecialActivity } from '@/src/types';
 import { DEFAULT_SCHEDULING_CONFIG } from '@/lib/scheduling/scheduling-config';
 import { requireNonNull } from '@/lib/types/utils';
-import { formatDateLocal } from '@/lib/utils/date-helpers';
 import { formatRoleLabel } from '@/lib/utils/role-utils';
+import { deleteFutureTemplateInstances } from '@/lib/supabase/queries/schedule-sessions';
 
 // Helper functions for time conversion
 const timeToMinutes = (time: string): number => {
@@ -288,63 +288,44 @@ export class SessionUpdateService {
         }
       }
 
-      // ORPHAN CLEANUP: When a template's time/day changes, delete future orphaned instances
-      // This prevents old instances from showing up in Day view/Today's Schedule
-      if (session.session_date === null) {
-        const timeChanged = session.start_time !== newStartTime || session.day_of_week !== newDay;
+      // SPE-294: keep a template's dated instances in sync with its slot on every
+      // change. A scheduled template carries up to 12 weeks of pre-materialized
+      // future instances (the SPE-291 top-up), so when the slot changes we must
+      // (1) delete the future, not-yet-completed instances at the OLD slot and
+      // (2) (re)generate at the NEW slot. Without (2), a MOVE previously left the
+      // new slot with no persisted instances until the daily top-up next ran;
+      // keying both steps on the same slot-changed condition also keeps an
+      // end-time-only change from colliding on unique(student_id, session_date,
+      // start_time).
+      if (updatedSession.session_date === null) {
+        const wasUnscheduled = session.day_of_week === null ||
+                               session.start_time === null ||
+                               session.end_time === null;
+        const nowScheduled = updatedSession.day_of_week !== null &&
+                             updatedSession.start_time !== null &&
+                             updatedSession.end_time !== null;
+        const slotChanged = session.day_of_week !== updatedSession.day_of_week ||
+                            session.start_time !== updatedSession.start_time ||
+                            session.end_time !== updatedSession.end_time;
 
-        if (timeChanged && session.start_time && session.day_of_week !== null) {
-          const today = formatDateLocal(new Date());
-
-          console.log('Cleaning up orphaned instances:', {
-            studentId: session.student_id,
-            oldDay: session.day_of_week,
-            oldStartTime: session.start_time,
-            newDay,
-            newStartTime
-          });
-
-          // Delete future non-completed instances at the OLD time
-          const { error: cleanupError, count } = await this.supabase
-            .from('schedule_sessions')
-            .delete()
-            .eq('student_id', session.student_id)
-            .eq('provider_id', session.provider_id)
-            .eq('day_of_week', session.day_of_week)
-            .eq('start_time', session.start_time)
-            .gte('session_date', today)
-            .is('completed_at', null);
-
-          if (cleanupError) {
-            console.error('Error cleaning up orphaned instances:', cleanupError);
+        // (1) Prune the template's now-stale future instances — after the update
+        // they sit at the OLD slot. The shared helper preserves attendance-marked
+        // and completed rows (same guarantee as archive/unschedule), so a move made
+        // after today's session was marked can't destroy that attendance record.
+        if (!wasUnscheduled && slotChanged) {
+          const { deleted, error: pruneError } = await deleteFutureTemplateInstances(this.supabase, sessionId);
+          if (pruneError) {
+            console.error('Error pruning old-slot instances on move:', pruneError);
           } else {
-            console.log(`Deleted ${count || 0} orphaned instances`);
+            console.log(`Pruned ${deleted} old-slot instances on move`);
           }
         }
-      }
 
-      // Generate instances if this is a template session being scheduled
-      // Only create instances if:
-      // 1. Session has no session_date (it's a template)
-      // 2. Session now has valid schedule (day_of_week, start_time, end_time)
-      // 3. Session wasn't already scheduled (changed from unscheduled to scheduled)
-      if (updatedSession.session_date === null &&
-          updatedSession.day_of_week !== null &&
-          updatedSession.start_time !== null &&
-          updatedSession.end_time !== null) {
-
-        // Check if this session was previously unscheduled
-        const wasUnscheduled = session.day_of_week === null ||
-                              session.start_time === null ||
-                              session.end_time === null;
-
-        if (wasUnscheduled) {
-          // This is a newly scheduled session - create instances via API
-          // Instances are generated through school year end (June 30) by default
-          console.log('Creating instances for newly scheduled template through school year end:', sessionId);
-
-          // Create instances asynchronously (don't block the response)
-          // Pass useSchoolYearEnd: true to generate through June 30
+        // (2) (Re)generate instances at the NEW slot whenever the template is
+        // scheduled and its slot changed — covers unscheduled->scheduled AND moves.
+        // Fire-and-forget through the API (generation is dedup-safe); don't block.
+        if (nowScheduled && (wasUnscheduled || slotChanged)) {
+          console.log('Generating instances for scheduled template through school year end:', sessionId);
           fetch('/api/sessions/generate-instances', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1101,6 +1082,14 @@ export class SessionUpdateService {
         );
       }
 
+      // SPE-294: an unscheduled template has no slot, so its future, not-yet-completed
+      // instances (up to 12 weeks from the top-up) would linger as phantom "unmarked"
+      // sessions — prune them. Best-effort: never fail the unschedule over cleanup.
+      const { error: pruneError } = await deleteFutureTemplateInstances(this.supabase, sessionId);
+      if (pruneError) {
+        console.error('Error pruning future instances on unschedule:', pruneError);
+      }
+
       return { success: true, session: updatedSession };
     } catch (error) {
       console.error('Unschedule session error:', error);
@@ -1117,6 +1106,9 @@ export class SessionUpdateService {
     count?: number;
   }> {
     try {
+      // Only TEMPLATES are unscheduled (session_date IS NULL). Dated instances that
+      // share this day_of_week keep it as history and are handled by the prune below;
+      // without this filter the update would null day_of_week on past instances too.
       const { data: updatedSessions, error: updateError } = await this.supabase
         .from('schedule_sessions')
         .update({
@@ -1130,11 +1122,22 @@ export class SessionUpdateService {
         })
         .eq('provider_id', providerId)
         .eq('day_of_week', dayOfWeek)
+        .is('session_date', null)
         .select();
 
       if (updateError) {
         console.error('Error unscheduling day sessions:', updateError);
         return { success: false, error: 'Failed to unschedule sessions' };
+      }
+
+      // SPE-294: prune the now-unscheduled templates' future, not-yet-completed
+      // instances so they don't linger as phantom "unmarked" sessions.
+      const templateIds = (updatedSessions ?? []).map(s => s.id);
+      if (templateIds.length > 0) {
+        const { error: pruneError } = await deleteFutureTemplateInstances(this.supabase, templateIds);
+        if (pruneError) {
+          console.error('Error pruning future instances on unschedule-day:', pruneError);
+        }
       }
 
       console.log(`Unscheduled ${updatedSessions?.length || 0} sessions from day ${dayOfWeek}`);
