@@ -16,6 +16,7 @@ import type {
   BulkStudentPreview,
   BulkPreviewData,
   TargetPreviewData,
+  IepDatesPreview,
 } from '@/lib/types/student-import';
 
 // The preview/confirm wire contract lives in one shared module (SPE-236) so the
@@ -61,6 +62,9 @@ export interface ReviewRow {
   gradeLevel: string | null;
   schedule?: { sessionsPerWeek: number; minutesPerSession: number };
   teacher?: ReviewTeacher;
+  /** Incoming IEP compliance dates from the SEIS IEP Dates report (SPE-303),
+   *  with old → new for display and the value carried through to confirm. */
+  iepDates?: IepDatesPreview;
   /** Incoming goals being imported (selectable). */
   goals: ReviewGoal[];
   /** Existing goals dropped by an update's replace — shown struck-through + in the exceptions queue. */
@@ -89,7 +93,7 @@ export interface ReviewFileReceipt {
 }
 
 export type ReviewException =
-  | { kind: 'unmatched-student'; name: string; source: 'deliveries' | 'classList'; reason?: string }
+  | { kind: 'unmatched-student'; name: string; source: 'deliveries' | 'classList' | 'iepDates'; reason?: string }
   | { kind: 'low-confidence-teacher'; rowId: string; studentLabel: string; suggestion: ReviewTeacher }
   | { kind: 'goals-removed'; rowId: string; studentLabel: string; goals: string[] };
 
@@ -121,6 +125,7 @@ const FILE_RECEIPT_META: Record<PreviewFileKey, { label: string; fills: string }
   studentsFile: { label: 'Student & goals report', fills: 'students & IEP goals' },
   deliveriesFile: { label: 'Deliveries', fills: 'schedules' },
   classListFile: { label: 'Class list', fills: 'teachers' },
+  iepDatesFile: { label: 'IEP dates', fills: 'review & triennial dates' },
 };
 
 const normalizeGoal = (s: string) => s.trim().toLowerCase();
@@ -182,6 +187,7 @@ function toReviewRow(student: BulkStudentPreview, srcIndex: number): ReviewRow {
         }
       : undefined,
     teacher,
+    iepDates: student.iepDates,
     goals,
     goalsRemoved,
     targetStudentId,

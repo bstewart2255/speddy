@@ -26,6 +26,8 @@ import {
   ClassListStudent,
 } from '@/lib/parsers/class-list-parser';
 import { DeliveryRecord } from '@/lib/parsers/deliveries-parser';
+import { IepDatesRecord } from '@/lib/parsers/iep-dates-parser';
+import type { IepDatesPreview } from '@/lib/types/student-import';
 import { buildStudentDedupKey } from '@/lib/utils/student-dedup-key';
 import { classifyRosterChange } from '@/lib/import/roster-preview';
 import { resolveClassListTeacher } from '@/lib/import/enrich';
@@ -125,6 +127,39 @@ export interface StudentDetailRow {
   first_name: string | null;
   last_name: string | null;
   iep_goals: string[] | null;
+  /** Stored IEP compliance dates (ISO YYYY-MM-DD) for IEP Dates change detection (SPE-303). */
+  upcoming_iep_date?: string | null;
+  upcoming_triennial_date?: string | null;
+}
+
+/**
+ * Build the review-facing IEP Dates payload for a matched student (SPE-303).
+ * Each date is present only when the file supplied a parseable value; `changed`
+ * is `value !== stored`. Returns null when the file carried no usable date, so
+ * an empty enrichment doesn't fabricate an update. `changed` on the aggregate is
+ * true iff any present date differs from what's stored (drives insert/update/skip).
+ */
+export function buildIepDatesPreview(
+  record: Pick<IepDatesRecord, 'upcomingIepDate' | 'upcomingTriennialDate'>,
+  existingIepDate: string | null,
+  existingTriennialDate: string | null,
+): { iepDates: IepDatesPreview; changed: boolean } | null {
+  const iepDates: IepDatesPreview = {};
+  let changed = false;
+
+  if (record.upcomingIepDate !== undefined) {
+    const isChanged = record.upcomingIepDate !== existingIepDate;
+    iepDates.upcomingIepDate = { value: record.upcomingIepDate, old: existingIepDate, changed: isChanged };
+    changed = changed || isChanged;
+  }
+  if (record.upcomingTriennialDate !== undefined) {
+    const isChanged = record.upcomingTriennialDate !== existingTriennialDate;
+    iepDates.upcomingTriennialDate = { value: record.upcomingTriennialDate, old: existingTriennialDate, changed: isChanged };
+    changed = changed || isChanged;
+  }
+
+  if (!iepDates.upcomingIepDate && !iepDates.upcomingTriennialDate) return null;
+  return { iepDates, changed };
 }
 
 /**
@@ -149,6 +184,9 @@ export function toDatabaseStudents(
         sessions_per_week: student.sessions_per_week || undefined,
         minutes_per_session: student.minutes_per_session || undefined,
         teacher_id: student.teacher_id || undefined,
+        // Stored IEP dates, for IEP Dates change detection (SPE-303).
+        upcoming_iep_date: details?.upcoming_iep_date ?? null,
+        upcoming_triennial_date: details?.upcoming_triennial_date ?? null,
       } as DatabaseStudent;
     }) || []
   );
@@ -158,6 +196,7 @@ export interface MainPreviewResult {
   studentPreviews: StudentPreview[];
   matchedDeliveryNames: Set<string>;
   matchedClassListNames: Set<string>;
+  matchedIepDatesNames: Set<string>;
 }
 
 /**
@@ -169,6 +208,7 @@ export function buildStudentPreviews(params: {
   databaseStudents: DatabaseStudent[];
   deliveriesData: Map<string, DeliveryRecord> | null;
   classListData: Map<string, ClassListStudent> | null;
+  iepDatesData?: Map<string, IepDatesRecord> | null;
   dbTeachers: DbTeacherRow[];
   /**
    * Opt into the SPE-284 initials-enrichment fallback. Safe only when the caller
@@ -183,15 +223,17 @@ export function buildStudentPreviews(params: {
     databaseStudents,
     deliveriesData,
     classListData,
+    iepDatesData = null,
     dbTeachers,
     enrichNoNameByInitials = false,
   } = params;
 
   const matchResult = matchStudents(parsedStudents, databaseStudents, { enrichNoNameByInitials });
 
-  // Track which students from deliveries/classList were matched
+  // Track which students from deliveries/classList/iepDates were matched
   const matchedDeliveryNames = new Set<string>();
   const matchedClassListNames = new Set<string>();
+  const matchedIepDatesNames = new Set<string>();
 
   // Process each student: prepare preview data (goals flow through verbatim).
   const studentPreviews: StudentPreview[] = [];
@@ -232,6 +274,23 @@ export function buildStudentPreviews(params: {
       if (classListStudent) {
         matchedClassListNames.add(normalizedKey);
         teacherMatchResult = resolveClassListTeacher(classListStudent.teacher, dbTeachers);
+      }
+    }
+
+    // Match with IEP Dates data (SPE-303). File wins: a present date overwrites
+    // the stored one; a row whose dates equal what's stored is not a change. For
+    // an insert there is no matchedStudent, so old is null (any present date is
+    // shown against a blank).
+    let iepDatesResult: { iepDates: IepDatesPreview; changed: boolean } | null = null;
+    if (iepDatesData) {
+      const iepRecord = iepDatesData.get(normalizedKey);
+      if (iepRecord) {
+        matchedIepDatesNames.add(normalizedKey);
+        iepDatesResult = buildIepDatesPreview(
+          iepRecord,
+          matchedStudent?.upcoming_iep_date ?? null,
+          matchedStudent?.upcoming_triennial_date ?? null,
+        );
       }
     }
 
@@ -276,12 +335,16 @@ export function buildStudentPreviews(params: {
       const incomingHasName = !!(student.firstName?.trim() && student.lastName?.trim());
       const existingHasAnyName = !!(matchedStudent.first_name?.trim() || matchedStudent.last_name?.trim());
       const hasNameChange = incomingHasName && !existingHasAnyName;
+      // An IEP Dates match with a date that differs from what's stored makes the
+      // row an update even if nothing else changed; identical dates stay a skip.
+      const hasIepDateChange = iepDatesResult?.changed ?? false;
       const anyChanges =
         changeCheck.hasGoalChanges ||
         changeCheck.hasScheduleChanges ||
         changeCheck.hasTeacherChanges ||
         hasUnresolvedTeacher ||
-        hasNameChange;
+        hasNameChange ||
+        hasIepDateChange;
 
       if (anyChanges) {
         action = 'update';
@@ -370,10 +433,17 @@ export function buildStudentPreviews(params: {
       preview.teacher = teacherMatchResult;
     }
 
+    // Add IEP Dates data to preview (SPE-303). Carried for insert and update rows
+    // alike so the confirm write picks up the new dates and the review row can
+    // show old → new.
+    if (iepDatesResult) {
+      preview.iepDates = iepDatesResult.iepDates;
+    }
+
     studentPreviews.push(preview);
   }
 
-  return { studentPreviews, matchedDeliveryNames, matchedClassListNames };
+  return { studentPreviews, matchedDeliveryNames, matchedClassListNames, matchedIepDatesNames };
 }
 
 /**
@@ -398,25 +468,30 @@ export interface UpdatePreviewResult {
   studentUpdates: StudentUpdate[];
   matchedDeliveryNames: Set<string>;
   matchedClassListNames: Set<string>;
+  matchedIepDatesNames: Set<string>;
   unmatchedStudents: UnmatchedStudent[];
 }
 
 /**
- * Deliveries/class-list "update-only" path: the students file is absent, so
- * preview rows fall out of matching existing students by name against the
- * enrichment files. Every matched row is an 'update'. Verbatim.
+ * Deliveries/class-list/IEP-dates "update-only" path: the students file is
+ * absent, so preview rows fall out of matching existing students by name against
+ * the enrichment files. Deliveries/class-list matches are always an 'update'; an
+ * IEP Dates match is an 'update' only when a date differs from what's stored, and
+ * a 'skip' when its dates already match (SPE-303 — no phantom updates).
  */
 export function buildUpdatePreviews(params: {
   studentsByName: Map<string, JoinedExistingStudent>;
   deliveriesData: Map<string, DeliveryRecord> | null;
   classListData: Map<string, ClassListStudent> | null;
+  iepDatesData?: Map<string, IepDatesRecord> | null;
   dbTeachers: DbTeacherRow[];
 }): UpdatePreviewResult {
-  const { studentsByName, deliveriesData, classListData, dbTeachers } = params;
+  const { studentsByName, deliveriesData, classListData, iepDatesData = null, dbTeachers } = params;
 
   const studentUpdates: StudentUpdate[] = [];
   const matchedDeliveryNames = new Set<string>();
   const matchedClassListNames = new Set<string>();
+  const matchedIepDatesNames = new Set<string>();
   const unmatchedStudents: UnmatchedStudent[] = [];
 
   // Match deliveries to existing students
@@ -496,7 +571,64 @@ export function buildUpdatePreviews(params: {
     }
   }
 
-  return { studentUpdates, matchedDeliveryNames, matchedClassListNames, unmatchedStudents };
+  // Match IEP Dates to existing students (SPE-303). File wins: a present date
+  // overwrites the stored one. A row whose dates already match is left as a skip
+  // below (no phantom update).
+  if (iepDatesData) {
+    for (const [normalizedName, record] of iepDatesData) {
+      const existingStudent = studentsByName.get(normalizedName);
+      if (!existingStudent) {
+        unmatchedStudents.push({
+          name: `${record.firstName} ${record.lastName}`.trim() || record.normalizedName,
+          source: 'iepDates',
+        });
+        continue;
+      }
+      matchedIepDatesNames.add(normalizedName);
+      const details = existingStudent.student_details as unknown as {
+        first_name: string;
+        last_name: string;
+        upcoming_iep_date?: string | null;
+        upcoming_triennial_date?: string | null;
+      };
+      const iepDatesResult = buildIepDatesPreview(
+        record,
+        details.upcoming_iep_date ?? null,
+        details.upcoming_triennial_date ?? null,
+      );
+      // Matched but the file carried no usable date for this student — nothing to
+      // enrich, and no row unless another file already made one.
+      if (!iepDatesResult) continue;
+
+      let update = studentUpdates.find(u => u.studentId === existingStudent.id);
+      if (!update) {
+        update = {
+          studentId: existingStudent.id,
+          initials: existingStudent.initials || '',
+          firstName: details.first_name,
+          lastName: details.last_name,
+          gradeLevel: existingStudent.grade_level,
+          action: 'update',
+        };
+        studentUpdates.push(update);
+      }
+      update.iepDates = iepDatesResult.iepDates;
+    }
+  }
+
+  // Resolve each row's action. Deliveries/class-list contributions are always a
+  // change; an IEP Dates contribution is a change only when a date differs from
+  // what's stored. A row with nothing changed (an IEP-dates-only match whose
+  // dates already match) becomes a skip so it isn't a phantom update (SPE-303).
+  for (const update of studentUpdates) {
+    const iepChanged = !!(
+      update.iepDates?.upcomingIepDate?.changed || update.iepDates?.upcomingTriennialDate?.changed
+    );
+    const hasWork = !!update.schedule || !!update.teacher || iepChanged;
+    update.action = hasWork ? 'update' : 'skip';
+  }
+
+  return { studentUpdates, matchedDeliveryNames, matchedClassListNames, matchedIepDatesNames, unmatchedStudents };
 }
 
 /** Roster-template existing-student row shape (initials+grade dedup). */

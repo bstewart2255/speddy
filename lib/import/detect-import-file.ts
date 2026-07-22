@@ -13,11 +13,12 @@ export type DetectedImportType =
   | 'seis-report' // SEIS Student/Goals report (xlsx/xls/csv) -> creates students + goals
   | 'deliveries' // SEIS Deliveries CSV -> schedule requirements
   | 'class-list' // Aeries Special Ed class list (txt) -> teacher assignment
+  | 'iep-dates' // SEIS "IEP Dates" report CSV -> review & triennial dates (SPE-303)
   | 'roster-template' // Initials/Grade/Teacher roster CSV
   | 'unknown';
 
 /** The `/api/import-students` multipart form key a type submits under. */
-export type ImportFormKey = 'studentsFile' | 'deliveriesFile' | 'classListFile';
+export type ImportFormKey = 'studentsFile' | 'deliveriesFile' | 'classListFile' | 'iepDatesFile';
 
 export interface ImportTypeMeta {
   /** Form key for server submission, or null if this type isn't server-backed here. */
@@ -32,6 +33,7 @@ export const IMPORT_TYPE_META: Record<DetectedImportType, ImportTypeMeta> = {
   'seis-report': { formKey: 'studentsFile', label: 'Student & goals report', contribution: 'students & goals' },
   deliveries: { formKey: 'deliveriesFile', label: 'Deliveries', contribution: 'schedules' },
   'class-list': { formKey: 'classListFile', label: 'Class list', contribution: 'teachers' },
+  'iep-dates': { formKey: 'iepDatesFile', label: 'IEP dates', contribution: 'review & triennial dates' },
   // Roster template now flows through the server preview/confirm pipeline as the
   // students file (SPE-225), same as a SEIS report.
   'roster-template': { formKey: 'studentsFile', label: 'Roster template', contribution: 'student list' },
@@ -77,6 +79,8 @@ export function normalizeHeaderCells(headerLine: string): string[] {
  * - `.xlsx` / `.xls` -> SEIS report
  * - `.csv` with a "Sessions / Frequency" column -> Deliveries
  * - `.csv` with Initials + Grade + Teacher columns -> roster template
+ * - `.csv` with a "Date of Next Annual Plan Review"/"Date of Next Reevaluation"
+ *   column -> SEIS IEP Dates report (SPE-303)
  * - any other `.csv` -> SEIS Student/Goals report
  * - anything else -> unknown
  */
@@ -92,6 +96,10 @@ export function classifyImportFile(fileName: string, csvHeaderLine?: string): De
 
     if (has('sessions / frequency')) return 'deliveries';
     if (has('initials') && has('grade') && has('teacher')) return 'roster-template';
+    // SEIS "IEP Dates" report (SPE-303): recognized by either compliance-date
+    // column, checked before the goals-report fallback. Verified unique — the
+    // Goals report, Deliveries, and roster template headers contain neither.
+    if (has('date of next annual plan review') || has('date of next reevaluation')) return 'iep-dates';
     return 'seis-report';
   }
 

@@ -27,6 +27,7 @@ import type { ParsedStudent as SeisParsedStudent } from '@/lib/parsers/seis-pars
 import type { ParsedStudent as CsvParsedStudent } from '@/lib/parsers/csv-parser';
 import type { DeliveryRecord } from '@/lib/parsers/deliveries-parser';
 import type { ClassListStudent } from '@/lib/parsers/class-list-parser';
+import type { IepDatesRecord } from '@/lib/parsers/iep-dates-parser';
 import type { DbTeacherRow, JoinedExistingStudent } from '@/lib/import/preview-types';
 
 // ---- factories ----
@@ -48,6 +49,12 @@ const classListStudent = (over: Partial<ClassListStudent> = {}): ClassListStuden
   normalizedName: 'doe_john', name: 'Doe, John',
   teacher: { rawName: 'Barrera E', lastName: 'Barrera', firstInitial: 'E', teacherNumber: '' },
   ...over,
+});
+
+const iepDates = (over: Partial<IepDatesRecord> = {}): IepDatesRecord => ({
+  normalizedName: 'doe_john', firstName: 'John', lastName: 'Doe', gradeLevel: '3',
+  schoolOfAttendance: 'Maple Elementary',
+  upcomingIepDate: '2026-09-01', upcomingTriennialDate: '2027-05-12', ...over,
 });
 
 const TEACHERS: DbTeacherRow[] = [{ id: 't-barrera', first_name: 'Elena', last_name: 'Barrera' }];
@@ -254,6 +261,63 @@ describe('buildStudentPreviews (main path)', () => {
     });
     expect(studentPreviews[0].action).toBe('skip'); // no teacher name to resolve + goals match = no change
   });
+
+  // SPE-303: the IEP Dates report fills the two compliance dates on a matched student.
+  it('marks a matched student as update when an IEP date differs from what is stored (file wins)', () => {
+    const { studentPreviews, matchedIepDatesNames } = buildStudentPreviews({
+      parsedStudents: [parsed({ goals: ['G'] })],
+      databaseStudents: [dbStudent({ iep_goals: ['G'], upcoming_iep_date: '2026-01-01', upcoming_triennial_date: '2027-05-12' })],
+      deliveriesData: null, classListData: null,
+      iepDatesData: new Map([['doe_john', iepDates({ upcomingIepDate: '2026-09-01', upcomingTriennialDate: '2027-05-12' })]]),
+      dbTeachers: [],
+    });
+    expect(matchedIepDatesNames.has('doe_john')).toBe(true);
+    const p = studentPreviews[0];
+    expect(p.action).toBe('update');
+    // Only the changed date is flagged as changed; the unchanged one carries with changed=false.
+    expect(p.iepDates?.upcomingIepDate).toEqual({ value: '2026-09-01', old: '2026-01-01', changed: true });
+    expect(p.iepDates?.upcomingTriennialDate).toEqual({ value: '2027-05-12', old: '2027-05-12', changed: false });
+  });
+
+  it('marks a matched student as skip when the IEP dates already match what is stored', () => {
+    const { studentPreviews } = buildStudentPreviews({
+      parsedStudents: [parsed({ goals: ['G'] })],
+      databaseStudents: [dbStudent({ iep_goals: ['G'], upcoming_iep_date: '2026-09-01', upcoming_triennial_date: '2027-05-12' })],
+      deliveriesData: null, classListData: null,
+      iepDatesData: new Map([['doe_john', iepDates()]]),
+      dbTeachers: [],
+    });
+    const p = studentPreviews[0];
+    expect(p.action).toBe('skip'); // no phantom update
+    expect(p.iepDates?.upcomingIepDate?.changed).toBe(false);
+  });
+
+  it('carries IEP dates onto a NEW student (insert) matched by the file, with a null old', () => {
+    const { studentPreviews } = buildStudentPreviews({
+      parsedStudents: [parsed({ goals: ['G'] })],
+      databaseStudents: [], // no match → insert
+      deliveriesData: null, classListData: null,
+      iepDatesData: new Map([['doe_john', iepDates()]]),
+      dbTeachers: [],
+    });
+    const p = studentPreviews[0];
+    expect(p.action).toBe('insert');
+    expect(p.iepDates?.upcomingIepDate).toEqual({ value: '2026-09-01', old: null, changed: true });
+  });
+
+  it('treats a present-only triennial as a change without touching the (absent) IEP review date', () => {
+    const { studentPreviews } = buildStudentPreviews({
+      parsedStudents: [parsed({ goals: ['G'] })],
+      databaseStudents: [dbStudent({ iep_goals: ['G'], upcoming_iep_date: '2026-09-01', upcoming_triennial_date: null })],
+      deliveriesData: null, classListData: null,
+      iepDatesData: new Map([['doe_john', iepDates({ upcomingIepDate: undefined, upcomingTriennialDate: '2027-05-12' })]]),
+      dbTeachers: [],
+    });
+    const p = studentPreviews[0];
+    expect(p.action).toBe('update');
+    expect(p.iepDates?.upcomingIepDate).toBeUndefined(); // file had no review date
+    expect(p.iepDates?.upcomingTriennialDate).toEqual({ value: '2027-05-12', old: null, changed: true });
+  });
 });
 
 describe('buildUpdatePreviews (deliveries/class-list update-only path)', () => {
@@ -317,6 +381,64 @@ describe('buildUpdatePreviews (deliveries/class-list update-only path)', () => {
     });
     expect(studentUpdates).toHaveLength(0);
     expect(unmatchedStudents).toEqual([{ name: 'Here, Nobody', source: 'deliveries' }]);
+  });
+
+  // SPE-303: dropping ONLY the IEP Dates file refreshes dates for the caseload.
+  const studentsByNameWithDates = (iep: string | null, tri: string | null) =>
+    buildStudentsByName([
+      {
+        id: 's1', initials: 'JD', grade_level: '3', school_site: null, school_id: 'sch1',
+        student_details: { first_name: 'John', last_name: 'Doe', upcoming_iep_date: iep, upcoming_triennial_date: tri },
+      } as unknown as JoinedExistingStudent,
+    ]);
+
+  it('updates an existing student when an IEP date differs (file wins) and carries old → new', () => {
+    const { studentUpdates, matchedIepDatesNames } = buildUpdatePreviews({
+      studentsByName: studentsByNameWithDates('2026-01-01', '2027-05-12'),
+      deliveriesData: null, classListData: null,
+      iepDatesData: new Map([['doe_john', iepDates({ upcomingIepDate: '2026-09-01', upcomingTriennialDate: '2027-05-12' })]]),
+      dbTeachers: [],
+    });
+    expect(matchedIepDatesNames.has('doe_john')).toBe(true);
+    expect(studentUpdates).toHaveLength(1);
+    expect(studentUpdates[0].action).toBe('update');
+    expect(studentUpdates[0].iepDates?.upcomingIepDate).toEqual({ value: '2026-09-01', old: '2026-01-01', changed: true });
+  });
+
+  it('marks an IEP-dates-only match as skip when the dates already match (no phantom update)', () => {
+    const { studentUpdates } = buildUpdatePreviews({
+      studentsByName: studentsByNameWithDates('2026-09-01', '2027-05-12'),
+      deliveriesData: null, classListData: null,
+      iepDatesData: new Map([['doe_john', iepDates()]]),
+      dbTeachers: [],
+    });
+    expect(studentUpdates).toHaveLength(1);
+    expect(studentUpdates[0].action).toBe('skip');
+  });
+
+  it('collects an IEP-dates row with no existing student as unmatched (source iepDates)', () => {
+    const { studentUpdates, unmatchedStudents } = buildUpdatePreviews({
+      studentsByName: studentsByNameWithDates(null, null),
+      deliveriesData: null, classListData: null,
+      iepDatesData: new Map([['nobody_here', iepDates({ normalizedName: 'nobody_here', firstName: 'Nobody', lastName: 'Here' })]]),
+      dbTeachers: [],
+    });
+    expect(studentUpdates).toHaveLength(0);
+    expect(unmatchedStudents).toEqual([{ name: 'Nobody Here', source: 'iepDates' }]);
+  });
+
+  it('merges IEP dates onto a delivery update row (dedup by studentId)', () => {
+    const { studentUpdates } = buildUpdatePreviews({
+      studentsByName: studentsByNameWithDates(null, null),
+      deliveriesData: new Map([['doe_john', delivery()]]),
+      classListData: null,
+      iepDatesData: new Map([['doe_john', iepDates()]]),
+      dbTeachers: [],
+    });
+    expect(studentUpdates).toHaveLength(1);
+    expect(studentUpdates[0].action).toBe('update');
+    expect(studentUpdates[0].schedule).toBeDefined();
+    expect(studentUpdates[0].iepDates?.upcomingIepDate?.value).toBe('2026-09-01');
   });
 });
 

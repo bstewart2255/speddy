@@ -21,8 +21,11 @@ import {
   parseStudentsFile,
   parseDeliveriesFile,
   parseClassListFile,
+  parseIepDatesFile,
+  scopeIepDatesToSchool,
   applySchoolFilter,
 } from '@/lib/import/parse-files';
+import type { IepDatesRecord } from '@/lib/parsers/iep-dates-parser';
 import {
   loadProfile,
   loadExistingStudents,
@@ -66,12 +69,13 @@ const errorMessage = (error: unknown) => (error instanceof Error ? error.message
  */
 export async function runUpdateOnlyPreview(ctx: PipelineContext): Promise<NextResponse> {
   const { supabase, userId, form, perf } = ctx;
-  const { deliveriesFile, classListFile, currentSchoolId } = form;
+  const { deliveriesFile, classListFile, iepDatesFile, currentSchoolId, currentSchoolSite } = form;
 
-  log.info('Processing deliveries/classList only mode', {
+  log.info('Processing deliveries/classList/iepDates only mode', {
     userId,
     hasDeliveries: !!deliveriesFile,
     hasClassList: !!classListFile,
+    hasIepDates: !!iepDatesFile,
   });
 
   const profile = await loadProfile(supabase, userId);
@@ -123,24 +127,45 @@ export async function runUpdateOnlyPreview(ctx: PipelineContext): Promise<NextRe
       return NextResponse.json({ error: `Failed to parse class list file: ${errorMessage(error)}` }, { status: 400 });
     }
   }
+  let iepDates: Awaited<ReturnType<typeof parseIepDatesFile>> | null = null;
+  let iepDatesInScope: Map<string, IepDatesRecord> | null = null;
+  if (iepDatesFile) {
+    try {
+      iepDates = await parseIepDatesFile(iepDatesFile);
+      const scoped = scopeIepDatesToSchool(iepDates.records, currentSchoolSite, profile?.works_at_multiple_schools);
+      iepDatesInScope = scoped.records;
+      iepDates.warnings.push(...scoped.warnings);
+    } catch (error) {
+      log.error('Failed to parse IEP dates file', error instanceof Error ? error : null, { userId });
+      perf.end({ success: false });
+      return NextResponse.json({ error: `Failed to parse IEP dates file: ${errorMessage(error)}` }, { status: 400 });
+    }
+  }
 
   const dbTeachers = classList && classList.students.size > 0 ? await fetchTeachers(supabase, currentSchoolId) : [];
 
-  const { studentUpdates, matchedDeliveryNames, matchedClassListNames, unmatchedStudents } = buildUpdatePreviews({
-    studentsByName,
-    deliveriesData: deliveries?.deliveries ?? null,
-    classListData: classList?.students ?? null,
-    dbTeachers,
-  });
+  const { studentUpdates, matchedDeliveryNames, matchedClassListNames, matchedIepDatesNames, unmatchedStudents } =
+    buildUpdatePreviews({
+      studentsByName,
+      deliveriesData: deliveries?.deliveries ?? null,
+      classListData: classList?.students ?? null,
+      iepDatesData: iepDatesInScope,
+      dbTeachers,
+    });
 
   track.event('student_update_preview_generated', {
     userId,
-    totalUpdates: studentUpdates.length,
+    totalUpdates: studentUpdates.filter(s => s.action === 'update').length,
     withSchedule: studentUpdates.filter(s => s.schedule).length,
     withTeacher: studentUpdates.filter(s => s.teacher).length,
+    // Count only rows that actually apply a date change (an unchanged-date match
+    // is an action:'skip' row that still carries iepDates) so this stays
+    // consistent with totalUpdates.
+    withIepDates: studentUpdates.filter(s => s.action === 'update' && s.iepDates).length,
     unmatchedCount: unmatchedStudents.length,
     hasDeliveriesFile: !!deliveriesFile,
     hasClassListFile: !!classListFile,
+    hasIepDatesFile: !!iepDatesFile,
   });
 
   perf.end({ success: true });
@@ -154,6 +179,9 @@ export async function runUpdateOnlyPreview(ctx: PipelineContext): Promise<NextRe
     classList: classListFile && classList
       ? { fileName: classListFile.name, read: classList.read, matched: matchedClassListNames.size, warnings: classList.warnings }
       : null,
+    iepDates: iepDatesFile && iepDates
+      ? { fileName: iepDatesFile.name, read: iepDates.read, matched: matchedIepDatesNames.size, warnings: iepDates.warnings }
+      : null,
   });
 
   return NextResponse.json({ success: true, mode: 'update', data });
@@ -166,7 +194,7 @@ export async function runUpdateOnlyPreview(ctx: PipelineContext): Promise<NextRe
  */
 export async function runStudentsPreview(ctx: PipelineContext, file: File): Promise<NextResponse> {
   const { supabase, userId, form, perf } = ctx;
-  const { deliveriesFile, classListFile, currentSchoolId, currentSchoolSite } = form;
+  const { deliveriesFile, classListFile, iepDatesFile, currentSchoolId, currentSchoolSite } = form;
 
   const { isExcel, isCSV } = classifyStudentsFileType(file);
   if (!isExcel && !isCSV) {
@@ -275,6 +303,21 @@ export async function runStudentsPreview(ctx: PipelineContext, file: File): Prom
       classListWarnings.push({ row: 0, message: `Failed to parse class list file: ${errorMessage(error)}` });
     }
   }
+  let iepDates: Awaited<ReturnType<typeof parseIepDatesFile>> | null = null;
+  let iepDatesInScope: Map<string, IepDatesRecord> | null = null;
+  const iepDatesWarnings: Note[] = [];
+  if (iepDatesFile) {
+    try {
+      iepDates = await parseIepDatesFile(iepDatesFile);
+      iepDatesWarnings.push(...iepDates.warnings);
+      const scoped = scopeIepDatesToSchool(iepDates.records, currentSchoolSite, profile?.works_at_multiple_schools);
+      iepDatesInScope = scoped.records;
+      iepDatesWarnings.push(...scoped.warnings);
+    } catch (error) {
+      log.error('Failed to parse IEP dates file', error instanceof Error ? error : null, { userId });
+      iepDatesWarnings.push({ row: 0, message: `Failed to parse IEP dates file: ${errorMessage(error)}` });
+    }
+  }
 
   const dbTeachers = classList && classList.students.size > 0 ? await fetchTeachers(supabase, currentSchoolId) : [];
 
@@ -302,11 +345,12 @@ export async function runStudentsPreview(ctx: PipelineContext, file: File): Prom
   }
   const databaseStudents = toDatabaseStudents(dbStudentsInSchool, studentDetails);
 
-  const { studentPreviews, matchedDeliveryNames, matchedClassListNames } = buildStudentPreviews({
+  const { studentPreviews, matchedDeliveryNames, matchedClassListNames, matchedIepDatesNames } = buildStudentPreviews({
     parsedStudents: filteredStudents,
     databaseStudents,
     deliveriesData: deliveries?.deliveries ?? null,
     classListData: classList?.students ?? null,
+    iepDatesData: iepDatesInScope,
     dbTeachers,
     // Only enrich no-name rows by initials+grade when details actually loaded
     // (otherwise a merely-unloaded name would look blank and could be overwritten).
@@ -328,6 +372,8 @@ export async function runStudentsPreview(ctx: PipelineContext, file: File): Prom
     matchedDeliveryNames,
     matchedClassListNames,
     filteredOutNames,
+    iepDatesInScope,
+    matchedIepDatesNames,
   );
 
   const counts = summarizePreviews(studentPreviews);
@@ -342,6 +388,7 @@ export async function runStudentsPreview(ctx: PipelineContext, file: File): Prom
     withTeacher: counts.withTeacher,
     hasDeliveriesFile: !!deliveriesFile,
     hasClassListFile: !!classListFile,
+    hasIepDatesFile: !!iepDatesFile,
   });
 
   perf.end({ success: true });
@@ -359,6 +406,9 @@ export async function runStudentsPreview(ctx: PipelineContext, file: File): Prom
       : null,
     classList: classListFile
       ? { fileName: classListFile.name, read: classList?.read ?? 0, matched: matchedClassListNames.size, warnings: classListWarnings }
+      : null,
+    iepDates: iepDatesFile
+      ? { fileName: iepDatesFile.name, read: iepDates?.read ?? 0, matched: matchedIepDatesNames.size, warnings: iepDatesWarnings }
       : null,
     unmatchedStudents,
   });

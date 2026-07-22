@@ -71,7 +71,7 @@ export async function loadStudentDetails(
   if (!dbStudents || dbStudents.length === 0) return { data: null, error: null };
   const { data, error } = await supabase
     .from('student_details')
-    .select('student_id, first_name, last_name, iep_goals')
+    .select('student_id, first_name, last_name, iep_goals, upcoming_iep_date, upcoming_triennial_date')
     .in('student_id', dbStudents.map(s => s.id));
   return { data: (data as unknown as StudentDetailRow[] | null), error };
 }
@@ -89,7 +89,7 @@ export async function loadJoinedStudents(
       grade_level,
       school_site,
       school_id,
-      student_details!inner(first_name, last_name)
+      student_details!inner(first_name, last_name, upcoming_iep_date, upcoming_triennial_date)
     `)
     .eq('provider_id', userId);
   return { data: (data as unknown as JoinedExistingStudent[] | null), error };

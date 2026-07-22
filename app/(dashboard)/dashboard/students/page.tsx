@@ -442,6 +442,11 @@ export default function StudentsPage() {
                 minutesPerSession: row.schedule?.minutesPerSession,
                 teacherId: row.teacher?.teacherId || undefined,
                 teacherName: row.teacher?.teacherName || undefined,
+                // IEP Dates (SPE-303): presence-keyed — send a date only when the
+                // IEP Dates file supplied one, so the confirm write overwrites on
+                // presence (file wins) and leaves it untouched on absence.
+                upcomingIepDate: row.iepDates?.upcomingIepDate?.value,
+                upcomingTriennialDate: row.iepDates?.upcomingTriennialDate?.value,
               }));
 
               const response = await fetch('/api/import-students/confirm', {

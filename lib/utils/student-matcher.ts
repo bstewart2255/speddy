@@ -17,6 +17,9 @@ export interface DatabaseStudent {
   sessions_per_week?: number;
   minutes_per_session?: number;
   teacher_id?: string;
+  // Stored IEP compliance dates (ISO YYYY-MM-DD), for IEP Dates change detection (SPE-303).
+  upcoming_iep_date?: string | null;
+  upcoming_triennial_date?: string | null;
 }
 
 export interface StudentMatch {

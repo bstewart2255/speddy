@@ -96,4 +96,40 @@ describe('student-import shared contract (SPE-236)', () => {
     expect(row.action).toBe('insert');
     expect(row.goals).toEqual(['Read 90 wpm']);
   });
+
+  it('pins the IEP Dates wire + confirm fields (SPE-303)', () => {
+    const payload = {
+      students: [
+        {
+          firstName: 'Ivy',
+          lastName: 'Ng',
+          initials: 'IN',
+          gradeLevel: '3',
+          action: 'update',
+          studentId: 'stu-1',
+          iepDates: {
+            upcomingIepDate: { value: '2026-09-01', old: '2026-01-01', changed: true },
+            upcomingTriennialDate: { value: '2027-05-12', old: null, changed: true },
+          },
+        },
+      ],
+      summary: { total: 1, updates: 1 },
+    } satisfies BulkPreviewData;
+
+    const model = adaptBulkPreview(payload);
+    expect(model.rows[0].iepDates?.upcomingIepDate?.value).toBe('2026-09-01');
+
+    const confirmRow = {
+      firstName: 'Ivy',
+      lastName: 'Ng',
+      initials: 'IN',
+      gradeLevel: '3',
+      goals: [],
+      action: 'update',
+      studentId: 'stu-1',
+      upcomingIepDate: '2026-09-01',
+      upcomingTriennialDate: '2027-05-12',
+    } satisfies StudentToImport;
+    expect(confirmRow.upcomingIepDate).toBe('2026-09-01');
+  });
 });

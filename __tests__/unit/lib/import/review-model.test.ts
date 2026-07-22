@@ -133,6 +133,42 @@ describe('adaptBulkPreview (SPE-227)', () => {
     expect(model.files).toEqual([]); // no files field on the payload → empty receipts
   });
 
+  it('carries IEP dates onto the row and derives the IEP dates receipt (SPE-303)', () => {
+    const data: BulkPreviewData = {
+      mode: 'update',
+      students: [
+        {
+          firstName: 'Ivy',
+          lastName: 'Ng',
+          initials: 'IN',
+          gradeLevel: '3',
+          action: 'update',
+          studentId: 'stu-11',
+          iepDates: {
+            upcomingIepDate: { value: '2026-09-01', old: '2026-01-01', changed: true },
+            upcomingTriennialDate: { value: '2027-05-12', old: '2027-05-12', changed: false },
+          },
+        },
+      ],
+      summary: { total: 1, inserts: 0, updates: 1, skips: 0 },
+      files: [{ fileKey: 'iepDatesFile', fileName: 'IEPDates.csv', read: 1, matched: 1, filtered: 0 }],
+      unmatchedStudents: [{ name: 'Other Kid', source: 'iepDates' }],
+    };
+
+    const model = adaptBulkPreview(data);
+    const row = model.rows[0];
+    expect(row.iepDates?.upcomingIepDate).toEqual({ value: '2026-09-01', old: '2026-01-01', changed: true });
+    expect(row.iepDates?.upcomingTriennialDate?.changed).toBe(false);
+    // Receipt label/fills derive from the iepDatesFile key.
+    expect(model.files[0]).toMatchObject({ label: 'IEP dates', fills: 'review & triennial dates' });
+    // Unmatched IEP-dates row surfaces as an exception under its own source.
+    expect(model.exceptions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: 'unmatched-student', name: 'Other Kid', source: 'iepDates' }),
+      ]),
+    );
+  });
+
   it('counts inserts/updates/skips and totals goals over selectable rows only', () => {
     const data: BulkPreviewData = {
       students: [

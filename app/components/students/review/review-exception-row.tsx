@@ -28,10 +28,14 @@ export function ReviewExceptionRow({ exception, teacherOverride, onResolveTeache
         <div className="min-w-0">
           <span className="font-medium text-gray-900">{exception.name}</span>{' '}
           <span className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600">
-            {exception.source === 'deliveries' ? 'Deliveries' : 'Class list'}
+            {exception.source === 'deliveries'
+              ? 'Deliveries'
+              : exception.source === 'iepDates'
+                ? 'IEP dates'
+                : 'Class list'}
           </span>
           <p className="mt-0.5 text-xs text-gray-500">
-            Not in the goals report — won&apos;t be imported. Add via the roster or the Add Student form.
+            Not matched to a student here — won&apos;t be imported. Add via the roster or the Add Student form.
           </p>
         </div>
       </li>
