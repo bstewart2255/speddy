@@ -148,16 +148,19 @@ export async function createInstancesFromTemplate(
       week++;
     }
 
-    // Check which instances already exist
+    // Check which instances already exist. Key this on the DB uniqueness
+    // (student_id, session_date, start_time) — NOT the full template signature.
+    // A row already occupying a (date, start_time) slot with a different end_time
+    // (e.g. today's completed / attendance-marked instance that SPE-294's prune
+    // deliberately preserved across a duration change) must be treated as
+    // existing, or the batch insert below trips unique_session_per_date and every
+    // new row — the whole future series — silently fails. (Concurrency-race
+    // tolerance for the insert itself is tracked separately in SPE-293.)
     const { data: existingInstances, error: checkError } = await supabase
       .from('schedule_sessions')
       .select('session_date')
       .eq('student_id', templateSession.student_id)
-      .eq('provider_id', templateSession.provider_id)
-      .eq('service_type', templateSession.service_type)
-      .eq('day_of_week', templateSession.day_of_week)
       .eq('start_time', templateSession.start_time)
-      .eq('end_time', templateSession.end_time)
       .in('session_date', datesToCreate)
       .not('session_date', 'is', null);
 

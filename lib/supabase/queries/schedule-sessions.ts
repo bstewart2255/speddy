@@ -20,8 +20,10 @@ import type { SupabaseClient, PostgrestError } from '@supabase/supabase-js';
  * with an ON DELETE CASCADE FK, so deleting a marked instance would destroy its
  * present/absent record — a compliance record. Those are preserved here, as is
  * all past and explicitly-completed history. Accepts one template id or many
- * (e.g. clearing a day). Two-pass because PostgREST can't express the anti-join
- * inline; RLS scopes both the attendance read and the delete to the caller.
+ * (e.g. clearing a day). Reads the candidate ids up front (paginated, since
+ * clearing a busy day can exceed PostgREST's 1000-row cap) then deletes in
+ * chunks; PostgREST can't express the attendance anti-join inline. RLS scopes
+ * both the attendance read and the delete to the caller.
  */
 export async function deleteFutureTemplateInstances(
   supabase: SupabaseClient<Database>,
@@ -32,36 +34,55 @@ export async function deleteFutureTemplateInstances(
 
   const today = formatDateLocal(new Date());
 
-  // Candidates: this template's future, not-explicitly-completed instances.
-  const { data: candidates, error: candErr } = await supabase
-    .from('schedule_sessions')
-    .select('id')
-    .in('template_id', ids)
-    .gte('session_date', today)
-    .is('completed_at', null);
-  if (candErr) return { deleted: 0, error: candErr };
-
-  const candidateIds = (candidates ?? []).map((c) => c.id);
+  // Collect candidates: each template's future, not-explicitly-completed
+  // instances. Paginate (PostgREST caps a single response at 1000 rows, and
+  // templates now generate through the school year end) and read every id
+  // before deleting anything, so the scan isn't disturbed mid-pass.
+  const PAGE = 1000;
+  const candidateIds: string[] = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await supabase
+      .from('schedule_sessions')
+      .select('id')
+      .in('template_id', ids)
+      .gte('session_date', today)
+      .is('completed_at', null)
+      .order('id', { ascending: true })
+      .range(from, from + PAGE - 1);
+    if (error) return { deleted: 0, error };
+    const batch = data ?? [];
+    for (const row of batch) candidateIds.push(row.id);
+    if (batch.length < PAGE) break;
+  }
   if (candidateIds.length === 0) return { deleted: 0, error: null };
 
-  // Preserve any candidate that already has recorded attendance — the FK cascade
-  // would otherwise delete that present/absent record along with the instance.
-  const { data: marked, error: attErr } = await supabase
-    .from('attendance')
-    .select('session_id')
-    .in('session_id', candidateIds);
-  if (attErr) return { deleted: 0, error: attErr };
+  // Delete in chunks, preserving any instance that already has recorded
+  // attendance — the ON DELETE CASCADE FK would otherwise destroy that
+  // present/absent record. Chunking also bounds the `.in(...)` URL length.
+  const CHUNK = 200;
+  let deleted = 0;
+  for (let i = 0; i < candidateIds.length; i += CHUNK) {
+    const chunk = candidateIds.slice(i, i + CHUNK);
 
-  const markedIds = new Set((marked ?? []).map((m) => m.session_id));
-  const deletableIds = candidateIds.filter((id) => !markedIds.has(id));
-  if (deletableIds.length === 0) return { deleted: 0, error: null };
+    const { data: marked, error: attErr } = await supabase
+      .from('attendance')
+      .select('session_id')
+      .in('session_id', chunk);
+    if (attErr) return { deleted, error: attErr };
 
-  const { count, error } = await supabase
-    .from('schedule_sessions')
-    .delete({ count: 'exact' })
-    .in('id', deletableIds);
+    const markedIds = new Set((marked ?? []).map((m) => m.session_id));
+    const deletableIds = chunk.filter((id) => !markedIds.has(id));
+    if (deletableIds.length === 0) continue;
 
-  return { deleted: count ?? 0, error };
+    const { count, error } = await supabase
+      .from('schedule_sessions')
+      .delete({ count: 'exact' })
+      .in('id', deletableIds);
+    if (error) return { deleted, error };
+    deleted += count ?? 0;
+  }
+
+  return { deleted, error: null };
 }
 
 /**
