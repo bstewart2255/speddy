@@ -63,6 +63,29 @@ describe('StudentImportModal (SPE-231)', () => {
     expect(screen.getByRole('button', { name: /^Import$/ })).toBeDisabled();
   });
 
+  it('shows the goals-first rule and the SEIS/Aeries file guide, which collapses', () => {
+    renderModal();
+
+    // The dependency rule that trips up new users (Goals creates students).
+    expect(screen.getByText(/Start with the Student Goals report/i)).toBeInTheDocument();
+
+    // The guide is open by default: 3 SEIS files + 1 Aeries file, grouped, with
+    // each file's outcome and its "Start here" anchor.
+    expect(screen.getByText(/3 files/i)).toBeInTheDocument();
+    expect(screen.getByText(/1 file/i)).toBeInTheDocument();
+    expect(screen.getByText('Class list')).toBeInTheDocument();
+    expect(screen.getByText(/Annual review & triennial dates/i)).toBeInTheDocument();
+    expect(screen.getByText(/Teacher assignments/i)).toBeInTheDocument();
+    expect(screen.getByText('Start here')).toBeInTheDocument();
+
+    // It collapses so it isn't clutter for a repeat user.
+    const toggle = screen.getByRole('button', { name: /Where to find each file/i });
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText(/3 files/i)).not.toBeInTheDocument();
+  });
+
   it('detects a Deliveries CSV, labels its contribution, and enables Import', async () => {
     renderModal();
     fireEvent.change(fileInput(), {
