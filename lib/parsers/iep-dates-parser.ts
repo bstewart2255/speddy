@@ -68,6 +68,36 @@ function parseIepDate(raw: string): string | undefined {
   return valid ? iso : undefined;
 }
 
+// Windows-1252 differs from latin1 (ISO-8859-1) only in 0x80–0x9F, where it maps
+// most bytes to printable punctuation/letters rather than C1 control chars
+// (notably 0x92 → "’" U+2019). We decode manually — latin1 (always available on
+// Buffer) plus this remap — instead of TextDecoder('windows-1252'), which is NOT
+// reliably available in every runtime: small-ICU Node builds throw on it, and the
+// jsdom test environment's TextDecoder decodes it incorrectly. Undefined
+// Windows-1252 slots (0x81, 0x8D, 0x8F, 0x90, 0x9D) fall through unchanged.
+const WINDOWS_1252_C1: Record<number, string> = {
+  0x80: '€', 0x82: '‚', 0x83: 'ƒ', 0x84: '„', 0x85: '…',
+  0x86: '†', 0x87: '‡', 0x88: 'ˆ', 0x89: '‰', 0x8a: 'Š',
+  0x8b: '‹', 0x8c: 'Œ', 0x8e: 'Ž', 0x91: '‘', 0x92: '’',
+  0x93: '“', 0x94: '”', 0x95: '•', 0x96: '–', 0x97: '—',
+  0x98: '˜', 0x99: '™', 0x9a: 'š', 0x9b: '›', 0x9c: 'œ',
+  0x9e: 'ž', 0x9f: 'Ÿ',
+};
+
+function decodeWindows1252(buffer: Buffer): string {
+  // latin1 maps each byte to U+00XX, so the C1 range (0x80-0x9F) is the only
+  // place we diverge from Windows-1252. Walk the bytes and remap that range.
+  const chars: string[] = [];
+  for (const byte of buffer) {
+    chars.push(
+      byte >= 0x80 && byte <= 0x9f
+        ? WINDOWS_1252_C1[byte] ?? String.fromCharCode(byte)
+        : String.fromCharCode(byte),
+    );
+  }
+  return chars.join('');
+}
+
 /** Normalize an already-split header cell: strip quotes, collapse whitespace, lowercase. */
 function normalizeHeader(cell: string): string {
   return cell
@@ -109,11 +139,11 @@ export async function parseIepDatesCSV(buffer: Buffer): Promise<IepDatesParseRes
 
   // Choose the encoding from the raw bytes: valid UTF-8 stays UTF-8; otherwise the
   // file is a Windows-1252 export (what SEIS/Windows tools ship), decoded via
-  // TextDecoder so bytes in 0x80–0x9F resolve to the intended punctuation — most
-  // importantly 0x92 → "’" (U+2019). Plain latin1 would map 0x92 to a C1 control
-  // char, corrupting names like "O’Connor" into a different normalized match key
-  // that would silently miss the student (0xF1 → ñ agrees in both encodings, so
-  // it doesn't exercise this difference).
+  // decodeWindows1252 so bytes in 0x80–0x9F resolve to the intended punctuation —
+  // most importantly 0x92 → "’" (U+2019). Plain latin1 would map 0x92 to a C1
+  // control char, corrupting names like "O’Connor" into a different normalized
+  // match key that would silently miss the student (0xF1 → ñ agrees in both
+  // encodings, so it doesn't exercise this difference).
   const isUtf8 = (() => {
     try {
       new TextDecoder('utf-8', { fatal: true }).decode(buffer);
@@ -127,10 +157,10 @@ export async function parseIepDatesCSV(buffer: Buffer): Promise<IepDatesParseRes
   try {
     allRecords = isUtf8
       ? parse(buffer, { encoding: 'utf-8', ...parseOptions })
-      : parse(new TextDecoder('windows-1252').decode(buffer), parseOptions);
+      : parse(decodeWindows1252(buffer), parseOptions);
   } catch {
     // Last-resort fallback for any other hard parse/decoding error.
-    allRecords = parse(new TextDecoder('windows-1252').decode(buffer), parseOptions);
+    allRecords = parse(decodeWindows1252(buffer), parseOptions);
   }
 
   // Drop whitespace-only lines (which parse to a single blank field) so row
