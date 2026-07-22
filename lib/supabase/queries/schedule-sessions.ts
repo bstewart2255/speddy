@@ -1,16 +1,77 @@
 import { createClient } from '@/lib/supabase/client';
 import { safeQuery } from '@/lib/supabase/safe-query';
 import { measurePerformanceWithAlerts } from '@/lib/monitoring/performance-alerts';
+import { formatDateLocal } from '@/lib/utils/date-helpers';
 import type { Database } from '../../../src/types/database';
 import type { SupabaseClient, PostgrestError } from '@supabase/supabase-js';
+
+/**
+ * SPE-294: delete a template's FUTURE, not-yet-completed, UNMARKED dated instances.
+ *
+ * Every active scheduled template carries up to 12 weeks of pre-materialized
+ * future instances (the SPE-291 rolling top-up). Whenever a template stops being
+ * live at its current slot — a move (its old-slot rows), unschedule, archive, or
+ * a per-template caseload decrease — those rows must go, or each becomes a
+ * phantom "unmarked session" in the attendance widget (`/api/attendance/summary`)
+ * once its date passes.
+ *
+ * "Strandable" = `session_date >= today` AND `completed_at IS NULL` AND has NO
+ * row in `attendance`. Attendance lives in a separate table joined by session id
+ * with an ON DELETE CASCADE FK, so deleting a marked instance would destroy its
+ * present/absent record — a compliance record. Those are preserved here, as is
+ * all past and explicitly-completed history. Accepts one template id or many
+ * (e.g. clearing a day). Two-pass because PostgREST can't express the anti-join
+ * inline; RLS scopes both the attendance read and the delete to the caller.
+ */
+export async function deleteFutureTemplateInstances(
+  supabase: SupabaseClient<Database>,
+  templateIds: string | string[]
+): Promise<{ deleted: number; error: PostgrestError | null }> {
+  const ids = Array.isArray(templateIds) ? templateIds : [templateIds];
+  if (ids.length === 0) return { deleted: 0, error: null };
+
+  const today = formatDateLocal(new Date());
+
+  // Candidates: this template's future, not-explicitly-completed instances.
+  const { data: candidates, error: candErr } = await supabase
+    .from('schedule_sessions')
+    .select('id')
+    .in('template_id', ids)
+    .gte('session_date', today)
+    .is('completed_at', null);
+  if (candErr) return { deleted: 0, error: candErr };
+
+  const candidateIds = (candidates ?? []).map((c) => c.id);
+  if (candidateIds.length === 0) return { deleted: 0, error: null };
+
+  // Preserve any candidate that already has recorded attendance — the FK cascade
+  // would otherwise delete that present/absent record along with the instance.
+  const { data: marked, error: attErr } = await supabase
+    .from('attendance')
+    .select('session_id')
+    .in('session_id', candidateIds);
+  if (attErr) return { deleted: 0, error: attErr };
+
+  const markedIds = new Set((marked ?? []).map((m) => m.session_id));
+  const deletableIds = candidateIds.filter((id) => !markedIds.has(id));
+  if (deletableIds.length === 0) return { deleted: 0, error: null };
+
+  const { count, error } = await supabase
+    .from('schedule_sessions')
+    .delete({ count: 'exact' })
+    .in('id', deletableIds);
+
+  return { deleted: count ?? 0, error };
+}
 
 /**
  * Removes a schedule_sessions row while preserving instance history.
  *
  * - A dated instance the user explicitly removed is hard-deleted.
- * - A template that has >=1 dated instance is soft-deleted (deleted_at set), so
- *   those instances keep a valid template_id and completed history survives.
- * - A template with no instances is hard-deleted (nothing to preserve).
+ * - A template's FUTURE, not-yet-completed instances are pruned first (SPE-294),
+ *   so the top-up's future rows don't linger as phantom "unmarked" sessions.
+ * - The template is then soft-deleted (deleted_at set) iff past/completed history
+ *   remains — keeping a valid template_id for it — else hard-deleted.
  *
  * Template reads must filter `.is('deleted_at', null)` so archived templates stay
  * out of the schedule grid, count math, conflict checks, and instance generation.
@@ -34,7 +95,13 @@ export async function deleteOrArchiveTemplate(
     return { archived: false, error };
   }
 
-  // Template: archive only if it has instances worth keeping.
+  // Prune this template's future, not-yet-completed instances (SPE-294) before
+  // deciding archive vs hard-delete, so the archive decision is based on the
+  // history actually worth keeping.
+  const { error: pruneError } = await deleteFutureTemplateInstances(supabase, sessionId);
+  if (pruneError) return { archived: false, error: pruneError };
+
+  // Archive only if past/completed history remains after the prune.
   const { count, error: countError } = await supabase
     .from('schedule_sessions')
     .select('id', { count: 'exact', head: true })
