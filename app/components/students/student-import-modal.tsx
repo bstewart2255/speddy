@@ -1,6 +1,7 @@
 'use client';
 
 import { useRef, useState } from 'react';
+import { ChevronRight, Info } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Modal } from '../ui/modal';
 import { Spinner } from '../ui/spinner';
@@ -45,12 +46,61 @@ CD,5,Davis,1,45
 EF,2,Wilson,2,30
 GH,4,Garcia,3,30`;
 
-const CONTRIBUTION_LEGEND = [
-  { label: 'Goals report', fills: 'students & IEP goals' },
-  { label: 'Deliveries', fills: 'schedules' },
-  { label: 'Class list', fills: 'teachers' },
-  { label: 'IEP dates', fills: 'review & triennial dates' },
-  { label: 'Roster', fills: 'student list' },
+// Where each SEIS/Aeries export lives and what it fills in Speddy. Drives the
+// collapsible "Where to find each file" guide so a first-time user can locate
+// and recognize each file without leaving the modal. The click-paths are the
+// real in-product navigation for each source system.
+interface GuideFile {
+  name: string;
+  /** What this file populates in Speddy. */
+  fills: string;
+  /** Click-path steps within the source system; the last step is emphasized. */
+  path: string[];
+  /** Extra locator shown after the path (e.g. where a button sits, the format). */
+  pathAside?: string;
+  /** Caveat shown under the path. */
+  note?: string;
+  /** Marks the file that creates students — the one to upload first. */
+  startHere?: boolean;
+}
+
+const FILE_GUIDE: Array<{ source: string; count: string; files: GuideFile[] }> = [
+  {
+    source: 'SEIS',
+    count: '3 files',
+    files: [
+      {
+        name: 'Student Goals report',
+        fills: 'Your students + their IEP goals',
+        path: ['Goals', 'Student Goals Report', 'Generate Report', 'Download'],
+        startHere: true,
+      },
+      {
+        name: 'Deliveries',
+        fills: 'Session schedules (how often & how long)',
+        path: ['Service Tracker', 'Deliveries', '“Excel” button'],
+        pathAside: 'top-right of Search Results',
+        note: 'Downloads as a .csv even though the button says “Excel” — that’s fine.',
+      },
+      {
+        name: 'IEP Dates',
+        fills: 'Annual review & triennial dates',
+        path: ['Students', 'IEP Dates', 'Download Data', 'All Records', 'Go'],
+      },
+    ],
+  },
+  {
+    source: 'Aeries',
+    count: '1 file',
+    files: [
+      {
+        name: 'Class list',
+        fills: 'Teacher assignments',
+        path: ['View All Reports', 'Special Ed Class List', 'Print by Teacher'],
+        pathAside: '.txt',
+      },
+    ],
+  },
 ];
 
 export function StudentImportModal({
@@ -63,6 +113,9 @@ export function StudentImportModal({
   const [isDragging, setIsDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  // The "where to find each file" guide defaults open so a first-time user sees
+  // it; a repeat user can collapse it and it stays collapsed for the session.
+  const [guideOpen, setGuideOpen] = useState(true);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const idCounter = useRef(0);
@@ -232,7 +285,7 @@ export function StudentImportModal({
       isOpen={isOpen}
       onClose={handleClose}
       title="Import Students"
-      description="Drop your SEIS and Aeries files — we'll detect what each one is."
+      description="Upload your reports from SEIS and Aeries — drop them in together and Speddy figures out what each one is."
       size="2xl"
       dismissable={!uploading}
       footer={
@@ -326,15 +379,71 @@ export function StudentImportModal({
           className="hidden"
         />
 
-        {/* Contribution legend */}
-        <p className="text-xs text-gray-500">
-          {CONTRIBUTION_LEGEND.map((item, i) => (
-            <span key={item.label}>
-              {i > 0 && <span className="text-gray-300"> · </span>}
-              <span className="font-medium text-gray-600">{item.label}</span> → {item.fills}
-            </span>
-          ))}
-        </p>
+        {/* How the import works — the one rule that trips up new users. */}
+        <div className="flex gap-2.5 rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs leading-relaxed text-gray-600">
+          <Info className="mt-0.5 h-4 w-4 shrink-0 text-blue-500" aria-hidden="true" />
+          <p>
+            <span className="font-semibold text-gray-900">Start with the Student Goals report</span> — it&rsquo;s
+            the only file that creates your students. The other three just add details (schedules, dates,
+            teachers) to students Speddy already has, so on their own they have nothing to attach to. Uploading
+            everything at once works perfectly: Goals creates each student, the rest fill in the details.
+          </p>
+        </div>
+
+        {/* Collapsible guide: where to find each file and what it fills. */}
+        <div className="overflow-hidden rounded-lg border border-gray-200">
+          <button
+            type="button"
+            onClick={() => setGuideOpen((v) => !v)}
+            aria-expanded={guideOpen}
+            className="flex w-full items-center justify-between gap-2 bg-gray-50 px-3.5 py-2.5 text-left text-sm font-semibold text-gray-800 hover:text-blue-700 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500"
+          >
+            <span>Where to find each file &amp; what it fills</span>
+            <ChevronRight
+              className={`h-4 w-4 shrink-0 text-gray-400 transition-transform ${guideOpen ? 'rotate-90' : ''}`}
+              aria-hidden="true"
+            />
+          </button>
+
+          {guideOpen && (
+            <div className="divide-y divide-gray-100 border-t border-gray-200 px-3.5">
+              {FILE_GUIDE.map((group) => (
+                <div key={group.source} className="py-3">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
+                    {group.source} · {group.count}
+                  </p>
+                  <ul className="divide-y divide-dashed divide-gray-200">
+                    {group.files.map((file) => (
+                      <li key={file.name} className="py-2 first:pt-0 last:pb-0">
+                        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                          <span className="text-sm font-semibold text-gray-900">{file.name}</span>
+                          {file.startHere && (
+                            <span className="rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-700">
+                              Start here
+                            </span>
+                          )}
+                        </div>
+                        <p className="mt-0.5 text-sm font-medium text-blue-700">{file.fills}</p>
+                        <p className="mt-1 text-xs leading-relaxed text-gray-500">
+                          {file.path.map((step, i) => (
+                            <span key={`${i}-${step}`}>
+                              {i > 0 && <span className="px-1 text-gray-300"> → </span>}
+                              <span className={i === file.path.length - 1 ? 'font-semibold text-gray-700' : undefined}>
+                                {step}
+                              </span>
+                            </span>
+                          ))}
+                          {file.pathAside && <span className="text-gray-400"> ({file.pathAside})</span>}
+                        </p>
+                        {file.note && <p className="mt-1 text-xs italic text-gray-400">{file.note}</p>}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
 
         {/* Detected files */}
         {entries.length > 0 && (
@@ -383,7 +492,7 @@ export function StudentImportModal({
 
         {/* Roster template download */}
         <p className="text-xs text-gray-500">
-          Have your caseload in a spreadsheet?{' '}
+          No SEIS or Aeries export handy?{' '}
           <button
             type="button"
             onClick={downloadTemplate}
@@ -391,6 +500,7 @@ export function StudentImportModal({
           >
             Download the roster template
           </button>
+          , fill it in, and upload that instead — it creates students too.
         </p>
 
         {schoolLabel && (
