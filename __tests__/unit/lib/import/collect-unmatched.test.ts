@@ -12,9 +12,12 @@
 import { collectUnmatched } from '@/lib/import/respond';
 import type { DeliveryRecord } from '@/lib/parsers/deliveries-parser';
 import type { ClassListStudent } from '@/lib/parsers/class-list-parser';
+import type { IepDatesRecord } from '@/lib/parsers/iep-dates-parser';
 
 const delivery = (name: string) => ({ name }) as unknown as DeliveryRecord;
 const classListStudent = (name: string) => ({ name }) as unknown as ClassListStudent;
+const iepRecord = (firstName: string, lastName: string) =>
+  ({ firstName, lastName }) as unknown as IepDatesRecord;
 
 describe('collectUnmatched — school-filter suppression (SPE-268)', () => {
   it('suppresses a filtered-out (other-school) delivery but keeps genuinely-unknown ones', () => {
@@ -49,5 +52,22 @@ describe('collectUnmatched — school-filter suppression (SPE-268)', () => {
     ]);
     const result = collectUnmatched(deliveries, null, new Set(), new Set());
     expect(result.map(r => r.name).sort()).toEqual(['Bishop, Ben', 'Unknown, Uma']);
+  });
+
+  it('collects unmatched IEP-dates rows under source iepDates (SPE-303)', () => {
+    const iepDates = new Map<string, IepDatesRecord>([
+      ['ana-alvarez', iepRecord('Ana', 'Alvarez')], // matched — never unmatched
+      ['uma-unknown', iepRecord('Uma', 'Unknown')], // genuinely unknown → keep
+    ]);
+    const result = collectUnmatched(
+      null,
+      null,
+      new Set(),
+      new Set(),
+      undefined,
+      iepDates,
+      new Set(['ana-alvarez']), // matched IEP-dates names
+    );
+    expect(result).toEqual([{ name: 'Uma Unknown', source: 'iepDates' }]);
   });
 });

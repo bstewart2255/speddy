@@ -301,6 +301,16 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
             updatePayload.teacherId = student.teacherId;
             updatePayload.teacherName = student.teacherName ?? null;
           }
+          // IEP Dates (SPE-303): presence-keyed like teacherId. The client sends a
+          // date only when the IEP Dates file supplied one, so the RPC overwrites
+          // the stored value (file wins) on presence and leaves it untouched on
+          // absence — an import without this file never nulls an existing date.
+          if (student.upcomingIepDate !== undefined) {
+            updatePayload.upcomingIepDate = student.upcomingIepDate;
+          }
+          if (student.upcomingTriennialDate !== undefined) {
+            updatePayload.upcomingTriennialDate = student.upcomingTriennialDate;
+          }
           batchPayload.push(updatePayload);
         } else {
           // Insert. Set `teacher_name` alongside `teacher_id` when a teacher
@@ -323,7 +333,11 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
             teacherName: student.teacherId ? (student.teacherName ?? null) : null,
             firstName: student.firstName,
             lastName: student.lastName,
-            goals: student.goals
+            goals: student.goals,
+            // IEP Dates (SPE-303): a new student created from the goals file may
+            // also match the IEP Dates file. Null when absent (a fresh row).
+            upcomingIepDate: student.upcomingIepDate ?? null,
+            upcomingTriennialDate: student.upcomingTriennialDate ?? null
           });
           addedInThisBatch.add(duplicateKey);
         }

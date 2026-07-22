@@ -8,6 +8,7 @@
  * consumed by the review UI).
  */
 import type { DatabaseStudent } from '@/lib/utils/student-matcher';
+import type { IepDatesPreview } from '@/lib/types/student-import';
 
 /** Awaited server Supabase client type, without a runtime import of the module. */
 export type ImportSupabaseClient = Awaited<
@@ -75,6 +76,8 @@ export interface StudentPreview {
   schedule?: ScheduleData;
   // New fields from Class List file
   teacher?: TeacherMatch;
+  // New fields from the SEIS IEP Dates report (SPE-303)
+  iepDates?: IepDatesPreview;
 }
 
 /**
@@ -88,7 +91,10 @@ export interface StudentUpdate {
   firstName: string;
   lastName: string;
   gradeLevel: string | null;
-  action: 'update'; // Always 'update' for Deliveries/ClassList-only mode
+  // 'update' when the file(s) change something; 'skip' when an IEP Dates match
+  // carries only dates identical to what's stored (SPE-303). Deliveries/class-list
+  // matches are always 'update' (they carry no change detection of their own).
+  action: 'update' | 'skip';
   schedule?: {
     sessionsPerWeek: number;
     minutesPerSession: number;
@@ -101,11 +107,13 @@ export interface StudentUpdate {
     confidence: 'high' | 'medium' | 'low' | 'none';
     reason: string;
   };
+  // From the SEIS IEP Dates report (SPE-303).
+  iepDates?: IepDatesPreview;
 }
 
 export interface UnmatchedStudent {
   name: string;
-  source: 'deliveries' | 'classList';
+  source: 'deliveries' | 'classList' | 'iepDates';
 }
 
 /**

@@ -6,12 +6,16 @@ import type { ReviewRow as ReviewRowData } from '@/lib/import/review-model';
 import { ReviewRow } from './review-row';
 import type { ReviewSelection } from './use-review-selection';
 
-const COLUMN_COUNT = 8;
+const BASE_COLUMN_COUNT = 8;
 
 /**
  * Zone 4 (SPE-227): the column-scannable table. Uniform columns so verification
  * happens one attribute at a time (sweep Grade, then Teacher, then Schedule),
  * grouped New → Updated, with unchanged rows collapsed to a single line.
+ *
+ * The IEP dates column (SPE-303) appears only when an IEP Dates file is in play
+ * (any row carries dates) — so the goals-only and per-student modes don't show an
+ * always-empty column.
  */
 export function ReviewTable({
   rows,
@@ -25,6 +29,9 @@ export function ReviewTable({
 }) {
   const [expandedId, setExpandedId] = useState<string | null>(defaultExpandedId ?? null);
   const [showUnchanged, setShowUnchanged] = useState(false);
+
+  const showIepDates = rows.some((r) => r.iepDates);
+  const columnCount = BASE_COLUMN_COUNT + (showIepDates ? 1 : 0);
 
   const inserts = rows.filter((r) => r.action === 'insert');
   const updates = rows.filter((r) => r.action === 'update');
@@ -40,7 +47,8 @@ export function ReviewTable({
         selection={selection}
         isExpanded={expandedId === row.id}
         onToggleExpand={() => toggleExpand(row.id)}
-        columnCount={COLUMN_COUNT}
+        columnCount={columnCount}
+        showIepDates={showIepDates}
       />
     ));
 
@@ -63,24 +71,25 @@ export function ReviewTable({
               <th scope="col" className="px-3 py-2">Grade</th>
               <th scope="col" className="px-3 py-2">Teacher</th>
               <th scope="col" className="px-3 py-2">Schedule</th>
+              {showIepDates && <th scope="col" className="px-3 py-2">IEP / Triennial</th>}
               <th scope="col" className="px-3 py-2">Goals</th>
               <th scope="col" className="px-3 py-2">Action</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {inserts.length > 0 && <GroupHeader label="New" count={inserts.length} />}
+            {inserts.length > 0 && <GroupHeader label="New" count={inserts.length} columnCount={columnCount} />}
             {renderGroup(inserts)}
-            {updates.length > 0 && <GroupHeader label="Updated" count={updates.length} />}
+            {updates.length > 0 && <GroupHeader label="Updated" count={updates.length} columnCount={columnCount} />}
             {renderGroup(updates)}
             {skips.length > 0 &&
               (showUnchanged ? (
                 <>
-                  <GroupHeader label="Unchanged" count={skips.length} onHide={() => setShowUnchanged(false)} />
+                  <GroupHeader label="Unchanged" count={skips.length} columnCount={columnCount} onHide={() => setShowUnchanged(false)} />
                   {renderGroup(skips)}
                 </>
               ) : (
                 <tr>
-                  <td colSpan={COLUMN_COUNT} className="px-3 py-2">
+                  <td colSpan={columnCount} className="px-3 py-2">
                     <button
                       type="button"
                       onClick={() => setShowUnchanged(true)}
@@ -98,10 +107,10 @@ export function ReviewTable({
   );
 }
 
-function GroupHeader({ label, count, onHide }: { label: string; count: number; onHide?: () => void }) {
+function GroupHeader({ label, count, columnCount, onHide }: { label: string; count: number; columnCount: number; onHide?: () => void }) {
   return (
     <tr className="bg-gray-50/70">
-      <td colSpan={COLUMN_COUNT} className="px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500">
+      <td colSpan={columnCount} className="px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500">
         {label} <span className="tabular-nums text-gray-400">({count})</span>
         {onHide && (
           <button type="button" onClick={onHide} className="ml-2 font-normal normal-case text-gray-500 underline hover:text-gray-700">

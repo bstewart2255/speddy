@@ -18,6 +18,8 @@ const DELIVERIES_HEADER =
 const ROSTER_HEADER = 'Initials,Grade,Teacher,Sessions Per Week,Minutes Per Session';
 const SEIS_GOALS_HEADER =
   'SEIS ID,District ID,Last Name,First Name,Birthdate,Grade,School of Attendance,District of Service,Case Manager,IEP Date';
+const IEP_DATES_HEADER =
+  'SEIS ID,SSID,Last Name,First Name,Student Middle Name,Preferred Name,Date of Birth,District of Service,District of SPED Accountability,School of Attendance,Grade Level,Case Manager,Disability 1,Date of Next Annual Plan Review,Date of Next Reevaluation,Date of IEP (Meeting Date on Future IEP forms),Meeting Type';
 const GENERIC_HEADER = 'Student ID,First Name,Last Name,Grade,Goal';
 
 describe('fileExtension', () => {
@@ -47,6 +49,18 @@ describe('classifyImportFile', () => {
   });
 
   it('routes a SEIS Student Goals CSV to seis-report', () => {
+    expect(classifyImportFile('StudentGoals.csv', SEIS_GOALS_HEADER)).toBe('seis-report');
+  });
+
+  it('routes a SEIS IEP Dates CSV by its compliance-date columns (SPE-303)', () => {
+    expect(classifyImportFile('IEPDates.csv', IEP_DATES_HEADER)).toBe('iep-dates');
+    // Either column alone is sufficient.
+    expect(classifyImportFile('x.csv', 'First Name,Last Name,Date of Next Annual Plan Review')).toBe('iep-dates');
+    expect(classifyImportFile('x.csv', 'First Name,Last Name,Date of Next Reevaluation')).toBe('iep-dates');
+  });
+
+  it('does not misroute the goals report (with an "IEP Date" column) as iep-dates', () => {
+    // The goals report has "IEP Date" but not the "Date of Next ..." columns.
     expect(classifyImportFile('StudentGoals.csv', SEIS_GOALS_HEADER)).toBe('seis-report');
   });
 
@@ -83,6 +97,10 @@ describe('IMPORT_TYPE_META form keys', () => {
   it('maps the roster template to the students file (SPE-225); only unknown has no key', () => {
     expect(IMPORT_TYPE_META['roster-template'].formKey).toBe('studentsFile');
     expect(IMPORT_TYPE_META.unknown.formKey).toBeNull();
+  });
+
+  it('maps IEP dates to its own form key (SPE-303)', () => {
+    expect(IMPORT_TYPE_META['iep-dates'].formKey).toBe('iepDatesFile');
   });
 });
 

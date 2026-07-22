@@ -11,6 +11,7 @@ import { parseSEISReport, ParseResult as SEISParseResult } from '@/lib/parsers/s
 import { parseCSVReport, ParseResult as CSVParseResult } from '@/lib/parsers/csv-parser';
 import { parseDeliveriesCSV, DeliveryRecord } from '@/lib/parsers/deliveries-parser';
 import { parseClassListTXT, ClassListStudent } from '@/lib/parsers/class-list-parser';
+import { parseIepDatesCSV, IepDatesRecord } from '@/lib/parsers/iep-dates-parser';
 import { normalizeSchoolName } from '@/lib/import/normalize-school-name';
 import { MAX_FILE_SIZE_MB } from '@/lib/import/detect-import-file';
 
@@ -18,6 +19,7 @@ export interface ImportForm {
   studentsFile: File | null;
   deliveriesFile: File | null;
   classListFile: File | null;
+  iepDatesFile: File | null;
   currentSchoolId: string | null;
   currentSchoolSite: string | null;
 }
@@ -29,6 +31,7 @@ export async function readImportForm(request: Request): Promise<ImportForm> {
     studentsFile: formData.get('studentsFile') as File | null,
     deliveriesFile: formData.get('deliveriesFile') as File | null,
     classListFile: formData.get('classListFile') as File | null,
+    iepDatesFile: formData.get('iepDatesFile') as File | null,
     currentSchoolId: formData.get('currentSchoolId') as string | null,
     currentSchoolSite: formData.get('currentSchoolSite') as string | null,
   };
@@ -44,9 +47,9 @@ export async function readImportForm(request: Request): Promise<ImportForm> {
  */
 export const MAX_UPLOAD_FILE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 
-/** Ceiling for the whole multipart body: the 3 optional files at the per-file
+/** Ceiling for the whole multipart body: the 4 optional files at the per-file
  *  cap, plus ~1 MB for multipart framing. */
-export const MAX_TOTAL_UPLOAD_BYTES = MAX_UPLOAD_FILE_BYTES * 3 + 1024 * 1024;
+export const MAX_TOTAL_UPLOAD_BYTES = MAX_UPLOAD_FILE_BYTES * 4 + 1024 * 1024;
 
 /** True when the request's Content-Length exceeds the total-body ceiling. */
 export function exceedsTotalUploadSize(request: Request): boolean {
@@ -57,7 +60,7 @@ export function exceedsTotalUploadSize(request: Request): boolean {
 
 /** The first present file over the per-file cap, or null if all are within it. */
 export function findOversizedFile(form: ImportForm): File | null {
-  for (const file of [form.studentsFile, form.deliveriesFile, form.classListFile]) {
+  for (const file of [form.studentsFile, form.deliveriesFile, form.classListFile, form.iepDatesFile]) {
     if (file && typeof file.size === 'number' && file.size > MAX_UPLOAD_FILE_BYTES) {
       return file;
     }
@@ -129,6 +132,23 @@ export async function parseClassListFile(file: File): Promise<ParsedClassList> {
   return {
     students: result.students,
     read: result.metadata.totalStudents,
+    warnings: result.warnings,
+  };
+}
+
+export interface ParsedIepDates {
+  records: Map<string, IepDatesRecord>;
+  read: number;
+  warnings: Array<{ row: number; message: string }>;
+}
+
+/** Parse a SEIS IEP Dates CSV (SPE-303). Throws on hard parse failure. */
+export async function parseIepDatesFile(file: File): Promise<ParsedIepDates> {
+  const buffer = Buffer.from(await file.arrayBuffer());
+  const result = await parseIepDatesCSV(buffer);
+  return {
+    records: result.records,
+    read: result.metadata.uniqueStudents,
     warnings: result.warnings,
   };
 }

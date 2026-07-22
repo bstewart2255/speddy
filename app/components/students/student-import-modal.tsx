@@ -49,6 +49,7 @@ const CONTRIBUTION_LEGEND = [
   { label: 'Goals report', fills: 'students & IEP goals' },
   { label: 'Deliveries', fills: 'schedules' },
   { label: 'Class list', fills: 'teachers' },
+  { label: 'IEP dates', fills: 'review & triennial dates' },
   { label: 'Roster', fills: 'student list' },
 ];
 

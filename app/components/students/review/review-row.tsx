@@ -2,6 +2,7 @@
 
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import type { ReviewRow as ReviewRowData } from '@/lib/import/review-model';
+import type { BulkIepDateChange } from '@/lib/types/student-import';
 import { ReviewGoalList } from './review-goal-list';
 import { ReviewSignalIcon } from './review-signal';
 import type { ReviewSelection } from './use-review-selection';
@@ -13,6 +14,31 @@ const ACTION_BADGE: Record<ReviewRowData['action'], { label: string; className: 
   skip: { label: 'No changes', className: 'bg-gray-100 text-gray-600' },
 };
 
+/** ISO YYYY-MM-DD → MM/DD/YYYY for display (the format SEIS exports use). */
+function formatIepDate(iso: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  return m ? `${m[2]}/${m[3]}/${m[1]}` : iso;
+}
+
+/** One IEP date line (SPE-303): shows old → new when the file changes it. */
+function IepDateLine({ label, change }: { label: string; change?: BulkIepDateChange }) {
+  if (!change) return null;
+  return (
+    <div className="whitespace-nowrap">
+      <span className="text-gray-400">{label}</span>{' '}
+      {change.changed && change.old && (
+        <>
+          <span className="text-gray-400 line-through">{formatIepDate(change.old)}</span>
+          <span className="text-gray-400"> → </span>
+        </>
+      )}
+      <span className={change.changed ? 'font-medium text-gray-900' : 'text-gray-900'}>
+        {formatIepDate(change.value)}
+      </span>
+    </div>
+  );
+}
+
 interface ReviewRowProps {
   row: ReviewRowData;
   selection: ReviewSelection;
@@ -20,9 +46,11 @@ interface ReviewRowProps {
   onToggleExpand: () => void;
   /** Total table columns, for the full-width expansion/warning rows. */
   columnCount: number;
+  /** Render the IEP dates column (only when an IEP Dates file is in play). */
+  showIepDates: boolean;
 }
 
-export function ReviewRow({ row, selection, isExpanded, onToggleExpand, columnCount }: ReviewRowProps) {
+export function ReviewRow({ row, selection, isExpanded, onToggleExpand, columnCount, showIepDates }: ReviewRowProps) {
   const isSkip = row.action === 'skip';
   const selected = selection.isRowSelected(row.id);
   const goalsSelected = selection.goalsSelectedFor(row.id);
@@ -83,6 +111,18 @@ export function ReviewRow({ row, selection, isExpanded, onToggleExpand, columnCo
             <span className="text-gray-400 italic">Not set</span>
           )}
         </td>
+        {showIepDates && (
+          <td className="px-3 py-2 align-top text-xs">
+            {row.iepDates ? (
+              <div className="space-y-0.5 tabular-nums">
+                <IepDateLine label="IEP" change={row.iepDates.upcomingIepDate} />
+                <IepDateLine label="Tri" change={row.iepDates.upcomingTriennialDate} />
+              </div>
+            ) : (
+              <span className="text-gray-400 italic">Not set</span>
+            )}
+          </td>
+        )}
         <td className="px-3 py-2 align-top text-sm">
           {goalCount > 0 ? (
             <button

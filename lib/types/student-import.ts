@@ -18,7 +18,7 @@
 export type RowAction = 'insert' | 'update' | 'skip';
 
 /** Multipart form key each uploaded file submits under (also the receipt key). */
-export type PreviewFileKey = 'studentsFile' | 'deliveriesFile' | 'classListFile';
+export type PreviewFileKey = 'studentsFile' | 'deliveriesFile' | 'classListFile' | 'iepDatesFile';
 
 export interface BulkGoal {
   text: string;
@@ -28,6 +28,28 @@ export interface BulkGoalChange {
   added: string[];
   removed: string[];
   unchanged: string[];
+}
+
+/**
+ * One IEP date coming from the SEIS "IEP Dates" report (SPE-303). `value` is the
+ * new date being written (ISO YYYY-MM-DD, file wins); `old` is the stored date
+ * being replaced (or null when none), so the review row can show old → new;
+ * `changed` is `value !== old`. A field is present only when the file supplied a
+ * parseable date for it, so the confirm write can be presence-keyed (an absent
+ * date never nulls an existing one).
+ */
+export interface BulkIepDateChange {
+  value: string;
+  old: string | null;
+  changed: boolean;
+}
+
+/** The two compliance dates the IEP Dates report fills in for a matched student. */
+export interface IepDatesPreview {
+  /** Date of Next Annual Plan Review → student_details.upcoming_iep_date. */
+  upcomingIepDate?: BulkIepDateChange;
+  /** Date of Next Reevaluation → student_details.upcoming_triennial_date. */
+  upcomingTriennialDate?: BulkIepDateChange;
 }
 
 /**
@@ -59,6 +81,8 @@ export interface BulkStudentPreview {
     confidence: 'high' | 'medium' | 'low' | 'none';
     reason: string;
   };
+  /** Present when the IEP Dates report (SPE-303) matched this student. */
+  iepDates?: IepDatesPreview;
 }
 
 export interface BulkFileReceipt {
@@ -86,7 +110,7 @@ export interface BulkImportSummary {
 export interface BulkPreviewData {
   students: BulkStudentPreview[];
   summary: BulkImportSummary;
-  unmatchedStudents?: Array<{ name: string; source: 'deliveries' | 'classList' }>;
+  unmatchedStudents?: Array<{ name: string; source: 'deliveries' | 'classList' | 'iepDates' }>;
   parseErrors?: Array<{ row: number; message: string }>;
   parseWarnings?: Array<{ row: number; message: string; source?: string }>;
   files?: BulkFileReceipt[];
@@ -129,6 +153,14 @@ export interface StudentToImport {
   teacherId?: string;
   /** For updating the deprecated teacher_name column. */
   teacherName?: string;
+  /**
+   * IEP compliance dates from the SEIS "IEP Dates" report (SPE-303), ISO
+   * YYYY-MM-DD. Presence-keyed: sent only when the file supplied a parseable
+   * date, so the confirm RPC overwrites the stored value (file wins) on presence
+   * and leaves it untouched on absence.
+   */
+  upcomingIepDate?: string;
+  upcomingTriennialDate?: string;
   /** Defaults to 'insert' server-side for backward compatibility. */
   action?: RowAction;
   /** Required for the 'update' action. */

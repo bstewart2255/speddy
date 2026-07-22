@@ -10,6 +10,7 @@
 import type { BulkPreviewData, BulkFileReceipt } from '@/lib/types/student-import';
 import type { ClassListStudent } from '@/lib/parsers/class-list-parser';
 import type { DeliveryRecord } from '@/lib/parsers/deliveries-parser';
+import type { IepDatesRecord } from '@/lib/parsers/iep-dates-parser';
 import type { StudentPreview, StudentUpdate, UnmatchedStudent } from '@/lib/import/preview-types';
 
 type Note = { row: number; message: string };
@@ -59,9 +60,15 @@ export function collectUnmatched(
   // suppress it instead of flagging it (SPE-268). The Deliveries/Class List files
   // carry no school column, so this is the only way to tell an other-school
   // student apart from one genuinely missing at the selected school.
-  filteredOutNames?: Set<string>
+  filteredOutNames?: Set<string>,
+  // SPE-303: the IEP Dates file, matched like the two above. Its own rows are
+  // school-scoped upstream (applySchoolFilter drops other-school rows before
+  // matching), so a leftover here is a genuine same-school non-match.
+  iepDatesData?: Map<string, IepDatesRecord> | null,
+  matchedIepDatesNames?: Set<string>,
 ): UnmatchedStudent[] {
   const suppressed = filteredOutNames ?? new Set<string>();
+  const matchedIep = matchedIepDatesNames ?? new Set<string>();
   const unmatchedStudents: UnmatchedStudent[] = [];
 
   if (deliveriesData) {
@@ -76,6 +83,17 @@ export function collectUnmatched(
     for (const [normalizedName, student] of classListData) {
       if (!matchedClassListNames.has(normalizedName) && !suppressed.has(normalizedName)) {
         unmatchedStudents.push({ name: student.name, source: 'classList' });
+      }
+    }
+  }
+
+  if (iepDatesData) {
+    for (const [normalizedName, record] of iepDatesData) {
+      if (!matchedIep.has(normalizedName) && !suppressed.has(normalizedName)) {
+        unmatchedStudents.push({
+          name: `${record.firstName} ${record.lastName}`.trim() || normalizedName,
+          source: 'iepDates',
+        });
       }
     }
   }
@@ -105,6 +123,17 @@ function classListReceipt(input: EnrichmentFileInput): BulkFileReceipt {
   };
 }
 
+function iepDatesReceipt(input: EnrichmentFileInput): BulkFileReceipt {
+  return {
+    fileKey: 'iepDatesFile',
+    fileName: input.fileName,
+    read: input.read,
+    matched: input.matched,
+    filtered: Math.max(0, input.read - input.matched),
+    notes: input.warnings,
+  };
+}
+
 /** Build the `data` payload for the main SEIS/CSV goals path. */
 export function buildMainPreviewData(params: {
   studentPreviews: StudentPreview[];
@@ -116,11 +145,12 @@ export function buildMainPreviewData(params: {
   filteredOutSchools: string[];
   deliveries: EnrichmentFileInput | null;
   classList: EnrichmentFileInput | null;
+  iepDates: EnrichmentFileInput | null;
   unmatchedStudents: UnmatchedStudent[];
 }): BulkPreviewData {
   const {
     studentPreviews, studentsFileName, parsedStudentCount, parseWarnings, parseErrors,
-    filteredOutCount, filteredOutSchools, deliveries, classList, unmatchedStudents,
+    filteredOutCount, filteredOutSchools, deliveries, classList, iepDates, unmatchedStudents,
   } = params;
 
   const counts = summarizePreviews(studentPreviews);
@@ -130,6 +160,7 @@ export function buildMainPreviewData(params: {
     ...parseWarnings,
     ...(deliveries?.warnings || []).map(w => ({ ...w, source: 'deliveries' as const })),
     ...(classList?.warnings || []).map(w => ({ ...w, source: 'classList' as const })),
+    ...(iepDates?.warnings || []).map(w => ({ ...w, source: 'iepDates' as const })),
   ];
 
   // SPE-227: per-file receipts. The student goals file is always present; the
@@ -146,6 +177,7 @@ export function buildMainPreviewData(params: {
   });
   if (deliveries) files.push(deliveriesReceipt(deliveries));
   if (classList) files.push(classListReceipt(classList));
+  if (iepDates) files.push(iepDatesReceipt(iepDates));
 
   return {
     students: studentPreviews,
@@ -167,25 +199,33 @@ export function buildMainPreviewData(params: {
   };
 }
 
-/** Build the `data` payload for the deliveries/class-list update-only path. */
+/** Build the `data` payload for the deliveries/class-list/IEP-dates update-only path. */
 export function buildUpdatePreviewData(params: {
   studentUpdates: StudentUpdate[];
   unmatchedStudents: UnmatchedStudent[];
   deliveries: EnrichmentFileInput | null;
   classList: EnrichmentFileInput | null;
+  iepDates: EnrichmentFileInput | null;
 }): BulkPreviewData {
-  const { studentUpdates, unmatchedStudents, deliveries, classList } = params;
+  const { studentUpdates, unmatchedStudents, deliveries, classList, iepDates } = params;
 
   const allWarnings = [
     ...(deliveries?.warnings || []).map(w => ({ ...w, source: 'deliveries' as const })),
     ...(classList?.warnings || []).map(w => ({ ...w, source: 'classList' as const })),
+    ...(iepDates?.warnings || []).map(w => ({ ...w, source: 'iepDates' as const })),
   ];
 
-  // SPE-227: per-file receipts. Only deliveries and/or class list apply here —
-  // there is no student goals file in this mode.
+  // SPE-227: per-file receipts. Only the enrichment files apply here — there is
+  // no student goals file in this mode.
   const files: BulkFileReceipt[] = [];
   if (deliveries) files.push(deliveriesReceipt(deliveries));
   if (classList) files.push(classListReceipt(classList));
+  if (iepDates) files.push(iepDatesReceipt(iepDates));
+
+  // SPE-303: an IEP-dates match whose dates already match is a skip, so this mode
+  // is no longer all-updates — derive the counts from the resolved action.
+  const updates = studentUpdates.filter(s => s.action === 'update').length;
+  const skips = studentUpdates.filter(s => s.action === 'skip').length;
 
   return {
     // SPE-227: mirror the top-level `mode` inside `data` so the client keeps it.
@@ -195,8 +235,8 @@ export function buildUpdatePreviewData(params: {
     summary: {
       total: studentUpdates.length,
       inserts: 0,
-      updates: studentUpdates.length,
-      skips: 0,
+      updates,
+      skips,
       withSchedule: studentUpdates.filter(s => s.schedule).length,
       withTeacher: studentUpdates.filter(s => s.teacher).length,
     },
