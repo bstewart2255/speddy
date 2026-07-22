@@ -14,7 +14,7 @@ export default function LoginPage() {
             </div>
 
             <h2 className="mt-6 text-center text-xl font-semibold text-gray-900">
-              The friendly elementary SpEd platform :)
+              The friendly SpEd platform :)
             </h2>
             <p className="mt-2 text-center text-sm text-gray-600">
               Sign in to make your SpEd life easier!
@@ -30,7 +30,7 @@ export default function LoginPage() {
       </div>
       {/* Footer */}
       <footer className="py-4 text-center text-sm text-gray-600">
-        Made by SpEd people, for SpEd people.
+        Made by SpEd people.
       </footer>
     </div>
   );
