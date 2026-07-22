@@ -64,10 +64,9 @@ interface GuideFile {
   startHere?: boolean;
 }
 
-const FILE_GUIDE: Array<{ source: string; count: string; files: GuideFile[] }> = [
+const FILE_GUIDE: Array<{ source: string; files: GuideFile[] }> = [
   {
     source: 'SEIS',
-    count: '3 files',
     files: [
       {
         name: 'Student Goals report',
@@ -91,7 +90,6 @@ const FILE_GUIDE: Array<{ source: string; count: string; files: GuideFile[] }> =
   },
   {
     source: 'Aeries',
-    count: '1 file',
     files: [
       {
         name: 'Class list',
@@ -384,7 +382,7 @@ export function StudentImportModal({
           <Info className="mt-0.5 h-4 w-4 shrink-0 text-blue-500" aria-hidden="true" />
           <p>
             <span className="font-semibold text-gray-900">Start with the Student Goals report</span> — it&rsquo;s
-            the only file that creates your students. The other three just add details (schedules, dates,
+            the only one of these that creates your students. The other three just add details (schedules, dates,
             teachers) to students Speddy already has, so on their own they have nothing to attach to. Uploading
             everything at once works perfectly: Goals creates each student, the rest fill in the details.
           </p>
@@ -410,7 +408,7 @@ export function StudentImportModal({
               {FILE_GUIDE.map((group) => (
                 <div key={group.source} className="py-3">
                   <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
-                    {group.source} · {group.count}
+                    {group.source} · {group.files.length} {group.files.length === 1 ? 'file' : 'files'}
                   </p>
                   <ul className="divide-y divide-dashed divide-gray-200">
                     {group.files.map((file) => (
@@ -433,9 +431,9 @@ export function StudentImportModal({
                               </span>
                             </span>
                           ))}
-                          {file.pathAside && <span className="text-gray-400"> ({file.pathAside})</span>}
+                          {file.pathAside && <span className="text-gray-500"> ({file.pathAside})</span>}
                         </p>
-                        {file.note && <p className="mt-1 text-xs italic text-gray-400">{file.note}</p>}
+                        {file.note && <p className="mt-1 text-xs italic text-gray-500">{file.note}</p>}
                       </li>
                     ))}
                   </ul>
