@@ -137,20 +137,63 @@ export async function parseClassListFile(file: File): Promise<ParsedClassList> {
 }
 
 export interface ParsedIepDates {
-  records: Map<string, IepDatesRecord>;
+  /** All parsed rows in file order (deduped later, after school scoping). */
+  records: IepDatesRecord[];
   read: number;
   warnings: Array<{ row: number; message: string }>;
 }
 
-/** Parse a SEIS IEP Dates CSV (SPE-303). Throws on hard parse failure. */
+/**
+ * Parse a SEIS IEP Dates CSV (SPE-303). Throws on a wholly-invalid file — a
+ * wrong-shape or empty file yields zero rows plus a structural error, and the
+ * parser records (rather than throws) those, so the wrapper propagates them here
+ * instead of reporting a silent successful-but-empty parse. The caller surfaces
+ * the throw as a 400 (update-only mode) or a warning (main path), the same way a
+ * hard parse failure is handled. Any residual per-row errors ride along as
+ * warnings so they aren't dropped either.
+ */
 export async function parseIepDatesFile(file: File): Promise<ParsedIepDates> {
   const buffer = Buffer.from(await file.arrayBuffer());
   const result = await parseIepDatesCSV(buffer);
+  if (result.records.length === 0 && result.errors.length > 0) {
+    throw new Error(result.errors.map((e) => e.message).join('; '));
+  }
   return {
     records: result.records,
     read: result.metadata.uniqueStudents,
-    warnings: result.warnings,
+    warnings: [...result.warnings, ...result.errors],
   };
+}
+
+/**
+ * Scope IEP Dates rows to the selected school, then dedupe by normalized name
+ * (SPE-303). Order matters: school scoping runs FIRST (via applySchoolFilter,
+ * the same helper the goals file uses — rows with a blank School of Attendance
+ * are kept), so a same-name student at another school can't shadow the
+ * current-school student. Only after filtering do we collapse to one row per
+ * name (first-wins), flagging a genuine same-school name collision as a warning
+ * rather than silently dropping the loser. Returns the name-keyed map the
+ * enrichment lookup uses plus any collision warnings.
+ */
+export function scopeIepDatesToSchool(
+  records: IepDatesRecord[],
+  currentSchoolSite: string | null,
+  worksAtMultipleSchools: boolean | null | undefined,
+): { records: Map<string, IepDatesRecord>; warnings: Array<{ row: number; message: string }> } {
+  const { students } = applySchoolFilter(records, currentSchoolSite, worksAtMultipleSchools);
+  const map = new Map<string, IepDatesRecord>();
+  const warnings: Array<{ row: number; message: string }> = [];
+  for (const record of students) {
+    if (map.has(record.normalizedName)) {
+      warnings.push({
+        row: 0,
+        message: `Duplicate student "${`${record.firstName} ${record.lastName}`.trim()}" at this school — kept the first row's dates`,
+      });
+      continue;
+    }
+    map.set(record.normalizedName, record);
+  }
+  return { records: map, warnings };
 }
 
 export interface SchoolFilterResult<T> {

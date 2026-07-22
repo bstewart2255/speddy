@@ -22,6 +22,7 @@ import {
   parseDeliveriesFile,
   parseClassListFile,
   parseIepDatesFile,
+  scopeIepDatesToSchool,
   applySchoolFilter,
 } from '@/lib/import/parse-files';
 import type { IepDatesRecord } from '@/lib/parsers/iep-dates-parser';
@@ -60,23 +61,6 @@ interface PipelineContext {
 }
 
 const errorMessage = (error: unknown) => (error instanceof Error ? error.message : 'Unknown error');
-
-/**
- * Scope IEP Dates records to the current school before matching (SPE-303).
- * The report can include other-school / other-case-manager students; dropping
- * the other-school rows up front (via applySchoolFilter, the same helper the
- * goals file uses) keeps them out of the "needs review" unmatched list — mirroring
- * the SPE-268 suppression. Records with a blank School of Attendance are kept.
- * Re-keys the kept records by normalized name for the enrichment lookup.
- */
-function scopeIepDatesToSchool(
-  records: Map<string, IepDatesRecord>,
-  currentSchoolSite: string | null,
-  worksAtMultipleSchools: boolean | null | undefined,
-): Map<string, IepDatesRecord> {
-  const { students } = applySchoolFilter(Array.from(records.values()), currentSchoolSite, worksAtMultipleSchools);
-  return new Map(students.map((r) => [r.normalizedName, r]));
-}
 
 /**
  * Deliveries/class-list "update-only" mode: no students file, so preview rows
@@ -148,7 +132,9 @@ export async function runUpdateOnlyPreview(ctx: PipelineContext): Promise<NextRe
   if (iepDatesFile) {
     try {
       iepDates = await parseIepDatesFile(iepDatesFile);
-      iepDatesInScope = scopeIepDatesToSchool(iepDates.records, currentSchoolSite, profile?.works_at_multiple_schools);
+      const scoped = scopeIepDatesToSchool(iepDates.records, currentSchoolSite, profile?.works_at_multiple_schools);
+      iepDatesInScope = scoped.records;
+      iepDates.warnings.push(...scoped.warnings);
     } catch (error) {
       log.error('Failed to parse IEP dates file', error instanceof Error ? error : null, { userId });
       perf.end({ success: false });
@@ -324,7 +310,9 @@ export async function runStudentsPreview(ctx: PipelineContext, file: File): Prom
     try {
       iepDates = await parseIepDatesFile(iepDatesFile);
       iepDatesWarnings.push(...iepDates.warnings);
-      iepDatesInScope = scopeIepDatesToSchool(iepDates.records, currentSchoolSite, profile?.works_at_multiple_schools);
+      const scoped = scopeIepDatesToSchool(iepDates.records, currentSchoolSite, profile?.works_at_multiple_schools);
+      iepDatesInScope = scoped.records;
+      iepDatesWarnings.push(...scoped.warnings);
     } catch (error) {
       log.error('Failed to parse IEP dates file', error instanceof Error ? error : null, { userId });
       iepDatesWarnings.push({ row: 0, message: `Failed to parse IEP dates file: ${errorMessage(error)}` });

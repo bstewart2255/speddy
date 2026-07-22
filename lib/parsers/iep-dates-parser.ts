@@ -33,7 +33,11 @@ export interface IepDatesRecord {
 }
 
 export interface IepDatesParseResult {
-  records: Map<string, IepDatesRecord>; // Keyed by normalized name
+  // All parsed rows in file order — deliberately NOT deduped by name here.
+  // Name-collision handling is deferred to the pipeline, which dedupes only
+  // AFTER scoping to the selected school, so a same-name student at another
+  // school can't drop the current-school student's dates (SPE-303 review).
+  records: IepDatesRecord[];
   errors: Array<{ row: number; message: string }>;
   warnings: Array<{ row: number; message: string }>;
   metadata: {
@@ -92,7 +96,7 @@ const COL = {
  * (callers render only `warnings`, so swallowing it would enrich nothing silently).
  */
 export async function parseIepDatesCSV(buffer: Buffer): Promise<IepDatesParseResult> {
-  const records = new Map<string, IepDatesRecord>();
+  const records: IepDatesRecord[] = [];
   const errors: Array<{ row: number; message: string }> = [];
   const warnings: Array<{ row: number; message: string }> = [];
 
@@ -198,19 +202,12 @@ export async function parseIepDatesCSV(buffer: Buffer): Promise<IepDatesParseRes
         }
       }
 
-      // First-wins on a duplicate normalized name: two rows keying to the same
-      // name are a genuine identity collision (two different students share a
-      // normalized full name). Keep the first and flag the second so the user
-      // knows its dates were not applied, rather than silently overwriting.
-      if (records.has(normalizedName)) {
-        warnings.push({
-          row: rowNum,
-          message: `Duplicate student "${`${firstName} ${lastName}`.trim()}" — kept the first row's dates`,
-        });
-        continue;
-      }
-
-      records.set(normalizedName, {
+      // Keep every named row (no name-dedup here). Two rows with the same
+      // normalized name can be different students at different schools; deduping
+      // now, before the pipeline scopes to the selected school, could drop the
+      // current-school student in favor of an other-school one. The pipeline
+      // dedupes AFTER school scoping instead (SPE-303 review).
+      records.push({
         normalizedName,
         firstName,
         lastName,
@@ -231,7 +228,7 @@ export async function parseIepDatesCSV(buffer: Buffer): Promise<IepDatesParseRes
     warnings,
     metadata: {
       totalRows,
-      uniqueStudents: records.size,
+      uniqueStudents: new Set(records.map((r) => r.normalizedName)).size,
     },
   };
 }
