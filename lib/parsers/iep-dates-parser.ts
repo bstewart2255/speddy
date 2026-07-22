@@ -107,22 +107,30 @@ export async function parseIepDatesCSV(buffer: Buffer): Promise<IepDatesParseRes
     skip_empty_lines: true,
   };
 
-  // Choose the encoding from the raw bytes (mirrors csv-parser): if the buffer is
-  // not valid UTF-8, decode as latin1 so a Windows-1252 re-save (e.g. "Muñoz"
-  // stored as byte 0xF1) maps to the intended characters instead of U+FFFD.
-  let encoding: BufferEncoding = 'utf-8';
-  try {
-    new TextDecoder('utf-8', { fatal: true }).decode(buffer);
-  } catch {
-    encoding = 'latin1';
-  }
+  // Choose the encoding from the raw bytes: valid UTF-8 stays UTF-8; otherwise the
+  // file is a Windows-1252 export (what SEIS/Windows tools ship), decoded via
+  // TextDecoder so bytes in 0x80–0x9F resolve to the intended punctuation — most
+  // importantly 0x92 → "’" (U+2019). Plain latin1 would map 0x92 to a C1 control
+  // char, corrupting names like "O’Connor" into a different normalized match key
+  // that would silently miss the student (0xF1 → ñ agrees in both encodings, so
+  // it doesn't exercise this difference).
+  const isUtf8 = (() => {
+    try {
+      new TextDecoder('utf-8', { fatal: true }).decode(buffer);
+      return true;
+    } catch {
+      return false;
+    }
+  })();
 
   let allRecords: string[][];
   try {
-    allRecords = parse(buffer, { encoding, ...parseOptions });
+    allRecords = isUtf8
+      ? parse(buffer, { encoding: 'utf-8', ...parseOptions })
+      : parse(new TextDecoder('windows-1252').decode(buffer), parseOptions);
   } catch {
     // Last-resort fallback for any other hard parse/decoding error.
-    allRecords = parse(buffer, { encoding: 'latin1', ...parseOptions });
+    allRecords = parse(new TextDecoder('windows-1252').decode(buffer), parseOptions);
   }
 
   // Drop whitespace-only lines (which parse to a single blank field) so row

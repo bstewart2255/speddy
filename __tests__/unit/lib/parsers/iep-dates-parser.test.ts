@@ -91,7 +91,7 @@ describe('parseIepDatesCSV', () => {
     expect(byName(records, 'John', 'Doe')!.upcomingIepDate).toBe('2026-09-01');
   });
 
-  it('decodes a latin1 / Windows-1252 name (byte 0xF1 → ñ)', async () => {
+  it('decodes a Windows-1252 name (byte 0xF1 → ñ)', async () => {
     const header = Buffer.from(
       'First Name,Last Name,Date of Next Annual Plan Review,Date of Next Reevaluation\n',
       'utf-8',
@@ -104,6 +104,26 @@ describe('parseIepDatesCSV', () => {
     const { records } = await parseIepDatesCSV(Buffer.concat([header, row]));
     const rec = byName(records, 'Ana', 'Muñoz');
     expect(rec).toBeDefined();
+    expect(rec!.upcomingIepDate).toBe('2026-09-01');
+  });
+
+  it('decodes a Windows-1252 apostrophe (byte 0x92 → ’), not the latin1 control char', async () => {
+    // 0x92 is where Windows-1252 and latin1 diverge: win-1252 → ’ (U+2019),
+    // latin1 → U+0092 (a control char). "O’Connor" must keep a real apostrophe so
+    // its normalized match key lines up with the stored name.
+    const header = Buffer.from(
+      'First Name,Last Name,Date of Next Annual Plan Review,Date of Next Reevaluation\n',
+      'utf-8',
+    );
+    const row = Buffer.from([
+      ...Buffer.from('Sean,O', 'latin1'),
+      0x92,
+      ...Buffer.from('Connor,09/01/2026,05/12/2027', 'latin1'),
+    ]);
+    const { records } = await parseIepDatesCSV(Buffer.concat([header, row]));
+    const rec = byName(records, 'Sean', 'O’Connor'); // U+2019, not U+0092
+    expect(rec).toBeDefined();
+    expect(rec!.lastName).toBe('O’Connor');
     expect(rec!.upcomingIepDate).toBe('2026-09-01');
   });
 
