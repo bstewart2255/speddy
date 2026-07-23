@@ -332,7 +332,16 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
           setLesson(null);
         }
       } else {
-        // Group mode: fetch lesson for the group
+        // Group mode: fetch lesson for the group.
+        // A derived (un-materialized) cluster — co-scheduled students with no
+        // legacy group_id yet — has no group record to key a lesson on. Skip the
+        // group-scoped fetch so we never hit /api/groups//lesson; the modal still
+        // shows the cluster's members and per-session attendance.
+        if (!groupId) {
+          setLesson(null);
+          setNotes('');
+          return;
+        }
         // Get lesson_date from the first session in the group
         const firstSession = groupSessions?.find(s => s.session_date);
         const lessonDate = firstSession?.session_date;
@@ -375,6 +384,14 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
   const fetchDocuments = useCallback(async (signal?: AbortSignal) => {
     // Session mode: skip for temp sessions
     if (props.mode === 'session' && currentSessionId.startsWith('temp-')) {
+      setDocuments([]);
+      setLoadingDocuments(false);
+      return;
+    }
+
+    // Group mode: skip when the cluster has no group record yet (derived-only),
+    // so we don't hit /api/groups//documents.
+    if (props.mode === 'group' && !groupId) {
       setDocuments([]);
       setLoadingDocuments(false);
       return;

@@ -338,45 +338,66 @@ export const ScheduleGrid = memo(function ScheduleGrid({
                 });
               });
 
-              // Groups v2: a "plate" is a neutral enclosure drawn BEHIND the
-              // side-by-side pills of a grouped cluster (same group_id sharing a
-              // start_time). A cluster of one renders as a plain pill (dormant),
-              // so a plate is drawn only for 2+ members. Geometry mirrors the pill
-              // math below (fixedWidth 25 + gap 1 = 26px stride, +2 left inset).
-              const groupPlates = (() => {
-                const byKey = new Map<string, ScheduleSession[]>();
-                daySessions.forEach(s => {
-                  if (!s.group_id || !s.start_time || !s.end_time) return;
-                  const arr = byKey.get(`${s.group_id}|${s.start_time}`) || [];
-                  arr.push(s);
-                  byKey.set(`${s.group_id}|${s.start_time}`, arr);
-                });
-                const plates: Array<{
-                  key: string; groupId: string; groupName: string; members: ScheduleSession[];
-                  top: number; height: number; left: number; width: number; dashed: boolean;
-                }> = [];
-                byKey.forEach((members, key) => {
-                  if (members.length < 2) return;
+              // Groups v2 (Phase 3, SPE-312): groups DERIVE from the schedule —
+              // same slot (start_time) + same deliverer person = one group
+              // (design spec decision #1), whether or not a legacy group_id was
+              // ever stamped. This is the fix for plates not appearing: most real
+              // caseloads co-schedule students into a slot without ever pressing
+              // "Create Group", so keying plates on group_id drew nothing. A
+              // pre-existing legacy group_id partitions a slot into distinct
+              // groups (a "split slot"), so it's part of the bucket key; sessions
+              // with no group_id bucket together as the derived, never-codified
+              // cluster. 2+ members => a plate; a lone session is dormant and
+              // stays a plain pill (decision #5).
+              const delivererKey = (s: ScheduleSession) =>
+                s.delivered_by === 'sea'
+                  ? `sea:${s.assigned_to_sea_id ?? ''}`
+                  : s.delivered_by === 'specialist'
+                    ? `spec:${s.assigned_to_specialist_id ?? ''}`
+                    : 'provider';
+              const clusterKeyOf = (s: ScheduleSession) =>
+                `${s.start_time}|${delivererKey(s)}|${s.group_id ?? ''}`;
+              const clusters = new Map<string, ScheduleSession[]>();
+              daySessions.forEach(s => {
+                if (!s.start_time || !s.end_time) return;
+                const k = clusterKeyOf(s);
+                const arr = clusters.get(k);
+                if (arr) arr.push(s);
+                else clusters.set(k, [s]);
+              });
+              // Display name for a derived group: an explicit group_name if the
+              // cluster carries one, else the members' initials (the auto name).
+              const groupDisplayName = (members: ScheduleSession[]) =>
+                members.find(m => m.group_name)?.group_name ||
+                members
+                  .map(m => students.find(s => s.id === m.student_id)?.initials)
+                  .filter(Boolean)
+                  .join(', ');
+              // A "plate" is a neutral enclosure drawn BEHIND the side-by-side
+              // pills of a derived cluster. Geometry mirrors the pill math below
+              // (fixedWidth 25 + gap 1 = 26px stride, +2 left inset); a small pad
+              // opens the enclosure a touch beyond the pills.
+              const groupPlates = Array.from(clusters.entries())
+                .filter(([, members]) => members.length >= 2)
+                .map(([key, members]) => {
                   const cols = members.map(m => sessionColumns.get(m.id) ?? 0);
                   const minCol = Math.min(...cols);
                   const maxCol = Math.max(...cols);
                   const top = timeToPixels(members[0].start_time!.substring(0, 5));
                   const height = timeToPixels(members[0].end_time!.substring(0, 5)) - top;
                   const PAD = 3;
-                  plates.push({
+                  return {
                     key,
-                    groupId: members[0].group_id!,
-                    groupName: members[0].group_name || '',
+                    groupId: members[0].group_id ?? '',
+                    groupName: groupDisplayName(members),
                     members,
                     top,
                     height,
                     left: minCol * 26 + 2 - PAD,
                     width: (maxCol - minCol) * 26 + 25 + PAD * 2,
                     dashed: members[0].delivered_by === 'sea' || members[0].delivered_by === 'specialist',
-                  });
+                  };
                 });
-                return plates;
-              })();
 
               return (
                 <div key={dayIndex} className="border-r last:border-r-0 relative">
@@ -443,8 +464,8 @@ export const ScheduleGrid = memo(function ScheduleGrid({
                     {groupPlates.map(plate => (
                       <div
                         key={`plate-${plate.key}`}
-                        className={`absolute rounded-[10px] cursor-pointer border-[1.5px] border-slate-300 bg-slate-500/[0.09] transition-colors hover:border-slate-400 ${plate.dashed ? 'border-dashed' : ''}`}
-                        style={{ top: `${plate.top - 2}px`, height: `${plate.height + 2}px`, left: `${plate.left}px`, width: `${plate.width}px`, zIndex: 5 }}
+                        className={`absolute rounded-[10px] cursor-pointer border-[1.5px] border-slate-400 bg-slate-500/[0.12] transition-colors hover:border-slate-500 hover:bg-slate-500/[0.16] ${plate.dashed ? 'border-dashed' : ''}`}
+                        style={{ top: `${plate.top - 2}px`, height: `${plate.height + 2}px`, left: `${plate.left}px`, width: `${plate.width}px`, zIndex: 6 }}
                         role="button"
                         tabIndex={0}
                         title={`${plate.groupName || 'Group'} · ${plate.members.map(m => students.find(s => s.id === m.student_id)?.initials).filter(Boolean).join(', ')}`}
@@ -527,11 +548,13 @@ export const ScheduleGrid = memo(function ScheduleGrid({
                             // A grouped pill in a live cluster (2+ members this
                             // slot) opens the group modal; a lone/dormant pill
                             // opens session details, exactly as before.
-                            const slotGroupMembers = session.group_id
-                              ? daySessions.filter(x => x.group_id === session.group_id && x.start_time === session.start_time)
-                              : [];
-                            if (session.group_id && slotGroupMembers.length >= 2) {
-                              onGroupClick(session.group_id, session.group_name || '', slotGroupMembers, rect);
+                            // Derive this pill's cluster the same way the plate
+                            // does (slot + deliverer + group_id). A live cluster
+                            // (2+ members) opens the group modal; a lone or
+                            // dormant pill opens session details, as before.
+                            const cluster = clusters.get(clusterKeyOf(session)) ?? [];
+                            if (cluster.length >= 2) {
+                              onGroupClick(session.group_id ?? '', groupDisplayName(cluster), cluster, rect);
                             } else {
                               onSessionClick(session, rect);
                             }
