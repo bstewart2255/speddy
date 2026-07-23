@@ -68,12 +68,15 @@ BEGIN
 
   SELECT count(*) INTO v_ghost_groups FROM session_groups WHERE retired_at IS NOT NULL;
 
-  -- Link EVERY session row carrying a legacy id to its own group (past included).
-  -- Because group_ref = the row's own group_id, drifted past instances ref the
-  -- group they ACTUALLY carried, not the template's current state.
+  -- Link EVERY (non-deleted) session row carrying a legacy id to its own group
+  -- (past included). Because group_ref = the row's own group_id, drifted past
+  -- instances ref the group they ACTUALLY carried, not the template's current
+  -- state. The deleted_at filter matches the record-creation aggregate above —
+  -- without it, a group_id living only on soft-deleted rows would have no
+  -- session_groups record and this UPDATE would trip the group_ref FK.
   UPDATE schedule_sessions
   SET group_ref = group_id
-  WHERE group_id IS NOT NULL AND group_ref IS NULL;
+  WHERE group_id IS NOT NULL AND group_ref IS NULL AND deleted_at IS NULL;
   GET DIAGNOSTICS v_session_rows_linked = ROW_COUNT;
 
   -- =========================================================================
@@ -181,6 +184,7 @@ END $$;
 
 -- Post-migration acceptance checks (should all be 0):
 --   SELECT count(*) FROM lessons        WHERE group_id IS NOT NULL AND group_ref IS NULL;  -- 0
---   SELECT count(*) FROM schedule_sessions WHERE group_id IS NOT NULL AND group_ref IS NULL;  -- 0
+--   SELECT count(*) FROM schedule_sessions
+--     WHERE group_id IS NOT NULL AND group_ref IS NULL AND deleted_at IS NULL;              -- 0
 --   SELECT count(*) FROM lessons l WHERE l.group_id IS NOT NULL
 --     AND NOT EXISTS (SELECT 1 FROM session_groups sg WHERE sg.id = l.group_ref);            -- 0 (orphans reconnected)
