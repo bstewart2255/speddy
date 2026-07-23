@@ -34,6 +34,12 @@ export const POST = withRoute({ body: groupSessionsSchema }, async ({ userId, bo
     // Generate a new group ID if not provided, or use the provided one
     const finalGroupId = groupId || crypto.randomUUID();
 
+    // Immutability floor: grouping only ever touches today's and future
+    // instances (plus the template). Retroactively stamping a brand-new group
+    // onto already-delivered past instances would rewrite history — the very
+    // thing Groups v2 forbids. Matches the ungroup route's floor.
+    const todayISO = new Date().toISOString().split('T')[0];
+
     log.info('Grouping sessions', {
       userId,
       sessionCount: sessionIds.length,
@@ -118,6 +124,56 @@ export const POST = withRoute({ body: groupSessionsSchema }, async ({ userId, bo
       );
     }
 
+    // Groups v2 (Phase 1a) dual-write: mint or reuse the durable session_groups
+    // record and stamp group_ref alongside the legacy group_id/name/color. This
+    // is best-effort — a failure here never blocks the legacy grouping. Phase 2
+    // moves this into the transactional mutation layer.
+    const firstSession = existingSessions?.[0];
+    let groupRef: string | null = null;
+    if (groupId) {
+      // Adding to an existing group: reuse its session_groups id if one exists.
+      const { data: sibling } = await supabase
+        .from('schedule_sessions')
+        .select('group_ref')
+        .eq('group_id', groupId)
+        .not('group_ref', 'is', null)
+        .limit(1)
+        .maybeSingle();
+      groupRef = sibling?.group_ref ?? null;
+    }
+    // Only the owning provider mints the durable record here: RLS on
+    // session_groups is owner-only (provider_id = auth.uid()), and the record
+    // must be owned by the provider, not by a delegated SEA/specialist who may be
+    // acting. For delegated grouping (actor != owner) we intentionally skip the
+    // durable write — the legacy columns still carry the grouping, and the Phase
+    // 1b backfill / Phase 2 mutation layer create the durable record with correct
+    // ownership. This keeps an unprivileged actor from being silently RLS-rejected.
+    if (!groupRef && firstSession && firstSession.provider_id === userId) {
+      const deliveredBy = firstSession.delivered_by ?? 'provider';
+      const { data: newGroup, error: groupErr } = await supabase
+        .from('session_groups')
+        .insert({
+          provider_id: userId,
+          delivered_by: deliveredBy,
+          assigned_to_sea_id: deliveredBy === 'sea' ? firstSession.assigned_to_sea_id ?? null : null,
+          assigned_to_specialist_id:
+            deliveredBy === 'specialist' ? firstSession.assigned_to_specialist_id ?? null : null,
+          name: groupName.trim(),
+          color: validatedGroupColor,
+        })
+        .select('id')
+        .single();
+      if (groupErr) {
+        log.warn('Failed to create session_groups record (legacy group unaffected)', {
+          error: groupErr,
+          userId,
+          groupId: finalGroupId,
+        });
+      } else {
+        groupRef = newGroup?.id ?? null;
+      }
+    }
+
     // Update template sessions with group information
     const updatePerf = measurePerformanceWithAlerts('update_session_groups', 'database');
     const { data: updatedSessions, error: updateError } = await supabase
@@ -126,9 +182,13 @@ export const POST = withRoute({ body: groupSessionsSchema }, async ({ userId, bo
         group_id: finalGroupId,
         group_name: groupName.trim(),
         group_color: validatedGroupColor,
+        ...(groupRef ? { group_ref: groupRef } : {}),
         updated_at: new Date().toISOString()
       })
       .in('id', sessionIds)
+      // Never write onto a delivered past instance, even if its id is passed
+      // directly: restrict to templates (session_date IS NULL) or today/future.
+      .or(`session_date.is.null,session_date.gte.${todayISO}`)
       .select();
     updatePerf.end({ success: !updateError });
 
@@ -167,13 +227,15 @@ export const POST = withRoute({ body: groupSessionsSchema }, async ({ userId, bo
             group_id: finalGroupId,
             group_name: groupName.trim(),
             group_color: validatedGroupColor,
+            ...(groupRef ? { group_ref: groupRef } : {}),
             updated_at: new Date().toISOString()
           })
           .eq('provider_id', template.provider_id)
           .eq('student_id', template.student_id)
           .eq('day_of_week', template.day_of_week)
           .eq('start_time', template.start_time)
-          .not('session_date', 'is', null); // Only update instances, not templates again
+          .not('session_date', 'is', null) // Only update instances, not templates again
+          .gte('session_date', todayISO); // Future-only: never regroup delivered past instances
 
         if (instanceError) {
           log.warn('Failed to update instances for template', {

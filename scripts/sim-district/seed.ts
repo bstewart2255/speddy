@@ -388,6 +388,19 @@ async function main() {
   const sessionRows: Record<string, unknown>[] = [];
   const attendanceRows: Record<string, unknown>[] = [];
   const leahId = userIds.get('leah')!;
+
+  // Groups v2 (SPE-309): the durable session_groups record behind Reading Group A.
+  // Must exist before the grouped schedule_sessions that group_ref to it.
+  const rachelId = userIds.get('rachel')!;
+  const { error: groupErr } = await admin.from('session_groups').insert({
+    id: EDGE.sessionGroupId,
+    provider_id: rachelId,
+    delivered_by: 'provider',
+    name: EDGE.groupName,
+    color: EDGE.groupColor,
+  });
+  if (groupErr) throw new Error(`session_groups insert failed: ${groupErr.message}`);
+  counts['session_groups'] = 1;
   for (const rule of CASELOADS) {
     const school = schoolById(rule.schoolId);
     if (school.isSecondary) continue;
@@ -417,6 +430,7 @@ async function main() {
           group_id: isGrouped && k === 0 ? EDGE.groupId : null,
           group_name: isGrouped && k === 0 ? EDGE.groupName : null,
           group_color: isGrouped && k === 0 ? EDGE.groupColor : null,
+          group_ref: isGrouped && k === 0 ? EDGE.sessionGroupId : null,
           manually_placed: isRachel && i === EDGE.manuallyPlacedIndex && k === 0,
         };
         sessionRows.push({

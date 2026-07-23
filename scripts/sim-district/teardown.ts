@@ -43,6 +43,9 @@ export async function teardown(admin: Admin): Promise<Record<string, number>> {
   // 1. Leaf data keyed to students/providers.
   deleted['attendance'] = await deleteWhereIn(admin, 'attendance', 'student_id', simStudentIds);
   deleted['schedule_sessions'] = await deleteWhereIn(admin, 'schedule_sessions', 'provider_id', simUserIds);
+  // Groups v2 (SPE-309): session_groups is referenced by schedule_sessions.group_ref
+  // (ON DELETE RESTRICT), so it must be deleted AFTER the sessions above.
+  deleted['session_groups'] = await deleteWhereIn(admin, 'session_groups', 'provider_id', simUserIds);
 
   // 2. Swept tables — rows the app created during verification runs (invariant 4).
   for (const sweep of SWEPT_TABLES) {

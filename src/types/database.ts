@@ -1837,6 +1837,7 @@ export type Database = {
           generation_version: string | null
           grade_levels: string[] | null
           group_id: string | null
+          group_ref: string | null
           id: string
           lesson_date: string
           lesson_source: Database["public"]["Enums"]["lesson_source"]
@@ -1869,6 +1870,7 @@ export type Database = {
           generation_version?: string | null
           grade_levels?: string[] | null
           group_id?: string | null
+          group_ref?: string | null
           id?: string
           lesson_date: string
           lesson_source?: Database["public"]["Enums"]["lesson_source"]
@@ -1901,6 +1903,7 @@ export type Database = {
           generation_version?: string | null
           grade_levels?: string[] | null
           group_id?: string | null
+          group_ref?: string | null
           id?: string
           lesson_date?: string
           lesson_source?: Database["public"]["Enums"]["lesson_source"]
@@ -1926,6 +1929,13 @@ export type Database = {
             columns: ["district_id"]
             isOneToOne: false
             referencedRelation: "districts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lessons_group_ref_fkey"
+            columns: ["group_ref"]
+            isOneToOne: false
+            referencedRelation: "session_groups"
             referencedColumns: ["id"]
           },
           {
@@ -2789,6 +2799,7 @@ export type Database = {
           group_color: number | null
           group_id: string | null
           group_name: string | null
+          group_ref: string | null
           has_conflict: boolean | null
           id: string
           is_completed: boolean
@@ -2820,6 +2831,7 @@ export type Database = {
           group_color?: number | null
           group_id?: string | null
           group_name?: string | null
+          group_ref?: string | null
           has_conflict?: boolean | null
           id?: string
           is_completed?: boolean
@@ -2851,6 +2863,7 @@ export type Database = {
           group_color?: number | null
           group_id?: string | null
           group_name?: string | null
+          group_ref?: string | null
           has_conflict?: boolean | null
           id?: string
           is_completed?: boolean
@@ -2888,6 +2901,13 @@ export type Database = {
             columns: ["completed_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "schedule_sessions_group_ref_fkey"
+            columns: ["group_ref"]
+            isOneToOne: false
+            referencedRelation: "session_groups"
             referencedColumns: ["id"]
           },
           {
@@ -3072,6 +3092,67 @@ export type Database = {
             columns: ["district_id"]
             isOneToOne: false
             referencedRelation: "districts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      session_groups: {
+        Row: {
+          assigned_to_sea_id: string | null
+          assigned_to_specialist_id: string | null
+          color: number | null
+          created_at: string
+          delivered_by: string
+          id: string
+          name: string | null
+          provider_id: string
+          retired_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          assigned_to_sea_id?: string | null
+          assigned_to_specialist_id?: string | null
+          color?: number | null
+          created_at?: string
+          delivered_by?: string
+          id?: string
+          name?: string | null
+          provider_id: string
+          retired_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          assigned_to_sea_id?: string | null
+          assigned_to_specialist_id?: string | null
+          color?: number | null
+          created_at?: string
+          delivered_by?: string
+          id?: string
+          name?: string | null
+          provider_id?: string
+          retired_at?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "session_groups_assigned_to_sea_id_fkey"
+            columns: ["assigned_to_sea_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "session_groups_assigned_to_specialist_id_fkey"
+            columns: ["assigned_to_specialist_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "session_groups_provider_id_fkey"
+            columns: ["provider_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]

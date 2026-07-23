@@ -309,6 +309,8 @@ export const EDGE = {
   /** Indexes sharing a group session. */
   groupIndexes: [3, 4],
   groupId: simUuid('group:rachel:reading-a'),
+  /** Groups v2 durable record id (session_groups.id) the grouped rows group_ref to. */
+  sessionGroupId: simUuid('group:rachel:reading-a:record'),
   groupName: 'Reading Group A',
   groupColor: 3,
   /** Index whose sessions are delegated to the SEA (Leah). */
@@ -522,7 +524,8 @@ export function careHistoryId(key: string, status: string): string {
 export const SEEDED_TABLES = [
   'districts', 'schools', 'profiles', 'admin_permissions', 'provider_schools',
   'user_site_schedules', 'teachers', 'students', 'student_details',
-  'bell_schedules', 'school_hours', 'special_activities', 'schedule_sessions',
+  'bell_schedules', 'school_hours', 'special_activities',
+  'session_groups', 'schedule_sessions',
   'attendance', 'care_referrals', 'care_cases', 'care_meeting_notes',
   'care_action_items', 'care_case_status_history',
 ] as const;
