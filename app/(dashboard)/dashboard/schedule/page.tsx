@@ -10,6 +10,7 @@ import { ScheduleControls } from './components/schedule-controls';
 import { ScheduleGrid } from './components/schedule-grid';
 import { SessionDetailsModal } from '../../../components/modals/session-details-modal';
 import { GroupPopover, type GroupPopoverData } from './components/group-popover';
+import { useToast } from '../../../contexts/toast-context';
 import { ScheduleLoading } from './components/schedule-loading';
 import { ConflictFilterPanel } from './components/ConflictFilterPanel';
 import { UnscheduledSessionsPanel } from './components/unscheduled-sessions-panel';
@@ -26,6 +27,7 @@ import type { ScheduleSession } from '@/src/types';
 
 export default function SchedulePage() {
   const { currentSchool } = useSchool();
+  const { showToast } = useToast();
   const supabase = createClient();
   const teachers = useTeachers(supabase, currentSchool);
   const { sessionTags, setSessionTags } = useSessionTags();
@@ -192,6 +194,54 @@ export default function SchedulePage() {
     updateDragPosition(nextPosition);
   }, [draggedSession, dragOffset, gridConfig, updateDragPosition, pixelsToTime]);
 
+  // Groups v2 (Phase 3): after a VALID move, reconcile grouping for MATERIALIZED
+  // groups. Derived clusters (no group_ref) need nothing — the plates re-derive
+  // from the moved schedule. A pill dragged out of a materialized group leaves it
+  // (retiring it if it empties); one dropped into a materialized group at its new
+  // slot (same deliverer) joins it. Best-effort: never blocks the move.
+  const reconcileGroupsAfterMove = useCallback(
+    async (moved: ScheduleSession, newDay: number, newStart: string) => {
+      const delivererKey = (s: ScheduleSession) =>
+        `${s.delivered_by ?? 'provider'}|${s.assigned_to_sea_id ?? ''}|${s.assigned_to_specialist_id ?? ''}`;
+      const hhmm = (t: string | null) => (t ?? '').slice(0, 5);
+      const slotChanged = moved.day_of_week !== newDay || hhmm(moved.start_time) !== hhmm(newStart);
+      const mutate = (body: Record<string, unknown>) =>
+        fetch('/api/groups/mutate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+      try {
+        let changed = false;
+        if (moved.group_ref && slotChanged) {
+          await mutate({ action: 'leave', sessionId: moved.id });
+          changed = true;
+        }
+        // Join a materialized group already present at the destination slot.
+        const target = sessions.find(
+          s =>
+            s.id !== moved.id &&
+            s.session_date === null &&
+            s.group_ref &&
+            s.day_of_week === newDay &&
+            hhmm(s.start_time) === hhmm(newStart) &&
+            delivererKey(s) === delivererKey(moved)
+        );
+        if (target?.group_ref) {
+          await mutate({ action: 'join', sessionId: moved.id, groupId: target.group_ref });
+          changed = true;
+        }
+        if (changed) {
+          refreshSessions();
+          showToast('Group updated', 'success');
+        }
+      } catch (err) {
+        console.error('Groups v2: reconcile after move failed', err);
+      }
+    },
+    [sessions, refreshSessions, showToast]
+  );
+
   // Handle drop
   const handleDrop = useCallback(async (e: React.DragEvent, day: number) => {
     e.preventDefault();
@@ -263,6 +313,9 @@ export default function SchedulePage() {
         }
       }
 
+      // Groups v2: reconcile grouping for materialized groups after a valid move.
+      await reconcileGroupsAfterMove(sessionToMove, day, newStartTime);
+
       if (result.hasConflicts && result.conflicts) {
         // If the move succeeded but created new conflicts, update the status
         optimisticUpdateSession(sessionToMove.id, {
@@ -271,7 +324,7 @@ export default function SchedulePage() {
         });
       }
     }
-  }, [draggedSession, dragPosition, students, endDrag, clearDragValidation, optimisticUpdateSession, handleSessionDrop, sessionFilter, selectedSeaId, selectedSpecialistId, supabase]);
+  }, [draggedSession, dragPosition, students, endDrag, clearDragValidation, optimisticUpdateSession, handleSessionDrop, sessionFilter, selectedSeaId, selectedSpecialistId, supabase, reconcileGroupsAfterMove]);
 
   // Handle schedule complete
   const handleScheduleComplete = useCallback(() => {
