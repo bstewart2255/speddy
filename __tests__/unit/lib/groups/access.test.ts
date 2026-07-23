@@ -63,6 +63,17 @@ describe('hasGroupAccess (SPE-311)', () => {
     expect(await hasGroupAccess(fakeSupabase(), GROUP, USER)).toBe(true);
   });
 
+  it('grants access when session_groups is identity-mapped to the legacy group id (backfilled)', async () => {
+    // No group_ref anywhere, but the backfill made session_groups.id == group_id,
+    // so resolving to the legacy id finds the record.
+    refRow = null;
+    lessonRefRow = null;
+    sessionGroupRow = { id: GROUP };
+    legacyRows = [];
+
+    expect(await hasGroupAccess(fakeSupabase(), GROUP, USER)).toBe(true);
+  });
+
   it('falls back to legacy live membership when no durable record is visible', async () => {
     // No group_ref yet (un-backfilled) and the session_groups read returns
     // nothing, but the caller still has a live session in the group.

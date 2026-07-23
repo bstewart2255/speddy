@@ -5,7 +5,7 @@ import { log } from '@/lib/monitoring/logger';
 import { track } from '@/lib/monitoring/analytics';
 import { measurePerformanceWithAlerts } from '@/lib/monitoring/performance-alerts';
 import { withRoute } from '@/lib/api/with-route';
-import { hasGroupAccess } from '@/lib/groups/access';
+import { hasGroupAccess, resolveGroupRef } from '@/lib/groups/access';
 
 const lessonDateQuerySchema = z.object({
   lesson_date: z.string().optional(),
@@ -200,20 +200,11 @@ export const POST = withRoute<{ groupId: string }, z.infer<typeof saveLessonSche
         return NextResponse.json({ error: 'Failed to save lesson' }, { status: 500 });
       }
 
-      // Resolve the durable group_ref for this legacy group_id (any session
-      // carrying the id points at the session_groups record — for groups minted
-      // by the dual-write, that id is NOT the legacy group_id). Group lessons
-      // must carry group_ref too, or Groups v2 continuity and the Phase 1b
-      // backfill would attach them to a placeholder instead of the real group.
-      const { data: refRow } = await supabase
-        .from('schedule_sessions')
-        .select('group_ref')
-        .eq('group_id', groupId)
-        .not('group_ref', 'is', null)
-        .is('deleted_at', null)
-        .limit(1)
-        .maybeSingle();
-      const groupRef = refRow?.group_ref ?? null;
+      // Resolve the durable group_ref for this legacy group_id so the lesson
+      // carries it too (for groups minted by the dual-write, the record id is NOT
+      // the legacy group_id). Uses the shared resolver — including the lesson
+      // fallback — so a new lesson for a fully-dissolved group still gets the ref.
+      const groupRef = await resolveGroupRef(supabase, groupId);
 
       // Snapshot the group's current members so this lesson stays legible even
       // after a later reshuffle/dissolve (mirrors the AI-lesson pattern).
