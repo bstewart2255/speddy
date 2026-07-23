@@ -327,6 +327,7 @@ export class SessionGenerator {
         group_id: session.group_id || null,
         group_name: session.group_name || null,
         group_color: session.group_color ?? null,
+        group_ref: (session as ScheduleSession & { group_ref?: string | null }).group_ref ?? null,
         template_id: (session as ScheduleSession & { template_id?: string }).template_id || null,
         is_template: false
       } as ScheduleSessionInsert;

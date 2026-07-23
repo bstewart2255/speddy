@@ -116,6 +116,7 @@ export const POST = withRoute({ body: ungroupSessionsSchema }, async ({ userId, 
         group_id: null,
         group_name: null,
         group_color: null,
+        group_ref: null,
         updated_at: new Date().toISOString()
       })
       .in('id', sessionIds)
@@ -187,6 +188,7 @@ export const POST = withRoute({ body: ungroupSessionsSchema }, async ({ userId, 
             group_id: null,
             group_name: null,
             group_color: null,
+            group_ref: null,
             updated_at: new Date().toISOString()
           })
           .eq('id', lastSessionId);
@@ -206,6 +208,7 @@ export const POST = withRoute({ body: ungroupSessionsSchema }, async ({ userId, 
               group_id: null,
               group_name: null,
               group_color: null,
+              group_ref: null,
               updated_at: new Date().toISOString()
             })
             .eq('provider_id', lastSession.provider_id)
@@ -246,6 +249,7 @@ export const POST = withRoute({ body: ungroupSessionsSchema }, async ({ userId, 
             group_id: null,
             group_name: null,
             group_color: null,
+            group_ref: null,
             updated_at: new Date().toISOString()
           })
           .eq('provider_id', templateProviderId)

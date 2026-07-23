@@ -202,6 +202,7 @@ export async function createInstancesFromTemplate(
       group_id: templateSession.group_id,
       group_name: templateSession.group_name,
       group_color: templateSession.group_color,
+      group_ref: templateSession.group_ref,
       status: templateSession.status,
       student_absent: false,
       outside_schedule_conflict: false,

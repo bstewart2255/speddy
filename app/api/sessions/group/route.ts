@@ -118,6 +118,49 @@ export const POST = withRoute({ body: groupSessionsSchema }, async ({ userId, bo
       );
     }
 
+    // Groups v2 (Phase 1a) dual-write: mint or reuse the durable session_groups
+    // record and stamp group_ref alongside the legacy group_id/name/color. This
+    // is best-effort — a failure here never blocks the legacy grouping. Phase 2
+    // moves this into the transactional mutation layer.
+    const firstSession = existingSessions?.[0];
+    let groupRef: string | null = null;
+    if (groupId) {
+      // Adding to an existing group: reuse its session_groups id if one exists.
+      const { data: sibling } = await supabase
+        .from('schedule_sessions')
+        .select('group_ref')
+        .eq('group_id', groupId)
+        .not('group_ref', 'is', null)
+        .limit(1)
+        .maybeSingle();
+      groupRef = sibling?.group_ref ?? null;
+    }
+    if (!groupRef && firstSession) {
+      const deliveredBy = firstSession.delivered_by ?? 'provider';
+      const { data: newGroup, error: groupErr } = await supabase
+        .from('session_groups')
+        .insert({
+          provider_id: firstSession.provider_id ?? userId,
+          delivered_by: deliveredBy,
+          assigned_to_sea_id: deliveredBy === 'sea' ? firstSession.assigned_to_sea_id ?? null : null,
+          assigned_to_specialist_id:
+            deliveredBy === 'specialist' ? firstSession.assigned_to_specialist_id ?? null : null,
+          name: groupName.trim(),
+          color: validatedGroupColor,
+        })
+        .select('id')
+        .single();
+      if (groupErr) {
+        log.warn('Failed to create session_groups record (legacy group unaffected)', {
+          error: groupErr,
+          userId,
+          groupId: finalGroupId,
+        });
+      } else {
+        groupRef = newGroup?.id ?? null;
+      }
+    }
+
     // Update template sessions with group information
     const updatePerf = measurePerformanceWithAlerts('update_session_groups', 'database');
     const { data: updatedSessions, error: updateError } = await supabase
@@ -126,6 +169,7 @@ export const POST = withRoute({ body: groupSessionsSchema }, async ({ userId, bo
         group_id: finalGroupId,
         group_name: groupName.trim(),
         group_color: validatedGroupColor,
+        ...(groupRef ? { group_ref: groupRef } : {}),
         updated_at: new Date().toISOString()
       })
       .in('id', sessionIds)
@@ -167,6 +211,7 @@ export const POST = withRoute({ body: groupSessionsSchema }, async ({ userId, bo
             group_id: finalGroupId,
             group_name: groupName.trim(),
             group_color: validatedGroupColor,
+            ...(groupRef ? { group_ref: groupRef } : {}),
             updated_at: new Date().toISOString()
           })
           .eq('provider_id', template.provider_id)
