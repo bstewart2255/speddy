@@ -30,6 +30,12 @@ const mutateSchema = z.discriminatedUnion('action', [
     name: z.string().max(80).nullable(),
     color: z.number().int().min(0).max(4).nullable(),
   }),
+  z.object({
+    action: z.literal('assign'),
+    groupId: uuid,
+    deliveredBy: z.enum(['provider', 'sea', 'specialist']),
+    assignee: uuid.nullable(),
+  }),
 ]);
 
 export const POST = withRoute({ body: mutateSchema }, async ({ userId, body }) => {
@@ -57,6 +63,12 @@ export const POST = withRoute({ body: mutateSchema }, async ({ userId, body }) =
           p_group_id: body.groupId,
           p_name: body.name,
           p_color: body.color,
+        });
+      case 'assign':
+        return supabase.rpc('groups_v2_assign', {
+          p_group_id: body.groupId,
+          p_delivered_by: body.deliveredBy,
+          p_assignee: body.assignee,
         });
     }
   };

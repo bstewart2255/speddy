@@ -71,6 +71,20 @@ describe('POST /api/groups/mutate (SPE-311)', () => {
       p_name: 'Blue Jays',
       p_color: 2,
     });
+
+    await POST(req({ action: 'assign', groupId: G1, deliveredBy: 'sea', assignee: S1 }));
+    expect(mockRpc).toHaveBeenLastCalledWith('groups_v2_assign', {
+      p_group_id: G1,
+      p_delivered_by: 'sea',
+      p_assignee: S1,
+    });
+
+    await POST(req({ action: 'assign', groupId: G1, deliveredBy: 'provider', assignee: null }));
+    expect(mockRpc).toHaveBeenLastCalledWith('groups_v2_assign', {
+      p_group_id: G1,
+      p_delivered_by: 'provider',
+      p_assignee: null,
+    });
   });
 
   it('leave returns a null groupId on success (void RPC)', async () => {

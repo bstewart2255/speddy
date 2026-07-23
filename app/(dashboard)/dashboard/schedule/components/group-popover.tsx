@@ -22,6 +22,8 @@ interface GroupPopoverProps {
   data: GroupPopoverData;
   allSessions: ScheduleSession[]; // full board, for the cross-day "Meets" line
   students: Map<string, StudentInfo>;
+  seaProfiles: Array<{ id: string; full_name: string }>;
+  otherSpecialists: Array<{ id: string; full_name: string }>;
   onClose: () => void;
   onMutated: () => void; // refresh the board after a change
   onOpenSession: (session: ScheduleSession) => void; // drill into one member
@@ -40,7 +42,7 @@ async function callMutate(body: Record<string, unknown>): Promise<{ groupId: str
 
 const POP_W = 268;
 
-export function GroupPopover({ data, allSessions, students, onClose, onMutated, onOpenSession }: GroupPopoverProps) {
+export function GroupPopover({ data, allSessions, students, seaProfiles, otherSpecialists, onClose, onMutated, onOpenSession }: GroupPopoverProps) {
   const { members, anchor } = data;
   const { showToast } = useToast();
 
@@ -51,6 +53,7 @@ export function GroupPopover({ data, allSessions, students, onClose, onMutated, 
   const [color, setColor] = useState<number | null>(members.find(m => m.group_color != null)?.group_color ?? null);
   const [busy, setBusy] = useState(false);
   const [splitOpen, setSplitOpen] = useState(false);
+  const [assignOpen, setAssignOpen] = useState(false);
 
   const autoName = useMemo(
     () =>
@@ -184,6 +187,20 @@ export function GroupPopover({ data, allSessions, students, onClose, onMutated, 
     }
   };
 
+  const doAssign = async (deliveredBy: 'provider' | 'sea' | 'specialist', assignee: string | null) => {
+    setBusy(true);
+    try {
+      const id = await ensureGroup();
+      await callMutate({ action: 'assign', groupId: id, deliveredBy, assignee });
+      showToast(deliveredBy === 'provider' ? 'Group reclaimed' : 'Group assigned', 'success');
+      onMutated();
+      onClose();
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : 'Could not assign the group', 'error');
+      setBusy(false);
+    }
+  };
+
   const slotMemberCount = members.length;
 
   return (
@@ -270,6 +287,53 @@ export function GroupPopover({ data, allSessions, students, onClose, onMutated, 
             >
               Split group…
             </button>
+          )}
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => setAssignOpen(v => !v)}
+            className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-[13px] font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-50"
+          >
+            {isSea ? 'Reassign…' : 'Assign to…'}
+          </button>
+          {assignOpen && (
+            <div className="flex flex-col gap-1 rounded-lg border border-gray-200 bg-gray-50 p-1.5">
+              {isSea && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => doAssign('provider', null)}
+                  className="rounded px-2 py-1 text-left text-[13px] font-medium text-gray-800 hover:bg-white disabled:opacity-50"
+                >
+                  ← Me (reclaim)
+                </button>
+              )}
+              {seaProfiles.length === 0 && otherSpecialists.length === 0 && (
+                <span className="px-2 py-1 text-[12px] text-gray-400">No SEAs or specialists available</span>
+              )}
+              {seaProfiles.map(s => (
+                <button
+                  key={s.id}
+                  type="button"
+                  disabled={busy}
+                  onClick={() => doAssign('sea', s.id)}
+                  className="rounded px-2 py-1 text-left text-[13px] text-gray-800 hover:bg-white disabled:opacity-50"
+                >
+                  {s.full_name} <span className="text-gray-400">· SEA</span>
+                </button>
+              ))}
+              {otherSpecialists.map(s => (
+                <button
+                  key={s.id}
+                  type="button"
+                  disabled={busy}
+                  onClick={() => doAssign('specialist', s.id)}
+                  className="rounded px-2 py-1 text-left text-[13px] text-gray-800 hover:bg-white disabled:opacity-50"
+                >
+                  {s.full_name} <span className="text-gray-400">· Specialist</span>
+                </button>
+              ))}
+            </div>
           )}
         </div>
 

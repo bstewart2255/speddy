@@ -551,6 +551,8 @@ export default function SchedulePage() {
               data={groupPopover}
               allSessions={sessions}
               students={studentsMap}
+              seaProfiles={seaProfiles}
+              otherSpecialists={otherSpecialists}
               onClose={() => setGroupPopover(null)}
               onMutated={refreshSessions}
               onOpenSession={(s) => { setGroupPopover(null); setSessionDetail(s); }}
