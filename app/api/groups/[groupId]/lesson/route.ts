@@ -10,6 +10,53 @@ const lessonDateQuerySchema = z.object({
   lesson_date: z.string().optional(),
 });
 
+/**
+ * Snapshot the group's current members onto the lesson at write time, mirroring
+ * the pattern AI lessons already use (student_ids[] + student_details jsonb).
+ * Membership is the set of distinct students carrying this group_id on their
+ * template rows (session_date IS NULL). Capturing it at save time keeps a group
+ * lesson legible even after the group is later reshuffled or dissolved.
+ */
+async function buildGroupMemberSnapshot(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  groupId: string
+): Promise<{ studentIds: string[]; studentDetails: Array<{ id: string; initials: string | null; grade_level: string | null }> }> {
+  const { data: memberRows, error } = await supabase
+    .from('schedule_sessions')
+    .select('student_id, students(id, initials, grade_level)')
+    .eq('group_id', groupId)
+    .is('session_date', null)
+    .is('deleted_at', null);
+
+  if (error) {
+    // Non-fatal: a save should not fail because the snapshot lookup hiccuped.
+    // Log and fall back to empty arrays so the lesson still persists.
+    log.warn('Failed to load group members for lesson snapshot', { error, groupId });
+    return { studentIds: [], studentDetails: [] };
+  }
+
+  const seen = new Set<string>();
+  const studentIds: string[] = [];
+  const studentDetails: Array<{ id: string; initials: string | null; grade_level: string | null }> = [];
+
+  for (const row of memberRows || []) {
+    const studentId = row.student_id;
+    if (!studentId || seen.has(studentId)) continue;
+    seen.add(studentId);
+
+    // Supabase types the embedded relation as an array; a session belongs to one student.
+    const student = Array.isArray(row.students) ? row.students[0] : row.students;
+    studentIds.push(studentId);
+    studentDetails.push({
+      id: studentId,
+      initials: student?.initials ?? null,
+      grade_level: student?.grade_level ?? null,
+    });
+  }
+
+  return { studentIds, studentDetails };
+}
+
 const saveLessonSchema = z
   .object({
     title: z.any().optional(),
@@ -162,6 +209,10 @@ export const POST = withRoute<{ groupId: string }, z.infer<typeof saveLessonSche
         return NextResponse.json({ error: 'Failed to save lesson' }, { status: 500 });
       }
 
+      // Snapshot the group's current members so this lesson stays legible even
+      // after a later reshuffle/dissolve (mirrors the AI-lesson pattern).
+      const { studentIds, studentDetails } = await buildGroupMemberSnapshot(supabase, groupId);
+
       let data;
       let error;
 
@@ -183,6 +234,8 @@ export const POST = withRoute<{ groupId: string }, z.infer<typeof saveLessonSche
             school_id: school_id || null,
             district_id: district_id || null,
             state_id: state_id || null,
+            student_ids: studentIds,
+            student_details: studentDetails,
             updated_at: new Date().toISOString()
           })
           .eq('id', existingLesson.id)
@@ -210,7 +263,9 @@ export const POST = withRoute<{ groupId: string }, z.infer<typeof saveLessonSche
             notes: notes || null,
             school_id: school_id || null,
             district_id: district_id || null,
-            state_id: state_id || null
+            state_id: state_id || null,
+            student_ids: studentIds,
+            student_details: studentDetails
           })
           .select('*')
           .single();

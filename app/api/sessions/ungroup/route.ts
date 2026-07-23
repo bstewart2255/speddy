@@ -37,6 +37,13 @@ export const POST = withRoute({ body: ungroupSessionsSchema }, async ({ userId, 
       sessionCount: sessionIds.length
     });
 
+    // Date floor for instance clean-up. Past-dated instances must keep their
+    // group_id/group_name/group_color so historical group linkage — and the
+    // lessons/notes/curriculum keyed to it — survives an ungroup; we only clear
+    // today's and future instances. Mirrors the delegation trigger's
+    // CURRENT_DATE floor (both evaluate "today" in UTC).
+    const todayISO = new Date().toISOString().split('T')[0];
+
     // Verify that all sessions belong to the current user and match delivered_by
     const { data: existingSessions, error: fetchError } = await supabase
       .from('schedule_sessions')
@@ -191,7 +198,8 @@ export const POST = withRoute({ body: ungroupSessionsSchema }, async ({ userId, 
             userId
           });
         } else if (lastSession) {
-          // Also ungroup instances of this last session
+          // Also ungroup today's and future instances of this last session.
+          // Past instances keep their group columns (historical linkage).
           await supabase
             .from('schedule_sessions')
             .update({
@@ -204,7 +212,8 @@ export const POST = withRoute({ body: ungroupSessionsSchema }, async ({ userId, 
             .eq('student_id', lastSession.student_id)
             .eq('day_of_week', lastSession.day_of_week)
             .eq('start_time', lastSession.start_time)
-            .not('session_date', 'is', null);
+            .not('session_date', 'is', null)
+            .gte('session_date', todayISO);
         }
       }
     }
@@ -243,7 +252,8 @@ export const POST = withRoute({ body: ungroupSessionsSchema }, async ({ userId, 
           .eq('student_id', template.student_id)
           .eq('day_of_week', template.day_of_week)
           .eq('start_time', template.start_time)
-          .not('session_date', 'is', null); // Only update instances, not templates again
+          .not('session_date', 'is', null) // Only update instances, not templates again
+          .gte('session_date', todayISO); // Only today+future; past instances keep their group linkage
 
         if (instanceError) {
           log.warn('Failed to ungroup instances for template', {
