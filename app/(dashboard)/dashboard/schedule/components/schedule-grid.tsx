@@ -64,6 +64,7 @@ interface ScheduleGridProps {
   onTimeSlotClick: (time: string) => void;
   onDayClick: (day: number) => void;
   onSessionClick: (session: ScheduleSession, triggerRect: DOMRect) => void;
+  onGroupClick: (groupId: string, groupName: string, groupSessions: ScheduleSession[], triggerRect: DOMRect) => void;
   onHighlightToggle: (studentId: string) => void;
   onPopupClose: () => void;
   onPopupUpdate: () => void;
@@ -116,6 +117,7 @@ export const ScheduleGrid = memo(function ScheduleGrid({
   onTimeSlotClick,
   onDayClick,
   onSessionClick,
+  onGroupClick,
   onHighlightToggle,
   onPopupClose,
   onPopupUpdate,
@@ -177,11 +179,18 @@ export const ScheduleGrid = memo(function ScheduleGrid({
         return;
       }
 
-      // Sort by start time
+      // Sort by start time, then keep same-slot group members adjacent so their
+      // plate renders as ONE contiguous enclosure. Without the secondary key the
+      // greedy column packer can interleave two groups sharing a slot (e.g. after
+      // a split), scattering a group's pills across non-adjacent columns and
+      // fragmenting its plate into slivers.
+      const groupSortKey = (s: ScheduleSession) =>
+        `${s.delivered_by ?? 'provider'}|${s.assigned_to_sea_id ?? ''}|${s.assigned_to_specialist_id ?? ''}|${s.group_id ?? ''}`;
       daySessions.sort((a, b) => {
         const timeA = parseInt(a.start_time!.replace(':', ''));
         const timeB = parseInt(b.start_time!.replace(':', ''));
-        return timeA - timeB;
+        if (timeA !== timeB) return timeA - timeB;
+        return groupSortKey(a).localeCompare(groupSortKey(b));
       });
 
       // Group into columns
@@ -336,6 +345,87 @@ export const ScheduleGrid = memo(function ScheduleGrid({
                 });
               });
 
+              // Groups v2 (Phase 3, SPE-312): groups DERIVE from the schedule —
+              // same slot (start_time) + same deliverer person = one group
+              // (design spec decision #1), whether or not a legacy group_id was
+              // ever stamped. This is the fix for plates not appearing: most real
+              // caseloads co-schedule students into a slot without ever pressing
+              // "Create Group", so keying plates on group_id drew nothing. A
+              // pre-existing legacy group_id partitions a slot into distinct
+              // groups (a "split slot"), so it's part of the bucket key; sessions
+              // with no group_id bucket together as the derived, never-codified
+              // cluster. 2+ members => a plate; a lone session is dormant and
+              // stays a plain pill (decision #5).
+              const delivererKey = (s: ScheduleSession) =>
+                s.delivered_by === 'sea'
+                  ? `sea:${s.assigned_to_sea_id ?? ''}`
+                  : s.delivered_by === 'specialist'
+                    ? `spec:${s.assigned_to_specialist_id ?? ''}`
+                    : 'provider';
+              const clusterKeyOf = (s: ScheduleSession) =>
+                `${s.start_time}|${delivererKey(s)}|${s.group_id ?? ''}`;
+              const clusters = new Map<string, ScheduleSession[]>();
+              daySessions.forEach(s => {
+                if (!s.start_time || !s.end_time) return;
+                const k = clusterKeyOf(s);
+                const arr = clusters.get(k);
+                if (arr) arr.push(s);
+                else clusters.set(k, [s]);
+              });
+              // Display name for a derived group: an explicit group_name if the
+              // cluster carries one, else the members' initials (the auto name).
+              const groupDisplayName = (members: ScheduleSession[]) =>
+                members.find(m => m.group_name)?.group_name ||
+                members
+                  .map(m => students.find(s => s.id === m.student_id)?.initials)
+                  .filter(Boolean)
+                  .join(', ');
+              // A "plate" is a neutral enclosure drawn BEHIND the side-by-side
+              // pills of a derived cluster. Geometry mirrors the pill math below
+              // (fixedWidth 25 + gap 1 = 26px stride, +2 left inset); a small pad
+              // opens the enclosure a touch beyond the pills. Members share a
+              // start_time (it's in the cluster key) but can differ in duration,
+              // so the plate spans down to the LATEST end. A cluster's members
+              // usually land in adjacent columns, but when two clusters share one
+              // start_time their columns can interleave — so draw one plate per
+              // contiguous column-run, which keeps a plate from ever enclosing a
+              // pill that belongs to a different group.
+              const PAD = 3;
+              const groupPlates: Array<{
+                key: string; groupId: string; groupName: string; members: ScheduleSession[];
+                top: number; height: number; left: number; width: number; dashed: boolean;
+              }> = [];
+              for (const [key, members] of clusters.entries()) {
+                if (members.length < 2) continue;
+                const top = timeToPixels(members[0].start_time!.substring(0, 5));
+                const height =
+                  Math.max(...members.map(m => timeToPixels(m.end_time!.substring(0, 5)))) - top;
+                const cols = Array.from(
+                  new Set(members.map(m => sessionColumns.get(m.id) ?? 0))
+                ).sort((a, b) => a - b);
+                const runs: number[][] = [];
+                for (const c of cols) {
+                  const last = runs[runs.length - 1];
+                  if (last && c === last[last.length - 1] + 1) last.push(c);
+                  else runs.push([c]);
+                }
+                runs.forEach((run, ri) => {
+                  const minCol = run[0];
+                  const maxCol = run[run.length - 1];
+                  groupPlates.push({
+                    key: `${key}#${ri}`,
+                    groupId: members[0].group_id ?? '',
+                    groupName: groupDisplayName(members),
+                    members,
+                    top,
+                    height,
+                    left: minCol * 26 + 2 - PAD,
+                    width: (maxCol - minCol) * 26 + 25 + PAD * 2,
+                    dashed: members[0].delivered_by === 'sea' || members[0].delivered_by === 'specialist',
+                  });
+                });
+              }
+
               return (
                 <div key={dayIndex} className="border-r last:border-r-0 relative">
                   <div
@@ -393,6 +483,28 @@ export const ScheduleGrid = memo(function ScheduleGrid({
                         </div>
                       </div>
                     )}
+
+                    {/* Groups v2: group plates — neutral enclosures behind the
+                        grouped pills. Sit below pills (z-5) so pills stay on top;
+                        the plate's exposed border/padding opens the group modal,
+                        as does clicking any member pill. */}
+                    {groupPlates.map(plate => (
+                      <div
+                        key={`plate-${plate.key}`}
+                        className={`absolute rounded-[10px] cursor-pointer border-[1.5px] border-slate-400 bg-slate-500/[0.12] transition-colors hover:border-slate-500 hover:bg-slate-500/[0.16] ${plate.dashed ? 'border-dashed' : ''}`}
+                        style={{ top: `${plate.top - 2}px`, height: `${plate.height + 2}px`, left: `${plate.left}px`, width: `${plate.width}px`, zIndex: 6 }}
+                        role="button"
+                        tabIndex={0}
+                        title={`${plate.groupName || 'Group'} · ${plate.members.map(m => students.find(s => s.id === m.student_id)?.initials).filter(Boolean).join(', ')}`}
+                        onClick={(e) => onGroupClick(plate.groupId, plate.groupName, plate.members, e.currentTarget.getBoundingClientRect())}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            onGroupClick(plate.groupId, plate.groupName, plate.members, e.currentTarget.getBoundingClientRect());
+                          }
+                        }}
+                      />
+                    ))}
 
                     {/* Sessions */}
                     {daySessions.map(session => {
@@ -456,11 +568,19 @@ export const ScheduleGrid = memo(function ScheduleGrid({
                             zIndex: draggedSession?.id === session.id ? 20 : 10,
                           }}
                           onClick={(e) => {
-                            if (session.student_id) {
-                              onHighlightToggle(session.student_id);
-                            }
                             const rect = e.currentTarget.getBoundingClientRect();
-                            onSessionClick(session, rect);
+                            // Derive this pill's cluster the same way the plate
+                            // does (slot + deliverer + group_id). A live cluster
+                            // (2+ members) opens the group popover; a lone or
+                            // dormant pill opens session details, as before.
+                            // (Click no longer toggles the student highlight —
+                            // it got in the way of evaluating/editing groups.)
+                            const cluster = clusters.get(clusterKeyOf(session)) ?? [];
+                            if (cluster.length >= 2) {
+                              onGroupClick(session.group_id ?? '', groupDisplayName(cluster), cluster, rect);
+                            } else {
+                              onSessionClick(session, rect);
+                            }
                           }}
                           title={hasConflict ? session.conflict_reason || 'Session needs attention' : undefined}
                         >

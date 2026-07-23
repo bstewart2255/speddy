@@ -5,6 +5,7 @@ import { log } from '@/lib/monitoring/logger';
 import { track } from '@/lib/monitoring/analytics';
 import { measurePerformanceWithAlerts } from '@/lib/monitoring/performance-alerts';
 import { withRoute } from '@/lib/api/with-route';
+import { hasGroupAccess, resolveGroupRef, isCanonicalUuid, groupRefOrLegacyFilter } from '@/lib/groups/access';
 
 const lessonDateQuerySchema = z.object({
   lesson_date: z.string().optional(),
@@ -82,31 +83,34 @@ export const GET = withRoute<{ groupId: string }, undefined, z.infer<typeof less
     const { groupId } = params;
     const lessonDate = query.lesson_date;
 
+    // A group id is always a UUID; a malformed one addresses no group content
+    // (and must not reach the interpolated group_ref/group_id filter).
+    if (!isCanonicalUuid(groupId)) {
+      perf.end({ success: true, hasLesson: false });
+      return NextResponse.json({ lesson: null });
+    }
+
     try {
       const supabase = await createClient();
 
       log.info('Fetching group lesson', { userId, groupId, lessonDate: lessonDate || 'not specified' });
 
-      // Verify user has access to this group
-      const { data: groupSessions, error: accessError } = await supabase
-        .from('schedule_sessions')
-        .select('id')
-        .eq('group_id', groupId)
-        .or(`provider_id.eq.${userId},assigned_to_specialist_id.eq.${userId},assigned_to_sea_id.eq.${userId}`)
-        .limit(1);
-
-      if (accessError || !groupSessions || groupSessions.length === 0) {
+      // Verify access via the durable group_ref chain (owner or current
+      // assignee), with a legacy live-membership fallback during the bake.
+      const authorized = await hasGroupAccess(supabase, groupId, userId);
+      if (!authorized) {
         log.warn('User does not have access to group', { userId, groupId });
         perf.end({ success: false });
         return NextResponse.json({ error: 'Access denied' }, { status: 403 });
       }
 
-      // Fetch lesson for the group (optionally filtered by date)
+      // Fetch lesson for the group by the durable group_ref (legacy group_id
+      // fallback for the dual-write bake), optionally filtered by date.
       const fetchPerf = measurePerformanceWithAlerts('fetch_group_lesson_db', 'database');
       let lessonQuery = supabase
         .from('lessons')
         .select('*')
-        .eq('group_id', groupId);
+        .or(groupRefOrLegacyFilter(groupId));
 
       // If lesson_date provided, filter by exact date; otherwise get most recent
       if (lessonDate) {
@@ -181,15 +185,10 @@ export const POST = withRoute<{ groupId: string }, z.infer<typeof saveLessonSche
         lessonDate
       });
 
-      // Verify user has access to this group
-      const { data: groupSessions, error: accessError } = await supabase
-        .from('schedule_sessions')
-        .select('id')
-        .eq('group_id', groupId)
-        .or(`provider_id.eq.${userId},assigned_to_specialist_id.eq.${userId},assigned_to_sea_id.eq.${userId}`)
-        .limit(1);
-
-      if (accessError || !groupSessions || groupSessions.length === 0) {
+      // Verify access via the durable group_ref chain (owner or current
+      // assignee), with a legacy live-membership fallback during the bake.
+      const authorized = await hasGroupAccess(supabase, groupId, userId);
+      if (!authorized) {
         log.warn('User does not have access to group', { userId, groupId });
         perf.end({ success: false });
         return NextResponse.json({ error: 'Access denied' }, { status: 403 });
@@ -209,20 +208,11 @@ export const POST = withRoute<{ groupId: string }, z.infer<typeof saveLessonSche
         return NextResponse.json({ error: 'Failed to save lesson' }, { status: 500 });
       }
 
-      // Resolve the durable group_ref for this legacy group_id (any session
-      // carrying the id points at the session_groups record — for groups minted
-      // by the dual-write, that id is NOT the legacy group_id). Group lessons
-      // must carry group_ref too, or Groups v2 continuity and the Phase 1b
-      // backfill would attach them to a placeholder instead of the real group.
-      const { data: refRow } = await supabase
-        .from('schedule_sessions')
-        .select('group_ref')
-        .eq('group_id', groupId)
-        .not('group_ref', 'is', null)
-        .is('deleted_at', null)
-        .limit(1)
-        .maybeSingle();
-      const groupRef = refRow?.group_ref ?? null;
+      // Resolve the durable group_ref for this legacy group_id so the lesson
+      // carries it too (for groups minted by the dual-write, the record id is NOT
+      // the legacy group_id). Uses the shared resolver — including the lesson
+      // fallback — so a new lesson for a fully-dissolved group still gets the ref.
+      const groupRef = await resolveGroupRef(supabase, groupId);
 
       // Snapshot the group's current members so this lesson stays legible even
       // after a later reshuffle/dissolve (mirrors the AI-lesson pattern).
@@ -333,20 +323,22 @@ export const DELETE = withRoute<{ groupId: string }, undefined, z.infer<typeof l
     const { groupId } = params;
     const lessonDate = query.lesson_date;
 
+    // A malformed (non-UUID) group id addresses no group content — nothing to
+    // delete, and it must not reach the interpolated group_ref/group_id filter.
+    if (!isCanonicalUuid(groupId)) {
+      perf.end({ success: true });
+      return NextResponse.json({ success: true });
+    }
+
     try {
       const supabase = await createClient();
 
       log.info('Deleting group lesson', { userId, groupId, lessonDate: lessonDate || 'all dates' });
 
-      // Verify user has access to this group
-      const { data: groupSessions, error: accessError } = await supabase
-        .from('schedule_sessions')
-        .select('id')
-        .eq('group_id', groupId)
-        .or(`provider_id.eq.${userId},assigned_to_specialist_id.eq.${userId},assigned_to_sea_id.eq.${userId}`)
-        .limit(1);
-
-      if (accessError || !groupSessions || groupSessions.length === 0) {
+      // Verify access via the durable group_ref chain (owner or current
+      // assignee), with a legacy live-membership fallback during the bake.
+      const authorized = await hasGroupAccess(supabase, groupId, userId);
+      if (!authorized) {
         log.warn('User does not have access to group', { userId, groupId });
         perf.end({ success: false });
         return NextResponse.json({ error: 'Access denied' }, { status: 403 });
@@ -357,7 +349,7 @@ export const DELETE = withRoute<{ groupId: string }, undefined, z.infer<typeof l
       let deleteQuery = supabase
         .from('lessons')
         .delete()
-        .eq('group_id', groupId)
+        .or(groupRefOrLegacyFilter(groupId))
         .eq('provider_id', userId); // Ensure user owns the lesson
 
       // If lesson_date provided, only delete that specific lesson

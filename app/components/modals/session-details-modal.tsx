@@ -95,6 +95,11 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
 
   // Extract mode-specific values for dependency arrays (avoids complex expressions)
   const groupId = props.mode === 'group' ? props.groupId : undefined;
+  // A "derived" group is a co-scheduled cluster with no materialized group
+  // record yet (empty group_id) — group-level content (shared notes, documents,
+  // curriculum) can't be persisted without a record, so those controls render
+  // read-only until the group is set up. Members + per-session drill-in stay.
+  const derivedGroup = props.mode === 'group' && !groupId;
   const groupSessions = props.mode === 'group' ? props.sessions : undefined;
   const sessionDate = props.mode === 'session' ? props.session.session_date : undefined;
   const sessionGroupId = props.mode === 'session' ? props.session.group_id : undefined;
@@ -332,7 +337,17 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
           setLesson(null);
         }
       } else {
-        // Group mode: fetch lesson for the group
+        // Group mode: fetch lesson for the group.
+        // A derived (un-materialized) cluster — co-scheduled students with no
+        // legacy group_id yet — has no group record to key a lesson on. Skip the
+        // group-scoped fetch so we never hit /api/groups//lesson; the modal still
+        // shows the cluster's members (shared group notes, documents, and
+        // curriculum need the group set up first — see derivedGroup below).
+        if (!groupId) {
+          setLesson(null);
+          setNotes('');
+          return;
+        }
         // Get lesson_date from the first session in the group
         const firstSession = groupSessions?.find(s => s.session_date);
         const lessonDate = firstSession?.session_date;
@@ -375,6 +390,14 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
   const fetchDocuments = useCallback(async (signal?: AbortSignal) => {
     // Session mode: skip for temp sessions
     if (props.mode === 'session' && currentSessionId.startsWith('temp-')) {
+      setDocuments([]);
+      setLoadingDocuments(false);
+      return;
+    }
+
+    // Group mode: skip when the cluster has no group record yet (derived-only),
+    // so we don't hit /api/groups//documents.
+    if (props.mode === 'group' && !groupId) {
       setDocuments([]);
       setLoadingDocuments(false);
       return;
@@ -981,6 +1004,12 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
   };
 
   const handleSaveLesson = async () => {
+    // Derived cluster: no group record to key shared content on. Keep it
+    // read-only rather than firing a broken /api/groups//lesson request.
+    if (derivedGroup) {
+      showToast('Set up this group to save shared notes, documents, or curriculum', 'info');
+      return;
+    }
     try {
       // Ensure sessions are persisted before saving and get persisted session ID
       const persistedSessionId = await ensureSessionsPersistence();
@@ -1098,6 +1127,9 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
   };
 
   const handleDeleteLesson = async () => {
+    // Derived cluster: no group record, so nothing group-scoped to delete;
+    // never build a /api/groups//lesson request.
+    if (derivedGroup) return;
     const confirmMessage = props.mode === 'group'
       ? 'Are you sure you want to delete this lesson?'
       : 'Are you sure you want to clear the notes?';
@@ -1164,6 +1196,15 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
       return;
     }
 
+    // Derived cluster: no group record to attach documents to. Guard the upload
+    // (the "+ Add" control is hidden for these) so we never POST to
+    // /api/groups//documents.
+    if (derivedGroup) {
+      showToast('Set up this group before adding documents', 'info');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+
     // Upload immediately with original filename
     setUploading(true);
     try {
@@ -1221,6 +1262,9 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
   };
 
   const handleDeleteDocument = async (documentId: string) => {
+    // Derived cluster: documents aren't loaded (no group record), so this can't
+    // be reached from the UI — guard anyway against /api/groups//documents.
+    if (derivedGroup) return;
     if (!confirm('Are you sure you want to delete this document?')) return;
 
     try {
@@ -1505,8 +1549,11 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
 
         {/* Content - Fixed sections + Scrollable form */}
         <div className="flex-1 overflow-y-auto">
-          {/* Curriculum Context Section - Show prompt or normal display */}
-          {showPrompt && previousCurriculum ? (
+          {/* Curriculum Context Section - Show prompt or normal display.
+              Hidden for a derived cluster: shared curriculum can't be tracked
+              without a group record (and any state here would be stale from a
+              previously-opened group). */}
+          {derivedGroup ? null : showPrompt && previousCurriculum ? (
             // Show progression prompt
             <div className="p-4 border-b border-gray-200 bg-blue-50">
               <div className="flex items-center justify-between">
@@ -1583,13 +1630,15 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
                   accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.jpg,.jpeg,.png,.webp,.txt,.csv"
                   className="hidden"
                 />
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={uploading}
-                  className="py-1 px-2 bg-blue-600 text-white rounded text-xs font-medium disabled:opacity-50"
-                >
-                  {uploading ? '...' : '+ Add'}
-                </button>
+                {!derivedGroup && (
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploading}
+                    className="py-1 px-2 bg-blue-600 text-white rounded text-xs font-medium disabled:opacity-50"
+                  >
+                    {uploading ? '...' : '+ Add'}
+                  </button>
+                )}
               </div>
 
               {loadingDocuments ? (
@@ -1657,7 +1706,8 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
                     setCurriculumType(e.target.value);
                     setCurriculumLevel('');
                   }}
-                  className="w-full p-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  disabled={derivedGroup}
+                  className="w-full p-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-400"
                 >
                   <option value="">Select curriculum...</option>
                   {CURRICULUM_OPTIONS.map(opt => (
@@ -1665,7 +1715,7 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
                   ))}
                 </select>
 
-                {curriculumType && (
+                {curriculumType && !derivedGroup && (
                   <div className="flex gap-2">
                     <select
                       value={curriculumLevel}
@@ -1700,6 +1750,13 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
               <div className="flex items-center justify-center py-8">
                 <div className="text-gray-500">Loading...</div>
               </div>
+            ) : derivedGroup ? (
+              // Derived cluster: shared group content isn't editable until the
+              // group is set up. Show who's in it and point at the per-session
+              // chips above for individual work.
+              <div className="w-full min-h-[240px] p-3 border border-gray-200 rounded-md bg-gray-50 font-mono text-sm whitespace-pre-wrap text-gray-500">
+                Shared group notes, documents, and curriculum become available once this group is set up. Open any student&rsquo;s session from the chips above to work with them individually.
+              </div>
             ) : editingNotes ? (
               <textarea
                 ref={notesTextareaRef}
@@ -1732,7 +1789,7 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
             {/* Show delete button based on mode:
                 - Group mode: show when lesson exists (deletes lesson)
                 - Session mode: show when there are notes (clears session_notes) */}
-            {(props.mode === 'group' ? lesson : notes.trim()) && (
+            {!derivedGroup && (props.mode === 'group' ? lesson : notes.trim()) && (
               <button
                 onClick={handleDeleteLesson}
                 className="px-4 py-2 text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition-colors font-medium"
@@ -1748,12 +1805,14 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
             >
               Close
             </button>
-            <button
-              onClick={handleSaveLesson}
-              className="px-4 py-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors font-medium"
-            >
-              Save
-            </button>
+            {!derivedGroup && (
+              <button
+                onClick={handleSaveLesson}
+                className="px-4 py-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors font-medium"
+              >
+                Save
+              </button>
+            )}
           </div>
         </div>
       </div>

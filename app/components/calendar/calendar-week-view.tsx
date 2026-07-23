@@ -25,10 +25,22 @@ import { LongHoverTooltip } from '../ui/long-hover-tooltip';
 import { exportWeekToPDF } from '@/lib/utils/export-week-to-pdf';
 import { SessionWithCurriculum } from '@/lib/services/session-generator';
 import { formatCurriculumBadge, getFirstCurriculum } from '@/lib/utils/curriculum-helpers';
+import { groupColorHex } from '@/lib/groups/colors';
 
 type ScheduleSession = Database["public"]["Tables"]["schedule_sessions"]["Row"];
 type Lesson = Database["public"]["Tables"]["lessons"]["Row"];
 type CalendarEvent = Database["public"]["Tables"]["calendar_events"]["Row"];
+
+/**
+ * Durable grouping key for a session: prefer the Groups v2 `group_ref` (the
+ * session_groups record id), falling back to the legacy `group_id` during the
+ * dual-write bake. For backfilled data the two are identical; keying on
+ * `group_ref` is what lets the Week view survive the Phase 5 legacy-column drop.
+ * A split slot yields multiple distinct keys, so it renders one card per group.
+ */
+function groupKeyOf(session: Pick<ScheduleSession, "group_ref" | "group_id">): string | null {
+  return session.group_ref ?? session.group_id ?? null;
+}
 
 interface CalendarWeekViewProps {
   sessions: SessionWithCurriculum[];
@@ -174,7 +186,7 @@ export function CalendarWeekView({
 
       // Filter by BOTH group_id AND current week's date range
       const updatedGroupSessions = sessionsState.filter(s =>
-        s.group_id === selectedGroupId &&
+        groupKeyOf(s) === selectedGroupId &&
         s.session_date &&
         s.session_date >= weekStartStr &&
         s.session_date <= weekEndStr
@@ -213,8 +225,9 @@ export function CalendarWeekView({
       const groupIds = new Set<string>();
 
       for (const session of sessionsState) {
-        if (session.group_id) {
-          groupIds.add(session.group_id);
+        const groupKey = groupKeyOf(session);
+        if (groupKey) {
+          groupIds.add(groupKey);
         } else if (session.start_time && session.end_time && session.session_date) {
           sessions.push({
             id: session.id,
@@ -842,11 +855,12 @@ export function CalendarWeekView({
     const ungroupedSessions: SessionWithCurriculum[] = [];
 
     sessions.forEach(session => {
-      if (session.group_id) {
-        if (!groups.has(session.group_id)) {
-          groups.set(session.group_id, []);
+      const key = groupKeyOf(session);
+      if (key) {
+        if (!groups.has(key)) {
+          groups.set(key, []);
         }
-        groups.get(session.group_id)!.push(session);
+        groups.get(key)!.push(session);
       } else {
         ungroupedSessions.push(session);
       }
@@ -2224,6 +2238,10 @@ export function CalendarWeekView({
                         if (block.type === 'group') {
                           const { groupId, groupName, sessions: groupSessions, earliestStart, latestEnd } = block.data;
 
+                          // The group's chosen color (a small accent — never the board fill).
+                          const groupColorIdx = groupSessions.find((s: SessionWithCurriculum) => s.group_color != null)?.group_color ?? null;
+                          const groupHex = groupColorHex(groupColorIdx);
+
                           // Get unique students with their session assignment info
                           const uniqueStudentSessions = groupSessions.reduce((acc: SessionWithCurriculum[], session: SessionWithCurriculum) => {
                             const studentId = session.student_id;
@@ -2249,7 +2267,12 @@ export function CalendarWeekView({
                                 aria-label={`Open group ${groupName} details`}
                               >
                                 <div className="flex items-center justify-between mb-1">
-                                  <div className="font-semibold text-blue-900">📚 {groupName}</div>
+                                  <div className="font-semibold text-blue-900 flex items-center gap-1.5">
+                                    {groupHex && (
+                                      <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: groupHex }} aria-hidden />
+                                    )}
+                                    <span>📚 {groupName}</span>
+                                  </div>
                                   {/* Notes and documents indicators */}
                                   <div className="flex items-center gap-1">
                                     {groupIndicators[`${groupId}|${dateStr}`]?.hasNotes && (

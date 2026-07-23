@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useScheduleState, type ScheduleDragPosition } from './hooks/use-schedule-state';
 import { useScheduleData } from '../../../../lib/supabase/hooks/use-schedule-data';
 import { useScheduleOperations } from '../../../../lib/supabase/hooks/use-schedule-operations';
@@ -8,6 +8,9 @@ import { ScheduleErrorBoundary } from '../../../components/schedule/schedule-err
 import { ScheduleHeader } from './components/schedule-header';
 import { ScheduleControls } from './components/schedule-controls';
 import { ScheduleGrid } from './components/schedule-grid';
+import { SessionDetailsModal } from '../../../components/modals/session-details-modal';
+import { GroupPopover, type GroupPopoverData } from './components/group-popover';
+import { useToast } from '../../../contexts/toast-context';
 import { ScheduleLoading } from './components/schedule-loading';
 import { ConflictFilterPanel } from './components/ConflictFilterPanel';
 import { UnscheduledSessionsPanel } from './components/unscheduled-sessions-panel';
@@ -24,6 +27,7 @@ import type { ScheduleSession } from '@/src/types';
 
 export default function SchedulePage() {
   const { currentSchool } = useSchool();
+  const { showToast } = useToast();
   const supabase = createClient();
   const teachers = useTeachers(supabase, currentSchool);
   const { sessionTags, setSessionTags } = useSessionTags();
@@ -48,6 +52,30 @@ export default function SchedulePage() {
     refreshUnscheduledCount,
     optimisticUpdateSession,
   } = useScheduleData();
+
+  // Groups v2 (Phase 3): a click on a group plate or member pill opens the group
+  // popover anchored to it; a member row drills into that session's details.
+  const [groupPopover, setGroupPopover] = useState<GroupPopoverData | null>(null);
+  const [sessionDetail, setSessionDetail] = useState<ScheduleSession | null>(null);
+  const handleGroupClick = useCallback(
+    (_groupId: string, _groupName: string, groupSessions: ScheduleSession[], triggerRect: DOMRect) => {
+      setGroupPopover({ anchor: triggerRect, members: groupSessions });
+    },
+    []
+  );
+  const studentsMap = useMemo(
+    () =>
+      new Map<string, { initials: string; grade_level?: string }>(
+        students.map(
+          s =>
+            [s.id, { initials: s.initials, grade_level: s.grade_level || undefined }] as [
+              string,
+              { initials: string; grade_level?: string }
+            ]
+        )
+      ),
+    [students]
+  );
 
   // SPE-288 (pull-on-view): when this provider opens their schedule, clear any of THEIR
   // cross-provider conflict flags that the OTHER provider has since resolved. The flag
@@ -166,6 +194,54 @@ export default function SchedulePage() {
     updateDragPosition(nextPosition);
   }, [draggedSession, dragOffset, gridConfig, updateDragPosition, pixelsToTime]);
 
+  // Groups v2 (Phase 3): after a VALID move, reconcile grouping for MATERIALIZED
+  // groups. Derived clusters (no group_ref) need nothing — the plates re-derive
+  // from the moved schedule. A pill dragged out of a materialized group leaves it
+  // (retiring it if it empties); one dropped into a materialized group at its new
+  // slot (same deliverer) joins it. Best-effort: never blocks the move.
+  const reconcileGroupsAfterMove = useCallback(
+    async (moved: ScheduleSession, newDay: number, newStart: string) => {
+      const delivererKey = (s: ScheduleSession) =>
+        `${s.delivered_by ?? 'provider'}|${s.assigned_to_sea_id ?? ''}|${s.assigned_to_specialist_id ?? ''}`;
+      const hhmm = (t: string | null) => (t ?? '').slice(0, 5);
+      const slotChanged = moved.day_of_week !== newDay || hhmm(moved.start_time) !== hhmm(newStart);
+      const mutate = (body: Record<string, unknown>) =>
+        fetch('/api/groups/mutate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+      try {
+        let changed = false;
+        if (moved.group_ref && slotChanged) {
+          await mutate({ action: 'leave', sessionId: moved.id });
+          changed = true;
+        }
+        // Join a materialized group already present at the destination slot.
+        const target = sessions.find(
+          s =>
+            s.id !== moved.id &&
+            s.session_date === null &&
+            s.group_ref &&
+            s.day_of_week === newDay &&
+            hhmm(s.start_time) === hhmm(newStart) &&
+            delivererKey(s) === delivererKey(moved)
+        );
+        if (target?.group_ref) {
+          await mutate({ action: 'join', sessionId: moved.id, groupId: target.group_ref });
+          changed = true;
+        }
+        if (changed) {
+          refreshSessions();
+          showToast('Group updated', 'success');
+        }
+      } catch (err) {
+        console.error('Groups v2: reconcile after move failed', err);
+      }
+    },
+    [sessions, refreshSessions, showToast]
+  );
+
   // Handle drop
   const handleDrop = useCallback(async (e: React.DragEvent, day: number) => {
     e.preventDefault();
@@ -237,6 +313,9 @@ export default function SchedulePage() {
         }
       }
 
+      // Groups v2: reconcile grouping for materialized groups after a valid move.
+      await reconcileGroupsAfterMove(sessionToMove, day, newStartTime);
+
       if (result.hasConflicts && result.conflicts) {
         // If the move succeeded but created new conflicts, update the status
         optimisticUpdateSession(sessionToMove.id, {
@@ -245,7 +324,7 @@ export default function SchedulePage() {
         });
       }
     }
-  }, [draggedSession, dragPosition, students, endDrag, clearDragValidation, optimisticUpdateSession, handleSessionDrop, sessionFilter, selectedSeaId, selectedSpecialistId, supabase]);
+  }, [draggedSession, dragPosition, students, endDrag, clearDragValidation, optimisticUpdateSession, handleSessionDrop, sessionFilter, selectedSeaId, selectedSpecialistId, supabase, reconcileGroupsAfterMove]);
 
   // Handle schedule complete
   const handleScheduleComplete = useCallback(() => {
@@ -510,11 +589,38 @@ export default function SchedulePage() {
             onTimeSlotClick={handleTimeSlotClick}
             onDayClick={handleDayClick}
             onSessionClick={openSessionPopup}
+            onGroupClick={handleGroupClick}
             onHighlightToggle={toggleHighlight}
             onPopupClose={closeSessionPopup}
             onPopupUpdate={handlePopupUpdate}
             onClearDay={handleClearDay}
           />
+
+          {/* Groups v2 (Phase 3): the group popover (name, color, meets, members,
+              split), wired to the transactional mutation engine. A member row
+              drills into that session's own details modal. */}
+          {groupPopover && (
+            <GroupPopover
+              data={groupPopover}
+              allSessions={sessions}
+              students={studentsMap}
+              seaProfiles={seaProfiles}
+              otherSpecialists={otherSpecialists}
+              onClose={() => setGroupPopover(null)}
+              onMutated={refreshSessions}
+              onOpenSession={(s) => { setGroupPopover(null); setSessionDetail(s); }}
+            />
+          )}
+          {sessionDetail && (
+            <SessionDetailsModal
+              mode="session"
+              isOpen={true}
+              onClose={() => setSessionDetail(null)}
+              session={sessionDetail}
+              student={sessionDetail.student_id ? studentsMap.get(sessionDetail.student_id) : undefined}
+              onUpdate={refreshSessions}
+            />
+          )}
 
           {/* Unscheduled Sessions Panel */}
           <UnscheduledSessionsPanel
