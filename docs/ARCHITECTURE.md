@@ -429,7 +429,8 @@ erDiagram
   `session_notes`.
 - **Grouping (Groups v2):** durable `group_ref` → `session_groups` (see the
   subsection below); the legacy `group_id` / `group_name` / `group_color` columns
-  are dual-written through the migration bake and dropped in Phase 5 (SPE-315).
+  remain dual-written, and their removal is deferred to a separately-approved
+  migration after a bake period (tracked on SPE-315) — not yet dropped.
 - **Soft delete:** `deleted_at` (rows are not always hard-deleted here).
 - **Instance horizon (SPE-291):** dated instances are materialized to a
   **rolling 12-week horizon** by `topup_session_instances()` (set-based,
@@ -455,10 +456,16 @@ Invariants, enforced by the transactional RPC layer (`groups_v2_form` / `join` /
 
 - **Future-only, past immutable.** Every mutation touches the template + instances
   dated `>= CURRENT_DATE` only; historical instances keep whatever `group_ref`
-  they carried. Propagation is by `template_id`, never the natural key.
-- **Retire, never delete.** Emptying a group sets `retired_at`; nothing cascades a
-  delete into `session_groups` (`group_ref` is `ON DELETE RESTRICT` from sessions,
-  `ON DELETE SET NULL` from lessons).
+  they carried. Stamping one session's group onto its instances matches by
+  `template_id` **and** the `(provider, student, day_of_week, start_time)` natural
+  key, so instances predating `template_id` linkage are still covered
+  (`_groups_v2_stamp`).
+- **Retire, never delete (by group ops).** Group emptying/mutation never
+  hard-deletes a record — it sets `retired_at`; and `group_ref` is
+  `ON DELETE RESTRICT` from sessions / `ON DELETE SET NULL` from lessons, so group
+  content can't strand a live record. Caveat: `session_groups.provider_id` is
+  `ON DELETE CASCADE`, so deleting a provider profile still cascades away their
+  group records — a hardening item (SPE-315) to reconcile with "never delete".
 - **Dormant at < 2.** A group with fewer than two live member sessions renders as
   plain pills; the record persists and revives when someone rejoins (replaces the
   old "must have ≥ 2" rule).
@@ -466,10 +473,13 @@ Invariants, enforced by the transactional RPC layer (`groups_v2_form` / `join` /
   updates the record's deliverer + the members' delivery fields, group and threads
   intact — replacing the old trigger that force-ungrouped on a `delivered_by`
   change.
-- **Access by record, not live membership.** Group lessons/docs/curriculum
-  authorize via the owning provider or current assignee of the `group_ref` record
-  (`lib/groups/access.ts#hasGroupAccess`), so a reshuffle never orphans a group's
-  history; curriculum continuity walks the `group_ref` chain per curriculum.
+- **Access by record (lessons + curriculum).** Group **lessons** and the
+  curriculum-continuity lookup authorize via the owning provider or current
+  assignee of the `group_ref` record (`lib/groups/access.ts#hasGroupAccess`), so a
+  reshuffle never orphans them; continuity walks the `group_ref` chain per
+  curriculum. **Gap (SPE-315):** the group **documents** route and its RLS still
+  authorize by live `group_id` membership, so a fully-reshuffled group's documents
+  can 403 until they are switched to the record path.
 - **`group_ref` rides instance top-up** (`topup_session_instances()` and the JS
   `session-instance-generator`), so newly materialized future instances inherit
   their template's group.

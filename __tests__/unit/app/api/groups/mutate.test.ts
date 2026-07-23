@@ -118,3 +118,48 @@ describe('POST /api/groups/mutate (SPE-311)', () => {
     expect(mockRpc).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * Input-validation net (SPE-315). The RPCs are directly callable by the
+ * `authenticated` role, so the route's zod schema is the first line of defense —
+ * a loosened bound here would let a malformed mutation reach the DB. Each case
+ * must be rejected with a 400 BEFORE any RPC call.
+ */
+describe('POST /api/groups/mutate — validation bounds (SPE-315)', () => {
+  beforeEach(() => {
+    mockGetUser.mockReset().mockResolvedValue({ data: { user: { id: PROVIDER } }, error: null });
+    mockRpc.mockReset().mockResolvedValue({ data: null, error: null });
+  });
+
+  const rejectedBeforeRpc = async (body: unknown) => {
+    const res = await POST(req(body));
+    expect(res.status).toBe(400);
+    expect(mockRpc).not.toHaveBeenCalled();
+  };
+
+  it('split must leave at least one session in the original group', () =>
+    rejectedBeforeRpc({ action: 'split', groupId: G1, sessionIds: [] }));
+
+  it('rename rejects a name longer than 80 chars', () =>
+    rejectedBeforeRpc({ action: 'rename', groupId: G1, name: 'x'.repeat(81), color: null }));
+
+  it('rename rejects a color outside the 0..4 palette', () =>
+    rejectedBeforeRpc({ action: 'rename', groupId: G1, name: null, color: 5 }));
+
+  it('assign rejects a deliveredBy outside provider|sea|specialist', () =>
+    rejectedBeforeRpc({ action: 'assign', groupId: G1, deliveredBy: 'teacher', assignee: null }));
+
+  it('rejects a non-uuid id', () => rejectedBeforeRpc({ action: 'leave', sessionId: 'not-a-uuid' }));
+
+  it('form rejects a non-uuid inside the sessionIds array', () =>
+    rejectedBeforeRpc({ action: 'form', sessionIds: [S1, 'nope'] }));
+
+  it('rename accepts null name + null color (clears both) and forwards them', async () => {
+    await POST(req({ action: 'rename', groupId: G1, name: null, color: null }));
+    expect(mockRpc).toHaveBeenLastCalledWith('groups_v2_rename', {
+      p_group_id: G1,
+      p_name: null,
+      p_color: null,
+    });
+  });
+});

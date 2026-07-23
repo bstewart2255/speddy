@@ -82,8 +82,10 @@ deliverer (provider/SEA/specialist) = one group.
 
 **The invariant: group mutations are future-only; the past is immutable.**
 `form / join / leave / split / merge / rename / assign` touch the template +
-instances dated `>= CURRENT_DATE` only, propagating by `template_id` — a
-historical instance keeps whatever `group_ref` it carried. Groups are retired
+instances dated `>= CURRENT_DATE` only, propagating by `template_id` **and** the
+`(provider, student, day_of_week, start_time)` natural key (so instances that
+predate `template_id` linkage are still covered) — a historical instance keeps
+whatever `group_ref` it carried. Groups are retired
 (`retired_at`), never hard-deleted, and access to a group's lessons/curriculum
 is authorized via the record's owner/assignee, never live membership (so a
 reshuffle never orphans history).
