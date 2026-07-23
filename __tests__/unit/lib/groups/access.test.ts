@@ -11,6 +11,7 @@ const USER = 'prov-1';
 
 // Controllable stub responses.
 let refRow: { group_ref: string } | null;
+let lessonRefRow: { group_ref: string } | null;
 let sessionGroupRow: { id: string } | null;
 let legacyRows: Array<{ id: string }>;
 
@@ -24,6 +25,7 @@ function fakeSupabase() {
     b.then = (resolve: (r: unknown) => unknown) => {
       let data: unknown = null;
       if (table === 'session_groups') data = sessionGroupRow;
+      else if (table === 'lessons') data = lessonRefRow;
       else if (table === 'schedule_sessions') data = state.cols === 'group_ref' ? refRow : legacyRows;
       return Promise.resolve({ data, error: null }).then(resolve);
     };
@@ -35,6 +37,7 @@ function fakeSupabase() {
 describe('hasGroupAccess (SPE-311)', () => {
   beforeEach(() => {
     refRow = null;
+    lessonRefRow = null;
     sessionGroupRow = null;
     legacyRows = [];
   });
@@ -43,6 +46,17 @@ describe('hasGroupAccess (SPE-311)', () => {
     // group_ref resolves to a record the RLS-gated select returns → authorized,
     // regardless of legacy membership (empty here).
     refRow = { group_ref: 'record-uuid' };
+    sessionGroupRow = { id: 'record-uuid' };
+    legacyRows = [];
+
+    expect(await hasGroupAccess(fakeSupabase(), GROUP, USER)).toBe(true);
+  });
+
+  it('resolves the durable record via the lesson ref when the sessions are gone (dissolved group)', async () => {
+    // No session carries the legacy id anymore, but the saved group lesson still
+    // points at the durable record — the owner must keep access to it.
+    refRow = null;
+    lessonRefRow = { group_ref: 'record-uuid' };
     sessionGroupRow = { id: 'record-uuid' };
     legacyRows = [];
 

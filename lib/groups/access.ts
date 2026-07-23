@@ -29,7 +29,12 @@ export async function hasGroupAccess(
   userId: string
 ): Promise<boolean> {
   // Path A — durable group record (owner or current assignee), RLS-gated.
-  const { data: refRow } = await supabase
+  // Resolve the record id: from a live session carrying the legacy id, else from
+  // a group lesson carrying it (covers a fully-dissolved group whose sessions are
+  // gone but whose lesson still points at the durable record), else the legacy id
+  // itself (groups the backfill identity-mapped so session_groups.id == group_id).
+  let groupRecordId = groupId;
+  const { data: sessRef } = await supabase
     .from('schedule_sessions')
     .select('group_ref')
     .eq('group_id', groupId)
@@ -37,7 +42,18 @@ export async function hasGroupAccess(
     .is('deleted_at', null)
     .limit(1)
     .maybeSingle();
-  const groupRecordId = refRow?.group_ref ?? groupId;
+  if (sessRef?.group_ref) {
+    groupRecordId = sessRef.group_ref;
+  } else {
+    const { data: lessonRef } = await supabase
+      .from('lessons')
+      .select('group_ref')
+      .eq('group_id', groupId)
+      .not('group_ref', 'is', null)
+      .limit(1)
+      .maybeSingle();
+    if (lessonRef?.group_ref) groupRecordId = lessonRef.group_ref;
+  }
 
   const { data: groupRecord } = await supabase
     .from('session_groups')
