@@ -255,6 +255,10 @@ BEGIN
   WHERE id = p_session_id AND session_date IS NULL AND deleted_at IS NULL;
   IF v_s IS NULL THEN RAISE EXCEPTION 'session not found or not a template'; END IF;
   IF v_s.provider_id <> v_uid THEN RAISE EXCEPTION 'not the owner of this session'; END IF;
+  -- join adds an UNGROUPED template. Re-pointing an already-grouped session
+  -- here would silently leave its old group behind (possibly empty-but-active);
+  -- switching groups is modeled as leave() then join() so the source retires.
+  IF v_s.group_ref IS NOT NULL THEN RAISE EXCEPTION 'session is already in a group'; END IF;
 
   SELECT * INTO v_g FROM session_groups WHERE id = p_group_id;
   IF v_g IS NULL THEN RAISE EXCEPTION 'group not found'; END IF;

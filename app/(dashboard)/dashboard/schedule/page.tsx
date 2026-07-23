@@ -9,6 +9,7 @@ import { ScheduleHeader } from './components/schedule-header';
 import { ScheduleControls } from './components/schedule-controls';
 import { ScheduleGrid } from './components/schedule-grid';
 import { SessionDetailsModal } from '../../../components/modals/session-details-modal';
+import { GroupPopover, type GroupPopoverData } from './components/group-popover';
 import { ScheduleLoading } from './components/schedule-loading';
 import { ConflictFilterPanel } from './components/ConflictFilterPanel';
 import { UnscheduledSessionsPanel } from './components/unscheduled-sessions-panel';
@@ -50,14 +51,13 @@ export default function SchedulePage() {
     optimisticUpdateSession,
   } = useScheduleData();
 
-  // Groups v2 (Phase 3): a click on a group plate or a member pill opens the
-  // group modal (reusing the existing group-mode SessionDetailsModal).
-  const [groupModal, setGroupModal] = useState<
-    { groupId: string; groupName: string; sessions: ScheduleSession[] } | null
-  >(null);
+  // Groups v2 (Phase 3): a click on a group plate or member pill opens the group
+  // popover anchored to it; a member row drills into that session's details.
+  const [groupPopover, setGroupPopover] = useState<GroupPopoverData | null>(null);
+  const [sessionDetail, setSessionDetail] = useState<ScheduleSession | null>(null);
   const handleGroupClick = useCallback(
-    (groupId: string, groupName: string, groupSessions: ScheduleSession[]) => {
-      setGroupModal({ groupId, groupName, sessions: groupSessions });
+    (_groupId: string, _groupName: string, groupSessions: ScheduleSession[], triggerRect: DOMRect) => {
+      setGroupPopover({ anchor: triggerRect, members: groupSessions });
     },
     []
   );
@@ -543,16 +543,26 @@ export default function SchedulePage() {
             onClearDay={handleClearDay}
           />
 
-          {/* Groups v2 (Phase 3): group modal opened from a plate / member pill */}
-          {groupModal && (
-            <SessionDetailsModal
-              mode="group"
-              isOpen={true}
-              onClose={() => setGroupModal(null)}
-              groupId={groupModal.groupId}
-              groupName={groupModal.groupName}
-              sessions={groupModal.sessions}
+          {/* Groups v2 (Phase 3): the group popover (name, color, meets, members,
+              split), wired to the transactional mutation engine. A member row
+              drills into that session's own details modal. */}
+          {groupPopover && (
+            <GroupPopover
+              data={groupPopover}
+              allSessions={sessions}
               students={studentsMap}
+              onClose={() => setGroupPopover(null)}
+              onMutated={refreshSessions}
+              onOpenSession={(s) => { setGroupPopover(null); setSessionDetail(s); }}
+            />
+          )}
+          {sessionDetail && (
+            <SessionDetailsModal
+              mode="session"
+              isOpen={true}
+              onClose={() => setSessionDetail(null)}
+              session={sessionDetail}
+              student={sessionDetail.student_id ? studentsMap.get(sessionDetail.student_id) : undefined}
               onUpdate={refreshSessions}
             />
           )}

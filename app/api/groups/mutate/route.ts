@@ -24,6 +24,12 @@ const mutateSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('leave'), sessionId: uuid }),
   z.object({ action: z.literal('split'), groupId: uuid, sessionIds: z.array(uuid).min(1) }),
   z.object({ action: z.literal('merge'), fromGroupId: uuid, intoGroupId: uuid }),
+  z.object({
+    action: z.literal('rename'),
+    groupId: uuid,
+    name: z.string().max(80).nullable(),
+    color: z.number().int().min(0).max(4).nullable(),
+  }),
 ]);
 
 export const POST = withRoute({ body: mutateSchema }, async ({ userId, body }) => {
@@ -45,6 +51,12 @@ export const POST = withRoute({ body: mutateSchema }, async ({ userId, body }) =
         return supabase.rpc('groups_v2_merge', {
           p_from_group_id: body.fromGroupId,
           p_into_group_id: body.intoGroupId,
+        });
+      case 'rename':
+        return supabase.rpc('groups_v2_rename', {
+          p_group_id: body.groupId,
+          p_name: body.name,
+          p_color: body.color,
         });
     }
   };

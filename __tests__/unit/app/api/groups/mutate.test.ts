@@ -64,6 +64,13 @@ describe('POST /api/groups/mutate (SPE-311)', () => {
       p_from_group_id: G1,
       p_into_group_id: G2,
     });
+
+    await POST(req({ action: 'rename', groupId: G1, name: 'Blue Jays', color: 2 }));
+    expect(mockRpc).toHaveBeenLastCalledWith('groups_v2_rename', {
+      p_group_id: G1,
+      p_name: 'Blue Jays',
+      p_color: 2,
+    });
   });
 
   it('leave returns a null groupId on success (void RPC)', async () => {
