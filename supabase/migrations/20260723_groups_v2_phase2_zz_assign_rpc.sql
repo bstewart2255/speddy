@@ -9,6 +9,12 @@
 -- flow) still ungroups exactly as before. The member UPDATE still passes through
 -- validate_session_assignment_permissions (can_assign_sea_to_session), so a
 -- provider can only assign to SEAs/specialists they're permitted to.
+--
+-- ORDERING (the `zz` in the filename): this file recreates the two delegation
+-- trigger functions WITH the guard; 20260723_groups_v2_phase2_triggers_clear_group_ref.sql
+-- recreates the SAME functions WITHOUT it. On a fresh file-order apply
+-- (`supabase db reset` / CI), the last definition wins — so this file MUST sort
+-- AFTER that one, hence the `phase2_zz_assign_rpc` name. Do not rename it earlier.
 
 CREATE OR REPLACE FUNCTION auto_ungroup_on_delivered_by_change()
 RETURNS TRIGGER LANGUAGE plpgsql SET search_path = public AS $$
@@ -78,6 +84,15 @@ BEGIN
   IF v_g IS NULL THEN RAISE EXCEPTION 'group not found'; END IF;
   IF v_g.provider_id <> v_uid THEN RAISE EXCEPTION 'not the owner of this group'; END IF;
   IF v_g.retired_at IS NOT NULL THEN RAISE EXCEPTION 'cannot assign a retired group'; END IF;
+  -- Permission is enforced per-member by validate_session_assignment_permissions
+  -- during the UPDATE loop below; a memberless group would skip the loop and thus
+  -- the check, so reject it (it also has nothing to deliver).
+  IF NOT EXISTS (
+    SELECT 1 FROM schedule_sessions
+    WHERE group_ref = p_group_id AND session_date IS NULL AND deleted_at IS NULL
+  ) THEN
+    RAISE EXCEPTION 'cannot assign a group with no members';
+  END IF;
 
   v_sea  := CASE WHEN p_delivered_by = 'sea' THEN p_assignee ELSE NULL END;
   v_spec := CASE WHEN p_delivered_by = 'specialist' THEN p_assignee ELSE NULL END;
