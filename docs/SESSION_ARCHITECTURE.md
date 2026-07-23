@@ -32,6 +32,7 @@ schedule_sessions
 ├── is_completed        -- Only valid for dated instances (see constraint)
 ├── status              -- 'active' | 'needs_attention' | 'conflict'
 ├── has_conflict        -- Boolean flag for conflict detection
+├── group_ref           -- FK to session_groups (durable group id); legacy group_id is retiring
 └── ...
 ```
 
@@ -72,6 +73,24 @@ HAVING s.sessions_per_week != (
 );
 -- Should return 0 rows if invariant holds
 ```
+
+## Grouping Invariant (Groups v2)
+
+A group is a durable `session_groups` record; sessions link to it via `group_ref`.
+Membership **derives from the schedule** — same `day_of_week` + `start_time` +
+deliverer (provider/SEA/specialist) = one group.
+
+**The invariant: group mutations are future-only; the past is immutable.**
+`form / join / leave / split / merge / rename / assign` touch the template +
+instances dated `>= CURRENT_DATE` only, propagating by `template_id` — a
+historical instance keeps whatever `group_ref` it carried. Groups are retired
+(`retired_at`), never hard-deleted, and access to a group's lessons/curriculum
+is authorized via the record's owner/assignee, never live membership (so a
+reshuffle never orphans history).
+
+See **ARCHITECTURE.md §6 → "Groups v2 — schedule-derived groups"** for the full
+model, the RPC layer, and the access rules — that section is authoritative; the
+permanent regression suite (SPE-315) enforces these invariants.
 
 ## Data Flow
 
