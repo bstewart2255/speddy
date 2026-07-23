@@ -95,6 +95,11 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
 
   // Extract mode-specific values for dependency arrays (avoids complex expressions)
   const groupId = props.mode === 'group' ? props.groupId : undefined;
+  // A "derived" group is a co-scheduled cluster with no materialized group
+  // record yet (empty group_id) — group-level content (shared notes, documents,
+  // curriculum) can't be persisted without a record, so those controls render
+  // read-only until the group is set up. Members + per-session drill-in stay.
+  const derivedGroup = props.mode === 'group' && !groupId;
   const groupSessions = props.mode === 'group' ? props.sessions : undefined;
   const sessionDate = props.mode === 'session' ? props.session.session_date : undefined;
   const sessionGroupId = props.mode === 'session' ? props.session.group_id : undefined;
@@ -336,7 +341,8 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
         // A derived (un-materialized) cluster — co-scheduled students with no
         // legacy group_id yet — has no group record to key a lesson on. Skip the
         // group-scoped fetch so we never hit /api/groups//lesson; the modal still
-        // shows the cluster's members and per-session attendance.
+        // shows the cluster's members (shared group notes, documents, and
+        // curriculum need the group set up first — see derivedGroup below).
         if (!groupId) {
           setLesson(null);
           setNotes('');
@@ -998,6 +1004,12 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
   };
 
   const handleSaveLesson = async () => {
+    // Derived cluster: no group record to key shared content on. Keep it
+    // read-only rather than firing a broken /api/groups//lesson request.
+    if (derivedGroup) {
+      showToast('Set up this group to save shared notes, documents, or curriculum', 'info');
+      return;
+    }
     try {
       // Ensure sessions are persisted before saving and get persisted session ID
       const persistedSessionId = await ensureSessionsPersistence();
@@ -1177,6 +1189,15 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
     const validation = validateDocumentFile(file);
     if (!validation.valid) {
       showToast(validation.error || 'Invalid file', 'error');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+
+    // Derived cluster: no group record to attach documents to. Guard the upload
+    // (the "+ Add" control is hidden for these) so we never POST to
+    // /api/groups//documents.
+    if (derivedGroup) {
+      showToast('Set up this group before adding documents', 'info');
       if (fileInputRef.current) fileInputRef.current.value = '';
       return;
     }
@@ -1600,13 +1621,15 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
                   accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.jpg,.jpeg,.png,.webp,.txt,.csv"
                   className="hidden"
                 />
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={uploading}
-                  className="py-1 px-2 bg-blue-600 text-white rounded text-xs font-medium disabled:opacity-50"
-                >
-                  {uploading ? '...' : '+ Add'}
-                </button>
+                {!derivedGroup && (
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploading}
+                    className="py-1 px-2 bg-blue-600 text-white rounded text-xs font-medium disabled:opacity-50"
+                  >
+                    {uploading ? '...' : '+ Add'}
+                  </button>
+                )}
               </div>
 
               {loadingDocuments ? (
@@ -1674,7 +1697,8 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
                     setCurriculumType(e.target.value);
                     setCurriculumLevel('');
                   }}
-                  className="w-full p-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  disabled={derivedGroup}
+                  className="w-full p-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-400"
                 >
                   <option value="">Select curriculum...</option>
                   {CURRICULUM_OPTIONS.map(opt => (
@@ -1716,6 +1740,13 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
             {loadingLesson ? (
               <div className="flex items-center justify-center py-8">
                 <div className="text-gray-500">Loading...</div>
+              </div>
+            ) : derivedGroup ? (
+              // Derived cluster: shared group content isn't editable until the
+              // group is set up. Show who's in it and point at the per-session
+              // chips above for individual work.
+              <div className="w-full min-h-[240px] p-3 border border-gray-200 rounded-md bg-gray-50 font-mono text-sm whitespace-pre-wrap text-gray-500">
+                Shared group notes, documents, and curriculum become available once this group is set up. Open any student&rsquo;s session from the chips above to work with them individually.
               </div>
             ) : editingNotes ? (
               <textarea
@@ -1765,12 +1796,14 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
             >
               Close
             </button>
-            <button
-              onClick={handleSaveLesson}
-              className="px-4 py-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors font-medium"
-            >
-              Save
-            </button>
+            {!derivedGroup && (
+              <button
+                onClick={handleSaveLesson}
+                className="px-4 py-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors font-medium"
+              >
+                Save
+              </button>
+            )}
           </div>
         </div>
       </div>

@@ -376,18 +376,37 @@ export const ScheduleGrid = memo(function ScheduleGrid({
               // A "plate" is a neutral enclosure drawn BEHIND the side-by-side
               // pills of a derived cluster. Geometry mirrors the pill math below
               // (fixedWidth 25 + gap 1 = 26px stride, +2 left inset); a small pad
-              // opens the enclosure a touch beyond the pills.
-              const groupPlates = Array.from(clusters.entries())
-                .filter(([, members]) => members.length >= 2)
-                .map(([key, members]) => {
-                  const cols = members.map(m => sessionColumns.get(m.id) ?? 0);
-                  const minCol = Math.min(...cols);
-                  const maxCol = Math.max(...cols);
-                  const top = timeToPixels(members[0].start_time!.substring(0, 5));
-                  const height = timeToPixels(members[0].end_time!.substring(0, 5)) - top;
-                  const PAD = 3;
-                  return {
-                    key,
+              // opens the enclosure a touch beyond the pills. Members share a
+              // start_time (it's in the cluster key) but can differ in duration,
+              // so the plate spans down to the LATEST end. A cluster's members
+              // usually land in adjacent columns, but when two clusters share one
+              // start_time their columns can interleave — so draw one plate per
+              // contiguous column-run, which keeps a plate from ever enclosing a
+              // pill that belongs to a different group.
+              const PAD = 3;
+              const groupPlates: Array<{
+                key: string; groupId: string; groupName: string; members: ScheduleSession[];
+                top: number; height: number; left: number; width: number; dashed: boolean;
+              }> = [];
+              for (const [key, members] of clusters.entries()) {
+                if (members.length < 2) continue;
+                const top = timeToPixels(members[0].start_time!.substring(0, 5));
+                const height =
+                  Math.max(...members.map(m => timeToPixels(m.end_time!.substring(0, 5)))) - top;
+                const cols = Array.from(
+                  new Set(members.map(m => sessionColumns.get(m.id) ?? 0))
+                ).sort((a, b) => a - b);
+                const runs: number[][] = [];
+                for (const c of cols) {
+                  const last = runs[runs.length - 1];
+                  if (last && c === last[last.length - 1] + 1) last.push(c);
+                  else runs.push([c]);
+                }
+                runs.forEach((run, ri) => {
+                  const minCol = run[0];
+                  const maxCol = run[run.length - 1];
+                  groupPlates.push({
+                    key: `${key}#${ri}`,
                     groupId: members[0].group_id ?? '',
                     groupName: groupDisplayName(members),
                     members,
@@ -396,8 +415,9 @@ export const ScheduleGrid = memo(function ScheduleGrid({
                     left: minCol * 26 + 2 - PAD,
                     width: (maxCol - minCol) * 26 + 25 + PAD * 2,
                     dashed: members[0].delivered_by === 'sea' || members[0].delivered_by === 'specialist',
-                  };
+                  });
                 });
+              }
 
               return (
                 <div key={dayIndex} className="border-r last:border-r-0 relative">
