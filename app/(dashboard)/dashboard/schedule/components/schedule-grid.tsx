@@ -64,6 +64,7 @@ interface ScheduleGridProps {
   onTimeSlotClick: (time: string) => void;
   onDayClick: (day: number) => void;
   onSessionClick: (session: ScheduleSession, triggerRect: DOMRect) => void;
+  onGroupClick: (groupId: string, groupName: string, groupSessions: ScheduleSession[], triggerRect: DOMRect) => void;
   onHighlightToggle: (studentId: string) => void;
   onPopupClose: () => void;
   onPopupUpdate: () => void;
@@ -116,6 +117,7 @@ export const ScheduleGrid = memo(function ScheduleGrid({
   onTimeSlotClick,
   onDayClick,
   onSessionClick,
+  onGroupClick,
   onHighlightToggle,
   onPopupClose,
   onPopupUpdate,
@@ -336,6 +338,46 @@ export const ScheduleGrid = memo(function ScheduleGrid({
                 });
               });
 
+              // Groups v2: a "plate" is a neutral enclosure drawn BEHIND the
+              // side-by-side pills of a grouped cluster (same group_id sharing a
+              // start_time). A cluster of one renders as a plain pill (dormant),
+              // so a plate is drawn only for 2+ members. Geometry mirrors the pill
+              // math below (fixedWidth 25 + gap 1 = 26px stride, +2 left inset).
+              const groupPlates = (() => {
+                const byKey = new Map<string, ScheduleSession[]>();
+                daySessions.forEach(s => {
+                  if (!s.group_id || !s.start_time || !s.end_time) return;
+                  const arr = byKey.get(`${s.group_id}|${s.start_time}`) || [];
+                  arr.push(s);
+                  byKey.set(`${s.group_id}|${s.start_time}`, arr);
+                });
+                const plates: Array<{
+                  key: string; groupId: string; groupName: string; members: ScheduleSession[];
+                  top: number; height: number; left: number; width: number; dashed: boolean;
+                }> = [];
+                byKey.forEach((members, key) => {
+                  if (members.length < 2) return;
+                  const cols = members.map(m => sessionColumns.get(m.id) ?? 0);
+                  const minCol = Math.min(...cols);
+                  const maxCol = Math.max(...cols);
+                  const top = timeToPixels(members[0].start_time!.substring(0, 5));
+                  const height = timeToPixels(members[0].end_time!.substring(0, 5)) - top;
+                  const PAD = 3;
+                  plates.push({
+                    key,
+                    groupId: members[0].group_id!,
+                    groupName: members[0].group_name || '',
+                    members,
+                    top,
+                    height,
+                    left: minCol * 26 + 2 - PAD,
+                    width: (maxCol - minCol) * 26 + 25 + PAD * 2,
+                    dashed: members[0].delivered_by === 'sea' || members[0].delivered_by === 'specialist',
+                  });
+                });
+                return plates;
+              })();
+
               return (
                 <div key={dayIndex} className="border-r last:border-r-0 relative">
                   <div
@@ -393,6 +435,28 @@ export const ScheduleGrid = memo(function ScheduleGrid({
                         </div>
                       </div>
                     )}
+
+                    {/* Groups v2: group plates — neutral enclosures behind the
+                        grouped pills. Sit below pills (z-5) so pills stay on top;
+                        the plate's exposed border/padding opens the group modal,
+                        as does clicking any member pill. */}
+                    {groupPlates.map(plate => (
+                      <div
+                        key={`plate-${plate.key}`}
+                        className={`absolute rounded-[10px] cursor-pointer border-[1.5px] border-slate-300 bg-slate-500/[0.09] transition-colors hover:border-slate-400 ${plate.dashed ? 'border-dashed' : ''}`}
+                        style={{ top: `${plate.top - 2}px`, height: `${plate.height + 2}px`, left: `${plate.left}px`, width: `${plate.width}px`, zIndex: 5 }}
+                        role="button"
+                        tabIndex={0}
+                        title={`${plate.groupName || 'Group'} · ${plate.members.map(m => students.find(s => s.id === m.student_id)?.initials).filter(Boolean).join(', ')}`}
+                        onClick={(e) => onGroupClick(plate.groupId, plate.groupName, plate.members, e.currentTarget.getBoundingClientRect())}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            onGroupClick(plate.groupId, plate.groupName, plate.members, e.currentTarget.getBoundingClientRect());
+                          }
+                        }}
+                      />
+                    ))}
 
                     {/* Sessions */}
                     {daySessions.map(session => {
@@ -460,7 +524,17 @@ export const ScheduleGrid = memo(function ScheduleGrid({
                               onHighlightToggle(session.student_id);
                             }
                             const rect = e.currentTarget.getBoundingClientRect();
-                            onSessionClick(session, rect);
+                            // A grouped pill in a live cluster (2+ members this
+                            // slot) opens the group modal; a lone/dormant pill
+                            // opens session details, exactly as before.
+                            const slotGroupMembers = session.group_id
+                              ? daySessions.filter(x => x.group_id === session.group_id && x.start_time === session.start_time)
+                              : [];
+                            if (session.group_id && slotGroupMembers.length >= 2) {
+                              onGroupClick(session.group_id, session.group_name || '', slotGroupMembers, rect);
+                            } else {
+                              onSessionClick(session, rect);
+                            }
                           }}
                           title={hasConflict ? session.conflict_reason || 'Session needs attention' : undefined}
                         >

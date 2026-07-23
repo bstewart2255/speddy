@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useScheduleState, type ScheduleDragPosition } from './hooks/use-schedule-state';
 import { useScheduleData } from '../../../../lib/supabase/hooks/use-schedule-data';
 import { useScheduleOperations } from '../../../../lib/supabase/hooks/use-schedule-operations';
@@ -8,6 +8,7 @@ import { ScheduleErrorBoundary } from '../../../components/schedule/schedule-err
 import { ScheduleHeader } from './components/schedule-header';
 import { ScheduleControls } from './components/schedule-controls';
 import { ScheduleGrid } from './components/schedule-grid';
+import { SessionDetailsModal } from '../../../components/modals/session-details-modal';
 import { ScheduleLoading } from './components/schedule-loading';
 import { ConflictFilterPanel } from './components/ConflictFilterPanel';
 import { UnscheduledSessionsPanel } from './components/unscheduled-sessions-panel';
@@ -48,6 +49,31 @@ export default function SchedulePage() {
     refreshUnscheduledCount,
     optimisticUpdateSession,
   } = useScheduleData();
+
+  // Groups v2 (Phase 3): a click on a group plate or a member pill opens the
+  // group modal (reusing the existing group-mode SessionDetailsModal).
+  const [groupModal, setGroupModal] = useState<
+    { groupId: string; groupName: string; sessions: ScheduleSession[] } | null
+  >(null);
+  const handleGroupClick = useCallback(
+    (groupId: string, groupName: string, groupSessions: ScheduleSession[]) => {
+      setGroupModal({ groupId, groupName, sessions: groupSessions });
+    },
+    []
+  );
+  const studentsMap = useMemo(
+    () =>
+      new Map<string, { initials: string; grade_level?: string }>(
+        students.map(
+          s =>
+            [s.id, { initials: s.initials, grade_level: s.grade_level || undefined }] as [
+              string,
+              { initials: string; grade_level?: string }
+            ]
+        )
+      ),
+    [students]
+  );
 
   // SPE-288 (pull-on-view): when this provider opens their schedule, clear any of THEIR
   // cross-provider conflict flags that the OTHER provider has since resolved. The flag
@@ -510,11 +536,26 @@ export default function SchedulePage() {
             onTimeSlotClick={handleTimeSlotClick}
             onDayClick={handleDayClick}
             onSessionClick={openSessionPopup}
+            onGroupClick={handleGroupClick}
             onHighlightToggle={toggleHighlight}
             onPopupClose={closeSessionPopup}
             onPopupUpdate={handlePopupUpdate}
             onClearDay={handleClearDay}
           />
+
+          {/* Groups v2 (Phase 3): group modal opened from a plate / member pill */}
+          {groupModal && (
+            <SessionDetailsModal
+              mode="group"
+              isOpen={true}
+              onClose={() => setGroupModal(null)}
+              groupId={groupModal.groupId}
+              groupName={groupModal.groupName}
+              sessions={groupModal.sessions}
+              students={studentsMap}
+              onUpdate={refreshSessions}
+            />
+          )}
 
           {/* Unscheduled Sessions Panel */}
           <UnscheduledSessionsPanel
