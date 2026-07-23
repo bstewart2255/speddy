@@ -9,7 +9,6 @@ import { Card, CardHeader, CardTitle, CardBody } from '../../components/ui/card'
 import { Button } from '../../components/ui/button';
 import { TodoWidget } from '../../components/todo-widget';
 import { WeeklyView } from '../../components/weekly-view';
-import { OnboardingNotifications } from '../../components/onboarding/onboarding-notifications';
 import { AttendanceWidget } from '../../components/dashboard/attendance-widget';
 import { ToastProvider } from '../../contexts/toast-context';
 import { useSchool } from '../../components/providers/school-context';
@@ -82,11 +81,7 @@ export default function DashboardPage() {
           <div className="mb-8">
             <h1 className="text-3xl font-bold text-gray-900 mb-2">Dashboard</h1>
           </div>
-          
-          {/* Onboarding Notifications */}
-          <OnboardingNotifications />
 
-          
           {/* Main Content Area */}
           <div className="space-y-4">
             {/* Scheduling & attendance views don't apply on secondary (middle/high) sites */}
