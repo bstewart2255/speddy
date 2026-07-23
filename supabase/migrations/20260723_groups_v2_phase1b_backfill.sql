@@ -106,7 +106,7 @@ BEGIN
            jsonb_agg(DISTINCT jsonb_build_object('id', st.id, 'initials', st.initials, 'grade_level', st.grade_level)) AS details
     FROM schedule_sessions s
     JOIN students st ON st.id = s.student_id
-    WHERE s.group_ref IS NOT NULL AND s.session_date IS NOT NULL
+    WHERE s.group_ref IS NOT NULL AND s.session_date IS NOT NULL AND s.deleted_at IS NULL
     GROUP BY s.group_ref, s.session_date
   )
   UPDATE lessons l

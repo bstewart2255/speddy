@@ -209,9 +209,24 @@ export const POST = withRoute<{ groupId: string }, z.infer<typeof saveLessonSche
         return NextResponse.json({ error: 'Failed to save lesson' }, { status: 500 });
       }
 
+      // Resolve the durable group_ref for this legacy group_id (any session
+      // carrying the id points at the session_groups record — for groups minted
+      // by the dual-write, that id is NOT the legacy group_id). Group lessons
+      // must carry group_ref too, or Groups v2 continuity and the Phase 1b
+      // backfill would attach them to a placeholder instead of the real group.
+      const { data: refRow } = await supabase
+        .from('schedule_sessions')
+        .select('group_ref')
+        .eq('group_id', groupId)
+        .not('group_ref', 'is', null)
+        .limit(1)
+        .maybeSingle();
+      const groupRef = refRow?.group_ref ?? null;
+
       // Snapshot the group's current members so this lesson stays legible even
       // after a later reshuffle/dissolve (mirrors the AI-lesson pattern).
       const { studentIds, studentDetails } = await buildGroupMemberSnapshot(supabase, groupId);
+      const hasSnapshot = studentIds.length > 0;
 
       let data;
       let error;
@@ -234,8 +249,11 @@ export const POST = withRoute<{ groupId: string }, z.infer<typeof saveLessonSche
             school_id: school_id || null,
             district_id: district_id || null,
             state_id: state_id || null,
-            student_ids: studentIds,
-            student_details: studentDetails,
+            // Only refresh the snapshot when current members are resolvable;
+            // otherwise preserve the existing (historical) snapshot rather than
+            // wiping it to empty on an edit made after the group dissolved.
+            ...(hasSnapshot ? { student_ids: studentIds, student_details: studentDetails } : {}),
+            ...(groupRef ? { group_ref: groupRef } : {}),
             updated_at: new Date().toISOString()
           })
           .eq('id', existingLesson.id)
@@ -265,7 +283,8 @@ export const POST = withRoute<{ groupId: string }, z.infer<typeof saveLessonSche
             district_id: district_id || null,
             state_id: state_id || null,
             student_ids: studentIds,
-            student_details: studentDetails
+            student_details: studentDetails,
+            ...(groupRef ? { group_ref: groupRef } : {})
           })
           .select('*')
           .single();

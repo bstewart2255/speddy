@@ -52,12 +52,15 @@ BEGIN
       AND session_date IS NOT NULL
       AND session_date >= CURRENT_DATE;
 
-    -- If the old group now has only one remaining template, ungroup it too
-    -- (groups must have >=2 sessions, matching the ungroup API's behavior)
+    -- If the old group now has only one remaining (live) template, ungroup it
+    -- too (groups must have >=2 sessions, matching the ungroup API's behavior).
+    -- Soft-deleted templates are excluded so a deleted row can't keep a live
+    -- one-member group from auto-dissolving.
     SELECT COUNT(*) INTO remaining_count
     FROM schedule_sessions
     WHERE group_id = OLD.group_id
-      AND session_date IS NULL;
+      AND session_date IS NULL
+      AND deleted_at IS NULL;
 
     IF remaining_count = 1 THEN
       SELECT id, provider_id, student_id, day_of_week, start_time
@@ -66,6 +69,7 @@ BEGIN
       FROM schedule_sessions
       WHERE group_id = OLD.group_id
         AND session_date IS NULL
+        AND deleted_at IS NULL
       LIMIT 1;
 
       UPDATE schedule_sessions

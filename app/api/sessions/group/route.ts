@@ -34,6 +34,12 @@ export const POST = withRoute({ body: groupSessionsSchema }, async ({ userId, bo
     // Generate a new group ID if not provided, or use the provided one
     const finalGroupId = groupId || crypto.randomUUID();
 
+    // Immutability floor: grouping only ever touches today's and future
+    // instances (plus the template). Retroactively stamping a brand-new group
+    // onto already-delivered past instances would rewrite history — the very
+    // thing Groups v2 forbids. Matches the ungroup route's floor.
+    const todayISO = new Date().toISOString().split('T')[0];
+
     log.info('Grouping sessions', {
       userId,
       sessionCount: sessionIds.length,
@@ -135,12 +141,19 @@ export const POST = withRoute({ body: groupSessionsSchema }, async ({ userId, bo
         .maybeSingle();
       groupRef = sibling?.group_ref ?? null;
     }
-    if (!groupRef && firstSession) {
+    // Only the owning provider mints the durable record here: RLS on
+    // session_groups is owner-only (provider_id = auth.uid()), and the record
+    // must be owned by the provider, not by a delegated SEA/specialist who may be
+    // acting. For delegated grouping (actor != owner) we intentionally skip the
+    // durable write — the legacy columns still carry the grouping, and the Phase
+    // 1b backfill / Phase 2 mutation layer create the durable record with correct
+    // ownership. This keeps an unprivileged actor from being silently RLS-rejected.
+    if (!groupRef && firstSession && firstSession.provider_id === userId) {
       const deliveredBy = firstSession.delivered_by ?? 'provider';
       const { data: newGroup, error: groupErr } = await supabase
         .from('session_groups')
         .insert({
-          provider_id: firstSession.provider_id ?? userId,
+          provider_id: userId,
           delivered_by: deliveredBy,
           assigned_to_sea_id: deliveredBy === 'sea' ? firstSession.assigned_to_sea_id ?? null : null,
           assigned_to_specialist_id:
@@ -218,7 +231,8 @@ export const POST = withRoute({ body: groupSessionsSchema }, async ({ userId, bo
           .eq('student_id', template.student_id)
           .eq('day_of_week', template.day_of_week)
           .eq('start_time', template.start_time)
-          .not('session_date', 'is', null); // Only update instances, not templates again
+          .not('session_date', 'is', null) // Only update instances, not templates again
+          .gte('session_date', todayISO); // Future-only: never regroup delivered past instances
 
         if (instanceError) {
           log.warn('Failed to update instances for template', {

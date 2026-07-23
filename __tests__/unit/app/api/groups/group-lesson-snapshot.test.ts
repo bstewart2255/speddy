@@ -23,12 +23,14 @@ let writes: Write[] = [];
 let existingLesson: { id: string; lesson_date: string } | null = null;
 
 // Group members (note the duplicate student A across two template rows — the
-// snapshot must de-dupe by student_id).
-const memberRows = [
+// snapshot must de-dupe by student_id). Mutable so a test can simulate a
+// dissolved group (no current template members).
+const DEFAULT_MEMBERS = [
   { student_id: 'A', students: { id: 'A', initials: 'AB', grade_level: '3' } },
   { student_id: 'B', students: { id: 'B', initials: 'CD', grade_level: '4' } },
   { student_id: 'A', students: { id: 'A', initials: 'AB', grade_level: '3' } },
 ];
+let memberRows: Array<{ student_id: string; students: { id: string; initials: string; grade_level: string } }> = DEFAULT_MEMBERS;
 
 function makeBuilder(table: string) {
   const state = { op: 'select' as 'select' | 'insert' | 'update' | 'delete', cols: '', payload: undefined as any };
@@ -83,6 +85,7 @@ describe('POST /api/groups/[groupId]/lesson — participant snapshot (SPE-308)',
   beforeEach(() => {
     writes = [];
     existingLesson = null;
+    memberRows = DEFAULT_MEMBERS;
     mockGetUser.mockReset();
     mockGetUser.mockResolvedValue({ data: { user: { id: PROVIDER } }, error: null });
   });
@@ -112,5 +115,23 @@ describe('POST /api/groups/[groupId]/lesson — participant snapshot (SPE-308)',
     expect(op).toBe('update');
     expect(payload.student_ids).toEqual(['A', 'B']);
     expect(payload.student_details).toHaveLength(2);
+  });
+
+  it('does NOT wipe an existing snapshot when the group has no current members (dissolved)', async () => {
+    // Editing a group lesson after the group dissolved: access still resolves via
+    // retained past instances, but the current-member lookup returns nothing.
+    existingLesson = { id: 'lesson-1', lesson_date: '2026-07-23' };
+    memberRows = [];
+
+    const res = await POST(makeRequest({ content: { blocks: [] }, lesson_date: '2026-07-23' }), ctx);
+    expect(res.status).toBe(200);
+
+    expect(writes).toHaveLength(1);
+    const { op, payload } = writes[0];
+    expect(op).toBe('update');
+    // The historical snapshot must be preserved — the update omits these fields
+    // rather than overwriting them with empty arrays.
+    expect(payload.student_ids).toBeUndefined();
+    expect(payload.student_details).toBeUndefined();
   });
 });

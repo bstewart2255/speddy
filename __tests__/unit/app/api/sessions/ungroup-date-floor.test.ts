@@ -147,8 +147,8 @@ describe('POST /api/sessions/ungroup — past-instance date floor (SPE-308)', ()
       const gte = clear.filters.find(f => f.method === 'gte' && f.args[0] === 'session_date');
       expect(gte).toBeDefined();
       expect(gte!.args[1]).toBe(today);
-      // And it still nulls out the group columns.
-      expect(clear.payload).toMatchObject({ group_id: null, group_name: null, group_color: null });
+      // And it still nulls out both the legacy group columns and the durable ref.
+      expect(clear.payload).toMatchObject({ group_id: null, group_name: null, group_color: null, group_ref: null });
     }
   });
 
