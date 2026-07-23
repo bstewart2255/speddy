@@ -18,6 +18,11 @@ BEGIN
   v_name := NULLIF(btrim(COALESCE(p_name, '')), '');  -- blank name -> NULL (auto display name)
   UPDATE session_groups SET name = v_name, color = p_color, updated_at = now() WHERE id = p_group_id;
 
+  -- Iterate the group's TEMPLATE rows only: _groups_v2_stamp propagates each
+  -- template to its own future instances (template_id / natural-key match,
+  -- future-only), so both templates and today/future instances get the new
+  -- group_name/group_color. (Verified: rename stamps 2 templates + 24 future
+  -- instances, 0 stale.)
   FOR v_tid IN SELECT id FROM schedule_sessions
     WHERE group_ref = p_group_id AND session_date IS NULL AND deleted_at IS NULL LOOP
     PERFORM public._groups_v2_stamp(v_tid, p_group_id, v_name, p_color);

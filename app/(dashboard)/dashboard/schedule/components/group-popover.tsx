@@ -100,12 +100,27 @@ export function GroupPopover({ data, allSessions, students, onClose, onMutated, 
   }, [onClose]);
 
   // Materialize the group on first structural/naming edit, caching the id.
+  // `gref` is React state, so two funnels in one gesture (name onBlur then a
+  // swatch onClick) could each observe gref === null before setGref commits and
+  // both fire form() — the second would raise "already grouped". A ref holds the
+  // in-flight (or resolved) materialization so it happens exactly once.
+  const materializing = useRef<Promise<string> | null>(null);
   const ensureGroup = async (): Promise<string> => {
     if (gref) return gref;
-    const { groupId } = await callMutate({ action: 'form', sessionIds: members.map(m => m.id) });
-    if (!groupId) throw new Error('Could not create the group');
-    setGref(groupId);
-    return groupId;
+    if (materializing.current) return materializing.current;
+    const p = (async () => {
+      const { groupId } = await callMutate({ action: 'form', sessionIds: members.map(m => m.id) });
+      if (!groupId) throw new Error('Could not create the group');
+      setGref(groupId);
+      return groupId;
+    })();
+    materializing.current = p;
+    try {
+      return await p;
+    } catch (e) {
+      materializing.current = null; // allow a retry after a failed materialization
+      throw e;
+    }
   };
 
   const saveNameColor = async (nextName: string, nextColor: number | null) => {
