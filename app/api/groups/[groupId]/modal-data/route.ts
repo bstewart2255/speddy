@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/server';
 import { log } from '@/lib/monitoring/logger';
 import { measurePerformanceWithAlerts } from '@/lib/monitoring/performance-alerts';
 import { withRoute } from '@/lib/api/with-route';
-import { hasGroupAccess } from '@/lib/groups/access';
+import { hasGroupAccess, isCanonicalUuid, groupRefOrLegacyFilter } from '@/lib/groups/access';
 
 const querySchema = z.object({
   session_date: z.string().optional(),
@@ -17,6 +17,13 @@ export const GET = withRoute<{ groupId: string }, undefined, z.infer<typeof quer
     const perf = measurePerformanceWithAlerts('get_group_modal_data', 'api');
     const { groupId } = params;
     const { session_date: sessionDate, session_id: sessionId } = query;
+
+    // A group id is always a UUID; a malformed one addresses no group content
+    // (and must not reach the interpolated group_ref/group_id filter).
+    if (!isCanonicalUuid(groupId)) {
+      perf.end({ success: true });
+      return NextResponse.json({ lesson: null, documents: [], curriculum: null, previousCurriculum: null });
+    }
 
     try {
       const supabase = await createClient();
@@ -36,7 +43,7 @@ export const GET = withRoute<{ groupId: string }, undefined, z.infer<typeof quer
           ? supabase
               .from('lessons')
               .select('*')
-              .eq('group_id', groupId)
+              .or(groupRefOrLegacyFilter(groupId))
               .eq('lesson_date', sessionDate)
               .order('created_at', { ascending: false })
               .limit(1)
@@ -44,7 +51,7 @@ export const GET = withRoute<{ groupId: string }, undefined, z.infer<typeof quer
           : supabase
               .from('lessons')
               .select('*')
-              .eq('group_id', groupId)
+              .or(groupRefOrLegacyFilter(groupId))
               .order('created_at', { ascending: false })
               .limit(1)
               .maybeSingle(),
@@ -133,10 +140,10 @@ async function fetchPreviousCurriculum(
         schedule_sessions!inner (
           id,
           session_date,
-          group_id
+          group_ref
         )
       `)
-      .eq('schedule_sessions.group_id', groupId)
+      .eq('schedule_sessions.group_ref', groupId)
       .lt('schedule_sessions.session_date', sessionDate)
       .order('schedule_sessions(session_date)', { ascending: false })
       .limit(1)

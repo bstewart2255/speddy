@@ -2,6 +2,30 @@ import type { createClient } from '@/lib/supabase/server';
 
 type SupabaseServer = Awaited<ReturnType<typeof createClient>>;
 
+/** Canonical 8-4-4-4-12 UUID. */
+const CANONICAL_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** True when `id` is a canonical UUID — guard before interpolating into a
+ *  PostgREST `.or()` filter string (see `groupRefOrLegacyFilter`). */
+export function isCanonicalUuid(id: string): boolean {
+  return CANONICAL_UUID.test(id);
+}
+
+/**
+ * PostgREST `.or()` filter matching a group's content by its durable `group_ref`
+ * OR its legacy `group_id`. Group content (lessons) rekeys to `group_ref` in
+ * Phase 4; the legacy leg keeps any not-yet-linked row visible during the
+ * dual-write bake (Phase 1b linked all known rows, so this is belt-and-suspenders
+ * — dropped with the legacy column in Phase 5).
+ *
+ * `groupId` MUST be a validated UUID (call `isCanonicalUuid` first) — it is
+ * interpolated verbatim into the filter string, so an unvalidated value would be
+ * a filter-injection vector.
+ */
+export function groupRefOrLegacyFilter(groupId: string): string {
+  return `group_ref.eq.${groupId},group_id.eq.${groupId}`;
+}
+
 /**
  * Resolve the durable session_groups id for a legacy group_id: from a live
  * session carrying the legacy id, else from a group lesson carrying it (covers a

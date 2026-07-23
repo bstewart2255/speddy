@@ -5,7 +5,7 @@ import { log } from '@/lib/monitoring/logger';
 import { track } from '@/lib/monitoring/analytics';
 import { measurePerformanceWithAlerts } from '@/lib/monitoring/performance-alerts';
 import { withRoute } from '@/lib/api/with-route';
-import { hasGroupAccess, resolveGroupRef } from '@/lib/groups/access';
+import { hasGroupAccess, resolveGroupRef, isCanonicalUuid, groupRefOrLegacyFilter } from '@/lib/groups/access';
 
 const lessonDateQuerySchema = z.object({
   lesson_date: z.string().optional(),
@@ -83,6 +83,13 @@ export const GET = withRoute<{ groupId: string }, undefined, z.infer<typeof less
     const { groupId } = params;
     const lessonDate = query.lesson_date;
 
+    // A group id is always a UUID; a malformed one addresses no group content
+    // (and must not reach the interpolated group_ref/group_id filter).
+    if (!isCanonicalUuid(groupId)) {
+      perf.end({ success: true, hasLesson: false });
+      return NextResponse.json({ lesson: null });
+    }
+
     try {
       const supabase = await createClient();
 
@@ -97,12 +104,13 @@ export const GET = withRoute<{ groupId: string }, undefined, z.infer<typeof less
         return NextResponse.json({ error: 'Access denied' }, { status: 403 });
       }
 
-      // Fetch lesson for the group (optionally filtered by date)
+      // Fetch lesson for the group by the durable group_ref (legacy group_id
+      // fallback for the dual-write bake), optionally filtered by date.
       const fetchPerf = measurePerformanceWithAlerts('fetch_group_lesson_db', 'database');
       let lessonQuery = supabase
         .from('lessons')
         .select('*')
-        .eq('group_id', groupId);
+        .or(groupRefOrLegacyFilter(groupId));
 
       // If lesson_date provided, filter by exact date; otherwise get most recent
       if (lessonDate) {
@@ -315,6 +323,13 @@ export const DELETE = withRoute<{ groupId: string }, undefined, z.infer<typeof l
     const { groupId } = params;
     const lessonDate = query.lesson_date;
 
+    // A malformed (non-UUID) group id addresses no group content — nothing to
+    // delete, and it must not reach the interpolated group_ref/group_id filter.
+    if (!isCanonicalUuid(groupId)) {
+      perf.end({ success: true });
+      return NextResponse.json({ success: true });
+    }
+
     try {
       const supabase = await createClient();
 
@@ -334,7 +349,7 @@ export const DELETE = withRoute<{ groupId: string }, undefined, z.infer<typeof l
       let deleteQuery = supabase
         .from('lessons')
         .delete()
-        .eq('group_id', groupId)
+        .or(groupRefOrLegacyFilter(groupId))
         .eq('provider_id', userId); // Ensure user owns the lesson
 
       // If lesson_date provided, only delete that specific lesson

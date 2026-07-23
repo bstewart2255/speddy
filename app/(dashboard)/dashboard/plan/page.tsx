@@ -3,7 +3,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { createClient } from '@/lib/supabase/client';
 import { Card, CardBody } from "../../../components/ui/card";
-import { CalendarDayView } from "../../../components/calendar/calendar-day-view";
 import { CalendarWeekView } from "../../../components/calendar/calendar-week-view";
 import { CalendarMonthView } from "../../../components/calendar/calendar-month-view";
 import { CalendarEventModal } from "../../../components/calendar/calendar-event-modal";
@@ -14,7 +13,7 @@ import { getSchoolSite, getSchoolDistrict } from "@/lib/types/school";
 import { SessionWithCurriculum, SessionGenerator } from "@/lib/services/session-generator";
 import { filterSessionsBySchool } from "@/lib/utils/session-filters";
 
-type ViewType = 'day' | 'week' | 'month';
+type ViewType = 'week' | 'month';
 
 type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
 type CalendarEvent = Database['public']['Tables']['calendar_events']['Row'];
@@ -39,7 +38,6 @@ export default function CalendarPage() {
   const [error, setError] = useState<string | null>(null);
   const { currentSchool } = useSchool();
   const supabase = useMemo(() => createClient<Database>(), []);
-  const [currentDate, setCurrentDate] = useState(new Date());
   const [weekOffset, setWeekOffset] = useState(0);
   const [monthOffset, setMonthOffset] = useState(0);
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
@@ -89,18 +87,6 @@ export default function CalendarPage() {
   }, [supabase, providerId, currentSchool]);
 
   // Navigation handlers
-  const handlePreviousDay = () => {
-    const newDate = new Date(currentDate);
-    newDate.setDate(newDate.getDate() - 1);
-    setCurrentDate(newDate);
-  };
-
-  const handleNextDay = () => {
-    const newDate = new Date(currentDate);
-    newDate.setDate(newDate.getDate() + 1);
-    setCurrentDate(newDate);
-  };
-
   const handlePreviousWeek = () => {
     setWeekOffset(prev => prev - 1);
   };
@@ -118,7 +104,6 @@ export default function CalendarPage() {
   };
 
   const handleToday = () => {
-    setCurrentDate(new Date());
     setWeekOffset(0);
     setMonthOffset(0);
   };
@@ -411,7 +396,6 @@ export default function CalendarPage() {
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Plan</h1>
           <p className="text-gray-600">Create groups, plan lessons, mark holidays, and more.</p>
           <div className="mt-2 text-xs text-gray-500 space-y-0.5">
-            <p><span className="font-medium">Day</span> = add students into groups</p>
             <p><span className="font-medium">Week</span> = create lesson plans for individuals and groups</p>
             <p><span className="font-medium">Month</span> = mark holidays and add additional meetings</p>
           </div>
@@ -421,16 +405,6 @@ export default function CalendarPage() {
         <div className="mb-6">
           <div className="border-b border-gray-200">
             <nav className="-mb-px flex space-x-8">
-              <button
-                onClick={() => setCurrentView('day')}
-                className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                  currentView === 'day'
-                    ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                Day
-              </button>
               <button
                 onClick={() => setCurrentView('week')}
                 className={`py-2 px-1 border-b-2 font-medium text-sm ${
@@ -465,8 +439,7 @@ export default function CalendarPage() {
             <div className="flex items-center justify-between mb-6">
               <button
                 onClick={() => {
-                  if (currentView === 'day') handlePreviousDay();
-                  else if (currentView === 'week') handlePreviousWeek();
+                  if (currentView === 'week') handlePreviousWeek();
                   else if (currentView === 'month') handlePreviousMonth();
                 }}
                 className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
@@ -479,12 +452,6 @@ export default function CalendarPage() {
 
               <div className="text-center">
                 <h2 className="text-lg font-semibold">
-                  {currentView === 'day' && currentDate.toLocaleDateString('en-US', {
-                    weekday: 'long',
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric'
-                  })}
                   {currentView === 'week' && `Week of ${new Date(new Date().setDate(new Date().getDate() + (weekOffset * 7))).toLocaleDateString('en-US', {
                     month: 'long',
                     day: 'numeric',
@@ -495,8 +462,7 @@ export default function CalendarPage() {
                     year: 'numeric'
                   })}
                 </h2>
-                {((currentView === 'day' && currentDate.toDateString() !== new Date().toDateString()) ||
-                  (currentView === 'week' && weekOffset !== 0) ||
+                {((currentView === 'week' && weekOffset !== 0) ||
                   (currentView === 'month' && monthOffset !== 0)) && (
                   <button
                     onClick={handleToday}
@@ -509,8 +475,7 @@ export default function CalendarPage() {
 
               <button
                 onClick={() => {
-                  if (currentView === 'day') handleNextDay();
-                  else if (currentView === 'week') handleNextWeek();
+                  if (currentView === 'week') handleNextWeek();
                   else if (currentView === 'month') handleNextMonth();
                 }}
                 className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
@@ -522,21 +487,6 @@ export default function CalendarPage() {
               </button>
             </div>
 
-            {currentView === 'day' && (
-              <ToastProvider>
-                <CalendarDayView
-                  sessions={sessions}
-                  students={students}
-                  onSessionClick={handleSessionClick}
-                  currentDate={currentDate}
-                  holidays={holidays.map(h => ({ ...h, name: h.name || undefined }))}
-                  calendarEvents={calendarEvents}
-                  onAddEvent={handleAddEvent}
-                  onEventClick={handleEventClick}
-                  onUpdate={fetchData}
-                />
-              </ToastProvider>
-            )}
             {currentView === 'week' && (
               <ToastProvider>
                 <CalendarWeekView
