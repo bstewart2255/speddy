@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useToast } from '@/app/contexts/toast-context';
 import { formatTime } from '@/lib/utils/time-options';
 import type { ScheduleSession } from '@/src/types';
@@ -83,20 +83,47 @@ export function GroupPopover({ data, allSessions, students, onClose, onMutated, 
 
   const isSea = members[0]?.delivered_by === 'sea' || members[0]?.delivered_by === 'specialist';
 
-  // Position: below the plate, clamped to the viewport.
-  const [pos, setPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
-  useEffect(() => {
-    const left = Math.min(
-      Math.max(anchor.left + anchor.width / 2 - POP_W / 2, 8),
-      window.innerWidth - POP_W - 8
-    );
-    setPos({ top: anchor.bottom + 8, left });
+  // Position: flip above the plate when there isn't room below it, clamp to the
+  // viewport, and cap the height (internal scroll) so a plate low on the grid
+  // never opens a popover that's cut off by the bottom of the screen. Measured
+  // after render via the ref so the real height drives the flip decision.
+  const popRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number; maxH: number }>({ top: -9999, left: 0, maxH: 480 });
+  useLayoutEffect(() => {
+    const M = 8;
+    const vw = window.innerWidth, vh = window.innerHeight;
+    const h = popRef.current?.offsetHeight ?? 320;
+    const left = Math.min(Math.max(anchor.left + anchor.width / 2 - POP_W / 2, M), vw - POP_W - M);
+    const below = vh - anchor.bottom - M;
+    const above = anchor.top - M;
+    let top: number, maxH: number;
+    if (h <= below || below >= above) {
+      top = anchor.bottom + M; // room below (or more room below than above)
+      maxH = below;
+    } else {
+      maxH = above; // flip above
+      top = Math.max(M, anchor.top - M - Math.min(h, maxH));
+    }
+    setPos({ top, left, maxH: Math.max(200, maxH) });
   }, [anchor]);
 
+  // Close on Escape, and on outside scroll/resize: the popover is viewport-fixed,
+  // so without this it detaches from its plate and floats (the "stuck to the
+  // bottom of the screen" bug). Scrolls inside the popover itself are ignored.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const onScroll = (e: Event) => {
+      if (popRef.current && e.target instanceof Node && popRef.current.contains(e.target)) return;
+      onClose();
+    };
     document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
+    window.addEventListener('scroll', onScroll, true);
+    window.addEventListener('resize', onClose);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      window.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('resize', onClose);
+    };
   }, [onClose]);
 
   // Materialize the group on first structural/naming edit, caching the id.
@@ -163,10 +190,11 @@ export function GroupPopover({ data, allSessions, students, onClose, onMutated, 
     <>
       <div className="fixed inset-0 z-40" onClick={onClose} aria-hidden />
       <div
+        ref={popRef}
         role="dialog"
         aria-label="Group settings"
-        className="fixed z-50 w-[268px] rounded-xl border border-gray-200 bg-white p-3.5 shadow-xl"
-        style={{ top: `${pos.top}px`, left: `${pos.left}px` }}
+        className="fixed z-50 w-[268px] overflow-y-auto rounded-xl border border-gray-200 bg-white p-3.5 shadow-xl"
+        style={{ top: `${pos.top}px`, left: `${pos.left}px`, maxHeight: `${pos.maxH}px` }}
         onClick={e => e.stopPropagation()}
       >
         {/* Name */}

@@ -179,11 +179,18 @@ export const ScheduleGrid = memo(function ScheduleGrid({
         return;
       }
 
-      // Sort by start time
+      // Sort by start time, then keep same-slot group members adjacent so their
+      // plate renders as ONE contiguous enclosure. Without the secondary key the
+      // greedy column packer can interleave two groups sharing a slot (e.g. after
+      // a split), scattering a group's pills across non-adjacent columns and
+      // fragmenting its plate into slivers.
+      const groupSortKey = (s: ScheduleSession) =>
+        `${s.delivered_by ?? 'provider'}|${s.assigned_to_sea_id ?? ''}|${s.assigned_to_specialist_id ?? ''}|${s.group_id ?? ''}`;
       daySessions.sort((a, b) => {
         const timeA = parseInt(a.start_time!.replace(':', ''));
         const timeB = parseInt(b.start_time!.replace(':', ''));
-        return timeA - timeB;
+        if (timeA !== timeB) return timeA - timeB;
+        return groupSortKey(a).localeCompare(groupSortKey(b));
       });
 
       // Group into columns
@@ -561,17 +568,13 @@ export const ScheduleGrid = memo(function ScheduleGrid({
                             zIndex: draggedSession?.id === session.id ? 20 : 10,
                           }}
                           onClick={(e) => {
-                            if (session.student_id) {
-                              onHighlightToggle(session.student_id);
-                            }
                             const rect = e.currentTarget.getBoundingClientRect();
-                            // A grouped pill in a live cluster (2+ members this
-                            // slot) opens the group modal; a lone/dormant pill
-                            // opens session details, exactly as before.
                             // Derive this pill's cluster the same way the plate
                             // does (slot + deliverer + group_id). A live cluster
-                            // (2+ members) opens the group modal; a lone or
+                            // (2+ members) opens the group popover; a lone or
                             // dormant pill opens session details, as before.
+                            // (Click no longer toggles the student highlight —
+                            // it got in the way of evaluating/editing groups.)
                             const cluster = clusters.get(clusterKeyOf(session)) ?? [];
                             if (cluster.length >= 2) {
                               onGroupClick(session.group_id ?? '', groupDisplayName(cluster), cluster, rect);
