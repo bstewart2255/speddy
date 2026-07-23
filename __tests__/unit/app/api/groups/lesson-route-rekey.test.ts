@@ -13,6 +13,7 @@ const GROUP = 'ad29f870-d9cb-4bad-aa35-9bd705100c05';
 const EXPECTED_FILTER = `group_ref.eq.${GROUP},group_id.eq.${GROUP}`;
 
 const orFilters: string[] = [];
+const queriedTables: string[] = [];
 let lessonsSelected = 0;
 const mockGetUser = jest.fn();
 
@@ -41,7 +42,10 @@ function makeBuilder(table: string) {
 jest.mock('@/lib/supabase/server', () => ({
   createClient: async () => ({
     auth: { getUser: mockGetUser },
-    from: (t: string) => makeBuilder(t),
+    from: (t: string) => {
+      queriedTables.push(t);
+      return makeBuilder(t);
+    },
   }),
 }));
 
@@ -54,6 +58,7 @@ const delReq = () => new NextRequest('http://localhost/api/groups/x/lesson', { m
 describe('group lesson route — durable group_ref read + UUID guard (SPE-313/315)', () => {
   beforeEach(() => {
     orFilters.length = 0;
+    queriedTables.length = 0;
     lessonsSelected = 0;
     mockGetUser.mockReset().mockResolvedValue({ data: { user: { id: USER } }, error: null });
   });
@@ -76,11 +81,13 @@ describe('group lesson route — durable group_ref read + UUID guard (SPE-313/31
     expect(await res.json()).toEqual({ lesson: null });
     expect(orFilters).toHaveLength(0);
     expect(lessonsSelected).toBe(0);
+    expect(queriedTables).toHaveLength(0); // no DB access at all before the guard
   });
 
   it('DELETE is a no-op success for a non-uuid group id (nothing to delete)', async () => {
     const res = await DELETE(delReq(), ctx('not-a-uuid'));
     expect(res.status).toBe(200);
     expect(orFilters).toHaveLength(0);
+    expect(queriedTables).toHaveLength(0);
   });
 });

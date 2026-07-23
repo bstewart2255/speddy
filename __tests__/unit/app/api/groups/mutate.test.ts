@@ -143,8 +143,11 @@ describe('POST /api/groups/mutate — validation bounds (SPE-315)', () => {
   it('rename rejects a name longer than 80 chars', () =>
     rejectedBeforeRpc({ action: 'rename', groupId: G1, name: 'x'.repeat(81), color: null }));
 
-  it('rename rejects a color outside the 0..4 palette', () =>
+  it('rename rejects a color above the 0..4 palette', () =>
     rejectedBeforeRpc({ action: 'rename', groupId: G1, name: null, color: 5 }));
+
+  it('rename rejects a negative color (palette lower bound)', () =>
+    rejectedBeforeRpc({ action: 'rename', groupId: G1, name: null, color: -1 }));
 
   it('assign rejects a deliveredBy outside provider|sea|specialist', () =>
     rejectedBeforeRpc({ action: 'assign', groupId: G1, deliveredBy: 'teacher', assignee: null }));
