@@ -25,6 +25,7 @@ import { LongHoverTooltip } from '../ui/long-hover-tooltip';
 import { exportWeekToPDF } from '@/lib/utils/export-week-to-pdf';
 import { SessionWithCurriculum } from '@/lib/services/session-generator';
 import { formatCurriculumBadge, getFirstCurriculum } from '@/lib/utils/curriculum-helpers';
+import { groupColorHex } from '@/lib/groups/colors';
 
 type ScheduleSession = Database["public"]["Tables"]["schedule_sessions"]["Row"];
 type Lesson = Database["public"]["Tables"]["lessons"]["Row"];
@@ -2237,6 +2238,10 @@ export function CalendarWeekView({
                         if (block.type === 'group') {
                           const { groupId, groupName, sessions: groupSessions, earliestStart, latestEnd } = block.data;
 
+                          // The group's chosen color (a small accent — never the board fill).
+                          const groupColorIdx = groupSessions.find((s: SessionWithCurriculum) => s.group_color != null)?.group_color ?? null;
+                          const groupHex = groupColorHex(groupColorIdx);
+
                           // Get unique students with their session assignment info
                           const uniqueStudentSessions = groupSessions.reduce((acc: SessionWithCurriculum[], session: SessionWithCurriculum) => {
                             const studentId = session.student_id;
@@ -2262,7 +2267,12 @@ export function CalendarWeekView({
                                 aria-label={`Open group ${groupName} details`}
                               >
                                 <div className="flex items-center justify-between mb-1">
-                                  <div className="font-semibold text-blue-900">📚 {groupName}</div>
+                                  <div className="font-semibold text-blue-900 flex items-center gap-1.5">
+                                    {groupHex && (
+                                      <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: groupHex }} aria-hidden />
+                                    )}
+                                    <span>📚 {groupName}</span>
+                                  </div>
                                   {/* Notes and documents indicators */}
                                   <div className="flex items-center gap-1">
                                     {groupIndicators[`${groupId}|${dateStr}`]?.hasNotes && (

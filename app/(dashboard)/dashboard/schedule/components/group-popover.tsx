@@ -4,14 +4,11 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useToast } from '@/app/contexts/toast-context';
 import { formatTime } from '@/lib/utils/time-options';
 import type { ScheduleSession } from '@/src/types';
+import { GROUP_SWATCHES } from '@/lib/groups/colors';
 
 type StudentInfo = { initials: string; grade_level?: string };
 
 const DAY_LABEL = ['', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-
-// The 5-swatch group palette (accents / Week cards only — never the board fill,
-// per design spec decision #6). Mirrors the approved mockup's group rails.
-const GROUP_SWATCHES = ['#3b82f6', '#22c55e', '#a855f7', '#f97316', '#ec4899'];
 
 export interface GroupPopoverData {
   anchor: DOMRect;
@@ -214,19 +211,28 @@ export function GroupPopover({ data, allSessions, students, seaProfiles, otherSp
         style={{ top: `${pos.top}px`, left: `${pos.left}px`, maxHeight: `${pos.maxH}px` }}
         onClick={e => e.stopPropagation()}
       >
-        {/* Name */}
-        <input
-          className="mb-2 w-full rounded-md border border-gray-200 bg-gray-50 px-2.5 py-1.5 text-sm font-semibold text-gray-900 placeholder:font-normal placeholder:italic placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          value={name}
-          disabled={busy}
-          placeholder={`${autoName || 'New group'} — name it (optional)`}
-          aria-label="Group name"
-          onChange={e => setName(e.target.value)}
-          onBlur={() => {
-            const current = members.find(m => m.group_name)?.group_name ?? '';
-            if (name.trim() !== current.trim()) saveNameColor(name, color);
-          }}
-        />
+        {/* Name — the picked color shows as a small leading accent (never on the board) */}
+        <div className="mb-2 flex items-center gap-2">
+          {color != null && (
+            <span
+              className="h-3 w-3 shrink-0 rounded-full"
+              style={{ background: GROUP_SWATCHES[color] }}
+              aria-hidden
+            />
+          )}
+          <input
+            className="w-full rounded-md border border-gray-200 bg-gray-50 px-2.5 py-1.5 text-sm font-semibold text-gray-900 placeholder:font-normal placeholder:italic placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            value={name}
+            disabled={busy}
+            placeholder={`${autoName || 'New group'} — name it (optional)`}
+            aria-label="Group name"
+            onChange={e => setName(e.target.value)}
+            onBlur={() => {
+              const current = members.find(m => m.group_name)?.group_name ?? '';
+              if (name.trim() !== current.trim()) saveNameColor(name, color);
+            }}
+          />
+        </div>
 
         {/* Color swatches */}
         <div className="mb-3 flex gap-1.5">
