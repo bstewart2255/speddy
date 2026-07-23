@@ -219,6 +219,7 @@ export const POST = withRoute<{ groupId: string }, z.infer<typeof saveLessonSche
         .select('group_ref')
         .eq('group_id', groupId)
         .not('group_ref', 'is', null)
+        .is('deleted_at', null)
         .limit(1)
         .maybeSingle();
       const groupRef = refRow?.group_ref ?? null;
@@ -282,8 +283,9 @@ export const POST = withRoute<{ groupId: string }, z.infer<typeof saveLessonSche
             school_id: school_id || null,
             district_id: district_id || null,
             state_id: state_id || null,
-            student_ids: studentIds,
-            student_details: studentDetails,
+            // Only persist a snapshot when members were actually resolved; a
+            // transient lookup miss must not save an empty participant list.
+            ...(hasSnapshot ? { student_ids: studentIds, student_details: studentDetails } : {}),
             ...(groupRef ? { group_ref: groupRef } : {})
           })
           .select('*')

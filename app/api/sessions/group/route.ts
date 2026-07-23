@@ -186,6 +186,9 @@ export const POST = withRoute({ body: groupSessionsSchema }, async ({ userId, bo
         updated_at: new Date().toISOString()
       })
       .in('id', sessionIds)
+      // Never write onto a delivered past instance, even if its id is passed
+      // directly: restrict to templates (session_date IS NULL) or today/future.
+      .or(`session_date.is.null,session_date.gte.${todayISO}`)
       .select();
     updatePerf.end({ success: !updateError });
 
