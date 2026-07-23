@@ -1127,6 +1127,9 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
   };
 
   const handleDeleteLesson = async () => {
+    // Derived cluster: no group record, so nothing group-scoped to delete;
+    // never build a /api/groups//lesson request.
+    if (derivedGroup) return;
     const confirmMessage = props.mode === 'group'
       ? 'Are you sure you want to delete this lesson?'
       : 'Are you sure you want to clear the notes?';
@@ -1259,6 +1262,9 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
   };
 
   const handleDeleteDocument = async (documentId: string) => {
+    // Derived cluster: documents aren't loaded (no group record), so this can't
+    // be reached from the UI — guard anyway against /api/groups//documents.
+    if (derivedGroup) return;
     if (!confirm('Are you sure you want to delete this document?')) return;
 
     try {
@@ -1543,8 +1549,11 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
 
         {/* Content - Fixed sections + Scrollable form */}
         <div className="flex-1 overflow-y-auto">
-          {/* Curriculum Context Section - Show prompt or normal display */}
-          {showPrompt && previousCurriculum ? (
+          {/* Curriculum Context Section - Show prompt or normal display.
+              Hidden for a derived cluster: shared curriculum can't be tracked
+              without a group record (and any state here would be stale from a
+              previously-opened group). */}
+          {derivedGroup ? null : showPrompt && previousCurriculum ? (
             // Show progression prompt
             <div className="p-4 border-b border-gray-200 bg-blue-50">
               <div className="flex items-center justify-between">
@@ -1706,7 +1715,7 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
                   ))}
                 </select>
 
-                {curriculumType && (
+                {curriculumType && !derivedGroup && (
                   <div className="flex gap-2">
                     <select
                       value={curriculumLevel}
@@ -1780,7 +1789,7 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
             {/* Show delete button based on mode:
                 - Group mode: show when lesson exists (deletes lesson)
                 - Session mode: show when there are notes (clears session_notes) */}
-            {(props.mode === 'group' ? lesson : notes.trim()) && (
+            {!derivedGroup && (props.mode === 'group' ? lesson : notes.trim()) && (
               <button
                 onClick={handleDeleteLesson}
                 className="px-4 py-2 text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition-colors font-medium"
