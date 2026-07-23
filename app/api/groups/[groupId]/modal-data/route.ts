@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server';
 import { log } from '@/lib/monitoring/logger';
 import { measurePerformanceWithAlerts } from '@/lib/monitoring/performance-alerts';
 import { withRoute } from '@/lib/api/with-route';
+import { hasGroupAccess } from '@/lib/groups/access';
 
 const querySchema = z.object({
   session_date: z.string().optional(),
@@ -22,14 +23,10 @@ export const GET = withRoute<{ groupId: string }, undefined, z.infer<typeof quer
 
       log.info('Fetching consolidated group modal data', { userId, groupId, sessionDate, sessionId });
 
-      const { data: accessCheck, error: accessError } = await supabase
-        .from('schedule_sessions')
-        .select('id')
-        .eq('group_id', groupId)
-        .or(`provider_id.eq.${userId},assigned_to_specialist_id.eq.${userId},assigned_to_sea_id.eq.${userId}`)
-        .limit(1);
-
-      if (accessError || !accessCheck || accessCheck.length === 0) {
+      // Access via the durable group_ref chain (owner or current assignee), with
+      // a legacy live-membership fallback during the dual-write bake.
+      const authorized = await hasGroupAccess(supabase, groupId, userId);
+      if (!authorized) {
         perf.end({ success: false });
         return NextResponse.json({ error: 'Access denied' }, { status: 403 });
       }

@@ -5,6 +5,7 @@ import { log } from '@/lib/monitoring/logger';
 import { track } from '@/lib/monitoring/analytics';
 import { measurePerformanceWithAlerts } from '@/lib/monitoring/performance-alerts';
 import { withRoute } from '@/lib/api/with-route';
+import { hasGroupAccess } from '@/lib/groups/access';
 
 const lessonDateQuerySchema = z.object({
   lesson_date: z.string().optional(),
@@ -87,15 +88,10 @@ export const GET = withRoute<{ groupId: string }, undefined, z.infer<typeof less
 
       log.info('Fetching group lesson', { userId, groupId, lessonDate: lessonDate || 'not specified' });
 
-      // Verify user has access to this group
-      const { data: groupSessions, error: accessError } = await supabase
-        .from('schedule_sessions')
-        .select('id')
-        .eq('group_id', groupId)
-        .or(`provider_id.eq.${userId},assigned_to_specialist_id.eq.${userId},assigned_to_sea_id.eq.${userId}`)
-        .limit(1);
-
-      if (accessError || !groupSessions || groupSessions.length === 0) {
+      // Verify access via the durable group_ref chain (owner or current
+      // assignee), with a legacy live-membership fallback during the bake.
+      const authorized = await hasGroupAccess(supabase, groupId, userId);
+      if (!authorized) {
         log.warn('User does not have access to group', { userId, groupId });
         perf.end({ success: false });
         return NextResponse.json({ error: 'Access denied' }, { status: 403 });
@@ -181,15 +177,10 @@ export const POST = withRoute<{ groupId: string }, z.infer<typeof saveLessonSche
         lessonDate
       });
 
-      // Verify user has access to this group
-      const { data: groupSessions, error: accessError } = await supabase
-        .from('schedule_sessions')
-        .select('id')
-        .eq('group_id', groupId)
-        .or(`provider_id.eq.${userId},assigned_to_specialist_id.eq.${userId},assigned_to_sea_id.eq.${userId}`)
-        .limit(1);
-
-      if (accessError || !groupSessions || groupSessions.length === 0) {
+      // Verify access via the durable group_ref chain (owner or current
+      // assignee), with a legacy live-membership fallback during the bake.
+      const authorized = await hasGroupAccess(supabase, groupId, userId);
+      if (!authorized) {
         log.warn('User does not have access to group', { userId, groupId });
         perf.end({ success: false });
         return NextResponse.json({ error: 'Access denied' }, { status: 403 });
@@ -338,15 +329,10 @@ export const DELETE = withRoute<{ groupId: string }, undefined, z.infer<typeof l
 
       log.info('Deleting group lesson', { userId, groupId, lessonDate: lessonDate || 'all dates' });
 
-      // Verify user has access to this group
-      const { data: groupSessions, error: accessError } = await supabase
-        .from('schedule_sessions')
-        .select('id')
-        .eq('group_id', groupId)
-        .or(`provider_id.eq.${userId},assigned_to_specialist_id.eq.${userId},assigned_to_sea_id.eq.${userId}`)
-        .limit(1);
-
-      if (accessError || !groupSessions || groupSessions.length === 0) {
+      // Verify access via the durable group_ref chain (owner or current
+      // assignee), with a legacy live-membership fallback during the bake.
+      const authorized = await hasGroupAccess(supabase, groupId, userId);
+      if (!authorized) {
         log.warn('User does not have access to group', { userId, groupId });
         perf.end({ success: false });
         return NextResponse.json({ error: 'Access denied' }, { status: 403 });
