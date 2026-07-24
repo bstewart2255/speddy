@@ -28,6 +28,7 @@ import {
   RECORD_TEACHERS,
   SCHOOL_DAY,
   SCHOOLS,
+  SESSION_GROUPS,
   SESSION_SLOTS,
   SIM_EMAIL_DOMAIN,
   SPECIAL_ACTIVITIES,
@@ -41,6 +42,7 @@ import {
   careNoteId,
   careReferralId,
   derivePassword,
+  groupAssignmentFor,
   personaEmail,
   providerSchoolId,
   schoolById,
@@ -50,6 +52,7 @@ import {
   sessionMix,
   sessionTemplateId,
   simEmail,
+  simGroup,
   specialActivityId,
   studentDetailsId,
   studentFullName,
@@ -389,18 +392,19 @@ async function main() {
   const attendanceRows: Record<string, unknown>[] = [];
   const leahId = userIds.get('leah')!;
 
-  // Groups v2 (SPE-309): the durable session_groups record behind Reading Group A.
-  // Must exist before the grouped schedule_sessions that group_ref to it.
+  // Groups v2 (SPE-315): the durable session_groups records the grouped
+  // schedule_sessions group_ref to. All owned by Rachel; must exist BEFORE the
+  // sessions below (group_ref is ON DELETE RESTRICT). The SEA-run cluster is
+  // delegated whole-group to Leah (assigned_to_sea_id).
   const rachelId = userIds.get('rachel')!;
-  const { error: groupErr } = await admin.from('session_groups').insert({
-    id: EDGE.sessionGroupId,
+  counts['session_groups'] = await bulkInsert(admin, 'session_groups', SESSION_GROUPS.map(g => ({
+    id: g.recordId,
     provider_id: rachelId,
-    delivered_by: 'provider',
-    name: EDGE.groupName,
-    color: EDGE.groupColor,
-  });
-  if (groupErr) throw new Error(`session_groups insert failed: ${groupErr.message}`);
-  counts['session_groups'] = 1;
+    delivered_by: g.deliveredBy,
+    assigned_to_sea_id: g.deliveredBy === 'sea' ? leahId : null,
+    name: g.name,
+    color: g.color,
+  })));
   for (const rule of CASELOADS) {
     const school = schoolById(rule.schoolId);
     if (school.isSecondary) continue;
@@ -410,12 +414,21 @@ async function main() {
       if (isRachel && i === EDGE.zeroSessionsIndex) continue; // unscheduled-alert student
       const sid = studentId(rule.providerKey, rule.schoolId, i);
       const mix = sessionMix(i);
-      const isGrouped = isRachel && (EDGE.groupIndexes as readonly number[]).includes(i);
+      // Standalone SEA-delegated edge case: this student's non-grouped sessions
+      // are all delivered by the SEA (Leah). Groups v2 delegation (the SEA-run
+      // cluster) is driven per-session by the assignment lookup below instead.
       const isDelegated = isRachel && i === EDGE.seaDelegatedIndex;
       for (let k = 0; k < mix.sessionsPerWeek; k++) {
         const templateId = sessionTemplateId(sid, k);
-        const dayOfWeek = isGrouped && k === 0 ? 2 : ((i + k * 2) % 5) + 1;
-        const start = isGrouped && k === 0 ? '10:30' : SESSION_SLOTS[(i + k) % SESSION_SLOTS.length];
+        // Groups v2 (SPE-315): if this (student, k) session belongs to a seeded
+        // group it is repurposed into the group's slot and dual-writes group_ref
+        // + the legacy group columns. A SEA-run group delivers the whole session
+        // via the SEA; otherwise the standalone delegation edge case applies.
+        const assignment = isRachel ? groupAssignmentFor(i, k) : undefined;
+        const group = assignment ? simGroup(assignment.groupKey) : undefined;
+        const delegated = group ? group.deliveredBy === 'sea' : isDelegated;
+        const dayOfWeek = assignment ? assignment.day : ((i + k * 2) % 5) + 1;
+        const start = assignment ? assignment.start : SESSION_SLOTS[(i + k) % SESSION_SLOTS.length];
         const end = minutesAfter(start, mix.minutes);
         const base = {
           provider_id: providerId,
@@ -425,12 +438,12 @@ async function main() {
           start_time: start,
           end_time: end,
           status: 'active',
-          delivered_by: isDelegated ? 'sea' : 'provider',
-          assigned_to_sea_id: isDelegated ? leahId : null,
-          group_id: isGrouped && k === 0 ? EDGE.groupId : null,
-          group_name: isGrouped && k === 0 ? EDGE.groupName : null,
-          group_color: isGrouped && k === 0 ? EDGE.groupColor : null,
-          group_ref: isGrouped && k === 0 ? EDGE.sessionGroupId : null,
+          delivered_by: delegated ? 'sea' : 'provider',
+          assigned_to_sea_id: delegated ? leahId : null,
+          group_id: group ? group.legacyId : null,
+          group_name: group ? group.name : null,
+          group_color: group ? group.color : null,
+          group_ref: group ? group.recordId : null,
           manually_placed: isRachel && i === EDGE.manuallyPlacedIndex && k === 0,
         };
         sessionRows.push({
