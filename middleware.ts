@@ -7,7 +7,15 @@ export async function middleware(request: NextRequest) {
 
   // Define public routes that don't require authentication
   // '/' is the marketing landing page and is open to everyone.
-  const publicRoutes = ['/', '/how-it-works', '/login', '/terms', '/privacy', '/ferpa', '/auth/callback']
+  //
+  // '/auth/reset-callback' and '/reset-password' are the self-service password
+  // reset flow (SPE-68). They must be public: the user arrives from an emailed
+  // link with no session yet, and the callback is what establishes one. Listing
+  // '/reset-password' here also keeps it clear of the must_change_password
+  // redirect below — a user whom an admin had also queued a reset for would
+  // otherwise be bounced to /change-password instead of the page they were sent
+  // to. The page itself verifies the recovery session server-side.
+  const publicRoutes = ['/', '/how-it-works', '/login', '/terms', '/privacy', '/ferpa', '/auth/callback', '/auth/reset-callback', '/reset-password']
   const isPublicRoute = publicRoutes.some(route => pathname === route)
 
   // Routes allowed for users who must change their password

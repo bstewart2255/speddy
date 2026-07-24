@@ -22,7 +22,10 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 // Define public routes that don't need auth
-const PUBLIC_ROUTES = ['/login', '/forgot-password', '/reset-password', '/how-it-works'];
+// '/reset-password' is public because the user arrives there from an emailed
+// reset link (SPE-68). There is no '/forgot-password' route — that step is an
+// inline view on /login.
+const PUBLIC_ROUTES = ['/login', '/reset-password', '/auth/reset-callback', '/how-it-works'];
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
