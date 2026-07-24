@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { validatePassword } from "../../../lib/utils/password-validation";
 import { PasswordInput } from "../../components/auth/password-input";
@@ -18,6 +18,23 @@ import { PasswordStrengthIndicator } from "../../components/auth/password-streng
  * Submits to `/api/auth/reset-password` rather than calling `updateUser()`
  * directly — the server also has to clear `must_change_password` and
  * `password_reset_requested_at`, which the browser client cannot do.
+ *
+ * The password fields are withheld until mount (SPE-331). `page.tsx` is a server
+ * component, so without that gate this form's markup is live in the SSR HTML
+ * before React attaches, and either kind of early interaction goes wrong:
+ *
+ *  - **Submitting early** falls back to a NATIVE form submit. With no `method`
+ *    that is a GET, which writes the new password in plaintext into the URL —
+ *    and from there into server access logs, browser history, and `Referer`.
+ *  - **Filling early** (a password manager autofilling on load — the likelier
+ *    one, since it needs no speed from the user) is silently discarded: these
+ *    are controlled inputs, so hydration resets them to `''` and the user
+ *    submits an empty form.
+ *
+ * Rendering the fields only once mounted removes both: before hydration there
+ * is nothing to autofill and nothing to submit. `method="POST"` is kept as a
+ * second line of defence so that if this ever renders server-side again, the
+ * degenerate submit still cannot put credentials in a URL.
  */
 export function ResetPasswordForm() {
   const [password, setPassword] = useState("");
@@ -26,7 +43,14 @@ export function ResetPasswordForm() {
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [showPasswordRequirements, setShowPasswordRequirements] = useState(false);
+  // False on the server AND on the first client render, so the two agree and
+  // hydration is mismatch-free; the effect then swaps in the real form.
+  const [mounted, setMounted] = useState(false);
   const router = useRouter();
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -90,8 +114,29 @@ export function ResetPasswordForm() {
     );
   }
 
+  // Pre-hydration placeholder (SPE-331). Deliberately contains no inputs and no
+  // submit control, so there is nothing for a password manager to fill or for a
+  // fast click to submit. Sized to match the real form so the swap doesn't shift
+  // the page.
+  if (!mounted) {
+    return (
+      <div className="space-y-6" aria-busy="true" aria-live="polite">
+        <div className="space-y-2">
+          <div className="h-5 w-32 rounded bg-gray-100" />
+          <div className="h-10 w-full rounded-lg bg-gray-100" />
+        </div>
+        <div className="space-y-2">
+          <div className="h-5 w-40 rounded bg-gray-100" />
+          <div className="h-10 w-full rounded-lg bg-gray-100" />
+        </div>
+        <div className="h-10 w-full rounded-lg bg-gray-200" />
+        <p className="text-center text-sm text-gray-500">Loading…</p>
+      </div>
+    );
+  }
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form onSubmit={handleSubmit} method="POST" className="space-y-6">
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md text-sm">
           {error}
