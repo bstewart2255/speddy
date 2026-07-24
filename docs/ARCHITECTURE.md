@@ -155,6 +155,31 @@ flowchart TD
    etc.) carry policies scoped to the user's school(s) and/or ownership. Admin
    scope is granted via `admin_permissions` (§3).
 
+### `profiles` self-updates: policy + trigger (SPE-332)
+
+`profiles_update` has three branches — the row owner, `service_role`, and a
+site admin for the row's `school_id`. A user may edit their **own** row but must
+not change `role`, `is_speddy_admin`, `school_id` or `district_id`.
+
+That immutability rule lives in a **BEFORE UPDATE trigger**
+(`profiles_guard_immutable_columns`), **not** in the policy's `WITH CHECK`. An
+RLS policy cannot reference `OLD`, so the original implementation compared the
+incoming row against stored values by selecting from `profiles` *inside the
+policy on* `profiles` — which Postgres re-evaluates recursively, so **every**
+`UPDATE` failed with `42P17 infinite recursion detected in policy`. It failed
+closed (no escalation was ever possible) but silently broke every self-serve
+write for ~7 months: the SPE-320 daily-schedule toggle, the settings
+"Request Password Reset" button, and dismissing the onboarding banners.
+
+**Consequence for feature work:** anything a user saves to their own profile from
+the browser goes through this policy. Mocked unit tests cannot see RLS at all, so
+a self-write path is only genuinely covered by a **sim-district walk with a real
+signed-in session** — that is the gate that catches this class of bug, and it is
+why SPE-320 shipped broken with three green test files.
+
+**Source of truth:** `supabase/migrations/20260724_fix_profiles_update_rls_recursion.sql`;
+live `profiles_update` policy + `profiles_guard_immutable_columns` trigger.
+
 ### Route-guard matrix (from `middleware.ts`)
 
 | Path prefix | Who's allowed | Else → |
