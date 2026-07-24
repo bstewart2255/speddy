@@ -64,25 +64,31 @@ security invoker
 set search_path = ''
 as $$
 begin
-  -- Server-side admin flows run as service_role and are how role/school
-  -- legitimately change (admin account creation, provider transfers).
+  -- Server-side admin flows run as service_role and are the ONLY legitimate way
+  -- these columns change (admin account creation, provider transfers). Every such
+  -- route already uses the service client, and no browser/user-session code path
+  -- writes them at all — `is_speddy_admin` is never written by app code anywhere.
   if coalesce((select auth.role()), '') = 'service_role' then
     return new;
   end if;
 
-  -- Only constrain the account holder editing their OWN row. Cross-profile
-  -- edits are already gated by the site-admin branch of profiles_update.
-  if (select auth.uid()) is distinct from old.id then
-    return new;
-  end if;
-
+  -- Applies to EVERY authenticated actor, not just the account holder.
+  --
+  -- An earlier cut of this trigger returned early when auth.uid() <> old.id, on
+  -- the reasoning that cross-profile edits were "already gated by the site-admin
+  -- branch of profiles_update". That gate is about ROWS. RLS decides which rows
+  -- you may touch and says nothing about which columns — so a site admin, whose
+  -- branch grants them any profile at their school, could PATCH a colleague's row
+  -- and set is_speddy_admin = true, promoting a school-scoped admin into a global
+  -- platform admin (`/internal`). Confirmed exploitable against production before
+  -- this change: HTTP 200, is_speddy_admin flipped. Caught by CodeRabbit on PR #782.
   if new.role is distinct from old.role
      or new.is_speddy_admin is distinct from old.is_speddy_admin
      or new.school_id is distinct from old.school_id
      or new.district_id is distinct from old.district_id
   then
     raise exception
-      'profiles: role, is_speddy_admin, school_id and district_id cannot be changed by the account holder'
+      'profiles: role, is_speddy_admin, school_id and district_id can only be changed by a service_role flow'
       using errcode = '42501';
   end if;
 
@@ -91,7 +97,7 @@ end;
 $$;
 
 comment on function public.profiles_guard_immutable_columns() is
-  'SPE-332: blocks a user from escalating their own role/is_speddy_admin/school_id/district_id. Lives in a trigger rather than the profiles_update WITH CHECK because a policy cannot reference OLD, and the subquery workaround made the policy self-recursive (42P17).';
+  'SPE-332: role/is_speddy_admin/school_id/district_id are changeable only by service_role. Enforced in a trigger rather than the profiles_update WITH CHECK because a policy cannot reference OLD (the subquery workaround made the policy self-recursive, 42P17) and because RLS gates rows, not columns — the site-admin row grant would otherwise permit privilege escalation.';
 
 drop trigger if exists profiles_guard_immutable_columns on public.profiles;
 

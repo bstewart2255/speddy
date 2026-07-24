@@ -76,8 +76,15 @@ async function patchProfile(
   };
 }
 
-/** The message profiles_guard_immutable_columns raises. */
-const TRIGGER_MESSAGE = 'cannot be changed by the account holder';
+/**
+ * Signature of a refusal from profiles_guard_immutable_columns: its SQLSTATE
+ * plus the column list it names. Matching both proves the TRIGGER refused —
+ * not type coercion, a foreign key, or a plain RLS filter — while staying
+ * robust to the exact wording of the message.
+ */
+function refusedByTrigger(body: string): boolean {
+  return body.includes('"code":"42501"') && body.includes('profiles: role, is_speddy_admin');
+}
 
 let failures = 0;
 function check(ok: boolean, label: string, detail: string): void {
@@ -131,7 +138,7 @@ async function main(): Promise<void> {
     // Assert it was refused BY THE TRIGGER, not incidentally by type coercion or
     // a foreign key. Otherwise a badly-chosen test value would keep this check
     // green even if the trigger stopped guarding scope entirely.
-    const byTrigger = !r.ok && r.body.includes(TRIGGER_MESSAGE);
+    const byTrigger = !r.ok && refusedByTrigger(r.body);
     check(byTrigger, `cannot change ${label}`,
       byTrigger ? `HTTP ${r.status} (trigger)` : `HTTP ${r.status} — ${r.body.slice(0, 90)}`);
   }
@@ -156,6 +163,28 @@ async function main(): Promise<void> {
     'site admin CAN write a provider at their school',
     `${adminWrite.rows.length} row(s) affected`,
   );
+
+  // Privilege escalation via the site-admin row grant. RLS gates rows, not
+  // columns, so holding write access to a colleague's row previously allowed
+  // setting is_speddy_admin on it — turning a school-scoped admin into a global
+  // platform admin. Verified exploitable on production before the trigger was
+  // widened to cover every authenticated actor (CodeRabbit, PR #782).
+  //
+  // NB: these must run against a freshly-seeded fixture. If a prior run already
+  // escalated the target, the patch is a no-op, the trigger correctly permits it,
+  // and the check passes for the wrong reason.
+  console.log('site-admin escalation (must be refused):');
+  const adminEscalations: [string, Record<string, unknown>][] = [
+    ["a colleague's is_speddy_admin", { is_speddy_admin: true }],
+    ["a colleague's role", { role: 'district_admin' }],
+    ["a colleague's district_id", { district_id: `${DISTRICT.id}-OTHER` }],
+  ];
+  for (const [label, patch] of adminEscalations) {
+    const r = await patchProfile(siteAdmin, uid, patch);
+    const byTrigger = !r.ok && refusedByTrigger(r.body);
+    check(byTrigger, `site admin cannot set ${label}`,
+      byTrigger ? `HTTP ${r.status} (trigger)` : `HTTP ${r.status} — ${r.body.slice(0, 90)}`);
+  }
 
   if (failures === 0) {
     console.log('\nAll checks passed. Re-seed (npm run sim:reset -- --yes) to restore the fixture.');
