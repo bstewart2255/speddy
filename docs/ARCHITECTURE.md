@@ -425,6 +425,22 @@ erDiagram
 - **Status:** `session_status` enum = `active | conflict | needs_attention`;
   companion flags `has_conflict`, `conflict_reason`, `outside_schedule_conflict`,
   `manually_placed`.
+- **Slot capacity (per provider):** a provider may run at most
+  `maxConcurrentSessions` (8, `lib/scheduling/scheduling-config.ts`) sessions
+  concurrent in an overlapping time band on a given weekday — the group-session
+  size ceiling. Enforced in the app (`checkConcurrentSessionLimit`; the
+  auto-scheduler's placement gate) **and**, as a DB backstop against the stale
+  ≤15-min client cache, by a DB trigger (`trg_flag_session_over_capacity`,
+  SPE-141 §2) — it counts fresh committed state at write time and serializes a
+  provider's concurrent writers (a blocking, per-provider `pg_advisory_xact_lock`,
+  held only for the brief auto-commit write) so a simultaneous save can't read a
+  stale under-cap count and slip an unflagged row past it. The guard is **soft**: a write that would exceed the cap is not
+  rejected (the interactive override is preserved) — it is **flagged**
+  (`has_conflict` + `needs_attention` + reason), reusing the same surface that
+  `reconcileStaleConflictsForProvider` re-derives (same per-minute peak rule) and
+  auto-clears once the slot is no longer over capacity. Scoped to live recurring
+  template rows (`session_date IS NULL`); dated instances inherit the cap from
+  their template and are separately anti-double-booked by `unique_session_per_date`.
 - **Completion & notes:** `is_completed` / `completed_at` / `completed_by` /
   `session_notes`.
 - **Grouping (Groups v2):** durable `group_ref` → `session_groups` (see the
@@ -493,7 +509,11 @@ always means grade.
 palette); `app/api/groups/mutate/route.ts` + the `groups_v2_*` RPCs
 (`supabase/migrations/20260723_groups_v2_*`); `lib/auth/role-utils.ts`
 (delivered_by derivation); `lib/services/session-instance-topup.ts` +
-`topup_session_instances()` fn (rolling horizon). Full design: the project doc
+`topup_session_instances()` fn (rolling horizon); slot-capacity guard
+`supabase/migrations/20260724_slot_capacity_soft_guard.sql`
+(`trg_flag_session_over_capacity`) + `checkConcurrentSessionLimit`
+(`lib/services/session-update-service.ts`) +
+`DEFAULT_SCHEDULING_CONFIG.maxConcurrentSessions`. Full design: the project doc
 **"Groups v2 — Design Spec"** (SPE-308…315).
 
 ---
