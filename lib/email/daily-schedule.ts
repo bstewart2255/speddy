@@ -91,42 +91,57 @@ function formatTimeRange(startTime: string, endTime: string | null): string {
 }
 
 /**
- * Collapse per-student sessions into per-time-slot rows (keyed by start time,
- * matching the calendar/PDF convention), de-duplicating students within a slot
- * and preserving first-seen order. Rows are sorted by start time.
+ * Collapse the day's sessions into rendered rows: the members of a group (same
+ * group_id + start time) become one badged row with all their initials;
+ * un-grouped sessions each stay a distinct row, even if two happen to share a
+ * start time. Group members are de-duplicated by student, preserving first-seen
+ * order. Rows are sorted by start time. "N sessions" = number of rows, so a
+ * group counts once (matches the approved design).
  */
 function buildRows(sessions: DailyScheduleSessionInput[]): ScheduleRow[] {
-  const slots = new Map<string, ScheduleRow>();
-  const seenBySlot = new Map<string, Set<string>>();
+  const rows: ScheduleRow[] = [];
+  const groupRows = new Map<string, ScheduleRow>();
+  const seenByGroup = new Map<string, Set<string>>();
 
   for (const s of sessions) {
     if (!s.startTime) continue;
-    const key = s.startTime;
-    let row = slots.get(key);
+
+    if (!s.groupId) {
+      rows.push({
+        startTime: s.startTime,
+        endTime: s.endTime,
+        initials: [s.studentInitials],
+        serviceType: s.serviceType,
+        isGroup: false,
+        schoolSite: s.schoolSite ?? null,
+      });
+      continue;
+    }
+
+    const key = `${s.groupId}::${s.startTime}`;
+    let row = groupRows.get(key);
     if (!row) {
       row = {
         startTime: s.startTime,
         endTime: s.endTime,
         initials: [],
         serviceType: s.serviceType,
-        isGroup: false,
+        isGroup: true,
         schoolSite: s.schoolSite ?? null,
       };
-      slots.set(key, row);
-      seenBySlot.set(key, new Set());
+      groupRows.set(key, row);
+      seenByGroup.set(key, new Set());
+      rows.push(row);
     }
-    const seen = seenBySlot.get(key)!;
+    const seen = seenByGroup.get(key)!;
     const dedupeKey = s.studentId ?? `${s.studentInitials}:${row.initials.length}`;
     if (!seen.has(dedupeKey)) {
       seen.add(dedupeKey);
       row.initials.push(s.studentInitials);
     }
-    if (s.groupId) row.isGroup = true;
   }
 
-  return Array.from(slots.values()).sort(
-    (a, b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime)
-  );
+  return rows.sort((a, b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime));
 }
 
 const GROUP_BADGE_HTML =

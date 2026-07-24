@@ -161,11 +161,17 @@ export async function GET(request: NextRequest) {
           settingsUrl,
         });
 
-        await getResend().emails.send(
+        // Resend v4 does NOT throw on API-level errors (invalid recipient,
+        // rate limit, etc.) — it resolves with `{ error }`. Surface that as a
+        // failure so it's counted and captured, not silently miscounted as sent.
+        const { error: sendError } = await getResend().emails.send(
           { from: FROM, to: recipient.email, subject, html, text },
           // A cron retry re-sends the same key → Resend de-dupes, no double-send.
           { idempotencyKey: `daily-schedule-${recipient.id}-${todayStr}` }
         );
+        if (sendError) {
+          throw new Error(`Resend send failed: ${sendError.message || 'unknown error'}`);
+        }
 
         sent++;
       } catch (recipientError) {

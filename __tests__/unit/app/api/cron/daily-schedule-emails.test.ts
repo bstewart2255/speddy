@@ -162,6 +162,22 @@ describe('/api/cron/daily-schedule-emails', () => {
     expect(mockCapture).toHaveBeenCalledTimes(1);
   });
 
+  it('counts a Resend API-level error ({ error }, no throw) as failed, not sent', async () => {
+    recipientsResult = {
+      data: [{ id: 'u1', email: 'u1@example.com', role: 'resource', works_at_multiple_schools: false }],
+      error: null,
+    };
+    // Resend v4 resolves with { error } instead of throwing on API failures.
+    mockSend.mockResolvedValue({ data: null, error: { name: 'rate_limit_exceeded', message: 'Too many requests' } });
+
+    const res = await GET(makeRequest({ 'x-cron-secret': 'test-secret' }));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body).toMatchObject({ sent: 0, failed: 1 });
+    expect(mockCapture).toHaveBeenCalledTimes(1);
+  });
+
   it('POST delegates to the same handler', async () => {
     recipientsResult = {
       data: [{ id: 'u1', email: 'u1@example.com', role: 'resource', works_at_multiple_schools: false }],
