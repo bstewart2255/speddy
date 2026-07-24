@@ -41,13 +41,17 @@ DECLARE
   cap CONSTANT integer := 8;
   peak integer;
 BEGIN
-  -- Only live, scheduled, recurring template rows define a capacity slot.
+  -- Only live, scheduled, recurring template rows define a capacity slot. A
+  -- zero-/negative-length row (end <= start) occupies no time, so it can't add to
+  -- any slot's occupancy — skip it too (matches checkConcurrentSessionLimit, whose
+  -- per-minute loop iterates zero minutes when end <= start).
   IF NEW.session_date IS NOT NULL
      OR NEW.deleted_at IS NOT NULL
      OR NEW.provider_id IS NULL
      OR NEW.day_of_week IS NULL
      OR NEW.start_time IS NULL
-     OR NEW.end_time IS NULL THEN
+     OR NEW.end_time IS NULL
+     OR NEW.end_time <= NEW.start_time THEN
     RETURN NEW;
   END IF;
 
@@ -63,10 +67,15 @@ BEGIN
     RETURN NEW;
   END IF;
 
-  -- Serialize concurrent writes to the same provider+day so two racing writers
-  -- can't each read an under-cap count and both slip in — the whole reason a DB
-  -- guard exists over the (stale, non-atomic) client-side check. Released at txn end.
-  PERFORM pg_advisory_xact_lock(
+  -- Best-effort serialization: TRY (never block) to take the per-(provider,day)
+  -- lock so a concurrent writer's count sees ours. A *blocking* lock held by a
+  -- long batch-save transaction could push a concurrent writer to the same day
+  -- past statement_timeout and FAIL its write — which this soft guard must never
+  -- do — or deadlock two multi-slot batch writes. On contention we proceed
+  -- unlocked; the primary win (counting fresh committed state instead of the
+  -- stale ≤15-min client cache) still holds, and the rare truly-simultaneous race
+  -- is re-derived and flagged by reconcileStaleConflictsForProvider on next view.
+  PERFORM pg_try_advisory_xact_lock(
     hashtextextended(NEW.provider_id::text || ':' || NEW.day_of_week::text, 0)
   );
 
