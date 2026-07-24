@@ -159,8 +159,8 @@ flowchart TD
 
 | Path prefix | Who's allowed | Else → |
 |---|---|---|
-| `/`, `/how-it-works`, `/login`, `/signup`, `/terms`, `/privacy`, `/ferpa`, `/auth/callback` | public | — |
-| `must_change_password = true` | only `/change-password` | `/change-password` |
+| `/`, `/how-it-works`, `/login`, `/signup`, `/terms`, `/privacy`, `/ferpa`, `/auth/callback`, `/auth/reset-callback`, `/reset-password` | public | — |
+| `must_change_password = true` | only `/change-password` (public routes, incl. `/reset-password`, are exempt — see §5) | `/change-password` |
 | `/internal` | `is_speddy_admin` only | `/dashboard` |
 | `/dashboard/admin` | `site_admin`, `district_admin` | `/dashboard` |
 | `/dashboard/teacher` | `teacher` | `/dashboard` |
@@ -340,7 +340,37 @@ flowchart TD
 - **`must_change_password`** locks the user to `/change-password` until cleared.
   It is set by the **admin password-reset** flow (`app/api/admin/reset-password`),
   enforced by middleware + `app/api/auth/login`, and cleared by
-  `app/api/auth/change-password`. Account *creation* does **not** set it (SPE-190).
+  `app/api/auth/change-password` **or** by a self-service reset (below). Account
+  *creation* does **not** set it (SPE-190).
+- **Self-service password reset (SPE-68).** Two reset paths now exist and they
+  converge on the same flags:
+  1. `/login` → "Forgot password?" → `supabase.auth.resetPasswordForEmail()`.
+     **Supabase Auth owns the token** (generation, expiry, single use,
+     invalidation on redemption); delivery is Resend via the project's custom
+     SMTP settings. The response to the user is identical whether or not the
+     account exists — no email enumeration.
+  2. The emailed link verifies at Supabase and lands on
+     **`app/auth/reset-callback/route.ts`**, which exchanges the PKCE `?code=`
+     for a session and forwards to `/reset-password`. This is deliberately
+     **separate from `/auth/callback`**: that route carries the SSO provisioning
+     gate, which *deletes* an auth user + profile it judges unprovisioned, and a
+     reset link must never traverse delete-the-account code. Expired, used, or
+     malformed links bounce to `/login?error=reset_expired|reset_invalid`.
+  3. `app/(auth)/reset-password/page.tsx` re-verifies the session server-side and
+     posts to **`POST /api/auth/reset-password`**, which calls `updateUser()` and
+     then clears **both** `must_change_password` and `password_reset_requested_at`
+     on the **service client** (per SPE-280 — reusing the request-scoped client
+     after `updateUser()` rotates tokens hangs the request).
+  - `/reset-password` and `/auth/reset-callback` are **public** in `middleware.ts`:
+    the user arrives with no session, and listing `/reset-password` there also
+    keeps it clear of the `must_change_password` redirect (a user with an admin
+    reset also queued would otherwise be bounced to `/change-password`).
+  - The admin "Reset password" button **remains** as the backup for users who
+    cannot reach their email. The old red-dot request workflow
+    (`password_reset_requested_at`, set from the settings page) is now vestigial —
+    the public `/api/auth/forgot-password` endpoint that also fed it was deleted,
+    since it only ever set a flag and **sent no email at all**, and silently did
+    nothing for non-provider roles.
 - **Idle timeout** (`lib/config/session-timeout.ts`): default **45 min**
   (`NEXT_PUBLIC_SESSION_TIMEOUT`, `2_700_000` ms), **2-min** warning,
   **30 s** activity throttle, with `KEEP_ALIVE_ACTIVITIES`
@@ -363,7 +393,10 @@ flowchart TD
 
 **Source of truth:** `middleware.ts`; `lib/config/session-timeout.ts`;
 `lib/hooks/use-activity-tracker.ts`;
-`app/components/providers/auth-provider.tsx`; `app/auth/callback/route.ts`.
+`app/components/providers/auth-provider.tsx`; `app/auth/callback/route.ts`;
+`app/auth/reset-callback/route.ts`; `app/(auth)/reset-password/*`;
+`app/api/auth/reset-password/route.ts`; `app/api/auth/change-password/route.ts`;
+`app/api/admin/reset-password/route.ts`.
 
 ---
 

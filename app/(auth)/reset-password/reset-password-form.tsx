@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "../../../lib/supabase/client";
 import { validatePassword } from "../../../lib/utils/password-validation";
 import { PasswordInput } from "../../components/auth/password-input";
 import { PasswordRequirements } from "../../components/auth/password-requirements";
@@ -38,14 +37,28 @@ export function ResetPasswordForm() {
     }
 
     try {
-      const { error } = await supabase.auth.updateUser({ password });
+      // Goes through the API route rather than calling updateUser() directly:
+      // the server also has to clear must_change_password and
+      // password_reset_requested_at, which the browser client cannot do (SPE-68).
+      const response = await fetch("/api/auth/reset-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password }),
+      });
 
-      if (error) throw error;
+      const result = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(result?.error || "Failed to reset password");
+      }
 
       setSuccess(true);
+      // The reset session is a real session — send them straight into the app
+      // rather than making them log in again with the password they just set.
+      router.refresh();
       setTimeout(() => {
-        router.push("/login");
-      }, 3000);
+        router.push("/dashboard");
+      }, 2000);
     } catch (error) {
       setError(error instanceof Error ? error.message : "Failed to reset password");
       setLoading(false);
@@ -58,7 +71,7 @@ export function ResetPasswordForm() {
         <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-md">
           <p className="font-medium">Password reset successfully!</p>
           <p className="text-sm mt-1">
-            Redirecting you to the login page...
+            Taking you to your dashboard...
           </p>
         </div>
       </div>

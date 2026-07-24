@@ -22,8 +22,8 @@ export const SESSION_CONFIG = {
   // Routes that don't require timeout tracking
   EXEMPT_ROUTES: [
     '/login',
-    '/forgot-password',
     '/reset-password',
+    '/auth/reset-callback',
     '/api',
     '/_next',
     '/favicon.ico',
