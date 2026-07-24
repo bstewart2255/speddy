@@ -306,18 +306,88 @@ export function studentTeacher(rule: CaseloadRule, index: number): { teacherRowI
 export const EDGE = {
   /** Index of the student with zero scheduled sessions (unscheduled alert). */
   zeroSessionsIndex: 5,
-  /** Indexes sharing a group session. */
-  groupIndexes: [3, 4],
-  groupId: simUuid('group:rachel:reading-a'),
-  /** Groups v2 durable record id (session_groups.id) the grouped rows group_ref to. */
-  sessionGroupId: simUuid('group:rachel:reading-a:record'),
-  groupName: 'Reading Group A',
-  groupColor: 3,
-  /** Index whose sessions are delegated to the SEA (Leah). */
+  /** Index whose non-grouped sessions are all delegated to the SEA (Leah). */
   seaDelegatedIndex: 2,
   /** Index with a manually placed session. */
   manuallyPlacedIndex: 6,
 } as const;
+
+// ---------------------------------------------------------------------------
+// Groups v2 fixture (SPE-315) — durable session_groups records + a
+// per-(studentIndex, k) assignment map, all on Rachel's Willow caseload. Three
+// permanent regression scenarios, seeded by seed.ts and asserted by verify.ts:
+//   1. Multi-day group — Reading Group A meets Tue AND Thu at 10:30 with the
+//      SAME two members (indexes 3 & 8): different days, ONE record (design
+//      decision #4).
+//   2. Split slot      — Reading Group B (indexes 9 & 11) occupies Group A's
+//      Tue 10:30 slot: two distinct groups sharing one (provider, day, time).
+//   3. SEA-run cluster — a whole group delivered by the SEA: indexes 2 & 14
+//      co-scheduled Wed 10:30, delivered_by='sea', assigned_to_sea_id = Leah.
+// Every grouped schedule_session dual-writes the durable group_ref (record id)
+// AND the legacy group_id/group_name/group_color, matching the app's writes.
+// Members are picked so each student's grouped and ungrouped slots stay on
+// distinct (day_of_week, start_time) pairs (the unique_session_per_date guard),
+// and so exactly one group is multi-day and exactly one slot is split.
+// ---------------------------------------------------------------------------
+
+export interface SimGroup {
+  /** Stable natural key; drives the derived UUIDs. Never rename after first seed. */
+  key: string;
+  /** session_groups.id — the durable record grouped sessions group_ref to. */
+  recordId: string;
+  /** Legacy schedule_sessions.group_id, dual-written beside group_ref. */
+  legacyId: string;
+  name: string;
+  /** session_groups.color / schedule_sessions.group_color — CHECK 0..4. */
+  color: number;
+  deliveredBy: 'provider' | 'sea';
+}
+
+export const SESSION_GROUPS: SimGroup[] = [
+  { key: 'reading-a', recordId: simUuid('group:rachel:reading-a:record'), legacyId: simUuid('group:rachel:reading-a'), name: 'Reading Group A', color: 3, deliveredBy: 'provider' },
+  { key: 'reading-b', recordId: simUuid('group:rachel:reading-b:record'), legacyId: simUuid('group:rachel:reading-b'), name: 'Reading Group B', color: 1, deliveredBy: 'provider' },
+  { key: 'sea-cluster', recordId: simUuid('group:rachel:sea-cluster:record'), legacyId: simUuid('group:rachel:sea-cluster'), name: 'SEA Reading Cluster', color: 4, deliveredBy: 'sea' },
+];
+
+export function simGroup(key: string): SimGroup {
+  const g = SESSION_GROUPS.find(x => x.key === key);
+  if (!g) throw new Error(`Unknown sim group key: ${key}`);
+  return g;
+}
+
+/**
+ * Grouped-session assignment: which of Rachel's (studentIndex, k) sessions is
+ * repurposed into a group, and the slot it moves to. Grouping never adds a
+ * session — it relabels an existing weekly slot with the group's day/time +
+ * group columns.
+ */
+export interface GroupAssignment {
+  index: number;   // Rachel Willow student index
+  k: number;       // which weekly session (0-based) is grouped
+  groupKey: string;
+  day: number;     // Mon=1..Fri=5
+  start: string;   // HH:MM (a SESSION_SLOTS value)
+}
+
+export const GROUP_ASSIGNMENTS: GroupAssignment[] = [
+  // 1. Multi-day: Reading Group A, same members on two days at the same time.
+  { index: 3, k: 0, groupKey: 'reading-a', day: 2, start: '10:30' }, // Tue
+  { index: 3, k: 1, groupKey: 'reading-a', day: 4, start: '10:30' }, // Thu
+  { index: 8, k: 0, groupKey: 'reading-a', day: 2, start: '10:30' },
+  { index: 8, k: 1, groupKey: 'reading-a', day: 4, start: '10:30' },
+  // 2. Split slot: Reading Group B shares Group A's Tue 10:30 slot.
+  { index: 9, k: 0, groupKey: 'reading-b', day: 2, start: '10:30' },
+  { index: 11, k: 0, groupKey: 'reading-b', day: 2, start: '10:30' },
+  // 3. SEA-run cluster: whole group delivered by Leah, Wed 10:30. Index 2 is
+  //    also the standalone SEA-delegated student (seaDelegatedIndex).
+  { index: 2, k: 0, groupKey: 'sea-cluster', day: 3, start: '10:30' },
+  { index: 14, k: 0, groupKey: 'sea-cluster', day: 3, start: '10:30' },
+];
+
+/** The group slot for Rachel's student `index` at weekly session `k`, if any. */
+export function groupAssignmentFor(index: number, k: number): GroupAssignment | undefined {
+  return GROUP_ASSIGNMENTS.find(a => a.index === index && a.k === k);
+}
 
 // ---------------------------------------------------------------------------
 // Student details (fictional-by-construction; spec §6)

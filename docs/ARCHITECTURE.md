@@ -379,6 +379,9 @@ erDiagram
     STUDENTS  ||--o{ SCHEDULE_SESSIONS : "student_id"
     PROFILES  ||--o{ SCHEDULE_SESSIONS : "assigned_to_sea_id"
     PROFILES  ||--o{ SCHEDULE_SESSIONS : "assigned_to_specialist_id"
+    SESSION_GROUPS ||--o{ SCHEDULE_SESSIONS : "group_ref (RESTRICT)"
+    SESSION_GROUPS ||--o{ LESSONS : "group_ref (SET NULL)"
+    PROFILES  ||--o{ SESSION_GROUPS : "provider_id (owner)"
 
     SCHEDULE_SESSIONS {
         uuid id PK
@@ -396,8 +399,19 @@ erDiagram
         uuid assigned_to_specialist_id
         session_status status "active|conflict|needs_attention"
         boolean is_completed
-        uuid group_id "group sessions"
+        uuid group_ref FK "→ session_groups (durable)"
+        uuid group_id "legacy, dual-written (retiring)"
         timestamptz deleted_at "soft delete"
+    }
+    SESSION_GROUPS {
+        uuid id PK
+        uuid provider_id FK "owner / RLS anchor"
+        text delivered_by "provider|sea|specialist"
+        uuid assigned_to_sea_id
+        uuid assigned_to_specialist_id
+        text name "optional"
+        int color "optional (palette index)"
+        timestamptz retired_at "retire, never delete"
     }
 ```
 
@@ -411,8 +425,12 @@ erDiagram
 - **Status:** `session_status` enum = `active | conflict | needs_attention`;
   companion flags `has_conflict`, `conflict_reason`, `outside_schedule_conflict`,
   `manually_placed`.
-- **Completion & grouping:** `is_completed` / `completed_at` / `completed_by` /
-  `session_notes`; group sessions via `group_id` / `group_name` / `group_color`.
+- **Completion & notes:** `is_completed` / `completed_at` / `completed_by` /
+  `session_notes`.
+- **Grouping (Groups v2):** durable `group_ref` → `session_groups` (see the
+  subsection below); the legacy `group_id` / `group_name` / `group_color` columns
+  remain dual-written, and their removal is deferred to a separately-approved
+  migration after a bake period (tracked on SPE-315) — not yet dropped.
 - **Soft delete:** `deleted_at` (rows are not always hard-deleted here).
 - **Instance horizon (SPE-291):** dated instances are materialized to a
   **rolling 12-week horizon** by `topup_session_instances()` (set-based,
@@ -422,10 +440,61 @@ erDiagram
   calendar's client-side virtual layer renders slots beyond the horizon and
   persists them on first touch (`lib/services/session-persistence.ts`).
 
-**Source of truth:** live `schedule_sessions` table + `session_status` enum;
-`lib/scheduling/`; `lib/auth/role-utils.ts` (delivered_by derivation);
-`lib/services/session-instance-topup.ts` + `topup_session_instances()` fn
-(rolling horizon).
+### Groups v2 — schedule-derived groups
+
+A **group is a durable record** (`session_groups`), not denormalized columns.
+Membership **derives from the schedule**: sessions in the same slot
+(`day_of_week` + `start_time`) delivered by the same person (provider, SEA, or
+specialist) are one group. `schedule_sessions.group_ref` and `lessons.group_ref`
+point at the record; the Main Schedule renders a group as a neutral plate
+**derived at read time**, so co-scheduled clusters show as a group even before a
+record materializes (the popover materializes one on first edit).
+
+Invariants, enforced by the transactional RPC layer (`groups_v2_form` / `join` /
+`leave` / `split` / `merge` / `rename` / `assign`, dispatched from
+`app/api/groups/mutate/route.ts`):
+
+- **Future-only, past immutable.** Every mutation touches the template + instances
+  dated `>= CURRENT_DATE` only; historical instances keep whatever `group_ref`
+  they carried. Stamping one session's group onto its instances matches by
+  `template_id` **and** the `(provider, student, day_of_week, start_time)` natural
+  key, so instances predating `template_id` linkage are still covered
+  (`_groups_v2_stamp`).
+- **Retire, never delete (by group ops).** Group emptying/mutation never
+  hard-deletes a record — it sets `retired_at`; and `group_ref` is
+  `ON DELETE RESTRICT` from sessions / `ON DELETE SET NULL` from lessons, so group
+  content can't strand a live record. Caveat: `session_groups.provider_id` is
+  `ON DELETE CASCADE`, so deleting a provider profile still cascades away their
+  group records — a hardening item (SPE-315) to reconcile with "never delete".
+- **Dormant at < 2.** A group with fewer than two live member sessions renders as
+  plain pills; the record persists and revives when someone rejoins (replaces the
+  old "must have ≥ 2" rule).
+- **Delegation preserves identity.** Assigning a whole group to an SEA/specialist
+  updates the record's deliverer + the members' delivery fields, group and threads
+  intact — replacing the old trigger that force-ungrouped on a `delivered_by`
+  change.
+- **Access by record (lessons + curriculum).** Group **lessons** and the
+  curriculum-continuity lookup authorize via the owning provider or current
+  assignee of the `group_ref` record (`lib/groups/access.ts#hasGroupAccess`), so a
+  reshuffle never orphans them; continuity walks the `group_ref` chain per
+  curriculum. **Gap (SPE-315):** the group **documents** route and its RLS still
+  authorize by live `group_id` membership, so a fully-reshuffled group's documents
+  can 403 until they are switched to the record path.
+- **`group_ref` rides instance top-up** (`topup_session_instances()` and the JS
+  `session-instance-generator`), so newly materialized future instances inherit
+  their template's group.
+
+Group color is a small accent only (popover + Week planning card, from a stored
+palette index) — it never tints the Main Schedule board, where a pill's fill
+always means grade.
+
+**Source of truth:** live `schedule_sessions` + `session_groups` tables +
+`session_status` enum; `lib/scheduling/`; `lib/groups/` (access resolution +
+palette); `app/api/groups/mutate/route.ts` + the `groups_v2_*` RPCs
+(`supabase/migrations/20260723_groups_v2_*`); `lib/auth/role-utils.ts`
+(delivered_by derivation); `lib/services/session-instance-topup.ts` +
+`topup_session_instances()` fn (rolling horizon). Full design: the project doc
+**"Groups v2 — Design Spec"** (SPE-308…315).
 
 ---
 

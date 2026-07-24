@@ -249,7 +249,7 @@ exists, including that quirk:
 
 | Caseload | School(s) | Count | Notable rows |
 |---|---|---|---|
-| Rachel (RSP) | Willow | **28 — at the CA cap** | spread TK/K–5 across Nora + 5 record-only teachers; 3 in Nora's class; **1 with zero scheduled sessions** (unscheduled alert); 2 in a group session |
+| Rachel (RSP) | Willow | **28 — at the CA cap** | spread TK/K–5 across Nora + 5 record-only teachers; 3 in Nora's class; **1 with zero scheduled sessions** (unscheduled alert); **6 across three Groups v2 scenarios** — a multi-day group (same members Tue+Thu), a split slot (two groups sharing one time), and an SEA-run group (delegated whole to Leah) |
 | Alicia (RSP) | Maple | 26 | full-time caseload #2 |
 | Derek (RSP) | Juniper | 24 | full-time caseload #3 |
 | Maria (RSP, itinerant) | Maple 10 · Juniper 10 | 20 | the owner-described two-site RSP pattern, layered over each site's full-timer |

@@ -19,6 +19,7 @@ import {
   RECORD_TEACHERS,
   SCHOOLS,
   SEEDED_TABLES,
+  SESSION_GROUPS,
   SWEPT_TABLES,
   TOTAL_STUDENTS,
   careCaseId,
@@ -98,6 +99,73 @@ async function collectCounts(admin: Admin) {
     if (error) throw new Error(`debug_signup_log scan failed: ${error.message}`);
     counts['debug_signup_log (sim-tagged)'] = count ?? 0;
   }
+
+  // Groups v2 (SPE-315): shape of the seeded group fixture, all scoped to sim
+  // providers. Every fact is 0 in the empty (--expect-empty) state, so these
+  // keys satisfy the orphan scan too. Facts are derived in JS from the grouped
+  // rows (distinct DOW per group, distinct group_ref per slot) rather than a
+  // GROUP BY, keeping the read-only admin-client pattern.
+  {
+    let simGroups = 0;
+    let seaRunGroups = 0;
+    let multiDayGroups = 0;
+    let splitSlots = 0;
+    let seaRunSessions = 0;
+    let danglingRefs = 0;
+    let groupsUnder2 = 0;
+    if (simUserIds.length > 0) {
+      const { data: groups, error: gErr } = await admin
+        .from('session_groups')
+        .select('id, delivered_by')
+        .in('provider_id', simUserIds);
+      if (gErr) throw new Error(`session_groups scan failed: ${gErr.message}`);
+      const simGroupIds = new Set<string>((groups ?? []).map(g => g.id));
+      const seaGroupIds = new Set<string>((groups ?? []).filter(g => g.delivered_by === 'sea').map(g => g.id));
+      simGroups = simGroupIds.size;
+      seaRunGroups = seaGroupIds.size;
+
+      const { data: grouped, error: sErr } = await admin
+        .from('schedule_sessions')
+        .select('provider_id, day_of_week, start_time, group_ref, delivered_by, assigned_to_sea_id, student_id')
+        .in('provider_id', simUserIds)
+        .not('group_ref', 'is', null);
+      if (sErr) throw new Error(`grouped session scan failed: ${sErr.message}`);
+
+      const daysByGroup = new Map<string, Set<number>>();
+      const refsBySlot = new Map<string, Set<string>>();
+      const membersByGroup = new Map<string, Set<string>>();
+      for (const s of grouped ?? []) {
+        const ref = s.group_ref as string;
+        if (!simGroupIds.has(ref)) danglingRefs++;
+        let gdays = daysByGroup.get(ref);
+        if (!gdays) { gdays = new Set(); daysByGroup.set(ref, gdays); }
+        gdays.add(s.day_of_week);
+        const slot = `${s.provider_id}|${s.day_of_week}|${s.start_time}`;
+        let srefs = refsBySlot.get(slot);
+        if (!srefs) { srefs = new Set(); refsBySlot.set(slot, srefs); }
+        srefs.add(ref);
+        if (s.student_id) {
+          let gm = membersByGroup.get(ref);
+          if (!gm) { gm = new Set(); membersByGroup.set(ref, gm); }
+          gm.add(s.student_id as string);
+        }
+        if (seaGroupIds.has(ref) && s.delivered_by === 'sea' && s.assigned_to_sea_id) seaRunSessions++;
+      }
+      multiDayGroups = [...daysByGroup.values()].filter(days => days.size >= 2).length;
+      splitSlots = [...refsBySlot.values()].filter(refs => refs.size >= 2).length;
+      // Every seeded group must keep >=2 distinct members — guards against a
+      // future fixture mis-edit silently dropping a member while the multi-day /
+      // split / sea-run shape checks stay satisfied via the surviving member.
+      groupsUnder2 = [...simGroupIds].filter(id => (membersByGroup.get(id)?.size ?? 0) < 2).length;
+    }
+    counts['session_groups (sim)'] = simGroups;
+    counts['session_groups (sea-run)'] = seaRunGroups;
+    counts['group multi-day (>=2 DOW)'] = multiDayGroups;
+    counts['group split-slot (>=2 refs)'] = splitSlots;
+    counts['sea-run grouped sessions'] = seaRunSessions;
+    counts['dangling group_ref'] = danglingRefs;
+    counts['groups with < 2 members'] = groupsUnder2;
+  }
   return counts;
 }
 
@@ -145,6 +213,18 @@ async function main() {
     // Signup triggers tag their log rows with the sim district name via
     // metadata; a zero here would mean the real-path trigger never fired.
     expect('debug_signup_log (sim-tagged)', n => n > 0, '> 0');
+    // Groups v2 (SPE-315) fixture shape: 3 sim groups (1 SEA-run), exactly one
+    // multi-day group (Reading Group A on Tue+Thu), exactly one split slot
+    // (Groups A + B share Tue 10:30), SEA-run cluster sessions delegated to
+    // Leah, and no schedule_sessions.group_ref that fails to resolve to a group.
+    const seaRun = SESSION_GROUPS.filter(g => g.deliveredBy === 'sea').length;
+    expect('session_groups (sim)', n => n === SESSION_GROUPS.length, String(SESSION_GROUPS.length));
+    expect('session_groups (sea-run)', n => n === seaRun, String(seaRun));
+    expect('group multi-day (>=2 DOW)', n => n === 1, '1');
+    expect('group split-slot (>=2 refs)', n => n === 1, '1');
+    expect('sea-run grouped sessions', n => n > 0, '> 0');
+    expect('dangling group_ref', n => n === 0, '0');
+    expect('groups with < 2 members', n => n === 0, '0');
   }
 
   // Coverage: every public relation must be classified in the manifest
