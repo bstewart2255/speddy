@@ -59,11 +59,13 @@ const makeRequest = (headers: Record<string, string> = {}) =>
 
 const aSession = (over: Record<string, any> = {}) => ({
   student_id: 's1',
+  provider_id: null,
   start_time: '08:30:00',
   end_time: '09:00:00',
   service_type: 'resource',
   group_id: null,
   assigned_to_sea_id: null,
+  assigned_to_specialist_id: null,
   ...over,
 });
 
@@ -75,7 +77,11 @@ describe('/api/cron/daily-schedule-emails', () => {
     recipientsResult = { data: [], error: null };
     studentsResult = { data: [{ id: 's1', initials: 'J.M.', school_site: 'Lincoln' }], error: null };
     mockFrom.mockClear();
-    mockGetSessions.mockReset().mockResolvedValue([aSession()]);
+    // Realistic default: getSessionsForDateRange returns the queried user's own
+    // (not-delegated-out) sessions.
+    mockGetSessions.mockReset().mockImplementation((userId: string) =>
+      Promise.resolve([aSession({ provider_id: userId })])
+    );
     mockSend.mockReset().mockResolvedValue({ data: { id: 'email_1' }, error: null });
     mockCapture.mockReset();
     process.env.CRON_SECRET = 'test-secret';
@@ -176,6 +182,41 @@ describe('/api/cron/daily-schedule-emails', () => {
     expect(res.status).toBe(200);
     expect(body).toMatchObject({ sent: 0, failed: 1 });
     expect(mockCapture).toHaveBeenCalledTimes(1);
+  });
+
+  it('excludes a provider’s delegated-out sessions (skips when only delegated)', async () => {
+    recipientsResult = {
+      data: [{ id: 'prov-1', email: 'p@example.com', role: 'resource', works_at_multiple_schools: false }],
+      error: null,
+    };
+    // Provider owns the session but delegated it to a SEA → not their "my session".
+    mockGetSessions.mockResolvedValue([
+      aSession({ provider_id: 'prov-1', assigned_to_sea_id: 'sea-9' }),
+    ]);
+
+    const res = await GET(makeRequest({ 'x-cron-secret': 'test-secret' }));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(mockSend).not.toHaveBeenCalled();
+    expect(body).toMatchObject({ sent: 0, skipped: 1 });
+  });
+
+  it('emails an SEA the sessions assigned to them (owned by another provider)', async () => {
+    recipientsResult = {
+      data: [{ id: 'sea-9', email: 'sea@example.com', role: 'sea', works_at_multiple_schools: false }],
+      error: null,
+    };
+    mockGetSessions.mockResolvedValue([
+      aSession({ provider_id: 'prov-1', assigned_to_sea_id: 'sea-9' }),
+    ]);
+
+    const res = await GET(makeRequest({ 'x-cron-secret': 'test-secret' }));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(mockSend).toHaveBeenCalledTimes(1);
+    expect(body).toMatchObject({ sent: 1, skipped: 0 });
   });
 
   it('POST delegates to the same handler', async () => {

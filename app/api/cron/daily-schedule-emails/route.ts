@@ -114,11 +114,20 @@ export async function GET(request: NextRequest) {
           recipient.role
         );
 
-        // SEAs only get sessions actually assigned to them (mirrors weekly-view).
-        const relevant =
-          recipient.role === 'sea'
-            ? daySessions.filter((s) => s.assigned_to_sea_id === recipient.id)
-            : daySessions;
+        // "My sessions" — only what this user actually delivers, mirroring the
+        // calendar's my-sessions view (app/components/calendar/calendar-week-view.tsx):
+        // own sessions NOT delegated out, plus sessions delegated TO this user.
+        // So a provider's email excludes sessions they handed to a SEA/specialist
+        // (the assignee gets those in their own email), and an SEA gets exactly
+        // the sessions assigned to them.
+        const relevant = daySessions.filter(
+          (s) =>
+            (s.provider_id === recipient.id &&
+              !s.assigned_to_specialist_id &&
+              !s.assigned_to_sea_id) ||
+            s.assigned_to_specialist_id === recipient.id ||
+            s.assigned_to_sea_id === recipient.id
+        );
 
         // No email on zero-session days.
         if (relevant.length === 0) {
