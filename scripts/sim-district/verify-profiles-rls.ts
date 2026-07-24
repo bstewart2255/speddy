@@ -21,7 +21,7 @@
  * Usage: npm run sim:verify-rls
  */
 import { requireEnv } from './lib';
-import { PERSONAS, derivePassword, simEmail } from './manifest';
+import { DISTRICT, MAPLE, PERSONAS, derivePassword, simEmail } from './manifest';
 
 const url = requireEnv('NEXT_PUBLIC_SUPABASE_URL');
 const anon = requireEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY');
@@ -72,8 +72,12 @@ async function patchProfile(
     status: res.status,
     ok: res.ok,
     rows: Array.isArray(parsed) ? parsed : [],
+    body: text,
   };
 }
+
+/** The message profiles_guard_immutable_columns raises. */
+const TRIGGER_MESSAGE = 'cannot be changed by the account holder';
 
 let failures = 0;
 function check(ok: boolean, label: string, detail: string): void {
@@ -102,19 +106,34 @@ async function main(): Promise<void> {
   ];
   for (const [label, patch] of selfWrites) {
     const r = await patchProfile(provider, uid, patch);
-    check(r.ok, label, `HTTP ${r.status}`);
+    // Assert a row came back, not merely a 2xx. PostgREST reports an
+    // RLS-filtered UPDATE as a success with an empty representation, so a
+    // status-only check would call a write that persisted NOTHING a pass —
+    // exactly the failure this guard exists to catch.
+    check(r.ok && r.rows.length === 1, label, `HTTP ${r.status}, ${r.rows.length} row(s)`);
   }
 
   console.log('self-escalation (must be refused):');
+  // Use REAL seeded ids, not synthetic ones. rsp.willow sits at WILLOW, so
+  // moving them to MAPLE is a plausible scope change that the trigger must
+  // refuse. A made-up id risks being rejected by type coercion or a foreign key
+  // instead — the check would still go green while telling us nothing about the
+  // trigger. (Raised by Codex on PR #782; its stated cause was off — these
+  // columns are varchar(36), so a UUID does fit — but the point stands.)
   const escalations: [string, Record<string, unknown>][] = [
     ['own role', { role: 'district_admin' }],
     ['own is_speddy_admin', { is_speddy_admin: true }],
-    ['own school_id', { school_id: '00000000-0000-4000-8000-000000000000' }],
-    ['own district_id', { district_id: '00000000-0000-4000-8000-000000000000' }],
+    ['own school_id', { school_id: MAPLE }],
+    ['own district_id', { district_id: `${DISTRICT.id}-OTHER` }],
   ];
   for (const [label, patch] of escalations) {
     const r = await patchProfile(provider, uid, patch);
-    check(!r.ok, `cannot change ${label}`, `HTTP ${r.status}`);
+    // Assert it was refused BY THE TRIGGER, not incidentally by type coercion or
+    // a foreign key. Otherwise a badly-chosen test value would keep this check
+    // green even if the trigger stopped guarding scope entirely.
+    const byTrigger = !r.ok && r.body.includes(TRIGGER_MESSAGE);
+    check(byTrigger, `cannot change ${label}`,
+      byTrigger ? `HTTP ${r.status} (trigger)` : `HTTP ${r.status} — ${r.body.slice(0, 90)}`);
   }
 
   console.log('cross-profile writes:');
