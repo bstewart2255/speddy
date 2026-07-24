@@ -151,7 +151,12 @@ export class ConflictResolver {
   }
 
   /**
-   * Check if a student has sessions with other providers at the same time
+   * Check if a student has sessions with other providers at the same time.
+   *
+   * NOTE: currently uncalled — the live cross-provider gate is
+   * `session-update-service.ts#interpretCrossProviderStaleCheck` (already
+   * fail-closed, SPE-255). Kept fail-closed here too so a future revival can't
+   * regress to fail-open (SPE-141).
    */
   async checkCrossProviderConflicts(
     studentId: string,
@@ -163,7 +168,7 @@ export class ConflictResolver {
   ): Promise<{ hasConflict: boolean; conflictDetails?: string }> {
     try {
       // Get all sessions for this student from ALL providers at this school
-      const { data: otherSessions } = await this.supabase
+      const { data: otherSessions, error } = await this.supabase
         .from('schedule_sessions')
         .select(`
           *,
@@ -175,6 +180,17 @@ export class ConflictResolver {
         .eq('student_id', studentId)
         .eq('day_of_week', dayOfWeek)
         .neq('provider_id', this.providerId);
+
+      // Fail closed (SPE-141): if we can't verify the student's other-provider
+      // sessions, treat it as a conflict rather than silently allowing a
+      // potential double-booking.
+      if (error) {
+        console.error('Error checking cross-provider conflicts:', error);
+        return {
+          hasConflict: true,
+          conflictDetails: 'Could not verify cross-provider availability — treated as a conflict. Please retry.'
+        };
+      }
 
       if (!otherSessions || otherSessions.length === 0) {
         return { hasConflict: false };
@@ -190,20 +206,31 @@ export class ConflictResolver {
           session.start_time,
           session.end_time
         )) {
+          // The profiles join can be null (e.g. the other provider's profile
+          // row was deleted). We still know there IS a real overlap, so report
+          // the conflict with a generic label rather than dereferencing null.
           const providerInfo = session.profiles;
-          const roleDisplay = this.getRoleDisplayName(providerInfo.role);
+          const providerName = providerInfo?.full_name ?? 'another provider';
+          const roleDisplay = providerInfo?.role
+            ? this.getRoleDisplayName(providerInfo.role)
+            : 'Provider';
 
           return {
             hasConflict: true,
-            conflictDetails: `Student has ${session.service_type} with ${providerInfo.full_name} (${roleDisplay}) at this time`
+            conflictDetails: `Student has ${session.service_type} with ${providerName} (${roleDisplay}) at this time`
           };
         }
       }
 
       return { hasConflict: false };
     } catch (error) {
+      // Fail closed (SPE-141): an unexpected error must not silently allow a
+      // double-booking. Surface it as a conflict so the caller re-checks.
       console.error('Error checking cross-provider conflicts:', error);
-      return { hasConflict: false };
+      return {
+        hasConflict: true,
+        conflictDetails: 'Could not verify cross-provider availability — treated as a conflict. Please retry.'
+      };
     }
   }
 

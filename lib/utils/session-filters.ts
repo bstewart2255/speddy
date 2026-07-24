@@ -11,12 +11,15 @@ export interface Session {
 }
 
 /**
- * Filters sessions by school context with graceful error handling
+ * Filters sessions by school context. FAILS CLOSED (SPE-141): if the
+ * school-membership lookup errors, returns `[]` rather than the unfiltered
+ * input, so a transient DB error can never leak another school's sessions. The
+ * error is logged; callers render an empty schedule until the next load.
  *
  * @param supabase - Supabase client instance
  * @param sessions - Array of sessions to filter
  * @param currentSchool - Current school context with school_id, district_id, or school_site
- * @returns Filtered array of sessions that belong to the current school, or original sessions on error
+ * @returns Sessions belonging to the current school; `[]` on any lookup error
  */
 export async function filterSessionsBySchool<T extends Session>(
   supabase: SupabaseClient,
@@ -50,13 +53,14 @@ export async function filterSessionsBySchool<T extends Session>(
       .eq('school_id', schoolId)
       .in('id', studentIds);
 
-    // Graceful degradation: return original sessions on error
+    // Fail closed: never return the unfiltered set on error — that would leak
+    // other schools' sessions (SPE-141). Empty is safe; the error is logged.
     if (error) {
       log.error('Failed to filter sessions by school_id', error, {
         schoolId,
         studentCount: studentIds.length
       });
-      return sessions;
+      return [];
     }
 
     // Return filtered sessions if query succeeded
@@ -78,14 +82,14 @@ export async function filterSessionsBySchool<T extends Session>(
 
     const { data: studentsData, error } = await query;
 
-    // Graceful degradation: return original sessions on error
+    // Fail closed (SPE-141): an errored lookup must not leak other schools.
     if (error) {
       log.error('Failed to filter sessions by district_id', error, {
         districtId,
         schoolSite,
         studentCount: studentIds.length
       });
-      return sessions;
+      return [];
     }
 
     // Since school_site filter was pushed to database (if provided),
@@ -117,14 +121,14 @@ export async function filterSessionsBySchool<T extends Session>(
 
     const { data: studentsData, error } = await query;
 
-    // Graceful degradation: return original sessions on error
+    // Fail closed (SPE-141): an errored lookup must not leak other schools.
     if (error) {
       log.error('Failed to filter sessions by school_site', error, {
         schoolSite,
         schoolDistrict,
         studentCount: studentIds.length
       });
-      return sessions;
+      return [];
     }
 
     const schoolStudentIds = new Set(studentsData?.map(s => s.id) || []);
