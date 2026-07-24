@@ -1,0 +1,152 @@
+/**
+ * SPE-332 — `profiles` RLS regression guard, run with REAL signed-in sessions.
+ *
+ * Why this is a script rather than a jest test: our unit tests mock the Supabase
+ * client, so they cannot see RLS at all — they pass identically whether a policy
+ * permits a write or denies every write. That blind spot is how a recursive
+ * `profiles_update` policy (42P17) sat in production for ~7 months silently
+ * breaking every self-serve profile write, and how SPE-320 shipped a broken
+ * self-toggle behind three green test files.
+ *
+ * This signs in as real sim personas and talks to PostgREST — the same path the
+ * browser takes — asserting both halves of the contract:
+ *
+ *   - a user CAN update their own non-privileged profile columns, and
+ *   - a user CANNOT change their own role / is_speddy_admin / school / district,
+ *     nor write to anyone else's row.
+ *
+ * Requires a seeded sim district (`npm run sim:reset -- --yes`). It writes to
+ * `rsp.willow`'s profile, so re-seed afterwards to restore a pristine fixture.
+ *
+ * Usage: npm run sim:verify-rls
+ */
+import { requireEnv } from './lib';
+import { PERSONAS, derivePassword, simEmail } from './manifest';
+
+const url = requireEnv('NEXT_PUBLIC_SUPABASE_URL');
+const anon = requireEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY');
+const secret = requireEnv('SIM_DISTRICT_PASSWORD');
+
+interface Session {
+  access_token: string;
+  user: { id: string };
+}
+
+async function signIn(emailLocal: string): Promise<Session> {
+  const email = simEmail(emailLocal);
+  const res = await fetch(`${url}/auth/v1/token?grant_type=password`, {
+    method: 'POST',
+    headers: { apikey: anon, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password: derivePassword(secret, email) }),
+  });
+  const body = await res.json();
+  if (!body?.access_token) {
+    throw new Error(`sim login failed for ${emailLocal} — is the district seeded?`);
+  }
+  return body as Session;
+}
+
+async function patchProfile(
+  session: Session,
+  targetId: string,
+  patch: Record<string, unknown>,
+) {
+  const res = await fetch(`${url}/rest/v1/profiles?id=eq.${targetId}`, {
+    method: 'PATCH',
+    headers: {
+      apikey: anon,
+      Authorization: `Bearer ${session.access_token}`,
+      'Content-Type': 'application/json',
+      Prefer: 'return=representation',
+    },
+    body: JSON.stringify(patch),
+  });
+  const text = await res.text();
+  let parsed: unknown = null;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    /* error bodies are not always JSON arrays */
+  }
+  return {
+    status: res.status,
+    ok: res.ok,
+    rows: Array.isArray(parsed) ? parsed : [],
+  };
+}
+
+let failures = 0;
+function check(ok: boolean, label: string, detail: string): void {
+  if (!ok) failures++;
+  console.log(`  [${ok ? 'ok  ' : 'FAIL'}] ${label.padEnd(56)} ${detail}`);
+}
+
+async function main(): Promise<void> {
+  const needed = ['rsp.willow', 'slp.itinerant', 'siteadmin.willow'];
+  for (const local of needed) {
+    if (!PERSONAS.some((p) => p.emailLocal === local)) {
+      throw new Error(`persona '${local}' is no longer in the manifest — update this script`);
+    }
+  }
+
+  const provider = await signIn('rsp.willow');
+  const otherProvider = await signIn('slp.itinerant');
+  const siteAdmin = await signIn('siteadmin.willow');
+  const uid = provider.user.id;
+
+  console.log('self-service writes (must succeed):');
+  const selfWrites: [string, Record<string, unknown>][] = [
+    ['daily schedule email toggle', { daily_schedule_email_enabled: true }],
+    ['password reset request flag', { password_reset_requested_at: new Date().toISOString() }],
+    ['dismiss onboarding banner', { setup_banner_dismissed: true }],
+  ];
+  for (const [label, patch] of selfWrites) {
+    const r = await patchProfile(provider, uid, patch);
+    check(r.ok, label, `HTTP ${r.status}`);
+  }
+
+  console.log('self-escalation (must be refused):');
+  const escalations: [string, Record<string, unknown>][] = [
+    ['own role', { role: 'district_admin' }],
+    ['own is_speddy_admin', { is_speddy_admin: true }],
+    ['own school_id', { school_id: '00000000-0000-4000-8000-000000000000' }],
+    ['own district_id', { district_id: '00000000-0000-4000-8000-000000000000' }],
+  ];
+  for (const [label, patch] of escalations) {
+    const r = await patchProfile(provider, uid, patch);
+    check(!r.ok, `cannot change ${label}`, `HTTP ${r.status}`);
+  }
+
+  console.log('cross-profile writes:');
+  // PostgREST reports an RLS-filtered UPDATE as a success with zero rows, so
+  // assert on rows affected rather than on the status code.
+  const cross = await patchProfile(provider, otherProvider.user.id, {
+    daily_schedule_email_enabled: true,
+  });
+  check(
+    cross.rows.length === 0,
+    "provider cannot write another provider's row",
+    `${cross.rows.length} row(s) affected`,
+  );
+
+  const adminWrite = await patchProfile(siteAdmin, uid, {
+    daily_schedule_email_enabled: false,
+  });
+  check(
+    adminWrite.rows.length === 1,
+    'site admin CAN write a provider at their school',
+    `${adminWrite.rows.length} row(s) affected`,
+  );
+
+  if (failures === 0) {
+    console.log('\nAll checks passed. Re-seed (npm run sim:reset -- --yes) to restore the fixture.');
+  } else {
+    console.log(`\n${failures} check(s) failed.`);
+  }
+  process.exit(failures === 0 ? 0 : 1);
+}
+
+main().catch((err) => {
+  console.error(err instanceof Error ? err.message : err);
+  process.exit(1);
+});
