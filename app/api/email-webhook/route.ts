@@ -1,18 +1,7 @@
 // app/api/email-webhook/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { Resend } from 'resend';
-
-// Lazy-init so the Resend client isn't constructed at module load — its
-// constructor throws on a missing key, which breaks `next build` in CI when
-// RESEND_API_KEY isn't set (SPE-113).
-let resendClient: Resend | null = null;
-function getResend(): Resend {
-  if (!resendClient) {
-    resendClient = new Resend(process.env['RESEND_API_KEY']);
-  }
-  return resendClient;
-}
+import { getResend } from '@/lib/email/resend';
 
 // SPE-128: The inbound email -> worksheet flow is not live, and this endpoint
 // had NO sender verification — an unauthenticated POST could trigger outbound

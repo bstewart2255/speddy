@@ -1,3 +1,4 @@
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase/client';
 import { Database } from '../../src/types/database';
 import { isSpecialistSourceRole } from '@/lib/auth/role-utils';
@@ -28,7 +29,22 @@ interface SupabaseQueryBuilder {
 
 
 export class SessionGenerator {
+  // Field initializer keeps the (intentionally loose) inferred client type, so
+  // every existing query call-site below is unchanged.
   private supabase = createClient();
+
+  /**
+   * @param client Optional Supabase client. Defaults to the browser client for
+   * UI callers. Server-side callers (e.g. the daily-schedule-emails cron, which
+   * has no user session) must pass a service-role client so the role-filtered
+   * reads aren't blocked by RLS. The browser and service clients are
+   * structurally the same SupabaseClient.
+   */
+  constructor(client?: SupabaseClient<Database>) {
+    if (client) {
+      this.supabase = client as typeof this.supabase;
+    }
+  }
 
   /**
    * Apply role-based filters to a Supabase query

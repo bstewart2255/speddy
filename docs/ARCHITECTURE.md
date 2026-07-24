@@ -530,7 +530,13 @@ All cron routes authenticate with a shared `CRON_SECRET` (header
 | `cleanup-uploads` | `0 8 * * *` (08:00 daily) | Deletes `upload_rate_limits` older than **7 days**; optionally `analytics_events` older than **90 days** when `CLEANUP_ANALYTICS=true`. Then runs the **session-instance top-up** (SPE-291): extends every active scheduled template's dated instances to a rolling 12-week horizon. |
 | `topup-session-instances` | — (not scheduled) | Same top-up, standalone. Manual/ops trigger only — Vercel Hobby caps cron jobs at two, so the daily trigger rides on `cleanup-uploads`; becomes its own cron slot on a paid plan. |
 | `cleanup-worksheet-images` | `0 9 * * *` (09:00 daily) | Deletes `worksheet_submissions` older than **12 months** + their Storage objects (storage-first, chunked, `moreRemaining` flag for backlog). |
+| `daily-schedule-emails` | `0 14 * * 1-5` (14:00 UTC weekdays → 7am PDT / 6am PST) | **SPE-320.** Emails each opted-in provider/SEA their day's schedule (student **initials only**). Recipients = profiles with `daily_schedule_email_enabled = true`; sessions come from `SessionGenerator` (service client injected) filtered to the **"my sessions"** predicate (what the user actually delivers — delegated-out sessions go to the assignee, not the delegating provider); zero-session days are skipped; per-email `Idempotency-Key` guards against retry double-sends. Sent via Resend from `Speddy <schedule@speddy.xyz>`. |
 | `health` | — | unauthenticated, read-only status. |
+
+> **Cron count / plan note (SPE-320).** `vercel.json` now declares **three**
+> scheduled crons. **Vercel Hobby caps cron jobs at two**, so `daily-schedule-emails`
+> (the third) requires a **paid (Pro) plan** to deploy — the same caveat that keeps
+> `topup-session-instances` riding on `cleanup-uploads` rather than owning a slot.
 
 ### Deletion semantics
 - **Soft delete:** `schedule_sessions.deleted_at`, `care_referrals.deleted_at`.
@@ -557,7 +563,9 @@ All cron routes authenticate with a shared `CRON_SECRET` (header
 > whether to wire up / replace this existing scaffold.
 
 **Source of truth:** `app/api/cron/cleanup-uploads/route.ts`;
-`app/api/cron/cleanup-worksheet-images/route.ts`; `vercel.json`;
+`app/api/cron/cleanup-worksheet-images/route.ts`;
+`app/api/cron/daily-schedule-emails/route.ts`; `lib/email/daily-schedule.ts`;
+`lib/email/resend.ts`; `vercel.json`;
 `app/api/admin/students/[studentId]/route.ts`;
 `app/api/admin/care-referrals/[referralId]/route.ts`;
 `lib/supabase/audit-log.ts`; `docs/CRON_CLEANUP.md`.

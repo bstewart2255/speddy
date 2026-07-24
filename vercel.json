@@ -1,6 +1,7 @@
 {
   "crons": [
     { "path": "/api/cron/cleanup-uploads", "schedule": "0 8 * * *" },
-    { "path": "/api/cron/cleanup-worksheet-images", "schedule": "0 9 * * *" }
+    { "path": "/api/cron/cleanup-worksheet-images", "schedule": "0 9 * * *" },
+    { "path": "/api/cron/daily-schedule-emails", "schedule": "0 14 * * 1-5" }
   ]
 }

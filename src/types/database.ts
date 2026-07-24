@@ -2175,6 +2175,7 @@ export type Database = {
       profiles: {
         Row: {
           created_at: string | null
+          daily_schedule_email_enabled: boolean
           district_domain: string
           district_id: string | null
           email: string
@@ -2199,6 +2200,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string | null
+          daily_schedule_email_enabled?: boolean
           district_domain: string
           district_id?: string | null
           email: string
@@ -2223,6 +2225,7 @@ export type Database = {
         }
         Update: {
           created_at?: string | null
+          daily_schedule_email_enabled?: boolean
           district_domain?: string
           district_id?: string | null
           email?: string
