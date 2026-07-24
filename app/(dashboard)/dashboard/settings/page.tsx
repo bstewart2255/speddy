@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/client';
 import { CurriculumsSettings } from '../../../components/settings/curriculums';
 import { PasswordResetRequest } from '../../../components/settings/password-reset-request';
 import { ApiKeysSettings } from '../../../components/settings/api-keys';
+import { EmailNotificationsSettings } from '../../../components/settings/email-notifications';
 
 export default function SettingsPage() {
   const [userProfile, setUserProfile] = useState<any>(null);
@@ -86,6 +87,13 @@ export default function SettingsPage() {
 
           {/* Curriculums Settings */}
           <CurriculumsSettings />
+
+          {/* Email notifications — daily schedule email opt-in (SPE-320).
+              Providers toggle their own; resource specialists additionally
+              toggle it for the SEAs at their school. */}
+          {['resource', 'speech', 'ot', 'counseling', 'specialist', 'psychologist', 'intervention', 'sea'].includes(userProfile?.role) && (
+            <EmailNotificationsSettings />
+          )}
 
           {/* API Keys - For providers to use Chrome Extension
               TEMPORARILY HIDDEN: Chrome extension feature is not ready for release yet.
