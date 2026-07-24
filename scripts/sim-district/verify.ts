@@ -112,6 +112,7 @@ async function collectCounts(admin: Admin) {
     let splitSlots = 0;
     let seaRunSessions = 0;
     let danglingRefs = 0;
+    let groupsUnder2 = 0;
     if (simUserIds.length > 0) {
       const { data: groups, error: gErr } = await admin
         .from('session_groups')
@@ -125,13 +126,14 @@ async function collectCounts(admin: Admin) {
 
       const { data: grouped, error: sErr } = await admin
         .from('schedule_sessions')
-        .select('provider_id, day_of_week, start_time, group_ref, delivered_by, assigned_to_sea_id')
+        .select('provider_id, day_of_week, start_time, group_ref, delivered_by, assigned_to_sea_id, student_id')
         .in('provider_id', simUserIds)
         .not('group_ref', 'is', null);
       if (sErr) throw new Error(`grouped session scan failed: ${sErr.message}`);
 
       const daysByGroup = new Map<string, Set<number>>();
       const refsBySlot = new Map<string, Set<string>>();
+      const membersByGroup = new Map<string, Set<string>>();
       for (const s of grouped ?? []) {
         const ref = s.group_ref as string;
         if (!simGroupIds.has(ref)) danglingRefs++;
@@ -142,10 +144,19 @@ async function collectCounts(admin: Admin) {
         let srefs = refsBySlot.get(slot);
         if (!srefs) { srefs = new Set(); refsBySlot.set(slot, srefs); }
         srefs.add(ref);
+        if (s.student_id) {
+          let gm = membersByGroup.get(ref);
+          if (!gm) { gm = new Set(); membersByGroup.set(ref, gm); }
+          gm.add(s.student_id as string);
+        }
         if (seaGroupIds.has(ref) && s.delivered_by === 'sea' && s.assigned_to_sea_id) seaRunSessions++;
       }
       multiDayGroups = [...daysByGroup.values()].filter(days => days.size >= 2).length;
       splitSlots = [...refsBySlot.values()].filter(refs => refs.size >= 2).length;
+      // Every seeded group must keep >=2 distinct members — guards against a
+      // future fixture mis-edit silently dropping a member while the multi-day /
+      // split / sea-run shape checks stay satisfied via the surviving member.
+      groupsUnder2 = [...simGroupIds].filter(id => (membersByGroup.get(id)?.size ?? 0) < 2).length;
     }
     counts['session_groups (sim)'] = simGroups;
     counts['session_groups (sea-run)'] = seaRunGroups;
@@ -153,6 +164,7 @@ async function collectCounts(admin: Admin) {
     counts['group split-slot (>=2 refs)'] = splitSlots;
     counts['sea-run grouped sessions'] = seaRunSessions;
     counts['dangling group_ref'] = danglingRefs;
+    counts['groups with < 2 members'] = groupsUnder2;
   }
   return counts;
 }
@@ -212,6 +224,7 @@ async function main() {
     expect('group split-slot (>=2 refs)', n => n === 1, '1');
     expect('sea-run grouped sessions', n => n > 0, '> 0');
     expect('dangling group_ref', n => n === 0, '0');
+    expect('groups with < 2 members', n => n === 0, '0');
   }
 
   // Coverage: every public relation must be classified in the manifest
