@@ -116,6 +116,16 @@ describe('POST /api/settings/sea-daily-email', () => {
     expect(lastUpdateValues).toBeNull();
   });
 
+  it('403s when both RS and SEA have no school on file (no empty-key false match)', async () => {
+    singleQueue = [
+      ok({ id: CALLER_ID, role: 'resource', works_at_multiple_schools: false, school_site: '', school_district: '' }),
+      ok({ id: SEA_ID, role: 'sea', school_site: '', school_district: '' }),
+    ];
+    const res = await POST(req({ seaId: SEA_ID, enabled: true }));
+    expect(res.status).toBe(403);
+    expect(lastUpdateValues).toBeNull();
+  });
+
   it('403s when the target is not an SEA', async () => {
     singleQueue = [
       ok({ id: CALLER_ID, role: 'resource', works_at_multiple_schools: false, ...SCHOOL_A }),

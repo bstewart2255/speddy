@@ -8,11 +8,20 @@
  * multiple schools — every site in `provider_schools`.
  */
 
+/**
+ * Normalized key for a (site, district) pair. Returns `null` when BOTH are
+ * empty so a school-less profile is never matchable — otherwise every empty
+ * pair would collapse to the same `"||"` string and an RS with no school on
+ * file would match any SEA with no school on file (an authorization leak).
+ */
 export function schoolKey(
   site: string | null | undefined,
   district: string | null | undefined
-): string {
-  return `${(site ?? '').trim().toLowerCase()}||${(district ?? '').trim().toLowerCase()}`;
+): string | null {
+  const s = (site ?? '').trim().toLowerCase();
+  const d = (district ?? '').trim().toLowerCase();
+  if (!s && !d) return null;
+  return `${s}||${d}`;
 }
 
 export interface ResourceSchoolInput {
@@ -25,13 +34,15 @@ export interface ResourceSchoolInput {
   }>;
 }
 
-/** The set of (site+district) keys an RS is scoped to. */
+/** The set of (site+district) keys an RS is scoped to (school-less pairs skipped). */
 export function resourceSchoolKeys(input: ResourceSchoolInput): Set<string> {
   const keys = new Set<string>();
-  keys.add(schoolKey(input.schoolSite, input.schoolDistrict));
+  const primary = schoolKey(input.schoolSite, input.schoolDistrict);
+  if (primary) keys.add(primary);
   if (input.worksAtMultipleSchools) {
     for (const ps of input.providerSchools) {
-      keys.add(schoolKey(ps.school_site, ps.school_district));
+      const key = schoolKey(ps.school_site, ps.school_district);
+      if (key) keys.add(key);
     }
   }
   return keys;
@@ -41,5 +52,7 @@ export function seaSharesResourceSchool(
   sea: { school_site: string | null; school_district: string | null },
   keys: Set<string>
 ): boolean {
-  return keys.has(schoolKey(sea.school_site, sea.school_district));
+  const key = schoolKey(sea.school_site, sea.school_district);
+  // A school-less SEA (null key) never matches — no false-positive on "||".
+  return key !== null && keys.has(key);
 }

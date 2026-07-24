@@ -219,6 +219,29 @@ describe('/api/cron/daily-schedule-emails', () => {
     expect(body).toMatchObject({ sent: 1, skipped: 0 });
   });
 
+  it('scopes an SEA to only their own assigned sessions', async () => {
+    recipientsResult = {
+      data: [{ id: 'sea-1', email: 'sea@example.com', role: 'sea', works_at_multiple_schools: false }],
+      error: null,
+    };
+    // getSessionsForDateRange can surface another SEA's assigned row; the cron's
+    // my-sessions filter must keep only sessions assigned to THIS recipient.
+    mockGetSessions.mockResolvedValue([
+      aSession({ student_id: 's1', start_time: '08:30:00', provider_id: 'prov-1', assigned_to_sea_id: 'sea-1' }),
+      aSession({ student_id: 's2', start_time: '09:30:00', provider_id: 'prov-1', assigned_to_sea_id: 'someone-else' }),
+    ]);
+
+    const res = await GET(makeRequest({ 'x-cron-secret': 'test-secret' }));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(mockSend).toHaveBeenCalledTimes(1);
+    expect(body).toMatchObject({ sent: 1, skipped: 0 });
+    // Only the assigned student's initials should appear in the send payload.
+    const [payload] = mockSend.mock.calls[0];
+    expect(payload.html).toContain('J.M.');
+  });
+
   it('POST delegates to the same handler', async () => {
     recipientsResult = {
       data: [{ id: 'u1', email: 'u1@example.com', role: 'resource', works_at_multiple_schools: false }],
