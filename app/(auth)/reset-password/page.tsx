@@ -1,5 +1,7 @@
+import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
+import { PASSWORD_RECOVERY_COOKIE } from '@/lib/auth/password-reset';
 import { ResetPasswordForm } from './reset-password-form';
 
 // The recovery session is established per-request by /auth/reset-callback, so
@@ -9,11 +11,14 @@ export const dynamic = 'force-dynamic';
 /**
  * "Choose a new password" step of the self-service reset (SPE-68).
  *
- * Reached only from `/auth/reset-callback`, which exchanges the emailed code
- * for a session first. The route is public in `middleware.ts` (an unauthenticated
- * visitor must be able to land here), so the session check lives here: without a
- * valid recovery session there is nothing to reset, and `updateUser` would fail
- * anyway — bounce to login with copy that explains why.
+ * Reached only from `/auth/reset-callback`, which verifies the emailed link and
+ * establishes a session first. The route is public in `middleware.ts` (an
+ * unauthenticated visitor must be able to land here), so the checks live here.
+ *
+ * Requires BOTH a session and the recovery marker the callback sets. The marker
+ * is what `POST /api/auth/reset-password` actually enforces; checking it here
+ * too means someone who wandered in — or whose marker aged out — gets a clean
+ * bounce instead of typing a password and then being refused.
  */
 export default async function ResetPasswordPage() {
   const supabase = await createClient();
@@ -21,7 +26,10 @@ export default async function ResetPasswordPage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) {
+  const cookieStore = await cookies();
+  const hasRecoveryMarker = Boolean(cookieStore.get(PASSWORD_RECOVERY_COOKIE));
+
+  if (!user || !hasRecoveryMarker) {
     redirect('/login?error=reset_invalid');
   }
 

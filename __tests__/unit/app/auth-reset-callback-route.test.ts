@@ -28,6 +28,7 @@ jest.mock('@/lib/logger', () => ({
 }));
 
 import { GET } from '@/app/auth/reset-callback/route';
+import { PASSWORD_RECOVERY_COOKIE } from '@/lib/auth/password-reset';
 
 const call = (qs: string) =>
   GET(new Request(`http://localhost:3000/auth/reset-callback${qs}`));
@@ -49,6 +50,21 @@ describe('password reset callback', () => {
 
     expect(mockVerifyOtp).toHaveBeenCalledWith({ token_hash: 'abc123', type: 'recovery' });
     expect(location(res).pathname).toBe('/reset-password');
+  });
+
+  it('sets the recovery marker only after a link actually verifies', async () => {
+    // This marker is what gates POST /api/auth/reset-password. If a rejected
+    // link ever set it, an ordinary session could reach the reset endpoint.
+    const ok = await call('?token_hash=abc123&type=recovery');
+    expect(ok.cookies.get(PASSWORD_RECOVERY_COOKIE)?.value).toBe('1');
+    expect(ok.cookies.get(PASSWORD_RECOVERY_COOKIE)?.httpOnly).toBe(true);
+
+    mockVerifyOtp.mockResolvedValue({ data: null, error: { message: 'token expired' } });
+    const rejected = await call('?token_hash=stale&type=recovery');
+    expect(rejected.cookies.get(PASSWORD_RECOVERY_COOKIE)).toBeUndefined();
+
+    const noToken = await call('?error=access_denied&error_code=otp_expired');
+    expect(noToken.cookies.get(PASSWORD_RECOVERY_COOKIE)).toBeUndefined();
   });
 
   it('prefers token_hash over code — the code path is browser-bound', async () => {

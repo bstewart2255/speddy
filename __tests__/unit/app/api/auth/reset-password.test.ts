@@ -16,6 +16,7 @@
  * (SPE-280). And a failure to clear must not 500 a password that already changed.
  */
 import { NextRequest } from 'next/server';
+import { PASSWORD_RECOVERY_COOKIE } from '@/lib/auth/password-reset';
 
 const USER_ID = '11111111-1111-4111-8111-111111111111';
 
@@ -75,7 +76,19 @@ jest.mock('@/lib/api/rate-limit-user', () => ({
 
 import { POST } from '@/app/api/auth/reset-password/route';
 
-const req = (body: unknown) =>
+/** A request carrying the recovery marker that /auth/reset-callback sets. */
+const req = (body: unknown) => {
+  const r = new NextRequest('http://localhost/api/auth/reset-password', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  r.cookies.set(PASSWORD_RECOVERY_COOKIE, '1');
+  return r;
+};
+
+/** A request from an ordinary logged-in session that never redeemed a link. */
+const reqWithoutMarker = (body: unknown) =>
   new NextRequest('http://localhost/api/auth/reset-password', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -152,6 +165,33 @@ describe('POST /api/auth/reset-password', () => {
 
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ success: true });
+  });
+
+  it('403s an authenticated session with no recovery marker, touching nothing', async () => {
+    // The core of the gate: being logged in is NOT proof of mailbox control.
+    // Without this, any live session could change the password and clear the
+    // admin-reset flags without ever receiving the email.
+    const res = await POST(reqWithoutMarker({ password: VALID_PASSWORD }));
+
+    expect(res.status).toBe(403);
+    expect(mockUpdateUser).not.toHaveBeenCalled();
+    expect(lastUpdateValues).toBeNull();
+  });
+
+  it('burns the marker on success so the link cannot be replayed', async () => {
+    const res = await POST(req({ password: VALID_PASSWORD }));
+
+    expect(res.status).toBe(200);
+    const cleared = res.cookies.get(PASSWORD_RECOVERY_COOKIE);
+    // next/server represents a delete as an empty value with maxAge 0.
+    expect(cleared?.value).toBe('');
+  });
+
+  it('keeps the marker when the password is rejected, so the user can retry', async () => {
+    const res = await POST(req({ password: 'weak' }));
+
+    expect(res.status).toBe(400);
+    expect(res.cookies.get(PASSWORD_RECOVERY_COOKIE)).toBeUndefined();
   });
 
   it('does not require must_change_password to be set (unlike /change-password)', async () => {

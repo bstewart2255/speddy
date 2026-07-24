@@ -368,11 +368,19 @@ flowchart TD
      unprovisioned, and a reset link must never traverse delete-the-account code.
      Expired, used, or malformed links bounce to
      `/login?error=reset_expired|reset_invalid`.
-  3. `app/(auth)/reset-password/page.tsx` re-verifies the session server-side and
-     posts to **`POST /api/auth/reset-password`**, which calls `updateUser()` and
-     then clears **both** `must_change_password` and `password_reset_requested_at`
-     on the **service client** (per SPE-280 — reusing the request-scoped client
+  3. `app/(auth)/reset-password/page.tsx` re-verifies server-side and posts to
+     **`POST /api/auth/reset-password`**, which calls `updateUser()` and then
+     clears **both** `must_change_password` and `password_reset_requested_at` on
+     the **service client** (per SPE-280 — reusing the request-scoped client
      after `updateUser()` rotates tokens hangs the request).
+  - **Recovery marker gate.** The callback sets a short-lived httpOnly cookie
+     (`lib/auth/password-reset.ts`, 15 min) *only* after a link verifies, and the
+     reset endpoint 403s without it. An authenticated session is **not** proof of
+     mailbox control — every signed-in user has one — so without this gate any
+     live session could drive the reset endpoint to set a password and clear its
+     own admin-reset flags. The marker is burned on success so a redeemed link
+     can't be replayed, and kept on validation failure so the user can retry.
+     (Raised by Codex on PR #781.)
   - `/reset-password` and `/auth/reset-callback` are **public** in `middleware.ts`:
     the user arrives with no session, and listing `/reset-password` there also
     keeps it clear of the `must_change_password` redirect (a user with an admin

@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { logger } from '@/lib/logger';
+import {
+  PASSWORD_RECOVERY_COOKIE,
+  passwordRecoveryCookieOptions,
+} from '@/lib/auth/password-reset';
 
 /**
  * Password-recovery callback (SPE-68).
@@ -75,5 +79,11 @@ export async function GET(request: Request) {
     return redirectTo('/login?error=reset_invalid');
   }
 
-  return redirectTo('/reset-password');
+  // Mark this browser as having just redeemed a recovery link. This is what
+  // `POST /api/auth/reset-password` checks — an authenticated session alone is
+  // NOT proof the caller controls the mailbox, so the reset endpoint refuses to
+  // run without this marker.
+  const response = redirectTo('/reset-password');
+  response.cookies.set(PASSWORD_RECOVERY_COOKIE, '1', passwordRecoveryCookieOptions);
+  return response;
 }

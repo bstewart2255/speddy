@@ -4,15 +4,19 @@ import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { validatePassword } from '@/lib/utils/password-validation';
 import { log } from '@/lib/monitoring/logger';
 import { withRoute } from '@/lib/api/with-route';
+import { PASSWORD_RECOVERY_COOKIE } from '@/lib/auth/password-reset';
 
 const bodySchema = z.object({ password: z.string().min(1) }).passthrough();
 
 /**
  * Completes a self-service password reset (SPE-68).
  *
- * The caller is authenticated by the recovery session established in
- * `/auth/reset-callback` — holding that session IS the proof they control the
- * mailbox, so no old password is required here.
+ * No old password is required, so the caller must have proved control of the
+ * mailbox. **An authenticated session is not that proof** — every signed-in user
+ * has one. The actual gate is the recovery marker cookie, which only
+ * `/auth/reset-callback` sets and only after Supabase verified the emailed link.
+ * Without it we refuse, so this endpoint can't be repurposed by an ordinary
+ * session into "change my password and clear my admin-reset flags."
  *
  * Distinct from `/api/auth/change-password`, which serves the *admin-reset*
  * path and deliberately requires `must_change_password` to be set. This route
@@ -27,8 +31,18 @@ export const POST = withRoute(
     // Fails open — a DB hiccup must not lock someone out of their own account.
     rateLimit: { requests: 10, windowSeconds: 3600, name: 'auth/reset-password' },
   },
-  async ({ userId, body }) => {
+  async ({ req, userId, body }) => {
     try {
+      // Recovery marker gate — see the note above. Checked before anything else
+      // so a session that never redeemed a reset link touches no auth state.
+      if (!req.cookies.get(PASSWORD_RECOVERY_COOKIE)) {
+        log.warn('Password reset attempted without a recovery marker', { userId });
+        return NextResponse.json(
+          { error: 'Start a password reset from the sign-in page to continue.' },
+          { status: 403 }
+        );
+      }
+
       const supabase = await createClient();
       const { password } = body;
 
@@ -90,7 +104,11 @@ export const POST = withRoute(
 
       log.info('User completed self-service password reset', { userId });
 
-      return NextResponse.json({ success: true });
+      // Burn the marker: the link has been redeemed, so this browser shouldn't
+      // be able to set another password without going through email again.
+      const response = NextResponse.json({ success: true });
+      response.cookies.delete(PASSWORD_RECOVERY_COOKIE);
+      return response;
     } catch (error) {
       log.error('Unexpected error in reset-password:', error);
       return NextResponse.json({ error: 'An unexpected error occurred' }, { status: 500 });
