@@ -377,13 +377,23 @@ flowchart TD
     the user arrives with no session, and listing `/reset-password` there also
     keeps it clear of the `must_change_password` redirect (a user with an admin
     reset also queued would otherwise be bounced to `/change-password`).
-  - **Dashboard config this depends on** (not in the repo): Auth → SMTP pointed
-    at Resend on `speddy.xyz`; the reset-callback URL allow-listed under Auth →
-    URL Configuration; and the **"Reset Password" template rewritten to send a
-    token hash** rather than the default `{{ .ConfirmationURL }}` —
-    `{{ .SiteURL }}/auth/reset-callback?token_hash={{ .TokenHash }}&type=recovery`.
-    Without that template change the flow still works, but only in the same
-    browser that requested the reset.
+  - **Dashboard config this depends on:** Auth → SMTP pointed at Resend on
+    `speddy.xyz` (its `sender_name` / `admin_email` are what make the **From**
+    line read "Speddy", so set them); the reset-callback URL allow-listed under
+    Auth → URL Configuration; and the **"Reset Password" template** replaced with
+    `supabase/templates/recovery.html`.
+  - **The email template is checked in** at `supabase/templates/recovery.html`
+    and wired into `supabase/config.toml` for local dev. The hosted project still
+    reads templates from the dashboard, so that file is the reviewable source and
+    the dashboard is the deployed copy — edit the file, then paste it over.
+    Keeping it in-repo recovers most of what Option A gave up (an unreviewable
+    template) at no cost. It must use
+    `{{ .SiteURL }}/auth/reset-callback?token_hash={{ .TokenHash }}&type=recovery`
+    rather than the default `{{ .ConfirmationURL }}`: the default is a PKCE
+    `?code=` link and works only in the browser that requested the reset.
+    Styling mirrors `lib/email/daily-schedule.ts` so Speddy mail reads as one
+    sender, and stays image-free/single-CTA per Supabase's auth-mail
+    deliverability guidance.
   - The admin "Reset password" button **remains** as the backup for users who
     cannot reach their email. The old red-dot request workflow
     (`password_reset_requested_at`, set from the settings page) is now vestigial —
