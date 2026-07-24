@@ -67,17 +67,20 @@ BEGIN
     RETURN NEW;
   END IF;
 
-  -- Best-effort serialization: TRY (never block) to take the per-(provider,day)
-  -- lock so a concurrent writer's count sees ours. A *blocking* lock held by a
-  -- long batch-save transaction could push a concurrent writer to the same day
-  -- past statement_timeout and FAIL its write — which this soft guard must never
-  -- do — or deadlock two multi-slot batch writes. On contention we proceed
-  -- unlocked; the primary win (counting fresh committed state instead of the
-  -- stale ≤15-min client cache) still holds, and the rare truly-simultaneous race
-  -- is re-derived and flagged by reconcileStaleConflictsForProvider on next view.
-  PERFORM pg_try_advisory_xact_lock(
-    hashtextextended(NEW.provider_id::text || ':' || NEW.day_of_week::text, 0)
-  );
+  -- Serialize this provider's concurrent writers so a simultaneous same-day save
+  -- can't read a stale under-cap count and slip an unflagged 9th row past us: the
+  -- blocking xact lock makes the second writer WAIT for the first to commit, then
+  -- its fresh-snapshot count (below) sees the first's row and flags correctly.
+  -- This blocking wait is required for correctness — the reconciler CANNOT rescue
+  -- a missed race (reconcileStaleConflictsForProvider only queries has_conflict=true
+  -- rows; it clears stale flags, it never discovers/sets an unflagged over-cap slot).
+  -- Keyed on provider only (not provider+day) so a single multi-day batch write
+  -- takes exactly ONE lock — no lock-ordering deadlock between concurrent batches.
+  -- The app writes sessions as individual short auto-commit statements, so the
+  -- lock is held for milliseconds; there is no long-held-lock path to push a
+  -- waiter toward statement_timeout (dated-instance / unscheduled writers early-
+  -- return above and never take it). Released automatically at transaction end.
+  PERFORM pg_advisory_xact_lock(hashtextextended(NEW.provider_id::text, 0));
 
   -- Peak number of OTHER live template sessions for this provider+day concurrent
   -- at any instant within NEW's [start, end). Concurrency only rises at a session

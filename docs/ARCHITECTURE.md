@@ -431,10 +431,10 @@ erDiagram
   size ceiling. Enforced in the app (`checkConcurrentSessionLimit`; the
   auto-scheduler's placement gate) **and**, as a DB backstop against the stale
   ≤15-min client cache, by a DB trigger (`trg_flag_session_over_capacity`,
-  SPE-141 §2) — it counts fresh committed state at write time and best-effort
-  serializes concurrent same-day writers (a non-blocking `pg_try_advisory_xact_lock`,
-  so it can never fail a write; the reconciler below is the definitive catch for a
-  truly-simultaneous race). The guard is **soft**: a write that would exceed the cap is not
+  SPE-141 §2) — it counts fresh committed state at write time and serializes a
+  provider's concurrent writers (a blocking, per-provider `pg_advisory_xact_lock`,
+  held only for the brief auto-commit write) so a simultaneous save can't read a
+  stale under-cap count and slip an unflagged row past it. The guard is **soft**: a write that would exceed the cap is not
   rejected (the interactive override is preserved) — it is **flagged**
   (`has_conflict` + `needs_attention` + reason), reusing the same surface that
   `reconcileStaleConflictsForProvider` re-derives (same per-minute peak rule) and
