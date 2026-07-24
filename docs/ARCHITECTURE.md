@@ -349,13 +349,25 @@ flowchart TD
      invalidation on redemption); delivery is Resend via the project's custom
      SMTP settings. The response to the user is identical whether or not the
      account exists — no email enumeration.
-  2. The emailed link verifies at Supabase and lands on
-     **`app/auth/reset-callback/route.ts`**, which exchanges the PKCE `?code=`
-     for a session and forwards to `/reset-password`. This is deliberately
-     **separate from `/auth/callback`**: that route carries the SSO provisioning
-     gate, which *deletes* an auth user + profile it judges unprovisioned, and a
-     reset link must never traverse delete-the-account code. Expired, used, or
-     malformed links bounce to `/login?error=reset_expired|reset_invalid`.
+  2. The emailed link lands on **`app/auth/reset-callback/route.ts`**, which
+     establishes the session and forwards to `/reset-password`. It accepts two
+     link shapes, and **the difference is operationally important**:
+     - `?token_hash=&type=recovery` → `verifyOtp()`. **The intended path.** No
+       browser-bound secret, so it works when the reset is requested on one
+       device and the email is opened on another — the normal case for a user
+       who requests on a classroom desktop and reads mail on a phone. Requires
+       the **custom email template** below.
+     - `?code=` → `exchangeCodeForSession()`. The PKCE shape Supabase's *default*
+       template sends. `@supabase/ssr` clients are PKCE by default and keep the
+       code verifier in a browser cookie, so this shape **only works in the same
+       browser that requested the reset**; from another device it fails as an
+       expired link. Kept only as a fallback.
+
+     Deliberately **separate from `/auth/callback`**: that route carries the SSO
+     provisioning gate, which *deletes* an auth user + profile it judges
+     unprovisioned, and a reset link must never traverse delete-the-account code.
+     Expired, used, or malformed links bounce to
+     `/login?error=reset_expired|reset_invalid`.
   3. `app/(auth)/reset-password/page.tsx` re-verifies the session server-side and
      posts to **`POST /api/auth/reset-password`**, which calls `updateUser()` and
      then clears **both** `must_change_password` and `password_reset_requested_at`
@@ -365,6 +377,13 @@ flowchart TD
     the user arrives with no session, and listing `/reset-password` there also
     keeps it clear of the `must_change_password` redirect (a user with an admin
     reset also queued would otherwise be bounced to `/change-password`).
+  - **Dashboard config this depends on** (not in the repo): Auth → SMTP pointed
+    at Resend on `speddy.xyz`; the reset-callback URL allow-listed under Auth →
+    URL Configuration; and the **"Reset Password" template rewritten to send a
+    token hash** rather than the default `{{ .ConfirmationURL }}` —
+    `{{ .SiteURL }}/auth/reset-callback?token_hash={{ .TokenHash }}&type=recovery`.
+    Without that template change the flow still works, but only in the same
+    browser that requested the reset.
   - The admin "Reset password" button **remains** as the backup for users who
     cannot reach their email. The old red-dot request workflow
     (`password_reset_requested_at`, set from the settings page) is now vestigial —

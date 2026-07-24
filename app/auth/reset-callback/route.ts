@@ -5,19 +5,33 @@ import { logger } from '@/lib/logger';
 /**
  * Password-recovery callback (SPE-68).
  *
- * Supabase Auth sends the reset email; its link verifies at Supabase and then
- * lands here with a PKCE `?code=`. We exchange that code for a session and send
- * the user to `/reset-password` to choose a new password.
+ * Supabase Auth sends the reset email; the link lands here and we establish a
+ * session, then send the user to `/reset-password` to choose a new password.
+ *
+ * TWO link shapes are accepted, and the difference matters a lot in practice:
+ *
+ * 1. `?token_hash=&type=recovery` → `verifyOtp()`. **This is the one we want.**
+ *    It carries no browser-bound secret, so it works when the reset is requested
+ *    on one device and the email is opened on another — the normal case for a
+ *    school user who requests on a classroom desktop and reads mail on a phone.
+ *    Produced by the custom email template (see docs/ARCHITECTURE.md §5).
+ * 2. `?code=` → `exchangeCodeForSession()`. The PKCE shape that Supabase's
+ *    DEFAULT template sends. `@supabase/ssr` clients are PKCE by default and
+ *    stash the code verifier in a browser cookie, so this shape **only works in
+ *    the same browser that requested the reset**; from another device it fails
+ *    as an expired link. Kept as a fallback so the flow still works before/if
+ *    the dashboard template is customized, but it is not the intended path.
  *
  * Deliberately SEPARATE from `/auth/callback`. That route carries the SSO
  * provisioning gate, which *deletes* an auth user + profile it judges
  * unprovisioned. A password user would pass that gate (they always have an
  * 'email' identity), but a password-reset link must never run through
- * delete-the-account code. This route does one thing: exchange and redirect.
+ * delete-the-account code. This route does one thing: verify and redirect.
  */
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const code = url.searchParams.get('code');
+  const tokenHash = url.searchParams.get('token_hash');
   // Supabase appends these when the link is expired, already used, or revoked.
   const errorCode = url.searchParams.get('error_code');
   const authError = url.searchParams.get('error');
@@ -36,20 +50,27 @@ export async function GET(request: Request) {
     return redirectTo('/login?error=reset_expired');
   }
 
-  if (!code) {
+  if (!tokenHash && !code) {
     return redirectTo('/login?error=reset_invalid');
   }
 
   try {
     const supabase = await createClient();
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
+
+    // Prefer the device-independent token_hash path when the link carries one.
+    const { error } = tokenHash
+      ? await supabase.auth.verifyOtp({ token_hash: tokenHash, type: 'recovery' })
+      : await supabase.auth.exchangeCodeForSession(code as string);
 
     if (error) {
-      logger.warn('Password reset code exchange failed', { error: error.message });
+      logger.warn('Password reset verification failed', {
+        error: error.message,
+        shape: tokenHash ? 'token_hash' : 'code',
+      });
       return redirectTo('/login?error=reset_expired');
     }
   } catch (e) {
-    // Fail closed on any unexpected throw (client setup, exchange).
+    // Fail closed on any unexpected throw (client setup, verification).
     logger.error('Password reset callback failed', e);
     return redirectTo('/login?error=reset_invalid');
   }

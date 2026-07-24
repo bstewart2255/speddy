@@ -14,6 +14,7 @@
 
 // jest requires factory-referenced vars to be prefixed with `mock`.
 const mockExchange = jest.fn();
+const mockVerifyOtp = jest.fn();
 const mockCreateClient = jest.fn();
 const mockCreateServiceClient = jest.fn();
 
@@ -37,13 +38,44 @@ describe('password reset callback', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockExchange.mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null });
-    mockCreateClient.mockResolvedValue({ auth: { exchangeCodeForSession: mockExchange } });
+    mockVerifyOtp.mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null });
+    mockCreateClient.mockResolvedValue({
+      auth: { exchangeCodeForSession: mockExchange, verifyOtp: mockVerifyOtp },
+    });
   });
 
-  it('exchanges a valid code and sends the user to /reset-password', async () => {
+  it('verifies a token_hash link and sends the user to /reset-password', async () => {
+    const res = await call('?token_hash=abc123&type=recovery');
+
+    expect(mockVerifyOtp).toHaveBeenCalledWith({ token_hash: 'abc123', type: 'recovery' });
+    expect(location(res).pathname).toBe('/reset-password');
+  });
+
+  it('prefers token_hash over code — the code path is browser-bound', async () => {
+    // A token_hash carries no browser-bound secret, so it survives the user
+    // requesting the reset on one device and opening the mail on another.
+    // If both shapes are present, the device-independent one must win.
+    await call('?token_hash=abc123&type=recovery&code=valid-code');
+
+    expect(mockVerifyOtp).toHaveBeenCalled();
+    expect(mockExchange).not.toHaveBeenCalled();
+  });
+
+  it('bounces to login when token_hash verification fails', async () => {
+    mockVerifyOtp.mockResolvedValue({ data: null, error: { message: 'token expired' } });
+
+    const res = await call('?token_hash=stale&type=recovery');
+
+    const url = location(res);
+    expect(url.pathname).toBe('/login');
+    expect(url.searchParams.get('error')).toBe('reset_expired');
+  });
+
+  it('falls back to exchanging a PKCE code when no token_hash is present', async () => {
     const res = await call('?code=valid-code');
 
     expect(mockExchange).toHaveBeenCalledWith('valid-code');
+    expect(mockVerifyOtp).not.toHaveBeenCalled();
     expect(location(res).pathname).toBe('/reset-password');
   });
 
@@ -57,10 +89,11 @@ describe('password reset callback', () => {
     expect(url.searchParams.get('error')).toBe('reset_expired');
   });
 
-  it('bounces a missing code to login with reset_invalid', async () => {
+  it('bounces a link with neither token_hash nor code to login with reset_invalid', async () => {
     const res = await call('');
 
     expect(mockExchange).not.toHaveBeenCalled();
+    expect(mockVerifyOtp).not.toHaveBeenCalled();
     const url = location(res);
     expect(url.pathname).toBe('/login');
     expect(url.searchParams.get('error')).toBe('reset_invalid');
