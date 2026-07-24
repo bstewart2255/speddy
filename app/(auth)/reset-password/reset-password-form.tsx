@@ -7,6 +7,18 @@ import { PasswordInput } from "../../components/auth/password-input";
 import { PasswordRequirements } from "../../components/auth/password-requirements";
 import { PasswordStrengthIndicator } from "../../components/auth/password-strength-indicator";
 
+/**
+ * "Choose a new password" form for the self-service reset (SPE-68).
+ *
+ * Only reachable with a live recovery session: `/auth/reset-callback` verifies
+ * the emailed link and establishes one, and `page.tsx` re-checks it server-side
+ * before rendering this. There is no "current password" field because holding
+ * that session is the proof of identity.
+ *
+ * Submits to `/api/auth/reset-password` rather than calling `updateUser()`
+ * directly — the server also has to clear `must_change_password` and
+ * `password_reset_requested_at`, which the browser client cannot do.
+ */
 export function ResetPasswordForm() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
