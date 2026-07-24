@@ -373,14 +373,29 @@ flowchart TD
      clears **both** `must_change_password` and `password_reset_requested_at` on
      the **service client** (per SPE-280 — reusing the request-scoped client
      after `updateUser()` rotates tokens hangs the request).
-  - **Recovery marker gate.** The callback sets a short-lived httpOnly cookie
-     (`lib/auth/password-reset.ts`, 15 min) *only* after a link verifies, and the
-     reset endpoint 403s without it. An authenticated session is **not** proof of
-     mailbox control — every signed-in user has one — so without this gate any
-     live session could drive the reset endpoint to set a password and clear its
-     own admin-reset flags. The marker is burned on success so a redeemed link
-     can't be replayed, and kept on validation failure so the user can retry.
-     (Raised by Codex on PR #781.)
+  - **Recovery marker gate.** The callback issues a short-lived (15 min) httpOnly
+     cookie (`lib/auth/password-reset.ts`) *only* after a link verifies, and the
+     reset endpoint 403s without a valid one. An authenticated session is **not**
+     proof of mailbox control — every signed-in user has one — so without this
+     gate any live session could drive the reset endpoint to set a password and
+     clear its own admin-reset flags. (Raised by Codex on PR #781.)
+
+     The marker is **HMAC-signed and bound to the user id** (`<userId>.<expiry>.<hmac>`,
+     keyed on `SUPABASE_SERVICE_ROLE_KEY`), and the endpoint verifies signature +
+     bound user, not mere presence. A first cut used the literal string `"1"`,
+     which is not a boundary at all: `httpOnly` stops *page scripts* from touching
+     the cookie but says nothing about a hand-crafted request, so a bare flag was
+     forgeable by exactly the actor the gate exists to refuse (caught by
+     CodeRabbit on PR #781). Stateless by design — the reset token is already
+     single-use at Supabase and the cookie is cleared on success, so there is no
+     nonce store to keep consistent. Both call sites fail closed if the signing
+     key is absent. Note that rotating the service-role key invalidates in-flight
+     markers; the blast radius is a 15-minute window and the user simply requests
+     a new link.
+
+     Burned on success so a redeemed link can't be replayed, and kept on
+     validation failure so a user who picks a weak or breached password can retry
+     without going back to email.
   - `/reset-password` and `/auth/reset-callback` are **public** in `middleware.ts`:
     the user arrives with no session, and listing `/reset-password` there also
     keeps it clear of the `must_change_password` redirect (a user with an admin

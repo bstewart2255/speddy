@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { logger } from '@/lib/logger';
 import {
   PASSWORD_RECOVERY_COOKIE,
+  issueRecoveryMarker,
   passwordRecoveryCookieOptions,
 } from '@/lib/auth/password-reset';
 
@@ -58,32 +59,35 @@ export async function GET(request: Request) {
     return redirectTo('/login?error=reset_invalid');
   }
 
+  let marker: string;
   try {
     const supabase = await createClient();
 
     // Prefer the device-independent token_hash path when the link carries one.
-    const { error } = tokenHash
+    const { data, error } = tokenHash
       ? await supabase.auth.verifyOtp({ token_hash: tokenHash, type: 'recovery' })
       : await supabase.auth.exchangeCodeForSession(code as string);
 
-    if (error) {
+    if (error || !data?.user) {
       logger.warn('Password reset verification failed', {
-        error: error.message,
+        error: error?.message,
         shape: tokenHash ? 'token_hash' : 'code',
       });
       return redirectTo('/login?error=reset_expired');
     }
+
+    // Mint the marker for the user the link actually resolved to. This is what
+    // `POST /api/auth/reset-password` checks — an authenticated session alone is
+    // NOT proof the caller controls the mailbox. The marker is signed and bound
+    // to this user id, so it can be neither forged nor used on another account.
+    marker = issueRecoveryMarker(data.user.id);
   } catch (e) {
-    // Fail closed on any unexpected throw (client setup, verification).
+    // Fail closed on any unexpected throw (client setup, verification, signing).
     logger.error('Password reset callback failed', e);
     return redirectTo('/login?error=reset_invalid');
   }
 
-  // Mark this browser as having just redeemed a recovery link. This is what
-  // `POST /api/auth/reset-password` checks — an authenticated session alone is
-  // NOT proof the caller controls the mailbox, so the reset endpoint refuses to
-  // run without this marker.
   const response = redirectTo('/reset-password');
-  response.cookies.set(PASSWORD_RECOVERY_COOKIE, '1', passwordRecoveryCookieOptions);
+  response.cookies.set(PASSWORD_RECOVERY_COOKIE, marker, passwordRecoveryCookieOptions);
   return response;
 }

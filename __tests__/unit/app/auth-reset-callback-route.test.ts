@@ -28,7 +28,7 @@ jest.mock('@/lib/logger', () => ({
 }));
 
 import { GET } from '@/app/auth/reset-callback/route';
-import { PASSWORD_RECOVERY_COOKIE } from '@/lib/auth/password-reset';
+import { PASSWORD_RECOVERY_COOKIE, verifyRecoveryMarker } from '@/lib/auth/password-reset';
 
 const call = (qs: string) =>
   GET(new Request(`http://localhost:3000/auth/reset-callback${qs}`));
@@ -56,7 +56,14 @@ describe('password reset callback', () => {
     // This marker is what gates POST /api/auth/reset-password. If a rejected
     // link ever set it, an ordinary session could reach the reset endpoint.
     const ok = await call('?token_hash=abc123&type=recovery');
-    expect(ok.cookies.get(PASSWORD_RECOVERY_COOKIE)?.value).toBe('1');
+    const marker = ok.cookies.get(PASSWORD_RECOVERY_COOKIE)?.value;
+
+    // Signed and bound to the user the link resolved to — not a bare flag, which
+    // any hand-crafted request could attach.
+    expect(verifyRecoveryMarker(marker, 'user-1')).toBe(true);
+    expect(marker).not.toBe('1');
+    // ...and useless on any other account.
+    expect(verifyRecoveryMarker(marker, 'someone-else')).toBe(false);
     expect(ok.cookies.get(PASSWORD_RECOVERY_COOKIE)?.httpOnly).toBe(true);
 
     mockVerifyOtp.mockResolvedValue({ data: null, error: { message: 'token expired' } });

@@ -16,9 +16,10 @@
  * (SPE-280). And a failure to clear must not 500 a password that already changed.
  */
 import { NextRequest } from 'next/server';
-import { PASSWORD_RECOVERY_COOKIE } from '@/lib/auth/password-reset';
+import { PASSWORD_RECOVERY_COOKIE, issueRecoveryMarker } from '@/lib/auth/password-reset';
 
 const USER_ID = '11111111-1111-4111-8111-111111111111';
+const OTHER_USER_ID = '99999999-9999-4999-8999-999999999999';
 
 // --- Controllable mock state ---
 let updateUserResult: { error: any } = { error: null };
@@ -76,14 +77,17 @@ jest.mock('@/lib/api/rate-limit-user', () => ({
 
 import { POST } from '@/app/api/auth/reset-password/route';
 
-/** A request carrying the recovery marker that /auth/reset-callback sets. */
-const req = (body: unknown) => {
+/** A request carrying a valid recovery marker for USER_ID. */
+const req = (body: unknown) => reqWithMarker(body, issueRecoveryMarker(USER_ID));
+
+/** A request carrying an arbitrary marker value. */
+const reqWithMarker = (body: unknown, marker: string) => {
   const r = new NextRequest('http://localhost/api/auth/reset-password', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
   });
-  r.cookies.set(PASSWORD_RECOVERY_COOKIE, '1');
+  r.cookies.set(PASSWORD_RECOVERY_COOKIE, marker);
   return r;
 };
 
@@ -176,6 +180,44 @@ describe('POST /api/auth/reset-password', () => {
     expect(res.status).toBe(403);
     expect(mockUpdateUser).not.toHaveBeenCalled();
     expect(lastUpdateValues).toBeNull();
+  });
+
+  it('403s a FORGED marker — presence is not proof, the signature is', async () => {
+    // The bug this replaced: the marker was the literal "1", so anyone crafting
+    // a request could attach it. httpOnly only stops page scripts, not curl.
+    const res = await POST(reqWithMarker({ password: VALID_PASSWORD }, '1'));
+
+    expect(res.status).toBe(403);
+    expect(mockUpdateUser).not.toHaveBeenCalled();
+    expect(lastUpdateValues).toBeNull();
+  });
+
+  it('403s a marker whose signature does not verify', async () => {
+    const tampered = issueRecoveryMarker(USER_ID).replace(/.$/, 'f').replace(/ff$/, 'aa');
+    const res = await POST(reqWithMarker({ password: VALID_PASSWORD }, tampered));
+
+    expect(res.status).toBe(403);
+    expect(mockUpdateUser).not.toHaveBeenCalled();
+  });
+
+  it('403s a validly-signed marker issued for a DIFFERENT user', async () => {
+    // Binding matters: a marker minted from someone else's reset link must not
+    // authorise changing this caller's password.
+    const res = await POST(
+      reqWithMarker({ password: VALID_PASSWORD }, issueRecoveryMarker(OTHER_USER_ID)),
+    );
+
+    expect(res.status).toBe(403);
+    expect(mockUpdateUser).not.toHaveBeenCalled();
+    expect(lastUpdateValues).toBeNull();
+  });
+
+  it('403s an expired marker', async () => {
+    const stale = issueRecoveryMarker(USER_ID, Date.now() - 3_600_000);
+    const res = await POST(reqWithMarker({ password: VALID_PASSWORD }, stale));
+
+    expect(res.status).toBe(403);
+    expect(mockUpdateUser).not.toHaveBeenCalled();
   });
 
   it('burns the marker on success so the link cannot be replayed', async () => {

@@ -91,7 +91,12 @@ export function ResetPasswordForm() {
       setSuccess(true);
       // The reset session is a real session — send them straight into the app
       // rather than making them log in again with the password they just set.
-      router.refresh();
+      //
+      // Deliberately NO router.refresh() here: the API burns the recovery marker
+      // on success, and this page redirects to /login?error=reset_invalid when
+      // the marker is absent. Refreshing would re-run that guard and replace the
+      // success message with an alarming "link isn't valid" bounce, for a reset
+      // that in fact worked. The push below renders fresh on the server anyway.
       setTimeout(() => {
         router.push("/dashboard");
       }, 2000);

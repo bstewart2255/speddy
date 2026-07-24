@@ -4,7 +4,7 @@ import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { validatePassword } from '@/lib/utils/password-validation';
 import { log } from '@/lib/monitoring/logger';
 import { withRoute } from '@/lib/api/with-route';
-import { PASSWORD_RECOVERY_COOKIE } from '@/lib/auth/password-reset';
+import { PASSWORD_RECOVERY_COOKIE, verifyRecoveryMarker } from '@/lib/auth/password-reset';
 
 const bodySchema = z.object({ password: z.string().min(1) }).passthrough();
 
@@ -13,10 +13,11 @@ const bodySchema = z.object({ password: z.string().min(1) }).passthrough();
  *
  * No old password is required, so the caller must have proved control of the
  * mailbox. **An authenticated session is not that proof** — every signed-in user
- * has one. The actual gate is the recovery marker cookie, which only
- * `/auth/reset-callback` sets and only after Supabase verified the emailed link.
- * Without it we refuse, so this endpoint can't be repurposed by an ordinary
- * session into "change my password and clear my admin-reset flags."
+ * has one. The actual gate is a **signed, user-bound recovery marker**, issued by
+ * `/auth/reset-callback` only after Supabase verified the emailed link. Without a
+ * marker that both verifies and names this caller we refuse, so this endpoint
+ * can't be repurposed by an ordinary session into "change my password and clear
+ * my admin-reset flags."
  *
  * Distinct from `/api/auth/change-password`, which serves the *admin-reset*
  * path and deliberately requires `must_change_password` to be set. This route
@@ -35,7 +36,13 @@ export const POST = withRoute(
     try {
       // Recovery marker gate — see the note above. Checked before anything else
       // so a session that never redeemed a reset link touches no auth state.
-      if (!req.cookies.get(PASSWORD_RECOVERY_COOKIE)) {
+      //
+      // Verifies the SIGNATURE and the bound user id, not mere presence: the
+      // cookie being httpOnly stops page scripts from setting it, but says
+      // nothing about a hand-crafted request, so a bare flag would be forgeable
+      // by exactly the "ordinary authenticated session" this gate exists to
+      // refuse (CodeRabbit, PR #781).
+      if (!verifyRecoveryMarker(req.cookies.get(PASSWORD_RECOVERY_COOKIE)?.value, userId)) {
         log.warn('Password reset attempted without a recovery marker', { userId });
         return NextResponse.json(
           { error: 'Start a password reset from the sign-in page to continue.' },
