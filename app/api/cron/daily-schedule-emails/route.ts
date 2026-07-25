@@ -170,9 +170,15 @@ export async function GET(request: NextRequest) {
     };
 
     type Recipient = NonNullable<typeof recipients>[number];
-    type Prepared = { recipient: Recipient; relevant: Awaited<
-      ReturnType<SessionGenerator['getSessionsForDateRange']>
-    > };
+    type Prepared = {
+      recipient: Recipient;
+      // Carried separately as a non-null string: phase 1 already dropped
+      // recipients without one, and holding it here lets phase 3 send without a
+      // non-null assertion that only holds because of a cross-phase invariant
+      // the compiler can't see.
+      email: string;
+      relevant: Awaited<ReturnType<SessionGenerator['getSessionsForDateRange']>>;
+    };
 
     // --- Phase 1: resolve each recipient's sessions (concurrent) -------------
     const prepared: Prepared[] = [];
@@ -206,7 +212,7 @@ export async function GET(request: NextRequest) {
           return;
         }
 
-        prepared.push({ recipient, relevant });
+        prepared.push({ recipient, email: recipient.email, relevant });
       } catch (recipientError) {
         recordFailure(recipient.id, recipientError);
       }
@@ -236,13 +242,18 @@ export async function GET(request: NextRequest) {
       // usable schedule rather than dropping everyone's email.
       if (studentsError) {
         console.error('Error loading students for daily-schedule emails:', studentsError);
-        Sentry.captureException(studentsError, { tags: { cron: 'daily-schedule-emails' } });
+        // Wrapped in a real Error — a bare PostgrestError lands in Sentry as an
+        // ungrouped "Non-Error exception captured" with no useful stack.
+        Sentry.captureException(
+          new Error(`Students lookup failed: ${studentsError.message}`),
+          { tags: { cron: 'daily-schedule-emails' } }
+        );
       }
       for (const st of students ?? []) studentMap.set(st.id, st);
     }
 
     // --- Phase 3: render + send (concurrent) ---------------------------------
-    await inChunks(prepared, CONCURRENCY, async ({ recipient, relevant }) => {
+    await inChunks(prepared, CONCURRENCY, async ({ recipient, email, relevant }) => {
       try {
         const sessionInputs: DailyScheduleSessionInput[] = relevant.map((s) => {
           const student = s.student_id ? studentMap.get(s.student_id) : undefined;
@@ -271,8 +282,10 @@ export async function GET(request: NextRequest) {
           `Resend send for ${recipient.id}`,
           PER_RECIPIENT_TIMEOUT_MS,
           getResend().emails.send(
-            { from: FROM, to: recipient.email!, subject, html, text },
+            { from: FROM, to: email, subject, html, text },
             // A cron retry re-sends the same key → Resend de-dupes, no double-send.
+            // This also covers the timeout above firing on a send that then
+            // succeeds: we count it failed, but the retry still can't duplicate it.
             { idempotencyKey: `daily-schedule-${recipient.id}-${todayStr}` }
           )
         );
