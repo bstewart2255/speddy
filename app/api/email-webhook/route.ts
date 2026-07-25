@@ -12,6 +12,39 @@ import { getResend } from '@/lib/email/resend';
 // webhook signature, e.g. Svix for Resend) — do not just flip this flag.
 const EMAIL_WEBHOOK_ENABLED = process.env.EMAIL_WEBHOOK_ENABLED === 'true';
 
+/**
+ * Send one of this route's courtesy replies, surfacing Resend's API-level
+ * failures (SPE-329).
+ *
+ * Resend v4 does NOT throw when the API rejects a send (invalid recipient, rate
+ * limit, suppressed address) — it resolves with `{ error }`. So a bare
+ * `await emails.send(...)` counted every one of those as a success, and a
+ * confirmation that never left the building looked identical to a delivered one.
+ *
+ * Unlike the daily-schedule cron, which throws so the recipient is counted as
+ * failed, a failure here is logged and swallowed: all three call sites are
+ * best-effort notifications back to the sender, and the worksheet they describe
+ * has already been processed and stored. Aborting on an undeliverable reply
+ * would turn a cosmetic problem into a lost submission.
+ *
+ * @returns whether the message was accepted by Resend.
+ */
+async function sendNotification(
+  payload: Parameters<ReturnType<typeof getResend>['emails']['send']>[0]
+): Promise<boolean> {
+  try {
+    const { error } = await getResend().emails.send(payload);
+    if (error) {
+      console.error('Resend rejected an email-webhook notification:', error);
+      return false;
+    }
+    return true;
+  } catch (error) {
+    console.error('Failed to send an email-webhook notification:', error);
+    return false;
+  }
+}
+
 // This endpoint receives forwarded emails from Resend
 export async function POST(request: NextRequest) {
   if (!EMAIL_WEBHOOK_ENABLED) {
@@ -41,7 +74,7 @@ export async function POST(request: NextRequest) {
     // Process attachments (images)
     if (!attachments || attachments.length === 0) {
       // Send error email back
-      await getResend().emails.send({
+      await sendNotification({
         from: 'IEP Progress <progress@speddy.xyz>',
         to: from,
         subject: 'No image attached - Please resend',
@@ -91,7 +124,7 @@ export async function POST(request: NextRequest) {
 
         // Send success confirmation
         if (result.success) {
-          await getResend().emails.send({
+          await sendNotification({
             from: 'IEP Progress <progress@speddy.xyz>',
             to: from,
             subject: 'Worksheet processed successfully!',
@@ -229,22 +262,19 @@ async function processWorksheetSubmission(
 
 // Send error email
 async function sendErrorEmail(to: string, message: string) {
-  try {
-    await getResend().emails.send({
-      from: 'IEP Progress <progress@speddy.xyz>',
-      to: to,
-      subject: 'Error processing worksheet',
-      html: `
-        <p>${message}</p>
-        <p>Please ensure:</p>
-        <ol>
-          <li>The QR code is clearly visible in the image</li>
-          <li>The image is well-lit and in focus</li>
-          <li>The entire worksheet is in the photo</li>
-        </ol>
-      `
-    });
-  } catch (error) {
-    console.error('Error sending error email:', error);
-  }
+  // sendNotification already logs and swallows both throws and `{ error }`.
+  await sendNotification({
+    from: 'IEP Progress <progress@speddy.xyz>',
+    to: to,
+    subject: 'Error processing worksheet',
+    html: `
+      <p>${message}</p>
+      <p>Please ensure:</p>
+      <ol>
+        <li>The QR code is clearly visible in the image</li>
+        <li>The image is well-lit and in focus</li>
+        <li>The entire worksheet is in the photo</li>
+      </ol>
+    `
+  });
 }

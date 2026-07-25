@@ -253,6 +253,100 @@ describe('/api/cron/daily-schedule-emails', () => {
     expect(payload.text).not.toContain('Z.Z.');
   });
 
+  // --- SPE-329 scale hardening ---------------------------------------------
+  // v1 was strictly serial with a students query per recipient. These pin the
+  // properties that replaced it; none of them change what any user receives.
+
+  const manyRecipients = (n: number) =>
+    Array.from({ length: n }, (_, i) => ({
+      id: `u${i}`,
+      email: `u${i}@example.com`,
+      role: 'resource',
+      works_at_multiple_schools: false,
+    }));
+
+  const studentQueryCount = () =>
+    mockFrom.mock.calls.filter(([table]) => table === 'students').length;
+
+  it('looks students up once for the whole run, not once per recipient (N+1)', async () => {
+    // 12 recipients also exceeds the concurrency limit, so this doubles as
+    // proof that chunking still gets through every recipient.
+    recipientsResult = { data: manyRecipients(12), error: null };
+
+    const res = await GET(makeRequest({ 'x-cron-secret': 'test-secret' }));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body).toMatchObject({ sent: 12, skipped: 0, failed: 0 });
+    expect(mockSend).toHaveBeenCalledTimes(12);
+    expect(studentQueryCount()).toBe(1); // was 12
+  });
+
+  it('does not query students at all when nobody has sessions', async () => {
+    recipientsResult = { data: manyRecipients(3), error: null };
+    mockGetSessions.mockResolvedValue([]);
+
+    const res = await GET(makeRequest({ 'x-cron-secret': 'test-secret' }));
+
+    expect(res.status).toBe(200);
+    expect(studentQueryCount()).toBe(0);
+  });
+
+  it('chunks the student id list so one big run cannot blow the URL length', async () => {
+    // Collapsing N queries into one only helps if the one query stays sendable.
+    // 250 distinct ids must split into 200 + 50, not a single 250-id filter.
+    recipientsResult = { data: manyRecipients(1), error: null };
+    mockGetSessions.mockResolvedValue(
+      Array.from({ length: 250 }, (_, i) => aSession({ student_id: `s${i}`, provider_id: 'u0' }))
+    );
+
+    const res = await GET(makeRequest({ 'x-cron-secret': 'test-secret' }));
+
+    expect(res.status).toBe(200);
+    expect(studentQueryCount()).toBe(2);
+  });
+
+  it('still sends when the students lookup fails, rather than dropping the run', async () => {
+    recipientsResult = { data: manyRecipients(1), error: null };
+    studentsResult = { data: null, error: { message: 'db unavailable' } };
+
+    const res = await GET(makeRequest({ 'x-cron-secret': 'test-secret' }));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body).toMatchObject({ sent: 1, failed: 0 });
+    // Unresolvable students degrade to the "?" placeholder — no initials leak
+    // through and, more to the point, the email still goes out.
+    const [payload] = mockSend.mock.calls[0];
+    expect(payload.html).not.toContain('J.M.');
+  });
+
+  it('gives up on a hung recipient instead of stalling everyone behind it', async () => {
+    jest.useFakeTimers();
+    try {
+      recipientsResult = { data: manyRecipients(2), error: null };
+      // u0's session generation never settles. Without the per-call timeout it
+      // holds its slot until the function is killed, and u1 gets no email.
+      mockGetSessions.mockImplementation((userId: string) =>
+        userId === 'u0'
+          ? new Promise(() => {})
+          : Promise.resolve([aSession({ provider_id: userId })])
+      );
+
+      const pending = GET(makeRequest({ 'x-cron-secret': 'test-secret' }));
+      await jest.advanceTimersByTimeAsync(25_000); // past PER_RECIPIENT_TIMEOUT_MS
+      const res = await pending;
+      const body = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(body).toMatchObject({ sent: 1, failed: 1 });
+      expect(mockCapture).toHaveBeenCalledTimes(1);
+      expect(String(mockCapture.mock.calls[0][0])).toMatch(/timed out/i);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('POST delegates to the same handler', async () => {
     recipientsResult = {
       data: [{ id: 'u1', email: 'u1@example.com', role: 'resource', works_at_multiple_schools: false }],

@@ -16,6 +16,60 @@ import {
 
 const FROM = 'Speddy <schedule@speddy.xyz>';
 
+// SPE-329 scale hardening. v1 ran strictly one recipient at a time, with a
+// students query per recipient — fine for a handful of opt-ins, but the whole
+// run is serial network latency, so the function's time budget becomes the cap
+// on how many people can subscribe.
+//
+// How many recipients are worked on at once. Deliberately modest: the point is
+// to stop the run being a single serial queue, not to hammer Supabase or
+// Resend's rate limit (which counts as a failure per recipient, not a retry).
+const CONCURRENCY = 5;
+
+// Wall-clock ceiling for one unit of per-recipient work (session generation, or
+// render + send). Without it a single hung request holds its slot forever and
+// takes the whole batch down with it when the function is killed at the time
+// limit — everyone after it silently gets no email.
+const PER_RECIPIENT_TIMEOUT_MS = 20_000;
+
+// Students are fetched for every recipient in one pass, so the id list is
+// unbounded. Chunked to keep the PostgREST `in.(...)` filter out of URL-length
+// territory — batching all recipients into a single query would otherwise trade
+// the N+1 for a request that fails outright once enough people opt in.
+const STUDENT_LOOKUP_CHUNK = 200;
+
+/**
+ * Run `work` over `items` in fixed-size chunks, awaiting each chunk before
+ * starting the next. `allSettled` because the callers below already record
+ * their own failures — a rejection here must never abort the remaining chunks.
+ */
+async function inChunks<T>(
+  items: T[],
+  size: number,
+  work: (item: T) => Promise<void>
+): Promise<void> {
+  for (let i = 0; i < items.length; i += size) {
+    await Promise.allSettled(items.slice(i, i + size).map(work));
+  }
+}
+
+/**
+ * Reject if `work` hasn't settled within `ms`.
+ *
+ * This bounds wall-clock, it does not cancel: SessionGenerator builds its own
+ * Supabase queries internally so there's no signal to thread down to them, and
+ * the Resend SDK takes none either. The orphaned request is left to settle into
+ * the void — what matters is that it stops occupying a concurrency slot. Race
+ * attaches a handler to `work`, so a late rejection is not an unhandled one.
+ */
+function withTimeout<T>(label: string, ms: number, work: Promise<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const expiry = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+  });
+  return Promise.race([work, expiry]).finally(() => clearTimeout(timer));
+}
+
 // Roles that can opt in (SPECIALIST_SOURCE_ROLES + sea). Matches the Settings
 // page's Email notifications card.
 const EMAIL_ROLES = [
@@ -105,13 +159,30 @@ export async function GET(request: NextRequest) {
     let skipped = 0;
     let failed = 0;
 
-    for (const recipient of recipients ?? []) {
+    /** One recipient's failure must never stop the run — count it and move on. */
+    const recordFailure = (recipientId: string, cause: unknown) => {
+      failed++;
+      console.error(`Failed to send daily schedule to ${recipientId}:`, cause);
+      Sentry.captureException(cause, {
+        tags: { cron: 'daily-schedule-emails' },
+        extra: { userId: recipientId, date: todayStr },
+      });
+    };
+
+    type Recipient = NonNullable<typeof recipients>[number];
+    type Prepared = { recipient: Recipient; relevant: Awaited<
+      ReturnType<SessionGenerator['getSessionsForDateRange']>
+    > };
+
+    // --- Phase 1: resolve each recipient's sessions (concurrent) -------------
+    const prepared: Prepared[] = [];
+
+    await inChunks(recipients ?? [], CONCURRENCY, async (recipient) => {
       try {
-        const daySessions = await generator.getSessionsForDateRange(
-          recipient.id,
-          date,
-          date,
-          recipient.role
+        const daySessions = await withTimeout(
+          `session generation for ${recipient.id}`,
+          PER_RECIPIENT_TIMEOUT_MS,
+          generator.getSessionsForDateRange(recipient.id, date, date, recipient.role)
         );
 
         // "My sessions" — only what this user actually delivers, mirroring the
@@ -129,27 +200,50 @@ export async function GET(request: NextRequest) {
             s.assigned_to_sea_id === recipient.id
         );
 
-        // No email on zero-session days.
-        if (relevant.length === 0) {
+        // No email on zero-session days, or with nowhere to send it.
+        if (relevant.length === 0 || !recipient.email) {
           skipped++;
-          continue;
+          return;
         }
 
-        if (!recipient.email) {
-          skipped++;
-          continue;
-        }
+        prepared.push({ recipient, relevant });
+      } catch (recipientError) {
+        recordFailure(recipient.id, recipientError);
+      }
+    });
 
-        // Resolve student initials + site (initials-only — never full names).
-        const studentIds = Array.from(
-          new Set(relevant.map((s) => s.student_id).filter((id): id is string => Boolean(id)))
-        );
-        const { data: students } = await supabase
-          .from('students')
-          .select('id, initials, school_site')
-          .in('id', studentIds);
-        const studentMap = new Map((students ?? []).map((st) => [st.id, st]));
+    // --- Phase 2: one students lookup for every recipient at once ------------
+    // Was a query per recipient (N+1). The ids are only knowable after phase 1,
+    // so this sits between the phases rather than "up front".
+    // Initials-only — never full names.
+    const allStudentIds = Array.from(
+      new Set(
+        prepared.flatMap((p) =>
+          p.relevant.map((s) => s.student_id).filter((id): id is string => Boolean(id))
+        )
+      )
+    );
 
+    const studentMap = new Map<string, { id: string; initials: string; school_site: string | null }>();
+    for (let i = 0; i < allStudentIds.length; i += STUDENT_LOOKUP_CHUNK) {
+      const { data: students, error: studentsError } = await supabase
+        .from('students')
+        .select('id, initials, school_site')
+        .in('id', allStudentIds.slice(i, i + STUDENT_LOOKUP_CHUNK));
+
+      // Non-fatal: a missing student renders as "?" (the same fallback v1 used
+      // when a lookup came back short), so a partial failure still sends a
+      // usable schedule rather than dropping everyone's email.
+      if (studentsError) {
+        console.error('Error loading students for daily-schedule emails:', studentsError);
+        Sentry.captureException(studentsError, { tags: { cron: 'daily-schedule-emails' } });
+      }
+      for (const st of students ?? []) studentMap.set(st.id, st);
+    }
+
+    // --- Phase 3: render + send (concurrent) ---------------------------------
+    await inChunks(prepared, CONCURRENCY, async ({ recipient, relevant }) => {
+      try {
         const sessionInputs: DailyScheduleSessionInput[] = relevant.map((s) => {
           const student = s.student_id ? studentMap.get(s.student_id) : undefined;
           return {
@@ -173,10 +267,14 @@ export async function GET(request: NextRequest) {
         // Resend v4 does NOT throw on API-level errors (invalid recipient,
         // rate limit, etc.) — it resolves with `{ error }`. Surface that as a
         // failure so it's counted and captured, not silently miscounted as sent.
-        const { error: sendError } = await getResend().emails.send(
-          { from: FROM, to: recipient.email, subject, html, text },
-          // A cron retry re-sends the same key → Resend de-dupes, no double-send.
-          { idempotencyKey: `daily-schedule-${recipient.id}-${todayStr}` }
+        const { error: sendError } = await withTimeout(
+          `Resend send for ${recipient.id}`,
+          PER_RECIPIENT_TIMEOUT_MS,
+          getResend().emails.send(
+            { from: FROM, to: recipient.email!, subject, html, text },
+            // A cron retry re-sends the same key → Resend de-dupes, no double-send.
+            { idempotencyKey: `daily-schedule-${recipient.id}-${todayStr}` }
+          )
         );
         if (sendError) {
           throw new Error(`Resend send failed: ${sendError.message || 'unknown error'}`);
@@ -184,15 +282,9 @@ export async function GET(request: NextRequest) {
 
         sent++;
       } catch (recipientError) {
-        // One recipient's failure must not stop the run.
-        failed++;
-        console.error(`Failed to send daily schedule to ${recipient.id}:`, recipientError);
-        Sentry.captureException(recipientError, {
-          tags: { cron: 'daily-schedule-emails' },
-          extra: { userId: recipient.id, date: todayStr },
-        });
+        recordFailure(recipient.id, recipientError);
       }
-    }
+    });
 
     console.log(
       `Daily schedule emails: sent=${sent} skipped=${skipped} failed=${failed} (date=${todayStr}, recipients=${recipients?.length ?? 0})`
