@@ -156,10 +156,18 @@ therefore uncovered by the suite, no matter how green it is.
 
 So before marking ready any change that (a) reads or writes the database from
 the **browser** (the user's own session, not a service client), or (b) touches an
-RLS policy, trigger, or grant: exercise it with a **real signed-in session** —
-`npm run sim:verify-rls` for `profiles`, otherwise a sim-district walk. Not
-recommended; required. A check you satisfy by *reasoning about* the code is not
-a check.
+RLS policy, trigger, or grant: exercise **the operation you changed** with a
+**real signed-in session**, via a sim-district walk or a probe. Not recommended;
+required. A check you satisfy by *reasoning about* the code is not a check.
+
+`npm run sim:verify-rls` does **not** discharge that on its own. It is a
+regression guard pinning a fixed `profiles` contract — three specific self-write
+columns plus a set of escalation and cross-profile cases — so a new profile
+preference, or a changed SELECT policy, sails straight through it untouched.
+Run it whenever you touch `profiles` RLS (it catches breakage you didn't intend),
+but it substitutes for exercising your own change only when it demonstrably
+covers that operation. Treating a fixed suite as proof of an unrelated change is
+the same false assurance this rule exists to stop.
 
 Why this is a rule and not a preference: `profiles_update` was recursive and
 silently broke **every** self-serve profile write for ~7 months (SPE-332).
