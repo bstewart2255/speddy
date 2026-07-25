@@ -12,21 +12,23 @@ import { NextRequest } from 'next/server';
 const eqCalls: Array<[string, unknown]> = [];
 let recipientsResult: { data: any[]; error: any } = { data: [], error: null };
 let studentsResult: { data: any[]; error: any } = { data: [], error: null };
+/** When true the students query never settles, simulating a hung lookup. */
+let studentsQueryHangs = false;
 
-function makeQuery(resolve: () => any) {
+function makeQuery(resolve: () => any, hangs = false) {
   const q: any = {
     select: jest.fn(() => q),
     eq: jest.fn((col: string, val: unknown) => {
       eqCalls.push([col, val]);
       return q;
     }),
-    in: jest.fn(() => Promise.resolve(resolve())),
+    in: jest.fn(() => (hangs ? new Promise(() => {}) : Promise.resolve(resolve()))),
   };
   return q;
 }
 
 const mockFrom = jest.fn((table: string) => {
-  if (table === 'students') return makeQuery(() => studentsResult);
+  if (table === 'students') return makeQuery(() => studentsResult, studentsQueryHangs);
   return makeQuery(() => recipientsResult); // profiles
 });
 
@@ -73,7 +75,12 @@ describe('/api/cron/daily-schedule-emails', () => {
   const originalSecret = process.env.CRON_SECRET;
 
   beforeEach(() => {
+    // Sends are paced to Resend's 2/s quota in production. Left on, the
+    // multi-recipient cases below would sit in real timers for seconds; the
+    // pacing itself is covered by its own test, which drives fake timers.
+    process.env.RESEND_SEND_INTERVAL_MS = '0';
     eqCalls.length = 0;
+    studentsQueryHangs = false;
     recipientsResult = { data: [], error: null };
     studentsResult = { data: [{ id: 's1', initials: 'J.M.', school_site: 'Lincoln' }], error: null };
     mockFrom.mockClear();
@@ -90,6 +97,7 @@ describe('/api/cron/daily-schedule-emails', () => {
   afterAll(() => {
     if (originalSecret === undefined) delete process.env.CRON_SECRET;
     else process.env.CRON_SECRET = originalSecret;
+    delete process.env.RESEND_SEND_INTERVAL_MS;
   });
 
   it('500s when CRON_SECRET is not configured, without sending', async () => {
@@ -174,7 +182,9 @@ describe('/api/cron/daily-schedule-emails', () => {
       error: null,
     };
     // Resend v4 resolves with { error } instead of throwing on API failures.
-    mockSend.mockResolvedValue({ data: null, error: { name: 'rate_limit_exceeded', message: 'Too many requests' } });
+    // Deliberately NOT a rate-limit error: those are retried now and have their
+    // own tests below. This pins the permanent-failure path.
+    mockSend.mockResolvedValue({ data: null, error: { name: 'validation_error', message: 'Invalid `to` field' } });
 
     const res = await GET(makeRequest({ 'x-cron-secret': 'test-secret' }));
     const body = await res.json();
@@ -340,6 +350,109 @@ describe('/api/cron/daily-schedule-emails', () => {
 
       expect(res.status).toBe(200);
       expect(body).toMatchObject({ sent: 1, failed: 1 });
+      expect(mockCapture).toHaveBeenCalledTimes(1);
+      expect(String(mockCapture.mock.calls[0][0])).toMatch(/timed out/i);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  // --- Review findings on this PR ------------------------------------------
+  // Both are failures the concurrency work itself introduced.
+
+  it('paces sends to the quota instead of bursting a whole chunk (Codex)', async () => {
+    // Resend's default is 2 requests/second. Firing a chunk of 5 at once turns
+    // the surplus into 429s, and a 429 counted as permanent means those people
+    // silently get no schedule — the exact outcome this feature exists to avoid.
+    delete process.env.RESEND_SEND_INTERVAL_MS; // production pacing
+    jest.useFakeTimers();
+    try {
+      recipientsResult = { data: manyRecipients(5), error: null };
+
+      const pending = GET(makeRequest({ 'x-cron-secret': 'test-secret' }));
+
+      await jest.advanceTimersByTimeAsync(0);
+      expect(mockSend).toHaveBeenCalledTimes(1); // not 5
+
+      await jest.advanceTimersByTimeAsync(600);
+      expect(mockSend).toHaveBeenCalledTimes(2);
+
+      await jest.advanceTimersByTimeAsync(10_000);
+      const body = await (await pending).json();
+
+      expect(mockSend).toHaveBeenCalledTimes(5);
+      expect(body).toMatchObject({ sent: 5, failed: 0 });
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('retries a throttled send rather than dropping that recipient (Codex)', async () => {
+    jest.useFakeTimers();
+    try {
+      recipientsResult = { data: manyRecipients(1), error: null };
+      mockSend
+        .mockResolvedValueOnce({
+          data: null,
+          error: { name: 'rate_limit_exceeded', message: 'Too many requests' },
+        })
+        .mockResolvedValueOnce({ data: { id: 'email_1' }, error: null });
+
+      const pending = GET(makeRequest({ 'x-cron-secret': 'test-secret' }));
+      await jest.advanceTimersByTimeAsync(10_000);
+      const body = await (await pending).json();
+
+      expect(mockSend).toHaveBeenCalledTimes(2);
+      expect(body).toMatchObject({ sent: 1, failed: 0, throttled: 1 });
+      expect(mockCapture).not.toHaveBeenCalled();
+
+      // Stable key across attempts — a retry after a 429 that actually landed
+      // is de-duped by Resend rather than delivered twice.
+      expect(mockSend.mock.calls[1][1].idempotencyKey).toBe(
+        mockSend.mock.calls[0][1].idempotencyKey
+      );
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('still gives up on a persistently throttled send, so it cannot loop', async () => {
+    jest.useFakeTimers();
+    try {
+      recipientsResult = { data: manyRecipients(1), error: null };
+      mockSend.mockResolvedValue({
+        data: null,
+        error: { name: 'rate_limit_exceeded', message: 'Too many requests' },
+      });
+
+      const pending = GET(makeRequest({ 'x-cron-secret': 'test-secret' }));
+      await jest.advanceTimersByTimeAsync(60_000);
+      const body = await (await pending).json();
+
+      expect(mockSend).toHaveBeenCalledTimes(3); // the attempt cap
+      expect(body).toMatchObject({ sent: 0, failed: 1 });
+      expect(mockCapture).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('times out a hung students lookup instead of stranding the run (CodeRabbit)', async () => {
+    // This query sits BETWEEN the phases, so unlike a per-recipient hang it
+    // strands everyone: phase 3 never starts and nobody gets an email.
+    jest.useFakeTimers();
+    try {
+      recipientsResult = { data: manyRecipients(2), error: null };
+      studentsQueryHangs = true;
+
+      const pending = GET(makeRequest({ 'x-cron-secret': 'test-secret' }));
+      await jest.advanceTimersByTimeAsync(25_000); // past the lookup timeout
+      const body = await (await pending).json();
+
+      // The run completes and both recipients are still emailed, with initials
+      // degraded to the "?" placeholder.
+      expect(body).toMatchObject({ sent: 2, failed: 0 });
+      expect(mockSend).toHaveBeenCalledTimes(2);
       expect(mockCapture).toHaveBeenCalledTimes(1);
       expect(String(mockCapture.mock.calls[0][0])).toMatch(/timed out/i);
     } finally {

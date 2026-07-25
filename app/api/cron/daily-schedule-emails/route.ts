@@ -22,9 +22,52 @@ const FROM = 'Speddy <schedule@speddy.xyz>';
 // on how many people can subscribe.
 //
 // How many recipients are worked on at once. Deliberately modest: the point is
-// to stop the run being a single serial queue, not to hammer Supabase or
-// Resend's rate limit (which counts as a failure per recipient, not a retry).
+// to stop the run being a single serial queue, not to hammer Supabase.
 const CONCURRENCY = 5;
+
+// Resend's default quota is 2 requests/second (10/s on some plans, and it can
+// be raised on request). Concurrency does NOT buy throughput against a quota —
+// it just converts the surplus into 429s, and a 429 recorded as a permanent
+// failure means somebody silently loses their schedule for the day. So sends
+// are PACED to the quota rather than parallelised, and a rate-limit response is
+// retried instead of counted. Phase 1 stays genuinely concurrent: that's where
+// the database latency is and it isn't rate limited.
+//
+// Override for an account with a raised quota (0 disables pacing entirely).
+// Read per-run rather than at module load so the value isn't frozen into the
+// serverless bundle at build time.
+const DEFAULT_SEND_INTERVAL_MS = 550;
+const SEND_MAX_ATTEMPTS = 3;
+
+const sendIntervalMs = () =>
+  Number(process.env.RESEND_SEND_INTERVAL_MS ?? DEFAULT_SEND_INTERVAL_MS);
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Gate that lets its callers through no faster than one per `intervalMs`,
+ * however many are waiting at once. Shared across the whole run, so it holds
+ * the quota regardless of how wide phase 3's concurrency is.
+ */
+function createPacer(intervalMs: number) {
+  let nextSlot = 0;
+  return async () => {
+    if (intervalMs <= 0) return;
+    const now = Date.now();
+    const slot = Math.max(now, nextSlot);
+    nextSlot = slot + intervalMs;
+    if (slot > now) await sleep(slot - now);
+  };
+}
+
+/** Resend signals a throttle as `rate_limit_exceeded` / HTTP 429. */
+function isRateLimited(error: { name?: string; message?: string } | null): boolean {
+  if (!error) return false;
+  return (
+    error.name === 'rate_limit_exceeded' ||
+    /rate.?limit|too many requests|\b429\b/i.test(error.message ?? '')
+  );
+}
 
 // Wall-clock ceiling for one unit of per-recipient work (session generation, or
 // render + send). Without it a single hung request holds its slot forever and
@@ -62,7 +105,7 @@ async function inChunks<T>(
  * the void — what matters is that it stops occupying a concurrency slot. Race
  * attaches a handler to `work`, so a late rejection is not an unhandled one.
  */
-function withTimeout<T>(label: string, ms: number, work: Promise<T>): Promise<T> {
+function withTimeout<T>(label: string, ms: number, work: PromiseLike<T>): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const expiry = new Promise<never>((_, reject) => {
     timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
@@ -155,9 +198,15 @@ export async function GET(request: NextRequest) {
     }
 
     const generator = new SessionGenerator(supabase);
+    const sendInterval = sendIntervalMs();
+    const pace = createPacer(sendInterval);
     let sent = 0;
     let skipped = 0;
     let failed = 0;
+    // Retries absorbed, not recipients lost — reported so a rising count is
+    // visible as "the quota is now the bottleneck" before it turns into
+    // failures.
+    let throttled = 0;
 
     /** One recipient's failure must never stop the run — count it and move on. */
     const recordFailure = (recipientId: string, cause: unknown) => {
@@ -232,10 +281,26 @@ export async function GET(request: NextRequest) {
 
     const studentMap = new Map<string, { id: string; initials: string; school_site: string | null }>();
     for (let i = 0; i < allStudentIds.length; i += STUDENT_LOOKUP_CHUNK) {
-      const { data: students, error: studentsError } = await supabase
-        .from('students')
-        .select('id, initials, school_site')
-        .in('id', allStudentIds.slice(i, i + STUDENT_LOOKUP_CHUNK));
+      // Timed like phases 1 and 3, and for a bigger reason: this one is not
+      // per-recipient. A hang here happens BETWEEN the phases, so phase 3 never
+      // starts and every already-prepared recipient gets nothing — the failure
+      // this PR exists to eliminate, scaled up to the whole run (CodeRabbit).
+      let students: Array<{ id: string; initials: string; school_site: string | null }> | null = null;
+      let studentsError: { message: string } | null = null;
+      try {
+        const result = await withTimeout(
+          `students lookup chunk at ${i}`,
+          PER_RECIPIENT_TIMEOUT_MS,
+          supabase
+            .from('students')
+            .select('id, initials, school_site')
+            .in('id', allStudentIds.slice(i, i + STUDENT_LOOKUP_CHUNK))
+        );
+        students = result.data;
+        studentsError = result.error;
+      } catch (timedOut) {
+        studentsError = { message: timedOut instanceof Error ? timedOut.message : String(timedOut) };
+      }
 
       // Non-fatal: a missing student renders as "?" (the same fallback v1 used
       // when a lookup came back short), so a partial failure still sends a
@@ -278,18 +343,33 @@ export async function GET(request: NextRequest) {
         // Resend v4 does NOT throw on API-level errors (invalid recipient,
         // rate limit, etc.) — it resolves with `{ error }`. Surface that as a
         // failure so it's counted and captured, not silently miscounted as sent.
-        const { error: sendError } = await withTimeout(
-          `Resend send for ${recipient.id}`,
-          PER_RECIPIENT_TIMEOUT_MS,
-          getResend().emails.send(
-            { from: FROM, to: email, subject, html, text },
-            // A cron retry re-sends the same key → Resend de-dupes, no double-send.
-            // This also covers the timeout above firing on a send that then
-            // succeeds: we count it failed, but the retry still can't duplicate it.
-            { idempotencyKey: `daily-schedule-${recipient.id}-${todayStr}` }
-          )
-        );
-        if (sendError) {
+        //
+        // A throttle is the one error worth retrying: it says "later", not "no".
+        // Treating it as permanent is how a recipient silently loses their day's
+        // schedule. The idempotency key is stable across attempts, so a retry
+        // after a 429 that actually landed cannot duplicate the email.
+        for (let attempt = 1; ; attempt++) {
+          await pace();
+
+          const { error: sendError } = await withTimeout(
+            `Resend send for ${recipient.id}`,
+            PER_RECIPIENT_TIMEOUT_MS,
+            getResend().emails.send(
+              { from: FROM, to: email, subject, html, text },
+              // A cron retry re-sends the same key → Resend de-dupes, no double-send.
+              // This also covers the timeout above firing on a send that then
+              // succeeds: we count it failed, but the retry still can't duplicate it.
+              { idempotencyKey: `daily-schedule-${recipient.id}-${todayStr}` }
+            )
+          );
+
+          if (!sendError) break;
+
+          if (isRateLimited(sendError) && attempt < SEND_MAX_ATTEMPTS) {
+            throttled++;
+            await sleep(Math.max(sendInterval, DEFAULT_SEND_INTERVAL_MS) * 2 ** attempt);
+            continue;
+          }
           throw new Error(`Resend send failed: ${sendError.message || 'unknown error'}`);
         }
 
@@ -300,7 +380,7 @@ export async function GET(request: NextRequest) {
     });
 
     console.log(
-      `Daily schedule emails: sent=${sent} skipped=${skipped} failed=${failed} (date=${todayStr}, recipients=${recipients?.length ?? 0})`
+      `Daily schedule emails: sent=${sent} skipped=${skipped} failed=${failed} throttled=${throttled} (date=${todayStr}, recipients=${recipients?.length ?? 0})`
     );
 
     return NextResponse.json(
@@ -309,6 +389,7 @@ export async function GET(request: NextRequest) {
         sent,
         skipped,
         failed,
+        throttled,
         recipients: recipients?.length ?? 0,
         date: todayStr,
         processingTimeMs: Date.now() - startTime,
