@@ -146,3 +146,43 @@ bots (CodeRabbit/Codex) as the review layer: they rate-limit and can post
 "review finished" no-ops (seen on PR #704, where the deep self-review caught
 staleness races the gates missed). Bot findings remain a complementary layer —
 still read and address them when they arrive.
+
+## Standing rule: verify database-touching work with a real session
+
+Unit tests mock the Supabase client, so they **cannot see RLS at all** — they
+pass identically whether a policy permits a write or denies every single one.
+Anything whose correctness depends on the database accepting a real request is
+therefore uncovered by the suite, no matter how green it is.
+
+So before marking ready any change that (a) reads or writes the database from
+the **browser** (the user's own session, not a service client), or (b) touches an
+RLS policy, trigger, or grant: exercise **the operation you changed** with a
+**real signed-in session**, via a sim-district walk or a probe. Not recommended;
+required. A check you satisfy by *reasoning about* the code is not a check.
+
+`npm run sim:verify-rls` does **not** discharge that on its own. It is a
+regression guard pinning a fixed `profiles` contract — three specific self-write
+columns plus a set of escalation and cross-profile cases — so a new profile
+preference, or a changed SELECT policy, sails straight through it untouched.
+Run it whenever you touch `profiles` RLS (it catches breakage you didn't intend),
+but it substitutes for exercising your own change only when it demonstrably
+covers that operation. Treating a fixed suite as proof of an unrelated change is
+the same false assurance this rule exists to stop.
+
+Why this is a rule and not a preference: `profiles_update` was recursive and
+silently broke **every** self-serve profile write for ~7 months (SPE-332).
+SPE-320 then shipped a self-toggle depending on it — behind three green test
+files, and after its own ticket had flagged the exact risk and prescribed the
+fallback. The confirmation was done by reading the policy, which was true about
+the column and useless, because the policy crashed before reaching any column.
+
+Three traps worth knowing when writing these checks:
+
+- **Assert the write persisted, not the status.** PostgREST reports an
+  RLS-filtered UPDATE as a 2xx with an empty body. Check rows affected.
+- **Assert *why* something was refused.** A value rejected incidentally (type
+  coercion, a foreign key) keeps a negative check green even after the guard it
+  was meant to test is gone. Match the error, not just the failure.
+- **Negative security checks need a fresh fixture.** Against an already-escalated
+  target the patch is a no-op, the guard correctly permits it, and the check
+  passes for the wrong reason. I hit this exact false negative on SPE-332.

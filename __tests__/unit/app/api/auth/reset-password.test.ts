@@ -193,7 +193,18 @@ describe('POST /api/auth/reset-password', () => {
   });
 
   it('403s a marker whose signature does not verify', async () => {
-    const tampered = issueRecoveryMarker(USER_ID).replace(/.$/, 'f').replace(/ff$/, 'aa');
+    const valid = issueRecoveryMarker(USER_ID);
+    // Flip the last signature character to a guaranteed-different hex digit.
+    // The previous `.replace(/.$/, 'f')` was a no-op whenever the HMAC already
+    // ended in 'f', making the "tampered" marker byte-identical to a valid one —
+    // so the route correctly returned 200 and the test failed. Flaky at ~1-in-16
+    // because the marker embeds Date.now(), so the signature differs every run.
+    const tampered = valid.slice(0, -1) + (valid.endsWith('0') ? '1' : '0');
+
+    // Guard the guard: if the mangling ever becomes a no-op again, fail here
+    // rather than silently sending a VALID marker and asserting it is refused.
+    expect(tampered).not.toBe(valid);
+
     const res = await POST(reqWithMarker({ password: VALID_PASSWORD }, tampered));
 
     expect(res.status).toBe(403);
