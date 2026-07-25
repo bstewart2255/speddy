@@ -460,6 +460,33 @@ describe('/api/cron/daily-schedule-emails', () => {
     }
   });
 
+  it.each([
+    ['a typo', 'not-a-number'],
+    ['an empty value', ''],
+    ['a negative value', '-100'],
+  ])('falls back to the default pacing when the override is %s (CodeRabbit)', async (_label, raw) => {
+    // `Number(x ?? DEFAULT)` let both of these through: '' became 0 (pacing
+    // silently off) and a typo became NaN, which slipped past the `<= 0` guard
+    // and made the gate a no-op — restoring the burst this code prevents.
+    process.env.RESEND_SEND_INTERVAL_MS = raw;
+    jest.useFakeTimers();
+    try {
+      recipientsResult = { data: manyRecipients(3), error: null };
+
+      const pending = GET(makeRequest({ 'x-cron-secret': 'test-secret' }));
+
+      await jest.advanceTimersByTimeAsync(0);
+      expect(mockSend).toHaveBeenCalledTimes(1); // paced, not burst
+
+      await jest.advanceTimersByTimeAsync(10_000);
+      const body = await (await pending).json();
+
+      expect(body).toMatchObject({ sent: 3, failed: 0 });
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('POST delegates to the same handler', async () => {
     recipientsResult = {
       data: [{ id: 'u1', email: 'u1@example.com', role: 'resource', works_at_multiple_schools: false }],

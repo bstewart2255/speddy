@@ -39,8 +39,31 @@ const CONCURRENCY = 5;
 const DEFAULT_SEND_INTERVAL_MS = 550;
 const SEND_MAX_ATTEMPTS = 3;
 
-const sendIntervalMs = () =>
-  Number(process.env.RESEND_SEND_INTERVAL_MS ?? DEFAULT_SEND_INTERVAL_MS);
+/**
+ * The pacing interval, honouring the override only when it parses to a finite
+ * non-negative number.
+ *
+ * `Number(x ?? DEFAULT)` is not enough: `??` only catches undefined/null, so an
+ * empty value yields 0 (pacing silently off) and a typo yields NaN — which is
+ * worse, because `NaN <= 0` is false, so the pacer's early return never fires,
+ * `nextSlot` becomes NaN, `slot > now` is never true, and the gate lets every
+ * caller straight through. NaN would also reach the retry backoff, where
+ * `sleep(NaN)` degrades to `setTimeout(…, 0)`. One malformed env var would
+ * therefore restore both behaviours this code exists to prevent (CodeRabbit).
+ */
+const sendIntervalMs = (): number => {
+  const raw = process.env.RESEND_SEND_INTERVAL_MS;
+  if (raw === undefined || raw.trim() === '') return DEFAULT_SEND_INTERVAL_MS;
+
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    console.warn(
+      `Ignoring invalid RESEND_SEND_INTERVAL_MS=${JSON.stringify(raw)}; using ${DEFAULT_SEND_INTERVAL_MS}ms`
+    );
+    return DEFAULT_SEND_INTERVAL_MS;
+  }
+  return parsed;
+};
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
