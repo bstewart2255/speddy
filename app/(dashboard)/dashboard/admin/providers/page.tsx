@@ -17,7 +17,6 @@ type Provider = {
   email: string | null;
   role: string | null;
   isPrimarySchool: boolean;
-  password_reset_requested_at?: string | null;
 };
 
 // Map role codes to display names
@@ -255,11 +254,6 @@ export default function ProviderDirectoryPage() {
                     <div className="text-sm font-medium text-gray-900 flex items-center gap-2">
                       {provider.full_name || (
                         <span className="text-gray-400 italic">No name</span>
-                      )}
-                      {provider.password_reset_requested_at && (
-                        <LongHoverTooltip content="This provider has requested a password reset">
-                          <span className="w-2 h-2 bg-red-500 rounded-full flex-shrink-0" />
-                        </LongHoverTooltip>
                       )}
                     </div>
                   </td>
