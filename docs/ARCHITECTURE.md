@@ -442,12 +442,22 @@ flowchart TD
     Styling mirrors `lib/email/daily-schedule.ts` so Speddy mail reads as one
     sender, and stays image-free/single-CTA per Supabase's auth-mail
     deliverability guidance.
-  - The admin "Reset password" button **remains** as the backup for users who
-    cannot reach their email. The old red-dot request workflow
-    (`password_reset_requested_at`, set from the settings page) is now vestigial —
-    the public `/api/auth/forgot-password` endpoint that also fed it was deleted,
-    since it only ever set a flag and **sent no email at all**, and silently did
-    nothing for non-provider roles.
+  - The admin "Reset password" button (`app/api/admin/reset-password/route.ts`)
+    **remains** as the backup for users who cannot reach their email — a district
+    mailbox problem, a departing-staff handover.
+  - **The old "ask your admin" request workflow is gone (SPE-330).** Before
+    self-service existed, a user pressed a Settings button that set
+    `password_reset_requested_at`, which raised a red dot beside their name in the
+    admin provider list *and* on the "Providers" nav item, and they were told to
+    collect a temporary password from their site admin. Removed in full: the
+    Settings card, `POST /api/provider/request-password-reset`, both red dots, and
+    `getPasswordResetRequestCount()`. (The public `/api/auth/forgot-password`
+    endpoint that also fed the flag went earlier, in SPE-68 — it only ever set a
+    flag, **sent no email at all**, and silently did nothing for non-provider roles.)
+  - **`profiles.password_reset_requested_at` is retained but dead.** Nothing
+    writes it and no UI reads it; dropping the column is a schema migration left
+    for another day. `/api/auth/reset-password` still nulls it so rows carrying a
+    timestamp from before the removal get tidied as their owners reset.
 - **Idle timeout** (`lib/config/session-timeout.ts`): default **45 min**
   (`NEXT_PUBLIC_SESSION_TIMEOUT`, `2_700_000` ms), **2-min** warning,
   **30 s** activity throttle, with `KEEP_ALIVE_ACTIVITIES`

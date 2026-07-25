@@ -83,8 +83,11 @@ export const POST = withRoute(
       // - must_change_password: an admin may have queued a reset for this same
       //   user. Leaving it set would bounce them to /change-password right after
       //   they just chose a password.
-      // - password_reset_requested_at: drives the red "needs a reset" dot in the
-      //   admin provider list. Stale-true means admins chase a resolved request.
+      // - password_reset_requested_at: vestigial since SPE-330 retired the
+      //   "ask your admin" request workflow — nothing sets it any more and no UI
+      //   reads it. Still cleared so rows carrying a timestamp from before that
+      //   removal get tidied up as their owners reset. The column itself is kept
+      //   (dropping it is a schema migration for another day).
       //
       // Wrapped so a service-client failure cannot 500 the request after the
       // password was already changed — same "log but don't fail" intent as

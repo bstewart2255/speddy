@@ -9,7 +9,6 @@ import UserProfileDropdown from './user-profile-dropdown';
 import { SchoolSwitcher } from '../school-switcher';
 import { useSchool } from '../providers/school-context';
 import { LongHoverTooltip } from '../ui/long-hover-tooltip';
-import { getPasswordResetRequestCount, getCurrentAdminPermissions } from '@/lib/supabase/queries/admin-accounts';
 
 // Type for Supabase error with status property
 interface PostgrestErrorWithStatus {
@@ -43,7 +42,6 @@ export default function Navbar() {
   const [user, setUser] = useState<User | null>(null);
   const supabase = createClient();
   const [userRole, setUserRole] = useState<string>("");
-  const [passwordResetRequestCount, setPasswordResetRequestCount] = useState<number>(0);
   const { isSecondary } = useSchool();
 
   useEffect(() => {
@@ -74,20 +72,6 @@ export default function Navbar() {
         if (profile) {
           setUserRole(profile.role);
           console.log('[Navbar] User role:', profile.role);
-
-          // For site admins, check for pending password reset requests
-          if (profile.role === 'site_admin') {
-            try {
-              const permissions = await getCurrentAdminPermissions();
-              const schoolId = permissions.find(p => p.role === 'site_admin')?.school_id;
-              if (schoolId) {
-                const count = await getPasswordResetRequestCount(schoolId);
-                setPasswordResetRequestCount(count);
-              }
-            } catch (err) {
-              console.error('[Navbar] Error fetching password reset requests:', err);
-            }
-          }
         }
       }
     };
@@ -278,12 +262,7 @@ export default function Navbar() {
                       : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
                   }`}
                 >
-                  <span className="relative">
-                    {item.name}
-                    {item.name === 'Providers' && passwordResetRequestCount > 0 && (
-                      <span className="absolute -top-1 -right-2 w-2 h-2 bg-red-500 rounded-full" />
-                    )}
-                  </span>
+                  <span className="relative">{item.name}</span>
                 </Link>
               )
             ))}
