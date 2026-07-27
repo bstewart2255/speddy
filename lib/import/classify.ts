@@ -234,6 +234,15 @@ export function buildStudentPreviews(params: {
 
   const matchResult = matchStudents(parsedStudents, databaseStudents, { enrichNoNameByInitials });
 
+  // SPE-339: who already holds each id, so an id picked up from the CLASS LIST
+  // (which the matcher never saw) gets the same "don't merge two children"
+  // treatment as one from the primary file.
+  const idOwners = new Map<string, string>();
+  for (const dbStudent of databaseStudents) {
+    const storedId = normalizeDistrictStudentId(dbStudent.district_student_id);
+    if (storedId) idOwners.set(storedId, dbStudent.id);
+  }
+
   // Track which students from deliveries/classList/iepDates were matched
   const matchedDeliveryNames = new Set<string>();
   const matchedClassListNames = new Set<string>();
@@ -273,13 +282,23 @@ export function buildStudentPreviews(params: {
     }
 
     // Match with class list data (need for change detection)
+    let classListStudentId: string | null = null;
     if (classListData) {
       const classListStudent = classListData.get(normalizedKey);
       if (classListStudent) {
         matchedClassListNames.add(normalizedKey);
         teacherMatchResult = resolveClassListTeacher(classListStudent.teacher, dbTeachers);
+        // SPE-339: the Aeries class list carries the district's Student ID too.
+        classListStudentId = classListStudent.districtStudentId;
       }
     }
+
+    // SPE-339: the primary file wins; the class list fills the gap when it has
+    // no id (a class-list-only or class-list + generic-goals import would
+    // otherwise parse the id and throw it away).
+    const incomingDistrictId =
+      student.districtStudentId?.trim() || classListStudentId?.trim() || '';
+    const normalizedIncomingId = normalizeDistrictStudentId(incomingDistrictId);
 
     // Match with IEP Dates data (SPE-303). File wins: a present date overwrites
     // the stored one; a row whose dates equal what's stored is not a change. For
@@ -342,13 +361,20 @@ export function buildStudentPreviews(params: {
       // An IEP Dates match with a date that differs from what's stored makes the
       // row an update even if nothing else changed; identical dates stay a skip.
       const hasIepDateChange = iepDatesResult?.changed ?? false;
+      // SPE-339: backfilling an id onto an otherwise-unchanged student is real
+      // work. Without this the row is a 'skip', and skip rows are excluded from
+      // the confirm payload — so re-importing to pick up ids would do nothing.
+      const hasDistrictIdChange =
+        !!normalizedIncomingId &&
+        normalizedIncomingId !== normalizeDistrictStudentId(matchedStudent.district_student_id);
       const anyChanges =
         changeCheck.hasGoalChanges ||
         changeCheck.hasScheduleChanges ||
         changeCheck.hasTeacherChanges ||
         hasUnresolvedTeacher ||
         hasNameChange ||
-        hasIepDateChange;
+        hasIepDateChange ||
+        hasDistrictIdChange;
 
       if (anyChanges) {
         action = 'update';
@@ -424,10 +450,27 @@ export function buildStudentPreviews(params: {
     // SPE-339: carry the district's student id through to the write, unless it
     // is disputed — a conflicting id is reported, never written, so an import
     // can't quietly re-point an id at the wrong child.
+    const idOwner = normalizedIncomingId ? idOwners.get(normalizedIncomingId) : undefined;
+    const ownedBySomeoneElse =
+      !!idOwner && !!matchedStudent && idOwner !== matchedStudent.id;
+    // An id on a NEW student that another student already holds is equally a
+    // clash — it would collide on the unique index at best, and silently
+    // re-home the id at worst.
+    const ownedButThisIsNew = !!idOwner && !matchedStudent;
+
     if (match.idConflict) {
       preview.districtStudentIdConflict = match.idConflict;
-    } else if (student.districtStudentId?.trim()) {
-      preview.districtStudentId = student.districtStudentId.trim();
+    } else if (ownedBySomeoneElse || ownedButThisIsNew) {
+      const owner = databaseStudents.find(d => d.id === idOwner);
+      preview.districtStudentIdConflict = {
+        districtStudentId: normalizedIncomingId,
+        existingLabel:
+          [owner?.first_name, owner?.last_name].filter(Boolean).join(' ') ||
+          owner?.initials ||
+          'another student',
+      };
+    } else if (incomingDistrictId) {
+      preview.districtStudentId = incomingDistrictId;
     }
 
     // Add schedule data to preview
@@ -566,6 +609,30 @@ export function buildUpdatePreviews(params: {
           studentUpdates.push(update);
         }
 
+        // SPE-339: carry the class list's Student ID too, unless another
+        // student already holds it (same don't-merge rule as the main path).
+        const incomingId = normalizeDistrictStudentId(student.districtStudentId);
+        const storedId = normalizeDistrictStudentId(existingStudent.district_student_id);
+        if (incomingId && incomingId !== storedId) {
+          const owner = [...studentsByName.values()].find(
+            s2 => s2.id !== existingStudent.id &&
+              normalizeDistrictStudentId(s2.district_student_id) === incomingId,
+          );
+          if (owner) {
+            const ownerDetails = owner.student_details as unknown as
+              { first_name: string | null; last_name: string | null } | null;
+            update.districtStudentIdConflict = {
+              districtStudentId: incomingId,
+              existingLabel:
+                [ownerDetails?.first_name, ownerDetails?.last_name].filter(Boolean).join(' ') ||
+                owner.initials ||
+                'another student',
+            };
+          } else {
+            update.districtStudentId = student.districtStudentId!.trim();
+          }
+        }
+
         // Match teacher to database
         const teacherMatch = resolveClassListTeacher(student.teacher, dbTeachers);
 
@@ -637,7 +704,10 @@ export function buildUpdatePreviews(params: {
     const iepChanged = !!(
       update.iepDates?.upcomingIepDate?.changed || update.iepDates?.upcomingTriennialDate?.changed
     );
-    const hasWork = !!update.schedule || !!update.teacher || iepChanged;
+    // SPE-339: a row whose only change is a newly-captured district Student ID
+    // is still work — skip rows never reach the confirm payload.
+    const hasWork =
+      !!update.schedule || !!update.teacher || iepChanged || !!update.districtStudentId;
     update.action = hasWork ? 'update' : 'skip';
   }
 
@@ -740,7 +810,7 @@ export function buildRosterPreviews(params: {
     // Insert vs update/skip by the initials+grade key. Only a resolved teacher
     // that differs counts as a change, so an unmatched teacher name never clears
     // an existing teacher link on re-import (see classifyRosterChange).
-    const { action, scheduleChanged, teacherChanged } = classifyRosterChange(
+    const { action: baseAction, scheduleChanged, teacherChanged } = classifyRosterChange(
       existing
         ? {
             sessions_per_week: existing.sessions_per_week,
@@ -751,6 +821,16 @@ export function buildRosterPreviews(params: {
       teacher.teacherId,
       schedule ? { sessionsPerWeek: schedule.sessionsPerWeek, minutesPerSession: schedule.minutesPerSession } : undefined
     );
+
+    // SPE-339: classifyRosterChange only knows about schedule and teacher, so a
+    // roster whose only new information is the Student ID would classify as a
+    // skip and never reach the confirm payload. Promote it to an update.
+    const districtIdChanged =
+      !idConflict &&
+      !!incomingId &&
+      incomingId !== normalizeDistrictStudentId(existing?.district_student_id);
+    const action: typeof baseAction =
+      baseAction === 'skip' && districtIdChanged ? 'update' : baseAction;
 
     let changes: StudentChanges | undefined;
     if (action === 'update') {

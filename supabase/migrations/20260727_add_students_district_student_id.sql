@@ -44,10 +44,15 @@ alter table public.students
 comment on column public.students.district_student_id is
   'SPE-339: the district''s own student identifier, as it appears in SIS exports (SEIS column B, Aeries class-list field 2, roster template "Student ID"). District-local, not a name. Never rendered on student lists — admin-facing detail only. NULL when the source file did not carry one.';
 
+-- Indexed on the SAME normalization the matcher uses (normalizeDistrictStudentId:
+-- trim + upper). On the raw text, 'a100001' and 'A100001' would both be allowed
+-- for one provider — and matching treats them as one identity, so the next
+-- import would see two candidates for that id and refuse to match either
+-- student. The backstop has to agree with the comparison it is backing.
 create unique index if not exists ux_students_provider_district_student_id
-  on public.students (provider_id, district_id, district_student_id)
+  on public.students (provider_id, district_id, (upper(btrim(district_student_id))))
   nulls not distinct
-  where district_student_id is not null and district_student_id <> '';
+  where district_student_id is not null and btrim(district_student_id) <> '';
 
 -- ---------------------------------------------------------------------------
 -- Carry the id through the bulk-import RPC

@@ -89,6 +89,7 @@ export async function loadJoinedStudents(
       grade_level,
       school_site,
       school_id,
+      district_student_id,
       student_details!inner(first_name, last_name, upcoming_iep_date, upcoming_triennial_date)
     `)
     .eq('provider_id', userId);

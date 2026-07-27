@@ -269,6 +269,7 @@ exports[`POST /api/import-students — preview characterization (SPE-230) class-
       "students": [
         {
           "action": "update",
+          "districtStudentId": "100001",
           "firstName": "Ana",
           "gradeLevel": "1",
           "initials": "AA",
@@ -283,6 +284,7 @@ exports[`POST /api/import-students — preview characterization (SPE-230) class-
         },
         {
           "action": "update",
+          "districtStudentId": "100007",
           "firstName": "Vera",
           "gradeLevel": "4",
           "initials": "VV",
@@ -373,6 +375,7 @@ exports[`POST /api/import-students — preview characterization (SPE-230) delive
       "students": [
         {
           "action": "update",
+          "districtStudentId": "100001",
           "firstName": "Ana",
           "gradeLevel": "1",
           "initials": "AA",
@@ -393,6 +396,7 @@ exports[`POST /api/import-students — preview characterization (SPE-230) delive
         },
         {
           "action": "update",
+          "districtStudentId": "100007",
           "firstName": "Vera",
           "gradeLevel": "4",
           "initials": "VV",
@@ -594,7 +598,8 @@ exports[`POST /api/import-students — preview characterization (SPE-230) goals-
       ],
       "students": [
         {
-          "action": "skip",
+          "action": "update",
+          "changes": {},
           "districtStudentId": "100001",
           "firstName": "Ana",
           "goals": [
@@ -648,9 +653,9 @@ exports[`POST /api/import-students — preview characterization (SPE-230) goals-
           "St Mary School",
         ],
         "inserts": 2,
-        "skips": 1,
+        "skips": 0,
         "total": 3,
-        "updates": 0,
+        "updates": 1,
         "withGoalsRemoved": 0,
         "withSchedule": 0,
         "withTeacher": 0,
@@ -691,7 +696,8 @@ exports[`POST /api/import-students — preview characterization (SPE-230) goals-
       ],
       "students": [
         {
-          "action": "skip",
+          "action": "update",
+          "changes": {},
           "districtStudentId": "100001",
           "firstName": "Ana",
           "goals": [
@@ -773,9 +779,9 @@ exports[`POST /api/import-students — preview characterization (SPE-230) goals-
       "summary": {
         "filteredOutBySchool": 0,
         "inserts": 2,
-        "skips": 1,
+        "skips": 0,
         "total": 4,
-        "updates": 1,
+        "updates": 2,
         "withGoalsRemoved": 1,
         "withSchedule": 0,
         "withTeacher": 0,
