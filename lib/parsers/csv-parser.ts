@@ -17,6 +17,9 @@ export interface ParsedStudent {
   gradeLevel: string;
   schoolOfAttendance?: string; // School of Attendance (SEIS Column G)
   iepDate?: string; // IEP Date (SEIS Column J) - for validation warnings
+  // The district's own student id (SPE-339). SEIS Column B; the roster
+  // template's optional "Student ID" column. Undefined when the file omits it.
+  districtStudentId?: string;
   goals: string[];
   rawRow: number; // For debugging
   // Speddy roster template only (SPE-225): the template carries the teacher name
@@ -43,6 +46,7 @@ interface ColumnMapping {
   firstName?: number;
   lastName?: number;
   grade?: number;
+  districtStudentId?: number; // District ID (SEIS Column B) - SPE-339
   schoolOfAttendance?: number; // School of Attendance (SEIS Column G)
   iepDate?: number; // IEP Date (SEIS Column J) - for validation warnings
   areaOfNeed?: number; // Area of Need (SEIS Column L) - used for filtering
@@ -204,6 +208,9 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
         const grade = row[columnMapping.grade] || '';
         const schoolOfAttendance = columnMapping.schoolOfAttendance !== undefined ? row[columnMapping.schoolOfAttendance] || '' : '';
         const iepDateRaw = columnMapping.iepDate !== undefined ? row[columnMapping.iepDate] || '' : '';
+        const districtStudentId = columnMapping.districtStudentId !== undefined
+          ? (row[columnMapping.districtStudentId] || '').trim()
+          : '';
 
         // Skip rows without student data
         if (!firstName.trim() || !lastName.trim() || !grade.trim()) {
@@ -364,6 +371,11 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
           if (!existing.iepDate && iepDate) {
             existing.iepDate = iepDate;
           }
+          // Same rule for the district id (SPE-339): a student's goal rows all
+          // carry the same id, but only some rows may have it filled in.
+          if (!existing.districtStudentId && districtStudentId) {
+            existing.districtStudentId = districtStudentId;
+          }
         } else {
           // Add new student
           studentMap.set(studentKey, {
@@ -373,6 +385,7 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
             gradeLevel: normalizedGrade,
             schoolOfAttendance: schoolOfAttendance ? schoolOfAttendance.trim() : undefined,
             iepDate,
+            districtStudentId: districtStudentId || undefined,
             goals,
             rawRow: rowIndex + 1
           });
@@ -432,6 +445,7 @@ function detectColumnMapping(records: string[][]): ColumnMapping {
 
   if (isSEIS) {
     // SEIS Student Goals Report uses fixed columns:
+    // Column B (index 1): District ID
     // Column C (index 2): Last Name
     // Column D (index 3): First Name
     // Column F (index 5): Grade
@@ -441,6 +455,7 @@ function detectColumnMapping(records: string[][]): ColumnMapping {
     // Column M (index 12): Annual Goal # (for filtering)
     // Column O (index 14): Goal
     // Column R (index 17): Person Responsible (for filtering)
+    mapping.districtStudentId = 1;
     mapping.lastName = 2;
     mapping.firstName = 3;
     mapping.grade = 5;
@@ -602,6 +617,8 @@ function parseSpeddyTemplateRows(records: string[][]): ParseResult {
   const teacherCol = col('teacher');
   const sessionsCol = col('sessions per week');
   const minutesCol = col('minutes per session');
+  // SPE-339: optional, so rosters saved from the older template still parse.
+  const studentIdCol = col('student id');
 
   const seen = new Set<string>();
 
@@ -640,6 +657,7 @@ function parseSpeddyTemplateRows(records: string[][]): ParseResult {
 
     const sessions = sessionsCol >= 0 ? parseInt((row[sessionsCol] || '').trim(), 10) : NaN;
     const minutes = minutesCol >= 0 ? parseInt((row[minutesCol] || '').trim(), 10) : NaN;
+    const districtStudentId = studentIdCol >= 0 ? (row[studentIdCol] || '').trim() : '';
 
     students.push({
       firstName: '',
@@ -648,6 +666,7 @@ function parseSpeddyTemplateRows(records: string[][]): ParseResult {
       gradeLevel,
       goals: [],
       teacherName: teacher,
+      districtStudentId: districtStudentId || undefined,
       sessionsPerWeek: Number.isFinite(sessions) && sessions > 0 ? sessions : undefined,
       minutesPerSession: Number.isFinite(minutes) && minutes > 0 ? minutes : undefined,
       rawRow: rowNum,

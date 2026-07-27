@@ -24,6 +24,9 @@ export interface ParsedStudent {
   goals: string[];
   schoolOfAttendance?: string; // From column G - used to filter by current school
   iepDate?: string; // From column J - IEP date for validation warnings
+  // The district's own student id (SPE-339). SEIS Column B. Undefined when the
+  // sheet omits it.
+  districtStudentId?: string;
   rawRow: number; // For debugging
 }
 
@@ -49,6 +52,7 @@ interface ColumnMapping {
   firstName?: number;
   lastName?: number;
   grade?: number;
+  districtStudentId?: number; // Column B in SEIS reports - District ID (SPE-339)
   schoolOfAttendance?: number; // Column G in SEIS reports
   iepDate?: number; // Column J in SEIS reports - IEP Date
   areaOfNeed?: number; // Column L in SEIS Student Goals Report
@@ -127,6 +131,9 @@ export async function parseSEISReport(
           const schoolOfAttendance = columnMapping.schoolOfAttendance
             ? getCellValue(row, columnMapping.schoolOfAttendance)
             : undefined;
+          const districtStudentId = columnMapping.districtStudentId
+            ? getCellValue(row, columnMapping.districtStudentId).trim()
+            : '';
           const iepDateRaw = columnMapping.iepDate
             ? getCellValue(row, columnMapping.iepDate)
             : undefined;
@@ -217,6 +224,10 @@ export async function parseSEISReport(
             if (!existing.iepDate && iepDate) {
               existing.iepDate = iepDate;
             }
+            // Same rule for the district id (SPE-339).
+            if (!existing.districtStudentId && districtStudentId) {
+              existing.districtStudentId = districtStudentId;
+            }
           } else {
             // Add new student
             studentMap.set(studentKey, {
@@ -227,6 +238,7 @@ export async function parseSEISReport(
               goals,
               schoolOfAttendance: schoolOfAttendance?.trim() || undefined,
               iepDate,
+              districtStudentId: districtStudentId || undefined,
               rawRow: rowNumber
             });
           }
@@ -272,6 +284,9 @@ function detectColumnMapping(worksheet: ExcelJS.Worksheet): ColumnMapping {
   const firstNamePatterns = /first\s*name|firstname|student\s*first/i;
   const lastNamePatterns = /last\s*name|lastname|student\s*last|surname/i;
   const gradePatterns = /grade|grade\s*level|current\s*grade/i;
+  // SPE-339. Deliberately narrow: it must not match "District of Service"
+  // (SEIS column H) or the SEIS ID in column A.
+  const districtStudentIdPatterns = /^\s*district\s*(student\s*)?id\s*$/i;
   const schoolPatterns = /school\s*of\s*attendance|school\s*name|attending\s*school|^school$/i;
   const iepDatePatterns = /iep\s*date|meeting\s*date|annual\s*review/i;
   const areaOfNeedPatterns = /area\s*of\s*need|area\s*need|need\s*area/i;
@@ -302,6 +317,11 @@ function detectColumnMapping(worksheet: ExcelJS.Worksheet): ColumnMapping {
       // Check for grade
       if (!mapping.grade && gradePatterns.test(headerText)) {
         mapping.grade = colNumber;
+      }
+
+      // Check for the district's student id (Column B in SEIS reports)
+      if (!mapping.districtStudentId && districtStudentIdPatterns.test(headerText)) {
+        mapping.districtStudentId = colNumber;
       }
 
       // Check for school of attendance

@@ -73,6 +73,30 @@ export function ReviewExceptionRow({ exception, teacherOverride, onResolveTeache
     );
   }
 
+  // SPE-339: the file's Student ID is already on file against a different child.
+  // Informational — the student still imports, but the disputed id is not
+  // written, so nothing is silently merged or re-pointed.
+  if (exception.kind === 'district-id-conflict') {
+    return (
+      <li className="flex items-start gap-2 px-4 py-2 text-sm">
+        <ReviewSignalIcon signal="check" className="mt-0.5" decorative />
+        <div className="min-w-0">
+          <p>
+            <span className="font-medium text-gray-900">{exception.studentLabel}</span>
+            <span className="text-gray-600">
+              {' '}
+              — Student ID {exception.districtStudentId} already belongs to {exception.existingLabel}
+            </span>
+          </p>
+          <p className="mt-0.5 text-xs text-gray-500">
+            The student will still be imported, but this ID won&apos;t be saved. Check the ID in your
+            source file, then re-import to attach it.
+          </p>
+        </div>
+      </li>
+    );
+  }
+
   // goals-removed
   return (
     <li className="flex items-start gap-2 px-4 py-2 text-sm">

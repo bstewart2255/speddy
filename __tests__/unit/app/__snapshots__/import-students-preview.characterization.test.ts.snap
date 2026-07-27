@@ -71,6 +71,7 @@ exports[`POST /api/import-students — preview characterization (SPE-230) all-th
               "old": null,
             },
           },
+          "districtStudentId": "100001",
           "firstName": "Ana",
           "goals": [
             {
@@ -130,6 +131,7 @@ exports[`POST /api/import-students — preview characterization (SPE-230) all-th
               "old": null,
             },
           },
+          "districtStudentId": "100002",
           "firstName": "Ben",
           "goals": [
             {
@@ -161,6 +163,7 @@ exports[`POST /api/import-students — preview characterization (SPE-230) all-th
         },
         {
           "action": "insert",
+          "districtStudentId": "100009",
           "firstName": "Ivan",
           "goals": [
             {
@@ -173,6 +176,7 @@ exports[`POST /api/import-students — preview characterization (SPE-230) all-th
         },
         {
           "action": "insert",
+          "districtStudentId": "100010",
           "firstName": "Jae",
           "goals": [
             {
@@ -591,6 +595,7 @@ exports[`POST /api/import-students — preview characterization (SPE-230) goals-
       "students": [
         {
           "action": "skip",
+          "districtStudentId": "100001",
           "firstName": "Ana",
           "goals": [
             {
@@ -610,6 +615,7 @@ exports[`POST /api/import-students — preview characterization (SPE-230) goals-
         },
         {
           "action": "insert",
+          "districtStudentId": "100009",
           "firstName": "Ivan",
           "goals": [
             {
@@ -622,6 +628,7 @@ exports[`POST /api/import-students — preview characterization (SPE-230) goals-
         },
         {
           "action": "insert",
+          "districtStudentId": "100010",
           "firstName": "Jae",
           "goals": [
             {
@@ -685,6 +692,7 @@ exports[`POST /api/import-students — preview characterization (SPE-230) goals-
       "students": [
         {
           "action": "skip",
+          "districtStudentId": "100001",
           "firstName": "Ana",
           "goals": [
             {
@@ -715,6 +723,7 @@ exports[`POST /api/import-students — preview characterization (SPE-230) goals-
               "unchanged": [],
             },
           },
+          "districtStudentId": "100002",
           "firstName": "Ben",
           "goals": [
             {
@@ -734,6 +743,7 @@ exports[`POST /api/import-students — preview characterization (SPE-230) goals-
         },
         {
           "action": "insert",
+          "districtStudentId": "100009",
           "firstName": "Ivan",
           "goals": [
             {
@@ -746,6 +756,7 @@ exports[`POST /api/import-students — preview characterization (SPE-230) goals-
         },
         {
           "action": "insert",
+          "districtStudentId": "100010",
           "firstName": "Jae",
           "goals": [
             {
@@ -817,6 +828,7 @@ exports[`POST /api/import-students — preview characterization (SPE-230) roster
               },
             },
           },
+          "districtStudentId": "100001",
           "firstName": "",
           "goals": [],
           "gradeLevel": "3",
@@ -840,6 +852,7 @@ exports[`POST /api/import-students — preview characterization (SPE-230) roster
         },
         {
           "action": "insert",
+          "districtStudentId": "100002",
           "firstName": "",
           "goals": [],
           "gradeLevel": "K",
@@ -880,6 +893,7 @@ exports[`POST /api/import-students — preview characterization (SPE-230) roster
         },
         {
           "action": "insert",
+          "districtStudentId": "100004",
           "firstName": "",
           "goals": [],
           "gradeLevel": "2",
@@ -982,6 +996,7 @@ exports[`POST /api/import-students — preview characterization (SPE-230) studen
               "old": null,
             },
           },
+          "districtStudentId": "100001",
           "firstName": "Ana",
           "goals": [
             {
@@ -1025,6 +1040,7 @@ exports[`POST /api/import-students — preview characterization (SPE-230) studen
               "old": null,
             },
           },
+          "districtStudentId": "100002",
           "firstName": "Ben",
           "goals": [
             {
@@ -1050,6 +1066,7 @@ exports[`POST /api/import-students — preview characterization (SPE-230) studen
         },
         {
           "action": "insert",
+          "districtStudentId": "100009",
           "firstName": "Ivan",
           "goals": [
             {
@@ -1062,6 +1079,7 @@ exports[`POST /api/import-students — preview characterization (SPE-230) studen
         },
         {
           "action": "insert",
+          "districtStudentId": "100010",
           "firstName": "Jae",
           "goals": [
             {
@@ -1170,6 +1188,7 @@ exports[`POST /api/import-students — preview characterization (SPE-230) studen
               "old": null,
             },
           },
+          "districtStudentId": "100001",
           "firstName": "Ana",
           "goals": [
             {
@@ -1216,6 +1235,7 @@ exports[`POST /api/import-students — preview characterization (SPE-230) studen
               },
             },
           },
+          "districtStudentId": "100002",
           "firstName": "Ben",
           "goals": [
             {
@@ -1241,6 +1261,7 @@ exports[`POST /api/import-students — preview characterization (SPE-230) studen
         },
         {
           "action": "insert",
+          "districtStudentId": "100009",
           "firstName": "Ivan",
           "goals": [
             {
@@ -1253,6 +1274,7 @@ exports[`POST /api/import-students — preview characterization (SPE-230) studen
         },
         {
           "action": "insert",
+          "districtStudentId": "100010",
           "firstName": "Jae",
           "goals": [
             {

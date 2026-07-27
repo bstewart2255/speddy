@@ -148,4 +148,42 @@ describe('parseCSVReport — Speddy roster template', () => {
     expect(result.students[0].sessionsPerWeek).toBeUndefined();
     expect(result.students[0].minutesPerSession).toBeUndefined();
   });
+
+  // SPE-339. The column is optional in both directions: a roster saved from the
+  // OLD template (no Student ID column) must still parse, or every customer with
+  // a saved copy breaks on their next import.
+  it('captures the optional Student ID column', async () => {
+    const csv = Buffer.from(
+      ['Initials,Student ID,Grade,Teacher', 'JD,100001,3,Smith', 'AB,,K,Johnson'].join('\n'),
+      'utf-8',
+    );
+    const result = await parseCSVReport(csv, {});
+
+    expect(result.metadata.formatDetected).toBe('speddy-template');
+    expect(result.students[0].districtStudentId).toBe('100001');
+    // Blank cell -> absent, not ''.
+    expect(result.students[1].districtStudentId).toBeUndefined();
+  });
+
+  it('still parses a roster saved from the older template with no Student ID column', async () => {
+    const csv = Buffer.from('Initials,Grade,Teacher\nJD,3,Smith', 'utf-8');
+    const result = await parseCSVReport(csv, {});
+
+    expect(result.metadata.formatDetected).toBe('speddy-template');
+    expect(result.students).toHaveLength(1);
+    expect(result.students[0].districtStudentId).toBeUndefined();
+  });
+
+  it('parses the shipped template fixture, Student ID column included', async () => {
+    const result = await parseCSVReport(readFixture('roster-template.csv'), {});
+
+    expect(result.metadata.formatDetected).toBe('speddy-template');
+    expect(result.students.map((s) => s.districtStudentId)).toEqual([
+      '100001',
+      '100002',
+      undefined,
+      '100004',
+      undefined,
+    ]);
+  });
 });

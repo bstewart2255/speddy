@@ -9,6 +9,7 @@ exports[`parseClassListTXT matches the golden snapshot 1`] = `
   },
   "students": [
     {
+      "districtStudentId": "100001",
       "key": "alvarez_ana",
       "name": "Alvarez, Ana",
       "teacher": {
@@ -19,6 +20,7 @@ exports[`parseClassListTXT matches the golden snapshot 1`] = `
       },
     },
     {
+      "districtStudentId": "100002",
       "key": "bishop_ben",
       "name": "Bishop, Ben",
       "teacher": {
@@ -29,6 +31,7 @@ exports[`parseClassListTXT matches the golden snapshot 1`] = `
       },
     },
     {
+      "districtStudentId": "100003",
       "key": "cho_cora",
       "name": "Cho, Cora",
       "teacher": {
@@ -39,6 +42,7 @@ exports[`parseClassListTXT matches the golden snapshot 1`] = `
       },
     },
     {
+      "districtStudentId": "100004",
       "key": "davis-wong_drew",
       "name": "Davis-Wong, Drew",
       "teacher": {
@@ -49,6 +53,7 @@ exports[`parseClassListTXT matches the golden snapshot 1`] = `
       },
     },
     {
+      "districtStudentId": "100005",
       "key": "evans_ella",
       "name": "Evans, Ella",
       "teacher": {
@@ -59,6 +64,7 @@ exports[`parseClassListTXT matches the golden snapshot 1`] = `
       },
     },
     {
+      "districtStudentId": "100006",
       "key": "foster_finn",
       "name": "Foster, Finn",
       "teacher": {
@@ -69,6 +75,7 @@ exports[`parseClassListTXT matches the golden snapshot 1`] = `
       },
     },
     {
+      "districtStudentId": "100007",
       "key": "vanhorn_vera",
       "name": "Van Horn, Vera",
       "teacher": {

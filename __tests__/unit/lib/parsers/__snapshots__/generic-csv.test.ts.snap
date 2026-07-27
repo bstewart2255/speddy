@@ -18,6 +18,7 @@ exports[`parseCSVReport — Windows-1252 encoding re-decodes accented names as l
   },
   "students": [
     {
+      "districtStudentId": undefined,
       "firstName": "Sofía",
       "goals": [
         "The student will read 50 words per minute with 90% accuracy.",
@@ -30,6 +31,7 @@ exports[`parseCSVReport — Windows-1252 encoding re-decodes accented names as l
       "schoolOfAttendance": undefined,
     },
     {
+      "districtStudentId": undefined,
       "firstName": "José",
       "goals": [
         "The student will write a five-sentence paragraph with 80% accuracy.",
@@ -42,6 +44,7 @@ exports[`parseCSVReport — Windows-1252 encoding re-decodes accented names as l
       "schoolOfAttendance": undefined,
     },
     {
+      "districtStudentId": undefined,
       "firstName": "Renée",
       "goals": [
         "The student will identify rhyming words in 4 of 5 trials.",
@@ -76,6 +79,7 @@ exports[`parseCSVReport — messy grade values (generic format) matches the gold
   },
   "students": [
     {
+      "districtStudentId": undefined,
       "firstName": "Ava",
       "goals": [
         "The student will read 60 words per minute by year end with 90% accuracy.",
@@ -88,6 +92,7 @@ exports[`parseCSVReport — messy grade values (generic format) matches the gold
       "schoolOfAttendance": undefined,
     },
     {
+      "districtStudentId": undefined,
       "firstName": "Ben",
       "goals": [
         "The student will identify all letter sounds by June with 80% accuracy.",
@@ -100,6 +105,7 @@ exports[`parseCSVReport — messy grade values (generic format) matches the gold
       "schoolOfAttendance": undefined,
     },
     {
+      "districtStudentId": undefined,
       "firstName": "Cara",
       "goals": [
         "The student will solve two-digit addition problems with 80% accuracy.",
@@ -112,6 +118,7 @@ exports[`parseCSVReport — messy grade values (generic format) matches the gold
       "schoolOfAttendance": undefined,
     },
     {
+      "districtStudentId": undefined,
       "firstName": "Dan",
       "goals": [
         "The student will write complete sentences with correct capitalization.",
@@ -124,6 +131,7 @@ exports[`parseCSVReport — messy grade values (generic format) matches the gold
       "schoolOfAttendance": undefined,
     },
     {
+      "districtStudentId": undefined,
       "firstName": "Ella",
       "goals": [
         "The student will follow two-step directions in the classroom in 4 of 5 trials.",
@@ -136,6 +144,7 @@ exports[`parseCSVReport — messy grade values (generic format) matches the gold
       "schoolOfAttendance": undefined,
     },
     {
+      "districtStudentId": undefined,
       "firstName": "Finn",
       "goals": [
         "The student will count to 20 with one-to-one correspondence in 4 of 5 trials.",
@@ -148,6 +157,7 @@ exports[`parseCSVReport — messy grade values (generic format) matches the gold
       "schoolOfAttendance": undefined,
     },
     {
+      "districtStudentId": undefined,
       "firstName": "Grace",
       "goals": [
         "The student will decode CVC words with 85% accuracy across 3 sessions.",
@@ -160,6 +170,7 @@ exports[`parseCSVReport — messy grade values (generic format) matches the gold
       "schoolOfAttendance": undefined,
     },
     {
+      "districtStudentId": undefined,
       "firstName": "Will",
       "goals": [
         "The student will summarize a short passage in writing with 80% accuracy.",

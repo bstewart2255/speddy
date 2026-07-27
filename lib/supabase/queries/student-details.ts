@@ -8,7 +8,19 @@ export interface StudentDetails {
   first_name: string;
   last_name: string;
   date_of_birth: string;
-  district_id: string;
+  /**
+   * SPE-339: the district's own student id. This one field lives on
+   * `students.district_student_id`, NOT on `student_details` — it is the key the
+   * importer and the future SIS sync match on, so it belongs beside the student
+   * row itself. It is carried on this interface so the details modal, the only
+   * place it is shown, keeps a single load/save call.
+   *
+   * It replaces the old `student_details.district_id` box, which was never
+   * populated by anything (every non-sim row in production is an empty string)
+   * and shared a name with the ORG-level district id used for scoping. That
+   * column is retired in SPE-341.
+   */
+  district_student_id: string;
   upcoming_iep_date: string;
   upcoming_triennial_date: string;
   iep_goals: string[];
@@ -76,6 +88,27 @@ export async function getStudentDetails(studentId: string): Promise<StudentDetai
   const data = fetchResult.data;
   if (!data) return null;
 
+  // SPE-339: lives on `students`, not `student_details` — see the interface.
+  const idResult = await safeQuery(
+    async () => {
+      const { data: row, error } = await supabase
+        .from('students')
+        .select('district_student_id')
+        .eq('id', studentId)
+        .maybeSingle();
+      if (error) throw error;
+      return row;
+    },
+    { operation: 'fetch_district_student_id', studentId }
+  );
+  // A failed lookup must not blank the field on save, so surface it rather than
+  // quietly returning ''.
+  if (idResult.error) {
+    console.error('Error fetching district student id:', idResult.error);
+    throw idResult.error;
+  }
+  const districtStudentId = idResult.data?.district_student_id || '';
+
   // Cast to include fields added in later migrations
   const dataWithExtras = data as typeof data & {
     accommodations?: string[] | null;
@@ -86,7 +119,7 @@ export async function getStudentDetails(studentId: string): Promise<StudentDetai
     first_name: data.first_name || '',
     last_name: data.last_name || '',
     date_of_birth: data.date_of_birth || '',
-    district_id: data.district_id || '',
+    district_student_id: districtStudentId,
     upcoming_iep_date: data.upcoming_iep_date || '',
     upcoming_triennial_date: data.upcoming_triennial_date || '',
     iep_goals: data.iep_goals || [],
@@ -166,7 +199,6 @@ export async function upsertStudentDetails(
           first_name: details.first_name,
           last_name: details.last_name,
           date_of_birth: details.date_of_birth || null,
-          district_id: details.district_id,
           upcoming_iep_date: details.upcoming_iep_date || null,
           upcoming_triennial_date: details.upcoming_triennial_date || null,
           iep_goals: details.iep_goals,
@@ -177,6 +209,16 @@ export async function upsertStudentDetails(
           onConflict: 'student_id'  // Add this to specify the conflict column
         });
       if (error) throw error;
+
+      // SPE-339: the district student id lives on `students`. Blank clears it,
+      // so an admin can remove a wrong id. NULL (not '') keeps it out of the
+      // uniqueness index.
+      const { error: idError } = await supabase
+        .from('students')
+        .update({ district_student_id: details.district_student_id?.trim() || null })
+        .eq('id', studentId);
+      if (idError) throw idError;
+
       return null;
     },
     {

@@ -45,6 +45,26 @@ describe('parseCSVReport — SEIS Student Goals Report (CSV)', () => {
     expect(result).toMatchSnapshot();
   });
 
+  // SPE-339: column B is the district's own Student ID. Column A is the SEIS ID,
+  // which is a different number — a parser reading the wrong column would still
+  // "work", so these assert the actual values.
+  it('captures the District ID from column B, not the SEIS ID from column A', async () => {
+    const result = await parseCSVReport(SEIS_GOALS_CSV(), {});
+    const byName = new Map(result.students.map((s) => [`${s.firstName} ${s.lastName}`, s]));
+
+    expect(byName.get('Ana Alvarez')!.districtStudentId).toBe('100001');
+    expect(byName.get('Ben Bishop')!.districtStudentId).toBe('100002');
+    // Not the SEIS IDs (2000001 / 2000002).
+    expect(byName.get('Ana Alvarez')!.districtStudentId).not.toBe('2000001');
+  });
+
+  it('leaves the id undefined when column B is blank', async () => {
+    const result = await parseCSVReport(SEIS_GOALS_CSV(), {});
+    const gia = result.students.find((s) => s.lastName === 'Gomez');
+    expect(gia).toBeDefined();
+    expect(gia!.districtStudentId).toBeUndefined();
+  });
+
   describe('per-role goal filtering', () => {
     // Real-file reference counts (kept/total goals): resource 119/184, speech
     // 58, OT 12, counseling 9. This fictional fixture is far smaller; the

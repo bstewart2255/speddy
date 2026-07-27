@@ -15,7 +15,7 @@
  * applies a `|| sessionsPerWeek*minutesPerSession` fallback — an intentional
  * divergence kept intact.
  */
-import { matchStudents, DatabaseStudent } from '@/lib/utils/student-matcher';
+import { matchStudents, normalizeDistrictStudentId, DatabaseStudent } from '@/lib/utils/student-matcher';
 import type { ParsedStudent as SeisParsedStudent } from '@/lib/parsers/seis-parser';
 import type { ParsedStudent as CsvParsedStudent } from '@/lib/parsers/csv-parser';
 import { createNormalizedKey } from '@/lib/parsers/name-utils';
@@ -119,6 +119,8 @@ export interface ExistingStudentRow {
   sessions_per_week: number | null;
   minutes_per_session: number | null;
   teacher_id: string | null;
+  /** The district's own student id (SPE-339), for id-first import matching. */
+  district_student_id?: string | null;
 }
 
 /** Detail row shape the main path selects for names + goals. */
@@ -187,6 +189,8 @@ export function toDatabaseStudents(
         // Stored IEP dates, for IEP Dates change detection (SPE-303).
         upcoming_iep_date: details?.upcoming_iep_date ?? null,
         upcoming_triennial_date: details?.upcoming_triennial_date ?? null,
+        // Stored district Student ID, for id-first matching (SPE-339).
+        district_student_id: student.district_student_id ?? null,
       } as DatabaseStudent;
     }) || []
   );
@@ -417,6 +421,15 @@ export function buildStudentPreviews(params: {
       goalsRemoved
     };
 
+    // SPE-339: carry the district's student id through to the write, unless it
+    // is disputed — a conflicting id is reported, never written, so an import
+    // can't quietly re-point an id at the wrong child.
+    if (match.idConflict) {
+      preview.districtStudentIdConflict = match.idConflict;
+    } else if (student.districtStudentId?.trim()) {
+      preview.districtStudentId = student.districtStudentId.trim();
+    }
+
     // Add schedule data to preview
     if (scheduleData) {
       const deliveryRecord = deliveriesData?.get(normalizedKey);
@@ -640,6 +653,8 @@ export interface RosterExistingStudentRow {
   sessions_per_week: number | null;
   minutes_per_session: number | null;
   teacher_id: string | null;
+  /** The district's own student id (SPE-339), for id-first roster matching. */
+  district_student_id?: string | null;
 }
 
 /**
@@ -663,15 +678,39 @@ export function buildRosterPreviews(params: {
   // Null school_id / empty currentSchoolId collapse to one bucket, matching the
   // main path and the confirm dedup key (buildSchoolScopedDedupKey).
   const existingByKey = new Map<string, RosterExistingStudentRow>();
+  // SPE-339: same school scoping, keyed by the district's student id. This is the
+  // preferred key — initials+grade is a guess that breaks the moment a student
+  // changes grade or shares initials with a classmate, while the id is stable.
+  const existingById = new Map<string, RosterExistingStudentRow>();
   for (const s of dbStudents) {
     if ((s.school_id ?? '') !== (currentSchoolId ?? '')) continue;
     existingByKey.set(buildStudentDedupKey(s.initials, s.grade_level), s);
+    const storedId = normalizeDistrictStudentId(s.district_student_id);
+    if (storedId) existingById.set(storedId, s);
   }
 
   const studentPreviews: StudentPreview[] = [];
 
   for (const student of students) {
-    const existing = existingByKey.get(buildStudentDedupKey(student.initials, student.gradeLevel));
+    const byKey = existingByKey.get(buildStudentDedupKey(student.initials, student.gradeLevel));
+    const incomingId = normalizeDistrictStudentId(student.districtStudentId);
+    const byId = incomingId ? existingById.get(incomingId) : undefined;
+
+    // The id wins when it agrees with (or is the only) signal. When the id points
+    // at one student and initials+grade at another, we have no basis to choose:
+    // fall back to today's initials behaviour, report the clash, and withhold the
+    // id from the write rather than re-point it at the wrong child.
+    let idConflict: StudentPreview['districtStudentIdConflict'];
+    let existing: RosterExistingStudentRow | undefined;
+    if (byId && byKey && byId.id !== byKey.id) {
+      idConflict = {
+        districtStudentId: incomingId,
+        existingLabel: byId.initials ? `${byId.initials} (grade ${byId.grade_level ?? '—'})` : 'another student',
+      };
+      existing = byKey;
+    } else {
+      existing = byId ?? byKey;
+    }
 
     const { lastName, firstInitial } = parseTeacherName(student.teacherName || '');
     const teacherInfo: TeacherInfo = {
@@ -751,12 +790,21 @@ export function buildRosterPreviews(params: {
       matchedStudentId: existing?.id,
       matchedStudentInitials: existing?.initials || undefined,
       matchConfidence: undefined,
-      matchReason: existing ? 'Matched by initials and grade' : undefined,
+      matchReason: existing
+        ? (existing === byId && !idConflict
+            ? `Matched on district Student ID ${incomingId}`
+            : 'Matched by initials and grade')
+        : undefined,
       changes,
       goalsRemoved: undefined
     };
     if (schedule) preview.schedule = schedule;
     preview.teacher = teacher;
+    if (idConflict) {
+      preview.districtStudentIdConflict = idConflict;
+    } else if (incomingId) {
+      preview.districtStudentId = student.districtStudentId?.trim();
+    }
 
     studentPreviews.push(preview);
   }

@@ -38,13 +38,17 @@ interface ImportEntry {
 }
 
 // The roster template offered for download, matching the columns the importer
-// expects (Initials/Grade/Teacher required; sessions/minutes optional).
-const ROSTER_TEMPLATE_CSV = `Initials,Grade,Teacher,Sessions Per Week,Minutes Per Session
-JD,3,Smith,2,30
-AB,K,Johnson,3,20
-CD,5,Davis,1,45
-EF,2,Wilson,2,30
-GH,4,Garcia,3,30`;
+// expects (Initials/Grade/Teacher required; Student ID, sessions and minutes
+// optional). Student ID is the district's own id (SPE-339) — supplying it makes
+// re-imports match the same child reliably instead of guessing from initials.
+// Parsing is header-name based, so a roster saved from the older template (no
+// Student ID column) still imports unchanged.
+const ROSTER_TEMPLATE_CSV = `Initials,Student ID,Grade,Teacher,Sessions Per Week,Minutes Per Session
+JD,100001,3,Smith,2,30
+AB,100002,K,Johnson,3,20
+CD,,5,Davis,1,45
+EF,100004,2,Wilson,2,30
+GH,,4,Garcia,3,30`;
 
 // Where each SEIS/Aeries export lives and what it fills in Speddy. Drives the
 // collapsible "Where to find each file" guide so a first-time user can locate

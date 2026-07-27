@@ -3713,6 +3713,7 @@ export type Database = {
         Row: {
           created_at: string | null
           district_id: string | null
+          district_student_id: string | null
           grade_level: string
           id: string
           initials: string
@@ -3730,6 +3731,7 @@ export type Database = {
         Insert: {
           created_at?: string | null
           district_id?: string | null
+          district_student_id?: string | null
           grade_level: string
           id?: string
           initials: string
@@ -3747,6 +3749,7 @@ export type Database = {
         Update: {
           created_at?: string | null
           district_id?: string | null
+          district_student_id?: string | null
           grade_level?: string
           id?: string
           initials?: string

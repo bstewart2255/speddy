@@ -32,6 +32,7 @@ exports[`parseSEISReport — header on row 1 (row-skip fixed) matches the golden
   },
   "students": [
     {
+      "districtStudentId": "100001",
       "firstName": "Ana",
       "goals": [
         "By 5/1/2027, given a grade-level passage, Ana will read 90 words per minute with 95% accuracy in 3 of 4 trials.",
@@ -44,6 +45,7 @@ exports[`parseSEISReport — header on row 1 (row-skip fixed) matches the golden
       "schoolOfAttendance": "Mt Diablo Elementary School",
     },
     {
+      "districtStudentId": "100002",
       "firstName": "Ben",
       "goals": [
         "By 10/15/2026, given manipulatives, Ben will solve two-digit addition problems with 80% accuracy across 3 sessions.",
@@ -56,6 +58,7 @@ exports[`parseSEISReport — header on row 1 (row-skip fixed) matches the golden
       "schoolOfAttendance": "St Mary School",
     },
     {
+      "districtStudentId": "100003",
       "firstName": "Cora",
       "goals": [
         "By 1/20/2027, Cora will produce /r/ in structured sentences with 80% accuracy in 4 of 5 trials.",
@@ -68,6 +71,7 @@ exports[`parseSEISReport — header on row 1 (row-skip fixed) matches the golden
       "schoolOfAttendance": "Mt Diablo Elementary School",
     },
     {
+      "districtStudentId": "100004",
       "firstName": "Drew",
       "goals": [
         "By 2/10/2027, Drew will use a coping strategy when frustrated in 4 of 5 observed opportunities.",
@@ -80,6 +84,7 @@ exports[`parseSEISReport — header on row 1 (row-skip fixed) matches the golden
       "schoolOfAttendance": "Out of District- MOU",
     },
     {
+      "districtStudentId": "100005",
       "firstName": "Ella",
       "goals": [
         "By 3/5/2027, Ella will copy a five-word sentence legibly within 5 minutes in 4 of 5 trials.",
@@ -92,6 +97,7 @@ exports[`parseSEISReport — header on row 1 (row-skip fixed) matches the golden
       "schoolOfAttendance": "Mt Diablo Elementary School",
     },
     {
+      "districtStudentId": "100006",
       "firstName": "Finn",
       "goals": [
         "By 4/12/2027, Finn will form lower-case letters with correct size and spacing in 4 of 5 samples.",
@@ -104,6 +110,7 @@ exports[`parseSEISReport — header on row 1 (row-skip fixed) matches the golden
       "schoolOfAttendance": "Mt Diablo Elementary School",
     },
     {
+      "districtStudentId": undefined,
       "firstName": "Gia",
       "goals": [
         "By 5/9/2027, Gia will raise her hand and wait to be called on in 4 of 5 opportunities.",
@@ -132,6 +139,7 @@ exports[`parseSEISReport — title rows then header on row 3 matches the golden 
   },
   "students": [
     {
+      "districtStudentId": "100001",
       "firstName": "Ana",
       "goals": [
         "By 5/1/2027, given a grade-level passage, Ana will read 90 words per minute with 95% accuracy in 3 of 4 trials.",
@@ -144,6 +152,7 @@ exports[`parseSEISReport — title rows then header on row 3 matches the golden 
       "schoolOfAttendance": "Mt Diablo Elementary School",
     },
     {
+      "districtStudentId": "100002",
       "firstName": "Ben",
       "goals": [
         "By 10/15/2026, given manipulatives, Ben will solve two-digit addition problems with 80% accuracy across 3 sessions.",
@@ -156,6 +165,7 @@ exports[`parseSEISReport — title rows then header on row 3 matches the golden 
       "schoolOfAttendance": "St Mary School",
     },
     {
+      "districtStudentId": "100003",
       "firstName": "Cora",
       "goals": [
         "By 1/20/2027, Cora will produce /r/ in structured sentences with 80% accuracy in 4 of 5 trials.",

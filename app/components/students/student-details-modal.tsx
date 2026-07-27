@@ -58,7 +58,7 @@ export function StudentDetailsModal({
     first_name: '',
     last_name: '',
     date_of_birth: '',
-    district_id: '',
+    district_student_id: '',
     upcoming_iep_date: '',
     upcoming_triennial_date: '',
     iep_goals: [],
@@ -115,7 +115,7 @@ export function StudentDetailsModal({
               first_name: '',
               last_name: '',
               date_of_birth: '',
-              district_id: '',
+              district_student_id: '',
               upcoming_iep_date: '',
               upcoming_triennial_date: '',
               iep_goals: [],
@@ -513,15 +513,19 @@ export function StudentDetailsModal({
                 </FormGroup>
 
                 <FormGroup>
-                  <Label htmlFor="district_id">District ID</Label>
+                  <Label htmlFor="district_student_id">District Student ID</Label>
                   <Input
-                    id="district_id"
+                    id="district_student_id"
                     type="text"
-                    value={details.district_id}
-                    onChange={(e) => setDetails({...details, district_id: e.target.value})}
-                    placeholder="Enter district ID"
+                    value={details.district_student_id}
+                    onChange={(e) => setDetails({...details, district_student_id: e.target.value})}
+                    placeholder="e.g. 100234"
                     disabled={readOnly}
                   />
+                  <p className="mt-1 text-xs text-gray-500">
+                    The student&apos;s ID in your district&apos;s system. Imports use it to match
+                    this student reliably.
+                  </p>
                 </FormGroup>
               </div>
 

@@ -20,6 +20,8 @@ export interface DatabaseStudent {
   // Stored IEP compliance dates (ISO YYYY-MM-DD), for IEP Dates change detection (SPE-303).
   upcoming_iep_date?: string | null;
   upcoming_triennial_date?: string | null;
+  // The district's own student id (SPE-339), when we have captured one.
+  district_student_id?: string | null;
 }
 
 export interface StudentMatch {
@@ -28,6 +30,13 @@ export interface StudentMatch {
   confidence: 'high' | 'medium' | 'low' | 'none';
   reason: string;
   allPossibleMatches?: DatabaseStudent[];
+  /**
+   * SPE-339: the incoming district Student ID is already on file against a
+   * DIFFERENT child. Set instead of merging the two records — the row falls back
+   * to name matching and the id is withheld from the write, so the conflict is
+   * resolved by a human in the review queue rather than silently.
+   */
+  idConflict?: { districtStudentId: string; existingLabel: string };
 }
 
 export interface MatchResult {
@@ -106,6 +115,66 @@ function findBestMatch(
 ): StudentMatch {
   const possibleMatches: Array<{ student: DatabaseStudent; score: number; reasons: string[] }> = [];
 
+  // SPE-339: the district's own student id takes precedence over every heuristic
+  // below when both sides carry one. It is the only identifier in the file that
+  // is actually stable — names get corrected, grades roll over, initials collide
+  // — so an id match is authoritative and scores as high confidence.
+  //
+  // The exception is when the id lands on a child whose stored name plainly
+  // disagrees with the incoming one. That means the id is being reused or was
+  // mistyped, and merging the two records would silently overwrite a real
+  // student. In that case we do NOT match on the id: we record the conflict, let
+  // the name-based logic below decide the row on its own merits, and the caller
+  // withholds the id from the write so nothing is corrupted while a human looks
+  // at it.
+  const incomingId = normalizeDistrictStudentId(excelStudent.districtStudentId);
+  let idConflict: StudentMatch['idConflict'];
+
+  if (incomingId) {
+    const idMatches = databaseStudents.filter(
+      dbStudent => normalizeDistrictStudentId(dbStudent.district_student_id) === incomingId,
+    );
+
+    if (idMatches.length === 1) {
+      const candidate = idMatches[0];
+      const bothNamed =
+        !!excelStudent.firstName?.trim() &&
+        !!excelStudent.lastName?.trim() &&
+        !!candidate.first_name?.trim() &&
+        !!candidate.last_name?.trim();
+      const nameDisagrees =
+        bothNamed &&
+        !compareNames(
+          excelStudent.firstName,
+          excelStudent.lastName,
+          candidate.first_name ?? '',
+          candidate.last_name ?? '',
+        ).matches;
+
+      if (nameDisagrees) {
+        idConflict = {
+          districtStudentId: incomingId,
+          existingLabel: `${candidate.first_name} ${candidate.last_name}`.trim(),
+        };
+      } else {
+        return {
+          excelStudent,
+          matchedStudent: candidate,
+          confidence: 'high',
+          reason: `Matched on district Student ID ${incomingId}`,
+          allPossibleMatches: idMatches,
+        };
+      }
+    } else if (idMatches.length > 1) {
+      // The unique index makes this unreachable for a single provider within a
+      // district, but bail loudly rather than pick one if it ever happens.
+      idConflict = {
+        districtStudentId: incomingId,
+        existingLabel: `${idMatches.length} existing students`,
+      };
+    }
+  }
+
   // A full name is required on BOTH sides. Without a first AND last name on the
   // incoming record we can't match by name — and compareNames' fuzzy path would
   // false-match an empty component against any value (`x.startsWith('')` is
@@ -117,6 +186,7 @@ function findBestMatch(
       matchedStudent: null,
       confidence: 'none',
       reason: 'Incoming record has no full name — cannot match by name',
+      idConflict,
     };
   }
 
@@ -170,7 +240,8 @@ function findBestMatch(
       matchedStudent: bestMatch.student,
       confidence,
       reason,
-      allPossibleMatches: possibleMatches.map(m => m.student)
+      allPossibleMatches: possibleMatches.map(m => m.student),
+      idConflict,
     };
   }
 
@@ -207,6 +278,7 @@ function findBestMatch(
         reason:
           'Matched by initials + grade — existing record has no name yet; the name will be added',
         allPossibleMatches: initialsOnlyMatches,
+        idConflict,
       };
     }
   }
@@ -216,7 +288,8 @@ function findBestMatch(
     excelStudent,
     matchedStudent: null,
     confidence: 'none',
-    reason: `No existing student matches "${excelStudent.firstName} ${excelStudent.lastName}" in grade "${excelStudent.gradeLevel}"`
+    reason: `No existing student matches "${excelStudent.firstName} ${excelStudent.lastName}" in grade "${excelStudent.gradeLevel}"`,
+    idConflict,
   };
 }
 
@@ -298,6 +371,22 @@ function normalizeName(name: string): string {
  */
 function normalizeInitials(initials: string | undefined | null): string {
   return (initials || '').toUpperCase().replace(/[^A-Z]/g, '');
+}
+
+/**
+ * Normalize a district Student ID for comparison (SPE-339).
+ *
+ * Trim and case-fold only. Deliberately NOT stripping punctuation or leading
+ * zeros: districts use ids that are meaningfully distinct in exactly those
+ * characters ("0012345" and "12345" can be two different children), and this
+ * value is an identity key — a normalization that collapses two real ids would
+ * merge two students' records. An id that differs only in surrounding
+ * whitespace or letter case is the same id in every SIS export we have seen.
+ *
+ * Returns '' for absent/blank, which callers treat as "no id".
+ */
+export function normalizeDistrictStudentId(id: string | undefined | null): string {
+  return (id || '').trim().toUpperCase();
 }
 
 /**

@@ -78,6 +78,12 @@ export interface StudentPreview {
   teacher?: TeacherMatch;
   // New fields from the SEIS IEP Dates report (SPE-303)
   iepDates?: IepDatesPreview;
+  /** The district's own student id from the file (SPE-339). Withheld when
+   *  districtStudentIdConflict is set, so a disputed id is never written. */
+  districtStudentId?: string;
+  /** The incoming id is already on file against a different child (SPE-339).
+   *  Surfaced in the review queue; the id itself is not carried to the write. */
+  districtStudentIdConflict?: { districtStudentId: string; existingLabel: string };
 }
 
 /**
