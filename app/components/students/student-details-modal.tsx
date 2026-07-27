@@ -179,7 +179,9 @@ export function StudentDetailsModal({
           hint: (error as unknown as Record<string, unknown>).hint
         });
       }
-      alert('Failed to save. Please try again.');
+      // Show what actually went wrong (e.g. a duplicate District Student ID) —
+      // a generic message leaves the user retrying the same failing value.
+      alert(error instanceof Error ? error.message : 'Failed to save. Please try again.');
     } finally {
       setLoading(false);
     }

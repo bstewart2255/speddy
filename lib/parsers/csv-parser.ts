@@ -375,6 +375,19 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
           // carry the same id, but only some rows may have it filled in.
           if (!existing.districtStudentId && districtStudentId) {
             existing.districtStudentId = districtStudentId;
+          } else if (
+            districtStudentId &&
+            existing.districtStudentId &&
+            existing.districtStudentId !== districtStudentId
+          ) {
+            // Two different ids under one name+grade+school key means either the
+            // export is inconsistent or two real children are being merged by
+            // that key. Keep the first and say so rather than dropping it
+            // silently.
+            warnings.push({
+              row: rowIndex + 1,
+              message: `Student ID mismatch for ${firstName} ${lastName}: found "${districtStudentId}" but already recorded "${existing.districtStudentId}". Keeping the first — check this student in your export.`,
+            });
           }
         } else {
           // Add new student

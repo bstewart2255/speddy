@@ -114,6 +114,32 @@ describe('district Student ID reaches the write', () => {
     expect(studentUpdates[0].action).toBe('update');
   });
 
+  it('withholds an id already held by the same provider at another school', () => {
+    // Uniqueness is (provider, district) — not school — so an id held at
+    // another school still collides. Matching on it would edit the wrong
+    // school's record; ignoring it would blow up on the unique index at confirm.
+    const roster = (o: Partial<CsvParsedStudent> = {}): CsvParsedStudent => ({
+      firstName: '', lastName: '', initials: 'AA', gradeLevel: '1',
+      goals: [], rawRow: 2, teacherName: 'Barrera', ...o,
+    });
+
+    const previews = buildRosterPreviews({
+      students: [roster({ districtStudentId: '100001' })],
+      dbStudents: [{
+        id: 'other-school', initials: 'ZZ', grade_level: '4', school_id: 'SCH-OTHER',
+        sessions_per_week: null, minutes_per_session: null, teacher_id: null,
+        district_student_id: '100001',
+      }],
+      currentSchoolId: 'SCH-HERE',
+      dbTeachers: [],
+    });
+
+    expect(previews[0].districtStudentId).toBeUndefined();
+    expect(previews[0].districtStudentIdConflict?.existingLabel).toMatch(/another school/);
+    // Still an insert for THIS school — the row itself is fine, only the id is held back.
+    expect(previews[0].action).toBe('insert');
+  });
+
   it('promotes an otherwise-unchanged roster row to an update for the id alone', () => {
     const roster = (o: Partial<CsvParsedStudent> = {}): CsvParsedStudent => ({
       firstName: '', lastName: '', initials: 'AA', gradeLevel: '1',

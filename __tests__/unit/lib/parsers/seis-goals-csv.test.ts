@@ -13,6 +13,7 @@
 
 import { parseCSVReport } from '@/lib/parsers/csv-parser';
 import {
+  buildSeisGoalsCsvFrom,
   SEIS_GOALS_CSV,
   SEIS_GOALS_CSV_BOM,
   SEIS_GOALS_SHIFTED_CSV,
@@ -63,6 +64,27 @@ describe('parseCSVReport — SEIS Student Goals Report (CSV)', () => {
     const gia = result.students.find((s) => s.lastName === 'Gomez');
     expect(gia).toBeDefined();
     expect(gia!.districtStudentId).toBeUndefined();
+  });
+
+  it('warns instead of silently dropping a conflicting id across a student\'s goal rows', async () => {
+    // Two goal rows for one student carrying DIFFERENT ids means the export is
+    // inconsistent, or two real children are being merged by name+grade+school.
+    // Either way it must not vanish.
+    const rows = [
+      { 0: '2000001', 1: '100001', 2: 'Alvarez', 3: 'Ana', 5: '01', 6: 'Mt Diablo Elementary School',
+        9: '05/01/2026', 11: 'Reading', 12: 'Academic #1',
+        14: 'By 5/1/2027, Ana will read 90 words per minute with 95% accuracy in 3 of 4 trials.',
+        17: 'Resource Specialist' },
+      { 0: '2000001', 1: '999999', 2: 'Alvarez', 3: 'Ana', 5: '01', 6: 'Mt Diablo Elementary School',
+        9: '05/01/2026', 11: 'Written', 12: 'Academic #2',
+        14: 'By 5/1/2027, Ana will write a personal narrative with a beginning, middle, and end.',
+        17: 'Resource Specialist' },
+    ];
+    const result = await parseCSVReport(buildSeisGoalsCsvFrom(rows), {});
+
+    // First id wins, and the clash is reported.
+    expect(result.students[0].districtStudentId).toBe('100001');
+    expect(result.warnings.some((w) => /Student ID mismatch/.test(w.message))).toBe(true);
   });
 
   describe('per-role goal filtering', () => {

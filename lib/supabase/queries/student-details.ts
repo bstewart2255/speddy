@@ -62,22 +62,39 @@ export async function getStudentDetails(studentId: string): Promise<StudentDetai
   const supabase = createClient<Database>();
 
   const fetchPerf = measurePerformanceWithAlerts('fetch_student_details', 'database');
-  const fetchResult = await safeQuery(
-    async () => {
-      const { data, error } = await supabase
-        .from('student_details')
-        .select('*')
-        .eq('student_id', studentId)
-        .limit(1)
-        .maybeSingle();
-      if (error) throw error;
-      return data;
-    },
-    { 
-      operation: 'fetch_student_details', 
-      studentId 
-    }
-  );
+  // The two reads are independent — the district student id lives on `students`
+  // (SPE-339), the rest on `student_details` — so they run together rather than
+  // costing the details modal two sequential round trips on every open.
+  const [fetchResult, idResult] = await Promise.all([
+    safeQuery(
+      async () => {
+        const { data, error } = await supabase
+          .from('student_details')
+          .select('*')
+          .eq('student_id', studentId)
+          .limit(1)
+          .maybeSingle();
+        if (error) throw error;
+        return data;
+      },
+      {
+        operation: 'fetch_student_details',
+        studentId
+      }
+    ),
+    safeQuery(
+      async () => {
+        const { data: row, error } = await supabase
+          .from('students')
+          .select('district_student_id')
+          .eq('id', studentId)
+          .maybeSingle();
+        if (error) throw error;
+        return row;
+      },
+      { operation: 'fetch_district_student_id', studentId }
+    ),
+  ]);
   fetchPerf.end({ success: !fetchResult.error });
 
   if (fetchResult.error) {
@@ -86,20 +103,6 @@ export async function getStudentDetails(studentId: string): Promise<StudentDetai
   }
 
   const data = fetchResult.data;
-
-  // SPE-339: lives on `students`, not `student_details` — see the interface.
-  const idResult = await safeQuery(
-    async () => {
-      const { data: row, error } = await supabase
-        .from('students')
-        .select('district_student_id')
-        .eq('id', studentId)
-        .maybeSingle();
-      if (error) throw error;
-      return row;
-    },
-    { operation: 'fetch_district_student_id', studentId }
-  );
   // A failed lookup must not silently become '' — the caller saves what it
   // loaded, so a swallowed error here would erase a stored id on the next save.
   if (idResult.error) {
@@ -213,6 +216,31 @@ export async function upsertStudentDetails(
   const upsertPerf = measurePerformanceWithAlerts('upsert_student_details', 'database');
   const upsertResult = await safeQuery(
     async () => {
+      // SPE-339: the district student id lives on `students`, so this save spans
+      // two tables and cannot be one statement. The id goes FIRST deliberately:
+      // it is the only part that can be rejected by a constraint (the
+      // ux_students_provider_district_student_id uniqueness backstop), so
+      // failing here leaves nothing written at all. The reverse order would
+      // commit the name/date edits and then fail, leaving a partial save behind
+      // a generic error with no way for the user to tell what landed.
+      //
+      // Blank clears the id, so an admin can remove a wrong one. NULL (not '')
+      // keeps it out of the uniqueness index.
+      const { error: idError } = await supabase
+        .from('students')
+        .update({ district_student_id: details.district_student_id?.trim() || null })
+        .eq('id', studentId);
+      if (idError) {
+        // Name the actual problem — "Failed to save" gives the user nothing to
+        // act on, and retrying the same duplicate fails identically.
+        if (idError.code === '23505') {
+          throw new Error(
+            `Student ID "${details.district_student_id?.trim()}" is already assigned to another student on your caseload. Each student needs a unique ID.`
+          );
+        }
+        throw idError;
+      }
+
       const { error } = await supabase
         .from('student_details')
         .upsert({
@@ -230,15 +258,6 @@ export async function upsertStudentDetails(
           onConflict: 'student_id'  // Add this to specify the conflict column
         });
       if (error) throw error;
-
-      // SPE-339: the district student id lives on `students`. Blank clears it,
-      // so an admin can remove a wrong id. NULL (not '') keeps it out of the
-      // uniqueness index.
-      const { error: idError } = await supabase
-        .from('students')
-        .update({ district_student_id: details.district_student_id?.trim() || null })
-        .eq('id', studentId);
-      if (idError) throw idError;
 
       return null;
     },

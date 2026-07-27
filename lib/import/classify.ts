@@ -748,15 +748,21 @@ export function buildRosterPreviews(params: {
   // Null school_id / empty currentSchoolId collapse to one bucket, matching the
   // main path and the confirm dedup key (buildSchoolScopedDedupKey).
   const existingByKey = new Map<string, RosterExistingStudentRow>();
-  // SPE-339: same school scoping, keyed by the district's student id. This is the
-  // preferred key — initials+grade is a guess that breaks the moment a student
-  // changes grade or shares initials with a classmate, while the id is stable.
+  // SPE-339: keyed by the district's student id — the preferred key, since
+  // initials+grade is a guess that breaks the moment a student changes grade or
+  // shares initials with a classmate, while the id is stable.
+  //
+  // Deliberately NOT school-scoped, unlike existingByKey above. Id uniqueness is
+  // (provider, district), so an id held by this provider's student at ANOTHER
+  // school still collides. Scoping this lookup to the active school would hide
+  // that owner, let the id through on an insert, and turn a reviewable conflict
+  // into a raw unique-violation at confirm time.
   const existingById = new Map<string, RosterExistingStudentRow>();
   for (const s of dbStudents) {
-    if ((s.school_id ?? '') !== (currentSchoolId ?? '')) continue;
-    existingByKey.set(buildStudentDedupKey(s.initials, s.grade_level), s);
     const storedId = normalizeDistrictStudentId(s.district_student_id);
     if (storedId) existingById.set(storedId, s);
+    if ((s.school_id ?? '') !== (currentSchoolId ?? '')) continue;
+    existingByKey.set(buildStudentDedupKey(s.initials, s.grade_level), s);
   }
 
   const studentPreviews: StudentPreview[] = [];
@@ -766,20 +772,34 @@ export function buildRosterPreviews(params: {
     const incomingId = normalizeDistrictStudentId(student.districtStudentId);
     const byId = incomingId ? existingById.get(incomingId) : undefined;
 
+    // An owner at a DIFFERENT school can never be this roster row's student —
+    // a roster is imported for one school — but it does own the id, so the id
+    // must not be written. Matching on it would edit the wrong school's record;
+    // ignoring it would hit the unique index at confirm time.
+    const byIdHere =
+      byId && (byId.school_id ?? '') === (currentSchoolId ?? '') ? byId : undefined;
+    const byIdElsewhere = byId && !byIdHere ? byId : undefined;
+
+    const describe = (s: RosterExistingStudentRow) =>
+      s.initials ? `${s.initials} (grade ${s.grade_level ?? '—'})` : 'another student';
+
     // The id wins when it agrees with (or is the only) signal. When the id points
     // at one student and initials+grade at another, we have no basis to choose:
     // fall back to today's initials behaviour, report the clash, and withhold the
     // id from the write rather than re-point it at the wrong child.
     let idConflict: StudentPreview['districtStudentIdConflict'];
     let existing: RosterExistingStudentRow | undefined;
-    if (byId && byKey && byId.id !== byKey.id) {
+    if (byIdElsewhere) {
       idConflict = {
         districtStudentId: incomingId,
-        existingLabel: byId.initials ? `${byId.initials} (grade ${byId.grade_level ?? '—'})` : 'another student',
+        existingLabel: `${describe(byIdElsewhere)} at another school`,
       };
       existing = byKey;
+    } else if (byIdHere && byKey && byIdHere.id !== byKey.id) {
+      idConflict = { districtStudentId: incomingId, existingLabel: describe(byIdHere) };
+      existing = byKey;
     } else {
-      existing = byId ?? byKey;
+      existing = byIdHere ?? byKey;
     }
 
     const { lastName, firstInitial } = parseTeacherName(student.teacherName || '');

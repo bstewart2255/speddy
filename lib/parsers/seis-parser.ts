@@ -227,6 +227,15 @@ export async function parseSEISReport(
             // Same rule for the district id (SPE-339).
             if (!existing.districtStudentId && districtStudentId) {
               existing.districtStudentId = districtStudentId;
+            } else if (
+              districtStudentId &&
+              existing.districtStudentId &&
+              existing.districtStudentId !== districtStudentId
+            ) {
+              warnings.push({
+                row: rowNumber,
+                message: `Student ID mismatch for ${firstName} ${lastName}: found "${districtStudentId}" but already recorded "${existing.districtStudentId}". Keeping the first — check this student in your export.`,
+              });
             }
           } else {
             // Add new student
