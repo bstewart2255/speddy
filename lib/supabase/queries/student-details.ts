@@ -86,7 +86,6 @@ export async function getStudentDetails(studentId: string): Promise<StudentDetai
   }
 
   const data = fetchResult.data;
-  if (!data) return null;
 
   // SPE-339: lives on `students`, not `student_details` — see the interface.
   const idResult = await safeQuery(
@@ -101,13 +100,35 @@ export async function getStudentDetails(studentId: string): Promise<StudentDetai
     },
     { operation: 'fetch_district_student_id', studentId }
   );
-  // A failed lookup must not blank the field on save, so surface it rather than
-  // quietly returning ''.
+  // A failed lookup must not silently become '' — the caller saves what it
+  // loaded, so a swallowed error here would erase a stored id on the next save.
   if (idResult.error) {
     console.error('Error fetching district student id:', idResult.error);
     throw idResult.error;
   }
   const districtStudentId = idResult.data?.district_student_id || '';
+
+  // A student with no `student_details` row yet (pre-existing rows, plus
+  // roster-template and manual-add students — see SPE-284) still has a district
+  // student id, because that lives on `students`. Returning null here would make
+  // the details modal fall back to a blank form and then write that blank back
+  // over a real id on the next save. So: no details row is not "nothing to
+  // show" — return the empty detail fields WITH the real id.
+  if (!data) {
+    // No details row AND no student row — the student genuinely isn't there.
+    if (!idResult.data) return null;
+    return {
+      first_name: '',
+      last_name: '',
+      date_of_birth: '',
+      district_student_id: districtStudentId,
+      upcoming_iep_date: '',
+      upcoming_triennial_date: '',
+      iep_goals: [],
+      accommodations: [],
+      goals_iep_date: undefined,
+    };
+  }
 
   // Cast to include fields added in later migrations
   const dataWithExtras = data as typeof data & {
