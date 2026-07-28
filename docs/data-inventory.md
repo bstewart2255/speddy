@@ -34,7 +34,7 @@ California Student Privacy Alliance (see SPE-59), and the companion to
 | **Communications** | Limited | Optional | Provider session/progress notes (free text) | `schedule_sessions.session_notes`, `manual_goal_progress.notes`, `care_meeting_notes` |
 | **Student Identifiers (local/state)** | **Yes (extension)** | Derived | Speddy student UUID (backend). **SEIS ID (SSID) is _not_ stored in the backend DB, but the Chrome extension persists it — with student name, grade, and school — in the provider's local browser storage (`chrome.storage.local`) when passive discrepancy detection runs.** | `students.id`; extension `chrome.storage.local` |
 | **Parent/Guardian Name** | Limited | Optional | Requesting parent/guardian's name + relationship on Lane B (parent-written-request) CARE referrals | `care_referrals.requested_by` |
-| **Parent/Guardian Contact** | **No** | — | No parent/guardian address / email / phone | — |
+| **Parent/Guardian Contact** | **No** | — | No dedicated address / email / phone fields (none collected by design; free-text fields such as `requested_by` are not validated against incidentally entered contact details) | — |
 | **Student Contact Info** | **No** | — | No student email / phone / address | — |
 | **Student Survey Responses** | **No** | — | — | — |
 | **Transcript / official grades** | **No** | — | Grade level only; no transcript/GPA | — |
