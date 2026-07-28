@@ -49,6 +49,12 @@ only real controls (the SPE-134 principle).
 > documented incident response plan providing 72-hour breach notification to
 > the LEA consistent with Article V §4.
 
+**Prerequisite for this paragraph:** the subprocessor-agreements sentence
+must be true when the corrected PDF leaves the building. OpenAI, Anthropic,
+Help Scout, and Vercel (Pro since 2026-07-28) are in place; the **Supabase
+DPA signing and Sentry DPA acceptance (§8 item 2) must be completed before
+sending** — they are two self-serve click-throughs, not negotiations.
+
 ---
 
 ## 2. Exhibit B — Schedule of Data corrections (pp. 11–16) — **must fix**
@@ -285,6 +291,8 @@ collected."
    records file; sanity-check the two daily crons on Pro.
 2. ☐ Sign the Supabase DPA (dashboard → Organization → Legal Documents);
    accept the Sentry DPA (Settings → Legal & Compliance). ~15 min total.
+   **Prerequisite for the Exhibit F representation in §1 — do before the
+   corrected PDF is sent anywhere.**
 3. ☐ Apply §§1–6 above to the PDF, then send to counsel with
    `attorney-review-brief.md` (its enclosure list) + this fix sheet.
 4. ☐ SPE-172 — CITE Exhibit H question; now more relevant since this draft
