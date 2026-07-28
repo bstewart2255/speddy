@@ -19,7 +19,7 @@ Contra Costa County, CA · NCES LEA `0618990` · <https://www.jsusd.org>.
 | 3 | **Terms of Service** | Public terms | speddy.xyz/terms | Live |
 | 4 | **FERPA Notice** | FERPA "school official" posture | speddy.xyz/ferpa | Live |
 | 5 | **Incident Response Plan** | Written IR plan (breach detection, 72-hr LEA notice) | `docs/incident-response-plan.md` | Ready — share on request (quick DPO glance first) |
-| 6 | **CA-NDPA** | The agreement the district signs, via CITE / CSPA | CITE/CSPA fillable form | Draft filled; pre-signing items open (§3) |
+| 6 | **CA-NDPA** | The agreement the district signs, via CITE / CSPA | CITE/CSPA fillable form | Draft filled; **corrections required before sending — see `docs/ndpa/jsusd-dpa-fix-sheet.md`**; pre-signing items open (§3) |
 
 **Available on request** (usually only if their team digs deeper): data inventory
 (`docs/data-inventory.md`), subprocessor register (`docs/subprocessors.md`),
@@ -47,9 +47,9 @@ secondary-school experience; Rodeo Hills gets the full elementary experience.
 
 ## 3. Pre-signing items (close before John Swett *signs* — not before they review)
 
-- **Vercel Hobby → Pro upgrade (SPE-173, open).** The hosting DPA only applies to
-  Pro/Enterprise; a commercial pilot needs Pro. Real blocker for subprocessor
-  flow-down.
+- **Vercel Hobby → Pro upgrade — DONE 2026-07-28** (owner-confirmed; SPE-173).
+  The hosting DPA (incorporated via ToS on Pro) now applies. Remaining
+  housekeeping: save the DPA copy to the records file; sanity-check crons on Pro.
 - **Attorney FERPA/COPPA sign-off.** The attorney review brief is prepared; final
   counsel sign-off should be confirmed on record.
 - **Subprocessor DPA housekeeping.** OpenAI/Anthropic done (SPE-163). Confirm the
