@@ -155,7 +155,8 @@ Check exactly these; leave everything else unchecked.
 | Enrollment | Student grade level | ☑ | `students.grade_level` |
 | Enrollment | Specific curriculum programs | ☑ (SPIRE / Reveal Math curriculum tracking) | `curriculum_tracking` |
 | Enrollment | Homeroom / Guidance counselor / Year of graduation / Other | ☐ | — |
-| Parent/Guardian Contact, ID, Name | all | ☐ — not collected | `data-inventory.md` §A |
+| Parent/Guardian Contact, ID | all | ☐ — not collected | `data-inventory.md` §A |
+| Parent/Guardian Name | First and/or last | ☑ (limited: requesting parent/guardian's name + relationship on Lane B CARE referrals — corrected 2026-07-28, was ☐) | `care_referrals.requested_by`; `data-inventory.md` §A |
 | Schedule | Student scheduled courses | ☑ (special-education service sessions: day/time, service type, group) | `schedule_sessions`, `bell_schedules`, `special_activities` |
 | Schedule | Teacher names | ☑ | `students.teacher_name`, `teachers` |
 | Special Indicator | Student disability information | ☑ | `care_cases.eligibility_category/outcome`, `student_details` |

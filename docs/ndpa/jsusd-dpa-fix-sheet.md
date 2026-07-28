@@ -64,13 +64,22 @@ All checkboxes below are in the first column ("ALL DPA-COVERED APPS").
 | 11 | Assessment — Observation data | `Check Box60` | **[ATTORNEY]** Decided framing (brief item 4b): leave unchecked; provider notes are disclosed under "Other" (§2c below). |
 | 12 | Demographics — Gender | `Check Box93` | Not collected (no race/ethnicity/gender). |
 | 12 | Demographics — Language information | `Check Box95` | Not collected. |
-| 13 | Parent/Guardian Contact — Address | `Check Box182` | No parent/guardian data collected at all. |
+| 13 | Parent/Guardian Contact — Address | `Check Box182` | No parent/guardian contact information collected. |
 | 13 | Parent/Guardian Contact — Email | `Check Box189` | Same. |
 | 13 | Parent/Guardian Contact — Phone | `Check Box196` | Same. |
-| 13 | Parent/Guardian Name — First and/or last | `Check Box216` | Same. |
 | 13 | Special Indicator — English language learner information | `Check Box231` | Not collected. |
 | 14 | Student Contact Information — Address | `Check Box280` | No student contact info collected. |
 | 14 | Student Identifiers — Local (school district) ID number | `Check Box289` | Not collected. Speddy's UUID is the "Provider/app assigned" row (already checked); the SEIS SSID is the "State ID" row. |
+
+**Keep checked: Parent/Guardian Name (p. 13, `Check Box216`).** The draft
+has this one right — confirmed in code during review: Lane B
+(parent-written-request) CARE referrals collect the requesting
+parent/guardian's **name and relationship**
+(`care_referrals.requested_by`, migration
+`20260516_care_lane_b_compliance.sql`; entered in
+`add-referral-modal.tsx`). The June data-inventory sweep missed this
+column — now corrected in `data-inventory.md`. The CARE specify text in
+§2b discloses it. (Caught by Codex review on PR #788.)
 
 ### 2b. CHECK — elements Speddy does collect that the draft missed
 
@@ -78,7 +87,7 @@ All checkboxes below are in the first column ("ALL DPA-COVERED APPS").
 |---|---|---|---|
 | 11 | Application Technology Meta Data — Other | `Check Box8` | In `Text448`: *"Browser user agent, device type, and product-usage event metadata (event type, timestamps, processing time, error codes)."* |
 | 11 | Assessment — Standardized test scores | `Check Box28` | — (mClass, STAR, WISC-V, BRIEF etc. in `student_assessments`) |
-| 13 | Special Indicator — Other indicator information | `Check Box237` | In `Text476` (top of p. 14): *"Special-education referral and eligibility-process records: referral reason and source; academic/speech/psych/OT testing dates and completion status; eligibility meeting dates and outcomes; SST notes links."* |
+| 13 | Special Indicator — Other indicator information | `Check Box237` | In `Text476` (top of p. 14): *"Special-education referral and eligibility-process records: referral reason and source; academic/speech/psych/OT testing dates and completion status; eligibility meeting dates and outcomes; SST notes links; and, for parent/guardian-initiated (Lane B) referrals, the requesting parent/guardian's name and relationship."* |
 | 15 | Student Work — Student generated content | `Check Box358` | — (scanned worksheet images in Supabase Storage) |
 | 15 | Student Work — Other student work data | `Check Box359` | In `Text483`: *"Documents uploaded by providers that may pertain to students (e.g., rosters, IEP-related documents); generated worksheets/lessons associated with students."* |
 
@@ -264,7 +273,8 @@ Exhibit B rows: IP addresses/cookies, application-use statistics, class
 attendance (not daily), conduct/behavioral (limited), date of birth,
 school enrollment, grade level, curriculum programs, scheduled courses,
 teacher names, disability information, IEP/504 services, provider-assigned
-ID, State ID (with §2c note), student name, in-app performance, "Other data
+ID, State ID (with §2c note), student name, parent/guardian name (limited —
+Lane B CARE requester, see §2a note), in-app performance, "Other data
 collected."
 
 ## 8. Pre-signing checklist (state as of 2026-07-28)
