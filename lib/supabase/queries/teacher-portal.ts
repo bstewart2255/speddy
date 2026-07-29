@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/client';
 import { safeQuery } from '@/lib/supabase/safe-query';
 import { measurePerformanceWithAlerts } from '@/lib/monitoring/performance-alerts';
 import { requireNonNull } from '@/lib/types/utils';
+import { getCurrentSchoolYear } from '@/lib/school-year';
 import type { Database } from '../../../src/types/database';
 
 type Student = Database['public']['Tables']['students']['Row'];
@@ -300,6 +301,11 @@ export async function createSpecialActivity(activityData: {
           created_by_role: 'teacher',
           created_by_id: user.id,
           provider_id: null,  // School-wide, not owned by specific provider
+          // Without this the row takes the column default, which is the
+          // hardcoded '2025-2026'. The provider Special Activities page filters
+          // on getCurrentSchoolYear(), so a defaulted row silently vanishes from
+          // it the moment the school year rolls over on August 1.
+          school_year: getCurrentSchoolYear(),
         }])
         .select()
         .single();
