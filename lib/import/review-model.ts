@@ -17,6 +17,8 @@ import type {
   BulkPreviewData,
   TargetPreviewData,
   IepDatesPreview,
+  ChildMatchOffer,
+  ChildMatchConflict,
 } from '@/lib/types/student-import';
 
 // The preview/confirm wire contract lives in one shared module (SPE-236) so the
@@ -81,6 +83,12 @@ export interface ReviewRow {
   /** Set when that id already belongs to a different child — surfaced as an
    *  exception and withheld from the write (SPE-339). */
   districtStudentIdConflict?: { districtStudentId: string; existingLabel: string };
+  /** A child a colleague at this school already serves that this NEW row looks
+   *  like (SPE-348). Surfaced as an answerable exception; nothing is linked
+   *  unless the importer says so. */
+  childMatch?: ChildMatchOffer;
+  /** Found something, but not something we're willing to offer (SPE-348). */
+  childMatchConflict?: ChildMatchConflict;
 }
 
 export interface ReviewFileReceipt {
@@ -107,6 +115,20 @@ export type ReviewException =
       studentLabel: string;
       districtStudentId: string;
       existingLabel: string;
+    }
+  // SPE-348: the one answerable exception that writes something. Everything else
+  // in this queue either resolves a field or is informational.
+  | {
+      kind: 'possible-shared-child';
+      rowId: string;
+      studentLabel: string;
+      match: ChildMatchOffer;
+    }
+  | {
+      kind: 'shared-child-not-offered';
+      rowId: string;
+      studentLabel: string;
+      conflict: ChildMatchConflict;
     };
 
 export interface ReviewSummary {
@@ -202,6 +224,10 @@ function toReviewRow(student: BulkStudentPreview, srcIndex: number): ReviewRow {
     iepDates: student.iepDates,
     districtStudentId: student.districtStudentId,
     districtStudentIdConflict: student.districtStudentIdConflict,
+    // SPE-348 — only ever set by the producer on an insert row, but pinned here
+    // too: an offer on an update row would be a merge, which nothing does.
+    childMatch: action === 'insert' ? student.childMatch : undefined,
+    childMatchConflict: action === 'insert' ? student.childMatchConflict : undefined,
     goals,
     goalsRemoved,
     targetStudentId,
@@ -258,6 +284,24 @@ export function adaptBulkPreview(data: BulkPreviewData): ReviewModel {
         studentLabel: row.displayName,
         districtStudentId: row.districtStudentIdConflict.districtStudentId,
         existingLabel: row.districtStudentIdConflict.existingLabel,
+      });
+    }
+    // SPE-348: this new student may be a child a colleague already serves. An
+    // offer, answered by a human — an unanswered one imports as a separate child.
+    if (row.childMatch) {
+      exceptions.push({
+        kind: 'possible-shared-child',
+        rowId: row.id,
+        studentLabel: row.displayName,
+        match: row.childMatch,
+      });
+    } else if (row.childMatchConflict) {
+      // Never both: the RPC returns a conflict INSTEAD of an offer.
+      exceptions.push({
+        kind: 'shared-child-not-offered',
+        rowId: row.id,
+        studentLabel: row.displayName,
+        conflict: row.childMatchConflict,
       });
     }
   }

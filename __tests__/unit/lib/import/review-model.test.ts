@@ -230,3 +230,111 @@ describe('adaptTargetStudentPreview (SPE-232)', () => {
     });
   });
 });
+
+describe('adaptBulkPreview — create-or-attach offers (SPE-348)', () => {
+  const offer = {
+    childId: 'child-1',
+    reason: 'district-student-id' as const,
+    gradeLevel: '5',
+    districtStudentId: '100482',
+    providerName: 'Emily Chen',
+    providerRole: 'speech',
+  };
+
+  it('turns an offer on a new student into an answerable exception', () => {
+    const data: BulkPreviewData = {
+      students: [
+        {
+          firstName: 'Maya',
+          lastName: 'Gonzalez',
+          initials: 'MG',
+          gradeLevel: '5',
+          action: 'insert',
+          goals: [{ text: 'Read 90 wpm' }],
+          childMatch: offer,
+        },
+      ],
+      summary: { total: 1, inserts: 1, updates: 0, skips: 0 },
+    };
+
+    const model = adaptBulkPreview(data);
+
+    expect(model.rows[0].childMatch).toEqual(offer);
+    expect(model.exceptions).toEqual([
+      {
+        kind: 'possible-shared-child',
+        rowId: 'new:0',
+        studentLabel: 'Maya Gonzalez',
+        match: offer,
+      },
+    ]);
+  });
+
+  it('reports an ambiguous or contested match without offering it', () => {
+    const data: BulkPreviewData = {
+      students: [
+        {
+          firstName: 'Maya',
+          lastName: 'Gonzalez',
+          initials: 'MG',
+          gradeLevel: '5',
+          action: 'insert',
+          goals: [],
+          childMatchConflict: { kind: 'ambiguous', count: 2 },
+        },
+      ],
+      summary: { total: 1, inserts: 1, updates: 0, skips: 0 },
+    };
+
+    const model = adaptBulkPreview(data);
+
+    expect(model.rows[0].childMatch).toBeUndefined();
+    expect(model.exceptions).toEqual([
+      {
+        kind: 'shared-child-not-offered',
+        rowId: 'new:0',
+        studentLabel: 'Maya Gonzalez',
+        conflict: { kind: 'ambiguous', count: 2 },
+      },
+    ]);
+  });
+
+  it('never offers on an update row — re-pointing an existing caseload row is a merge', () => {
+    const data: BulkPreviewData = {
+      students: [
+        {
+          firstName: 'Maya',
+          lastName: 'Gonzalez',
+          initials: 'MG',
+          gradeLevel: '5',
+          action: 'update',
+          matchedStudentId: 'stu-1',
+          goals: [],
+          childMatch: offer,
+          childMatchConflict: { kind: 'ambiguous', count: 2 },
+        },
+      ],
+      summary: { total: 1, inserts: 0, updates: 1, skips: 0 },
+    };
+
+    const model = adaptBulkPreview(data);
+
+    expect(model.rows[0].childMatch).toBeUndefined();
+    expect(model.rows[0].childMatchConflict).toBeUndefined();
+    expect(model.exceptions).toEqual([]);
+  });
+
+  it('leaves every other import untouched — no offer, no exception', () => {
+    const data: BulkPreviewData = {
+      students: [
+        { firstName: 'Jane', lastName: 'Doe', initials: 'JD', gradeLevel: '3', action: 'insert', goals: [] },
+      ],
+      summary: { total: 1, inserts: 1, updates: 0, skips: 0 },
+    };
+
+    const model = adaptBulkPreview(data);
+
+    expect(model.rows[0].childMatch).toBeUndefined();
+    expect(model.exceptions).toEqual([]);
+  });
+});

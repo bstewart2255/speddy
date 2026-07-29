@@ -8,7 +8,11 @@
  * consumed by the review UI).
  */
 import type { DatabaseStudent } from '@/lib/utils/student-matcher';
-import type { IepDatesPreview } from '@/lib/types/student-import';
+import type {
+  ChildMatchConflict,
+  ChildMatchOffer,
+  IepDatesPreview,
+} from '@/lib/types/student-import';
 
 /** Awaited server Supabase client type, without a runtime import of the module. */
 export type ImportSupabaseClient = Awaited<
@@ -84,6 +88,11 @@ export interface StudentPreview {
   /** The incoming id is already on file against a different child (SPE-339).
    *  Surfaced in the review queue; the id itself is not carried to the write. */
   districtStudentIdConflict?: { districtStudentId: string; existingLabel: string };
+  /** "Same child?" offer for a NEW row that looks like a child another provider
+   *  at this school already serves (SPE-348). Attached by attachChildMatches. */
+  childMatch?: ChildMatchOffer;
+  /** Why the match was reported but not offered (SPE-348). */
+  childMatchConflict?: ChildMatchConflict;
 }
 
 /**

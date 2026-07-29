@@ -48,6 +48,7 @@ import {
   summarizePreviews,
 } from '@/lib/import/respond';
 import type { ImportSupabaseClient } from '@/lib/import/preview-types';
+import { attachChildMatches } from '@/lib/import/child-match';
 import { createNormalizedKey } from '@/lib/parsers/name-utils';
 
 type Perf = ReturnType<typeof measurePerformanceWithAlerts>;
@@ -376,6 +377,10 @@ export async function runStudentsPreview(ctx: PipelineContext, file: File): Prom
     matchedIepDatesNames,
   );
 
+  // SPE-348: ask whether any of the NEW rows are a child a colleague at this
+  // school already serves, so the review screen can offer "same child?".
+  await attachChildMatches({ supabase, userId, schoolId: currentSchoolId, previews: studentPreviews });
+
   const counts = summarizePreviews(studentPreviews);
   track.event('student_import_preview_generated', {
     userId,
@@ -431,6 +436,15 @@ async function runRosterTemplatePreview(
     dbStudents: dbStudents || [],
     currentSchoolId: form.currentSchoolId,
     dbTeachers,
+  });
+
+  // SPE-348, same as the main path. Roster rows carry no names, so they can only
+  // reach the id rung or the initials+grade+teacher fallback.
+  await attachChildMatches({
+    supabase,
+    userId,
+    schoolId: form.currentSchoolId,
+    previews: studentPreviews,
   });
 
   const insertCount = studentPreviews.filter(s => s.action === 'insert').length;

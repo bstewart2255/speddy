@@ -426,7 +426,7 @@ export default function StudentsPage() {
               checkUnscheduledSessions();
             }}
             onConfirm={async ({ rows }) => {
-              const students = rows.map(({ row, initials, selectedGoalTexts }) => ({
+              const students = rows.map(({ row, initials, selectedGoalTexts, confirmedChildId }) => ({
                 firstName: row.firstName,
                 lastName: row.lastName,
                 initials,
@@ -451,6 +451,10 @@ export default function StudentsPage() {
                 // when the file carried none, or when the id was disputed — the
                 // preview drops a conflicting id rather than re-pointing it.
                 districtStudentId: row.districtStudentId,
+                // Create-or-attach (SPE-348): present only when the importer
+                // answered "same child" on an offer the preview made. The server
+                // re-validates it, so this is a claim rather than an instruction.
+                confirmedChildId,
               }));
 
               const response = await fetch('/api/import-students/confirm', {

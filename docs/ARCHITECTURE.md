@@ -523,22 +523,61 @@ erDiagram
   holds one row per provider per child. Cross-district recurrence stays legal.
 - **Rows are created by the database, never by a caller.** A `BEFORE INSERT`
   trigger (`trg_students_child_link` → `students_child_link()`, SECURITY DEFINER)
-  creates the child for every new `students` row. Manual add, roster import and
-  `upsert_students_atomic` were not modified.
-  **It never attaches to an existing child**, deliberately: an earlier cut did
-  attach when `(district_id, district_student_id)` matched, and because both
-  columns are client-supplied and unconstrained (`students_insert` pins only
-  `provider_id`), any provider could link themselves to any child in any
-  district and read or overwrite its name and DOB — verified exploitable on a
-  replica before merge. When the claimed id is already held in that district,
-  the trigger creates this provider's child **without** it and logs the
-  collision; the caseload row still lands, and the two children stay separate
-  until the human-confirmed create-or-attach step (**SPE-348**) reconciles them.
+  creates the child for every new `students` row. Manual add and roster import
+  were not modified. **It never attaches to an existing child on its own**,
+  deliberately: an earlier cut attached when `(district_id, district_student_id)`
+  matched, and because both columns are client-supplied and unconstrained
+  (`students_insert` pins only `provider_id`), any provider could link themselves
+  to any child in any district and read or overwrite its name and DOB — verified
+  exploitable on a replica before merge. When the claimed id is already held in
+  that district, the trigger creates this provider's child **without** it and
+  logs the collision; the caseload row still lands and the two children stay
+  separate until a human reconciles them at import (create-or-attach, below).
 - **`child_id` is not the caller's to set.** The same trigger refuses (`42501`)
   any attempt by an end-user session to set or change it. `students_insert`'s
   `WITH CHECK` only constrains `provider_id`, so without that guard a signed-in
   user could insert a throwaway caseload row carrying someone else's `child_id`
-  and inherit that child's read **and write** access.
+  and inherit that child's read **and write** access. Re-pointing an *existing*
+  caseload row is refused outright, with no exception — that is a merge, and
+  nothing in the plan merges.
+- **Create-or-attach: the one door, and it needs a human (SPE-348).** At import,
+  a **new** row that looks like a child a colleague at the same school already
+  serves surfaces a "same child?" offer in the review screen's *Needs your
+  review* queue. Answering yes sends the child id to
+  `upsert_students_atomic`, which **re-validates the claim** before honouring it
+  — the client's word is never enough. Declining, or ignoring the offer, creates
+  a fresh child exactly as before. Nothing auto-attaches and nothing auto-merges.
+  - **One ladder, two callers.** `import_child_candidates(school_id, rows)` holds
+    the matching: `district_student_id` → full name + grade → initials + grade +
+    teacher (the SPE-339 precedence, the rungs
+    `matching_provider_student_ids` already uses). The offer
+    (`find_shared_child_candidates`, which adds the co-serving provider's name +
+    role) and the write-time re-validation both call it, so the screen and the
+    database cannot disagree about what "matches". Candidates are children **at
+    that school, served by another provider, not already served by the caller**.
+  - **The offer is narrower than the guard.** An ambiguous match (two candidate
+    children) or an id-vs-name disagreement is *reported* and never offered —
+    SPE-339's conflict rule. Validation refuses a contested row outright, but
+    otherwise accepts any candidate for the row rather than only the unique one,
+    so a second candidate appearing between preview and confirm can't turn a
+    human's correct answer into a hard error.
+  - **How the validated id gets past the trigger.** `upsert_students_atomic` sets
+    a transaction-local `app.spe348_confirmed_child_id` to the exact validated id
+    immediately before its INSERT, and the trigger honours `child_id` only when
+    it matches. Not forgeable from a client: `set_config` lives in `pg_catalog`
+    (not exposed by PostgREST), no exposed RPC sets a caller-controlled GUC, and
+    `is_local` scopes it to the transaction — and PostgREST gives every request
+    its own. Everything else still gets the flat `42501`.
+  - **Scope is the school, not the district.** The ticket said "same
+    school/district", but `students.district_id` is stamped from the importing
+    provider's profile and is inconsistent in production (one school carries
+    three distinct values, two of them on one provider's own rows, plus NULLs).
+    Gating on it would suppress exactly the legitimate offers this exists to make
+    while adding nothing: a school belongs to one district.
+  - **Not covered:** manual add (the students page) — it writes through a
+    different path and would be a second user-visible surface; split out per the
+    ticket's own escape hatch. Also unchanged: the update-only import mode, which
+    creates no new caseload rows.
 - **Dual-write.** `AFTER` triggers mirror child facts from `students` and
   `student_details` onto the linked child. Last write wins, but **NULL never
   overwrites** — writes on both tables are routinely partial (the import RPC
@@ -585,10 +624,13 @@ erDiagram
   the cross-provider read-switch step, not this one (§7).
 
 **Source of truth:** `supabase/migrations/20260729_spe347_children_foundation.sql`
-+ `20260729_spe347_children_hardening.sql`;
++ `20260729_spe347_children_hardening.sql`
++ `20260729_spe348_import_create_or_attach.sql`;
 live `children` table + `children_select` / `children_update` policies;
 `students_child_link()`, `students_mirror_child_facts()`,
-`student_details_mirror_child_facts()`; `scripts/sim-district/manifest.ts`
+`student_details_mirror_child_facts()`, `import_child_candidates()`,
+`find_shared_child_candidates()`, `upsert_students_atomic()`;
+`lib/import/child-match.ts`; `scripts/sim-district/manifest.ts`
 (`childKey` / `childId` / `TOTAL_CHILDREN`).
 
 ### The session tables
