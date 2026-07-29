@@ -369,18 +369,23 @@ scripts/sim-district/
                     seeded AND swept tables (must be 0); always read-only
 ```
 
-npm scripts: `sim:reset`, `sim:teardown`, `sim:verify` (all `npx tsx`), plus the
-real-signed-in-session guards that mocked unit tests structurally cannot cover —
-`sim:verify-rls` (`profiles`), `sim:verify-children-rls` (SPE-347 `children` RLS
-+ the child-link trigger) and `sim:verify-child-link` (SPE-348: the server
-re-validating a claimed create-or-attach). Those three sign in as personas, so
-they need `SIM_DISTRICT_PASSWORD` too, and the last two write sim rows — re-seed
-afterwards to restore a pristine fixture.
-Env requirements are scoped per command: all three need
-`NEXT_PUBLIC_SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`;
-`SIM_DISTRICT_PASSWORD` is required **only** by `sim:reset` (it sets persona
-passwords) — read-only `sim:verify` and delete-only `sim:teardown` never
-receive the credential secret.
+npm scripts: the three lifecycle commands `sim:reset`, `sim:teardown`,
+`sim:verify`, plus the **signed-in-session guards** that mocked unit tests
+structurally cannot cover (they see no RLS policy, trigger or SECURITY DEFINER
+guard at all): `sim:verify-rls` (`profiles`), `sim:verify-children-rls`
+(SPE-347 `children` RLS + the child-link trigger) and `sim:verify-child-link`
+(SPE-348: the server re-validating a claimed create-or-attach). All `npx tsx`.
+The two `children` guards write sim rows — re-seed afterward to restore a
+pristine fixture.
+
+Env requirements are scoped per command. Every command needs
+`NEXT_PUBLIC_SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`. Beyond that:
+
+| command | also needs | why |
+|---|---|---|
+| `sim:reset` | `SIM_DISTRICT_PASSWORD` | it sets the persona passwords |
+| `sim:verify`, `sim:teardown` | — | read-only / delete-only, so they never receive the credential secret |
+| the three `sim:verify-*` guards | `SIM_DISTRICT_PASSWORD` + `NEXT_PUBLIC_SUPABASE_ANON_KEY` | they sign IN as personas, which needs the same derived password and a client-side key |
 
 **Preflight, before any write.** Scripts hard-fail unless: **(a)** the
 project ref extracted from `NEXT_PUBLIC_SUPABASE_URL` equals the ref pinned

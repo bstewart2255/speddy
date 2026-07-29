@@ -88,14 +88,32 @@ async function childOf(providerId: string, initials: string): Promise<string | n
   return (data?.child_id as string | undefined) ?? null;
 }
 
-/** A caseload row's child at a given school, owned by someone other than `notProvider`. */
+/**
+ * A child at `schoolId` that `notProvider` does NOT already serve.
+ *
+ * Filtering only the selected ROW's provider is not enough: the fixture
+ * deliberately models co-served children (Tomás's first two Willow students are
+ * Rachel's, spec §6), so a row owned by someone else can still point at a child
+ * the caller has their own row for. Picking one of those would make the forged
+ * claims below refuse because the candidate set excludes children you already
+ * serve — the right answer for the wrong reason, and the check would stay green
+ * even if the school scoping and matcher agreement it is meant to test were
+ * gone. Exclude by CHILD, not by row.
+ */
 async function someChildAt(schoolId: string, notProvider: string): Promise<string> {
+  const { data: mine } = await admin
+    .from('students').select('child_id').eq('provider_id', notProvider).not('child_id', 'is', null);
+  const alreadyServed = new Set((mine ?? []).map(r => r.child_id as string));
+
   const { data, error } = await admin
     .from('students').select('child_id')
     .eq('school_id', schoolId).neq('provider_id', notProvider)
-    .not('child_id', 'is', null).limit(1).single();
+    .not('child_id', 'is', null);
   if (error) throw new Error(`no child found at ${schoolId}: ${error.message}`);
-  return data.child_id as string;
+
+  const candidate = (data ?? []).map(r => r.child_id as string).find(id => !alreadyServed.has(id));
+  if (!candidate) throw new Error(`no unserved child at ${schoolId} — fixture drifted?`);
+  return candidate;
 }
 
 const REFUSED_348 = /Confirmed child link refused/;
