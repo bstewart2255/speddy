@@ -4622,6 +4622,10 @@ export type Database = {
           start_time: string
         }[]
       }
+      find_shared_child_candidates: {
+        Args: { p_school_id: string; p_rows: Json }
+        Returns: Json
+      }
       find_school_ids_by_names: {
         Args: {
           p_school_district_name: string

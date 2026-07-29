@@ -187,6 +187,23 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
           continue;
         }
 
+        // Reject a malformed confirmed child id here, before anything is queued
+        // (SPE-348). upsert_students_atomic casts it to uuid inside its per-row
+        // block, so a bad value would surface as a raw SQL cast error instead of
+        // a legible one — and this check has to run BEFORE the batchPayload push
+        // below, since bailing out after it would desynchronize batchPayload from
+        // batchPending and misfile every later row's result.
+        if (student.confirmedChildId && !UUID_REGEX.test(student.confirmedChildId)) {
+          results[index] = {
+            success: false,
+            initials: initialsNormalized,
+            action: 'error',
+            error: 'Invalid confirmed child id'
+          };
+          errorCount++;
+          continue;
+        }
+
         // Determine school context up front so the duplicate key is school-aware
         // (matches the (provider, school_id, grade, initials) DB uniqueness, SPE-269).
         // Priority: student-specific (current school selection) > user profile > null.
@@ -346,7 +363,14 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
             upcomingIepDate: student.upcomingIepDate ?? null,
             upcomingTriennialDate: student.upcomingTriennialDate ?? null,
             // District Student ID (SPE-339). Null when the file carried none.
-            districtStudentId: student.districtStudentId ?? null
+            districtStudentId: student.districtStudentId ?? null,
+            // Create-or-attach (SPE-348). Presence-keyed and INSERT-only:
+            // attaching an EXISTING caseload row to another child would be a
+            // merge, which nothing in this plan does — the update branch above
+            // never sends it. Passed through untrusted; upsert_students_atomic
+            // re-validates the claim against the same matcher the offer used and
+            // refuses the row (42501) if it doesn't hold.
+            ...(student.confirmedChildId ? { childId: student.confirmedChildId } : {})
           });
           addedInThisBatch.add(duplicateKey);
         }

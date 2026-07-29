@@ -1,7 +1,7 @@
 'use client';
 
 import type { ReviewException } from '@/lib/import/review-model';
-import { ReviewExceptionRow, type TeacherResolution } from './review-exception-row';
+import { ReviewExceptionRow, type ChildLinkChoice, type TeacherResolution } from './review-exception-row';
 
 /**
  * Zone 3 (SPE-227): the exceptions queue — first-class rows for everything that
@@ -13,12 +13,17 @@ interface ReviewExceptionsQueueProps {
   exceptions: ReviewException[];
   teacherOverrides: Record<string, TeacherResolution>;
   onResolveTeacher: (rowId: string, teacherId: string | null, teacherName: string | null) => void;
+  /** SPE-348: answers to the "same child?" offers, keyed by review row id. */
+  childLinkChoices: Record<string, ChildLinkChoice>;
+  onResolveChildLink: (rowId: string, choice: ChildLinkChoice) => void;
 }
 
 export function ReviewExceptionsQueue({
   exceptions,
   teacherOverrides,
   onResolveTeacher,
+  childLinkChoices,
+  onResolveChildLink,
 }: ReviewExceptionsQueueProps) {
   if (exceptions.length === 0) return null;
 
@@ -38,6 +43,10 @@ export function ReviewExceptionsQueue({
               exception.kind === 'low-confidence-teacher' ? teacherOverrides[exception.rowId] : undefined
             }
             onResolveTeacher={onResolveTeacher}
+            childLinkChoice={
+              exception.kind === 'possible-shared-child' ? childLinkChoices[exception.rowId] : undefined
+            }
+            onResolveChildLink={onResolveChildLink}
           />
         ))}
       </ul>

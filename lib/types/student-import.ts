@@ -89,6 +89,40 @@ export interface BulkStudentPreview {
    *  The id is withheld from the write and the clash is raised in the review
    *  queue for a human to resolve. */
   districtStudentIdConflict?: { districtStudentId: string; existingLabel: string };
+  /** A child already served by another provider at this school that this NEW
+   *  row looks like (SPE-348). An offer, never a decision: nothing links unless
+   *  the importer says "same child". Only ever set on `action: 'insert'` rows. */
+  childMatch?: ChildMatchOffer;
+  /** Why no offer was made even though something was found (SPE-348) — an
+   *  ambiguous match or a Student ID that points at a differently-named child.
+   *  Reported in the review queue; the row imports as a separate child. */
+  childMatchConflict?: ChildMatchConflict;
+}
+
+/** How an incoming row matched an existing child (SPE-348), strongest first. */
+export type ChildMatchReason = 'district-student-id' | 'name-grade' | 'initials-grade-teacher';
+
+/**
+ * The "same child?" offer for one incoming row (SPE-348). Produced by the
+ * `find_shared_child_candidates` RPC, which only ever offers an unambiguous,
+ * uncontested match — so the review screen renders it as a straight yes/no.
+ */
+export interface ChildMatchOffer {
+  childId: string;
+  reason: ChildMatchReason;
+  /** The child's grade, for the review copy ("a 5th grader"). */
+  gradeLevel: string | null;
+  /** The district Student ID that matched, when the match was made on one. */
+  districtStudentId: string | null;
+  /** The co-serving provider — name and role, per the owner's 2026-07-29 call. */
+  providerName: string | null;
+  providerRole: string | null;
+}
+
+export interface ChildMatchConflict {
+  kind: 'ambiguous' | 'id-name-disagreement';
+  /** How many children could be this student. Only set for 'ambiguous'. */
+  count?: number;
 }
 
 export interface BulkFileReceipt {
@@ -173,6 +207,13 @@ export interface StudentToImport {
    * import without ids never erases a stored id.
    */
   districtStudentId?: string;
+  /**
+   * The child the importer confirmed this new student IS (SPE-348). Sent only
+   * after an explicit "same child" click on an offer the preview made, and only
+   * on an insert row. The server re-validates it against the same matcher before
+   * honouring it, so this is a claim, not an instruction.
+   */
+  confirmedChildId?: string;
   /** Defaults to 'insert' server-side for backward compatibility. */
   action?: RowAction;
   /** Required for the 'update' action. */

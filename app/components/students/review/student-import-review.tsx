@@ -8,7 +8,7 @@ import { useReviewSelection } from './use-review-selection';
 import { ReviewSummaryBar } from './review-summary-bar';
 import { ReviewFileReceipts } from './review-file-receipts';
 import { ReviewExceptionsQueue } from './review-exceptions-queue';
-import type { TeacherResolution } from './review-exception-row';
+import type { ChildLinkChoice, TeacherResolution } from './review-exception-row';
 import { ReviewTable } from './review-table';
 
 /**
@@ -20,6 +20,12 @@ export interface ReviewConfirmRow {
   row: ReviewRow;
   initials: string;
   selectedGoalTexts: string[];
+  /**
+   * The child the importer explicitly confirmed this new student IS (SPE-348).
+   * Set only on an answered "Yes — same child"; absent for an unanswered or
+   * declined offer, which imports a separate child exactly as today.
+   */
+  confirmedChildId?: string;
 }
 export interface ReviewConfirmSelection {
   rows: ReviewConfirmRow[];
@@ -55,6 +61,9 @@ export function StudentImportReview({
   // Per-student IEP import merges goals (adds, never removes); bulk replaces.
   const isMerge = model.writeMode === 'merge';
   const [teacherOverrides, setTeacherOverrides] = useState<Record<string, TeacherResolution>>({});
+  // SPE-348: answers to the "same child?" offers. Absent = unanswered = a
+  // separate child, so this never needs seeding and an ignored offer is safe.
+  const [childLinkChoices, setChildLinkChoices] = useState<Record<string, ChildLinkChoice>>({});
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // After a partial failure the modal stays open on the error and collapses to
@@ -68,6 +77,10 @@ export function StudentImportReview({
 
   const resolveTeacher = (rowId: string, teacherId: string | null, teacherName: string | null) => {
     setTeacherOverrides((prev) => ({ ...prev, [rowId]: { teacherId, teacherName } }));
+  };
+
+  const resolveChildLink = (rowId: string, choice: ChildLinkChoice) => {
+    setChildLinkChoices((prev) => ({ ...prev, [rowId]: choice }));
   };
 
   const handleImport = async () => {
@@ -91,7 +104,15 @@ export function StudentImportReview({
         const selectedGoalTexts = row.goals
           .filter((_, i) => goalsSelected.has(i))
           .map((g) => g.text);
-        return { row: resolvedRow, initials: selection.initialsFor(row), selectedGoalTexts };
+        // Only an explicit "Yes — same child" carries a child through (SPE-348).
+        const confirmedChildId =
+          row.childMatch && childLinkChoices[row.id] === 'link' ? row.childMatch.childId : undefined;
+        return {
+          row: resolvedRow,
+          initials: selection.initialsFor(row),
+          selectedGoalTexts,
+          confirmedChildId,
+        };
       });
 
       const result = await onConfirm({ rows });
@@ -123,6 +144,13 @@ export function StudentImportReview({
     }
   };
 
+  // SPE-348: "same child?" offers on rows that are actually being imported and
+  // still have no answer. Import is deliberately NOT blocked on them (owner's
+  // call, 2026-07-29) — the footer just says what silence will do.
+  const unansweredChildOffers = selection.selectedRows.filter(
+    (row) => row.childMatch && childLinkChoices[row.id] === undefined,
+  ).length;
+
   // The merge flow's primary action counts goals, not students.
   const goalCount = selection.totalSelectedGoals;
   const primaryDisabled = importing || (isMerge ? goalCount === 0 : selection.selectedCount === 0);
@@ -140,10 +168,18 @@ export function StudentImportReview({
     </Button>
   ) : (
     <>
-      <div className="mr-auto self-center text-sm tabular-nums text-gray-600">
-        {isMerge
-          ? `${goalCount} goal${goalCount !== 1 ? 's' : ''} selected`
-          : `${selection.selectedCount} selected · ${selection.totalSelectedGoals} goals`}
+      <div className="mr-auto self-center text-sm text-gray-600">
+        <span className="tabular-nums">
+          {isMerge
+            ? `${goalCount} goal${goalCount !== 1 ? 's' : ''} selected`
+            : `${selection.selectedCount} selected · ${selection.totalSelectedGoals} goals`}
+        </span>
+        {unansweredChildOffers > 0 && (
+          <span className="block text-xs text-gray-500">
+            {unansweredChildOffers} possible match
+            {unansweredChildOffers !== 1 ? 'es' : ''} unanswered — will import as separate students.
+          </span>
+        )}
       </div>
       <Button variant="secondary" onClick={onClose} disabled={importing}>
         Cancel
@@ -180,6 +216,8 @@ export function StudentImportReview({
           exceptions={model.exceptions}
           teacherOverrides={teacherOverrides}
           onResolveTeacher={resolveTeacher}
+          childLinkChoices={childLinkChoices}
+          onResolveChildLink={resolveChildLink}
         />
         {model.rows.length > 0 && (
           <ReviewTable
