@@ -73,6 +73,7 @@ exports[`parseCSVReport — SEIS Student Goals Report (CSV) falls back to the ge
   },
   "students": [
     {
+      "districtStudentId": undefined,
       "firstName": "Ana",
       "goals": [
         "Academic #1: 2026 - 2027",
@@ -88,6 +89,7 @@ exports[`parseCSVReport — SEIS Student Goals Report (CSV) falls back to the ge
       "schoolOfAttendance": undefined,
     },
     {
+      "districtStudentId": undefined,
       "firstName": "Ben",
       "goals": [
         "Academic #2: 2025 - 2026",
@@ -101,6 +103,7 @@ exports[`parseCSVReport — SEIS Student Goals Report (CSV) falls back to the ge
       "schoolOfAttendance": undefined,
     },
     {
+      "districtStudentId": undefined,
       "firstName": "Cora",
       "goals": [
         "Speech (1 of 1)",
@@ -114,6 +117,7 @@ exports[`parseCSVReport — SEIS Student Goals Report (CSV) falls back to the ge
       "schoolOfAttendance": undefined,
     },
     {
+      "districtStudentId": undefined,
       "firstName": "Drew",
       "goals": [
         "Behavior (1 of 2)",
@@ -127,6 +131,7 @@ exports[`parseCSVReport — SEIS Student Goals Report (CSV) falls back to the ge
       "schoolOfAttendance": undefined,
     },
     {
+      "districtStudentId": undefined,
       "firstName": "Ella",
       "goals": [
         "OT (1 of 1)",
@@ -140,6 +145,7 @@ exports[`parseCSVReport — SEIS Student Goals Report (CSV) falls back to the ge
       "schoolOfAttendance": undefined,
     },
     {
+      "districtStudentId": undefined,
       "firstName": "Finn",
       "goals": [
         "OT (1 of 1)",
@@ -153,6 +159,7 @@ exports[`parseCSVReport — SEIS Student Goals Report (CSV) falls back to the ge
       "schoolOfAttendance": undefined,
     },
     {
+      "districtStudentId": undefined,
       "firstName": "Gia",
       "goals": [
         "By 5/9/2027, Gia will raise her hand and wait to be called on in 4 of 5 opportunities.",
@@ -165,6 +172,7 @@ exports[`parseCSVReport — SEIS Student Goals Report (CSV) falls back to the ge
       "schoolOfAttendance": undefined,
     },
     {
+      "districtStudentId": undefined,
       "firstName": "Hana",
       "goals": [
         "Comm (1 of 1)",
@@ -178,6 +186,7 @@ exports[`parseCSVReport — SEIS Student Goals Report (CSV) falls back to the ge
       "schoolOfAttendance": undefined,
     },
     {
+      "districtStudentId": undefined,
       "firstName": "Ivan",
       "goals": [
         "Academic #1",
@@ -191,6 +200,7 @@ exports[`parseCSVReport — SEIS Student Goals Report (CSV) falls back to the ge
       "schoolOfAttendance": undefined,
     },
     {
+      "districtStudentId": undefined,
       "firstName": "Jae",
       "goals": [
         "Academic #1",
@@ -282,6 +292,7 @@ exports[`parseCSVReport — SEIS Student Goals Report (CSV) parses the full fixt
   },
   "students": [
     {
+      "districtStudentId": "100001",
       "firstName": "Ana",
       "goals": [
         "By 5/1/2027, given a grade-level passage, Ana will read 90 words per minute with 95% accuracy in 3 of 4 trials.",
@@ -295,6 +306,7 @@ exports[`parseCSVReport — SEIS Student Goals Report (CSV) parses the full fixt
       "schoolOfAttendance": "Mt Diablo Elementary School",
     },
     {
+      "districtStudentId": "100002",
       "firstName": "Ben",
       "goals": [
         "By 10/15/2026, given manipulatives, Ben will solve two-digit addition problems with 80% accuracy across 3 sessions.",
@@ -307,6 +319,7 @@ exports[`parseCSVReport — SEIS Student Goals Report (CSV) parses the full fixt
       "schoolOfAttendance": "St Mary School",
     },
     {
+      "districtStudentId": "100003",
       "firstName": "Cora",
       "goals": [
         "By 1/20/2027, Cora will produce /r/ in structured sentences with 80% accuracy in 4 of 5 trials.",
@@ -319,6 +332,7 @@ exports[`parseCSVReport — SEIS Student Goals Report (CSV) parses the full fixt
       "schoolOfAttendance": "Mt Diablo Elementary School",
     },
     {
+      "districtStudentId": "100004",
       "firstName": "Drew",
       "goals": [
         "By 2/10/2027, Drew will use a coping strategy when frustrated in 4 of 5 observed opportunities.",
@@ -331,6 +345,7 @@ exports[`parseCSVReport — SEIS Student Goals Report (CSV) parses the full fixt
       "schoolOfAttendance": "Out of District- MOU",
     },
     {
+      "districtStudentId": "100005",
       "firstName": "Ella",
       "goals": [
         "By 3/5/2027, Ella will copy a five-word sentence legibly within 5 minutes in 4 of 5 trials.",
@@ -343,6 +358,7 @@ exports[`parseCSVReport — SEIS Student Goals Report (CSV) parses the full fixt
       "schoolOfAttendance": "Mt Diablo Elementary School",
     },
     {
+      "districtStudentId": "100006",
       "firstName": "Finn",
       "goals": [
         "By 4/12/2027, Finn will form lower-case letters with correct size and spacing in 4 of 5 samples.",
@@ -355,6 +371,7 @@ exports[`parseCSVReport — SEIS Student Goals Report (CSV) parses the full fixt
       "schoolOfAttendance": "Mt Diablo Elementary School",
     },
     {
+      "districtStudentId": undefined,
       "firstName": "Gia",
       "goals": [
         "By 5/9/2027, Gia will raise her hand and wait to be called on in 4 of 5 opportunities.",
@@ -367,6 +384,7 @@ exports[`parseCSVReport — SEIS Student Goals Report (CSV) parses the full fixt
       "schoolOfAttendance": "Mt Diablo Elementary School",
     },
     {
+      "districtStudentId": "100008",
       "firstName": "Hana",
       "goals": [
         "By 1/30/2027, Hana will answer wh- questions about a short story with 80% accuracy.",
@@ -379,6 +397,7 @@ exports[`parseCSVReport — SEIS Student Goals Report (CSV) parses the full fixt
       "schoolOfAttendance": "Mt Diablo Elementary School",
     },
     {
+      "districtStudentId": "100009",
       "firstName": "Ivan",
       "goals": [
         "By 2/22/2027, Ivan will write a three-sentence paragraph with a topic sentence in 4 of 5 samples.",
@@ -391,6 +410,7 @@ exports[`parseCSVReport — SEIS Student Goals Report (CSV) parses the full fixt
       "schoolOfAttendance": "Mt Diablo Elementary School",
     },
     {
+      "districtStudentId": "100010",
       "firstName": "Jae",
       "goals": [
         "By 6/1/2027 Jae will:

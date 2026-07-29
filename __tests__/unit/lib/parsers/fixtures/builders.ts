@@ -112,31 +112,31 @@ type SparseRow = Record<number, string>;
  */
 const SEIS_GOALS_ROWS: SparseRow[] = [
   {
-    0: '2000001', 2: 'Alvarez', 3: 'Ana', 5: '01', 6: 'Mt Diablo Elementary School',
+    0: '2000001', 1: '100001', 2: 'Alvarez', 3: 'Ana', 5: '01', 6: 'Mt Diablo Elementary School',
     9: '05/01/2026', 11: 'Reading', 12: 'Academic #1: 2026 - 2027',
     14: 'By 5/1/2027, given a grade-level passage, Ana will read 90 words per minute with 95% accuracy in 3 of 4 trials.',
     17: 'Resource Specialist',
   },
   {
-    0: '2000002', 2: 'Bishop', 3: 'Ben', 5: '02', 6: 'St Mary School',
+    0: '2000002', 1: '100002', 2: 'Bishop', 3: 'Ben', 5: '02', 6: 'St Mary School',
     9: '10/15/2025', 11: 'Math', 12: 'Academic #2: 2025 - 2026',
     14: 'By 10/15/2026, given manipulatives, Ben will solve two-digit addition problems with 80% accuracy across 3 sessions.',
     17: 'Resource Specialist and General Education Teacher',
   },
   {
-    0: '2000003', 2: 'Cho', 3: 'Cora', 5: '03', 6: 'Mt Diablo Elementary School',
+    0: '2000003', 1: '100003', 2: 'Cho', 3: 'Cora', 5: '03', 6: 'Mt Diablo Elementary School',
     9: '01/20/2026', 11: 'Speech/Language', 12: 'Speech (1 of 1)',
     14: 'By 1/20/2027, Cora will produce /r/ in structured sentences with 80% accuracy in 4 of 5 trials.',
     17: 'Speech Language Pathologist',
   },
   {
-    0: '2000004', 2: 'Diaz', 3: 'Drew', 5: '04', 6: 'Out of District- MOU',
+    0: '2000004', 1: '100004', 2: 'Diaz', 3: 'Drew', 5: '04', 6: 'Out of District- MOU',
     9: '02/10/2026', 11: 'Social/Emotional', 12: 'Behavior (1 of 2)',
     14: 'By 2/10/2027, Drew will use a coping strategy when frustrated in 4 of 5 observed opportunities.',
     17: 'School Counselor',
   },
   {
-    0: '2000005', 2: 'Evans', 3: 'Ella', 5: '05', 6: 'Mt Diablo Elementary School',
+    0: '2000005', 1: '100005', 2: 'Evans', 3: 'Ella', 5: '05', 6: 'Mt Diablo Elementary School',
     9: '03/05/2026', 11: 'Fine Motor', 12: 'OT (1 of 1)',
     14: 'By 3/5/2027, Ella will copy a five-word sentence legibly within 5 minutes in 4 of 5 trials.',
     17: 'Occupational Therapist',
@@ -147,14 +147,16 @@ const SEIS_GOALS_ROWS: SparseRow[] = [
     // OT goal into resource; word-boundary matching plus the new OT
     // "handwriting" keyword now route it to OT, not resource. No column carries
     // a resource keyword, so the flip is unambiguous.
-    0: '2000006', 2: 'Foster', 3: 'Finn', 5: '18', 6: 'Mt Diablo Elementary School',
+    0: '2000006', 1: '100006', 2: 'Foster', 3: 'Finn', 5: '18', 6: 'Mt Diablo Elementary School',
     9: '04/12/2026', 11: 'Handwriting', 12: 'OT (1 of 1)',
     14: 'By 4/12/2027, Finn will form lower-case letters with correct size and spacing in 4 of 5 samples.',
     17: 'Occupational Therapist',
   },
   {
     // Blank Area of Need + blank Annual Goal # + blank Person Responsible:
-    // filtered out for every keyworded role.
+    // filtered out for every keyworded role. Also the one row with NO District ID
+    // (column B) — real exports have gaps, and an absent id must stay absent
+    // rather than becoming '' (SPE-339).
     0: '2000007', 2: 'Gomez', 3: 'Gia', 5: '01', 6: 'Mt Diablo Elementary School',
     9: '05/09/2026', 11: '', 12: '',
     14: 'By 5/9/2027, Gia will raise her hand and wait to be called on in 4 of 5 opportunities.',
@@ -162,28 +164,28 @@ const SEIS_GOALS_ROWS: SparseRow[] = [
   },
   {
     // "Receptive Languge" typo does not contain "language" -> lost for speech.
-    0: '2000008', 2: 'Hunt', 3: 'Hana', 5: '02', 6: 'Mt Diablo Elementary School',
+    0: '2000008', 1: '100008', 2: 'Hunt', 3: 'Hana', 5: '02', 6: 'Mt Diablo Elementary School',
     9: '01/30/2026', 11: 'Receptive Languge', 12: 'Comm (1 of 1)',
     14: 'By 1/30/2027, Hana will answer wh- questions about a short story with 80% accuracy.',
     17: 'Case Manager',
   },
   {
     // Goal-like text in Person Responsible.
-    0: '2000009', 2: 'Ingram', 3: 'Ivan', 5: '03', 6: 'Mt Diablo Elementary School',
+    0: '2000009', 1: '100009', 2: 'Ingram', 3: 'Ivan', 5: '03', 6: 'Mt Diablo Elementary School',
     9: '02/22/2026', 11: 'Written Expression', 12: 'Academic #1',
     14: 'By 2/22/2027, Ivan will write a three-sentence paragraph with a topic sentence in 4 of 5 samples.',
     17: 'the student will write a paragraph with support',
   },
   {
     // Embedded newline inside the goal cell.
-    0: '2000010', 2: 'Jones', 3: 'Jae', 5: '04', 6: 'Mt Diablo Elementary School',
+    0: '2000010', 1: '100010', 2: 'Jones', 3: 'Jae', 5: '04', 6: 'Mt Diablo Elementary School',
     9: '03/18/2026', 11: 'Reading', 12: 'Academic #1',
     14: 'By 6/1/2027 Jae will:\n- decode multisyllabic words\n- read 100 wpm with 95% accuracy',
     17: 'Resource Specialist',
   },
   {
     // Duplicate of Alvarez, Ana (grade 01): second goal must merge into the first.
-    0: '2000001', 2: 'Alvarez', 3: 'Ana', 5: '01', 6: 'Mt Diablo Elementary School',
+    0: '2000001', 1: '100001', 2: 'Alvarez', 3: 'Ana', 5: '01', 6: 'Mt Diablo Elementary School',
     9: '05/01/2026', 11: 'Written', 12: 'Academic #2',
     14: 'By 5/1/2027, Ana will write a personal narrative with a beginning, middle, and end in 4 of 5 samples.',
     17: 'Resource Specialist',

@@ -16,6 +16,9 @@ export interface ClassListStudent {
   normalizedName: string;
   name: string;
   teacher: TeacherInfo;
+  /** The district's own student id, from the row's Student ID field (SPE-339).
+   *  Null when the row carries only a name. */
+  districtStudentId: string | null;
 }
 
 export interface ClassListParseResult {
@@ -135,13 +138,24 @@ function isStudentRow(line: string): boolean {
 }
 
 /**
- * Parse student name from row
- * Format: "LastName, FirstName",other,data...
+ * Parse a student row.
+ * Format: "LastName, FirstName",Student ID,Grade,Birthdate,Program
+ *
+ * The name is quoted because it contains a comma, so it is taken by regex and
+ * the remaining comma-separated fields are read from what follows the closing
+ * quote. The Student ID (field 2) is the district's own identifier — SPE-339.
+ * Rows that carry only a name still parse; the id comes back null.
  */
-function parseStudentFromRow(line: string): string | null {
+function parseStudentFromRow(
+  line: string,
+): { name: string; districtStudentId: string | null } | null {
   const match = line.match(/^"([^"]+)"/);
   if (!match) return null;
-  return match[1];
+
+  const rest = line.slice(match[0].length).replace(/^,/, '');
+  const districtStudentId = (rest.split(',')[0] || '').trim();
+
+  return { name: match[1], districtStudentId: districtStudentId || null };
 }
 
 /**
@@ -186,8 +200,9 @@ export async function parseClassListTXT(buffer: Buffer): Promise<ClassListParseR
 
       // Check for student row
       if (isStudentRow(line) && currentTeacher) {
-        const studentName = parseStudentFromRow(line);
-        if (studentName) {
+        const parsed = parseStudentFromRow(line);
+        if (parsed) {
+          const studentName = parsed.name;
           const normalizedName = normalizeStudentName(studentName);
 
           if (normalizedName) {
@@ -197,7 +212,8 @@ export async function parseClassListTXT(buffer: Buffer): Promise<ClassListParseR
               students.set(normalizedName, {
                 normalizedName,
                 name: studentName,
-                teacher: currentTeacher
+                teacher: currentTeacher,
+                districtStudentId: parsed.districtStudentId
               });
             }
           } else {

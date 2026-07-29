@@ -78,6 +78,12 @@ export interface StudentPreview {
   teacher?: TeacherMatch;
   // New fields from the SEIS IEP Dates report (SPE-303)
   iepDates?: IepDatesPreview;
+  /** The district's own student id from the file (SPE-339). Withheld when
+   *  districtStudentIdConflict is set, so a disputed id is never written. */
+  districtStudentId?: string;
+  /** The incoming id is already on file against a different child (SPE-339).
+   *  Surfaced in the review queue; the id itself is not carried to the write. */
+  districtStudentIdConflict?: { districtStudentId: string; existingLabel: string };
 }
 
 /**
@@ -109,6 +115,10 @@ export interface StudentUpdate {
   };
   // From the SEIS IEP Dates report (SPE-303).
   iepDates?: IepDatesPreview;
+  /** District Student ID captured from the class list (SPE-339). */
+  districtStudentId?: string;
+  /** Set when that id already belongs to a different child (SPE-339). */
+  districtStudentIdConflict?: { districtStudentId: string; existingLabel: string };
 }
 
 export interface UnmatchedStudent {
@@ -128,6 +138,8 @@ export interface JoinedExistingStudent {
   school_site: string | null;
   school_id: string | null;
   student_details: unknown;
+  /** The district's own student id (SPE-339). */
+  district_student_id?: string | null;
 }
 
 /** Re-exported so pipeline modules share one DatabaseStudent definition. */

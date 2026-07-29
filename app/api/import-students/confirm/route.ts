@@ -311,6 +311,13 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
           if (student.upcomingTriennialDate !== undefined) {
             updatePayload.upcomingTriennialDate = student.upcomingTriennialDate;
           }
+          // District Student ID (SPE-339): presence-keyed for the same reason —
+          // a file that carries no ids (a goals-only re-import) must not erase
+          // the ids a previous roster or SIS export established. Disputed ids
+          // never reach here; the preview withholds them.
+          if (student.districtStudentId !== undefined) {
+            updatePayload.districtStudentId = student.districtStudentId;
+          }
           batchPayload.push(updatePayload);
         } else {
           // Insert. Set `teacher_name` alongside `teacher_id` when a teacher
@@ -337,7 +344,9 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
             // IEP Dates (SPE-303): a new student created from the goals file may
             // also match the IEP Dates file. Null when absent (a fresh row).
             upcomingIepDate: student.upcomingIepDate ?? null,
-            upcomingTriennialDate: student.upcomingTriennialDate ?? null
+            upcomingTriennialDate: student.upcomingTriennialDate ?? null,
+            // District Student ID (SPE-339). Null when the file carried none.
+            districtStudentId: student.districtStudentId ?? null
           });
           addedInThisBatch.add(duplicateKey);
         }

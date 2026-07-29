@@ -8,7 +8,19 @@ export interface StudentDetails {
   first_name: string;
   last_name: string;
   date_of_birth: string;
-  district_id: string;
+  /**
+   * SPE-339: the district's own student id. This one field lives on
+   * `students.district_student_id`, NOT on `student_details` — it is the key the
+   * importer and the future SIS sync match on, so it belongs beside the student
+   * row itself. It is carried on this interface so the details modal, the only
+   * place it is shown, keeps a single load/save call.
+   *
+   * It replaces the old `student_details.district_id` box, which was never
+   * populated by anything (every non-sim row in production is an empty string)
+   * and shared a name with the ORG-level district id used for scoping. That
+   * column is retired in SPE-341.
+   */
+  district_student_id: string;
   upcoming_iep_date: string;
   upcoming_triennial_date: string;
   iep_goals: string[];
@@ -50,22 +62,39 @@ export async function getStudentDetails(studentId: string): Promise<StudentDetai
   const supabase = createClient<Database>();
 
   const fetchPerf = measurePerformanceWithAlerts('fetch_student_details', 'database');
-  const fetchResult = await safeQuery(
-    async () => {
-      const { data, error } = await supabase
-        .from('student_details')
-        .select('*')
-        .eq('student_id', studentId)
-        .limit(1)
-        .maybeSingle();
-      if (error) throw error;
-      return data;
-    },
-    { 
-      operation: 'fetch_student_details', 
-      studentId 
-    }
-  );
+  // The two reads are independent — the district student id lives on `students`
+  // (SPE-339), the rest on `student_details` — so they run together rather than
+  // costing the details modal two sequential round trips on every open.
+  const [fetchResult, idResult] = await Promise.all([
+    safeQuery(
+      async () => {
+        const { data, error } = await supabase
+          .from('student_details')
+          .select('*')
+          .eq('student_id', studentId)
+          .limit(1)
+          .maybeSingle();
+        if (error) throw error;
+        return data;
+      },
+      {
+        operation: 'fetch_student_details',
+        studentId
+      }
+    ),
+    safeQuery(
+      async () => {
+        const { data: row, error } = await supabase
+          .from('students')
+          .select('district_student_id')
+          .eq('id', studentId)
+          .maybeSingle();
+        if (error) throw error;
+        return row;
+      },
+      { operation: 'fetch_district_student_id', studentId }
+    ),
+  ]);
   fetchPerf.end({ success: !fetchResult.error });
 
   if (fetchResult.error) {
@@ -74,7 +103,35 @@ export async function getStudentDetails(studentId: string): Promise<StudentDetai
   }
 
   const data = fetchResult.data;
-  if (!data) return null;
+  // A failed lookup must not silently become '' — the caller saves what it
+  // loaded, so a swallowed error here would erase a stored id on the next save.
+  if (idResult.error) {
+    console.error('Error fetching district student id:', idResult.error);
+    throw idResult.error;
+  }
+  const districtStudentId = idResult.data?.district_student_id || '';
+
+  // A student with no `student_details` row yet (pre-existing rows, plus
+  // roster-template and manual-add students — see SPE-284) still has a district
+  // student id, because that lives on `students`. Returning null here would make
+  // the details modal fall back to a blank form and then write that blank back
+  // over a real id on the next save. So: no details row is not "nothing to
+  // show" — return the empty detail fields WITH the real id.
+  if (!data) {
+    // No details row AND no student row — the student genuinely isn't there.
+    if (!idResult.data) return null;
+    return {
+      first_name: '',
+      last_name: '',
+      date_of_birth: '',
+      district_student_id: districtStudentId,
+      upcoming_iep_date: '',
+      upcoming_triennial_date: '',
+      iep_goals: [],
+      accommodations: [],
+      goals_iep_date: undefined,
+    };
+  }
 
   // Cast to include fields added in later migrations
   const dataWithExtras = data as typeof data & {
@@ -86,7 +143,7 @@ export async function getStudentDetails(studentId: string): Promise<StudentDetai
     first_name: data.first_name || '',
     last_name: data.last_name || '',
     date_of_birth: data.date_of_birth || '',
-    district_id: data.district_id || '',
+    district_student_id: districtStudentId,
     upcoming_iep_date: data.upcoming_iep_date || '',
     upcoming_triennial_date: data.upcoming_triennial_date || '',
     iep_goals: data.iep_goals || [],
@@ -159,6 +216,31 @@ export async function upsertStudentDetails(
   const upsertPerf = measurePerformanceWithAlerts('upsert_student_details', 'database');
   const upsertResult = await safeQuery(
     async () => {
+      // SPE-339: the district student id lives on `students`, so this save spans
+      // two tables and cannot be one statement. The id goes FIRST deliberately:
+      // it is the only part that can be rejected by a constraint (the
+      // ux_students_provider_district_student_id uniqueness backstop), so
+      // failing here leaves nothing written at all. The reverse order would
+      // commit the name/date edits and then fail, leaving a partial save behind
+      // a generic error with no way for the user to tell what landed.
+      //
+      // Blank clears the id, so an admin can remove a wrong one. NULL (not '')
+      // keeps it out of the uniqueness index.
+      const { error: idError } = await supabase
+        .from('students')
+        .update({ district_student_id: details.district_student_id?.trim() || null })
+        .eq('id', studentId);
+      if (idError) {
+        // Name the actual problem — "Failed to save" gives the user nothing to
+        // act on, and retrying the same duplicate fails identically.
+        if (idError.code === '23505') {
+          throw new Error(
+            `Student ID "${details.district_student_id?.trim()}" is already assigned to another student on your caseload. Each student needs a unique ID.`
+          );
+        }
+        throw idError;
+      }
+
       const { error } = await supabase
         .from('student_details')
         .upsert({
@@ -166,7 +248,6 @@ export async function upsertStudentDetails(
           first_name: details.first_name,
           last_name: details.last_name,
           date_of_birth: details.date_of_birth || null,
-          district_id: details.district_id,
           upcoming_iep_date: details.upcoming_iep_date || null,
           upcoming_triennial_date: details.upcoming_triennial_date || null,
           iep_goals: details.iep_goals,
@@ -177,6 +258,7 @@ export async function upsertStudentDetails(
           onConflict: 'student_id'  // Add this to specify the conflict column
         });
       if (error) throw error;
+
       return null;
     },
     {

@@ -83,6 +83,12 @@ export interface BulkStudentPreview {
   };
   /** Present when the IEP Dates report (SPE-303) matched this student. */
   iepDates?: IepDatesPreview;
+  /** The district's own student id carried by the file (SPE-339). */
+  districtStudentId?: string;
+  /** Set when that id is already on file against a different child (SPE-339).
+   *  The id is withheld from the write and the clash is raised in the review
+   *  queue for a human to resolve. */
+  districtStudentIdConflict?: { districtStudentId: string; existingLabel: string };
 }
 
 export interface BulkFileReceipt {
@@ -161,6 +167,12 @@ export interface StudentToImport {
    */
   upcomingIepDate?: string;
   upcomingTriennialDate?: string;
+  /**
+   * The district's own student id (SPE-339). Presence-keyed like the dates
+   * above: sent only when the file carried one and it was not disputed, so an
+   * import without ids never erases a stored id.
+   */
+  districtStudentId?: string;
   /** Defaults to 'insert' server-side for backward compatibility. */
   action?: RowAction;
   /** Required for the 'update' action. */

@@ -447,6 +447,10 @@ export default function StudentsPage() {
                 // presence (file wins) and leaves it untouched on absence.
                 upcomingIepDate: row.iepDates?.upcomingIepDate?.value,
                 upcomingTriennialDate: row.iepDates?.upcomingTriennialDate?.value,
+                // District Student ID (SPE-339): presence-keyed too. Undefined
+                // when the file carried none, or when the id was disputed — the
+                // preview drops a conflicting id rather than re-pointing it.
+                districtStudentId: row.districtStudentId,
               }));
 
               const response = await fetch('/api/import-students/confirm', {

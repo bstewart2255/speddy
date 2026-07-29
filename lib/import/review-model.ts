@@ -76,6 +76,11 @@ export interface ReviewRow {
   /** Incoming IEP date from a per-student goals report (target-student mode,
    *  SPE-232) — written to goals_iep_date on import. Absent in bulk mode. */
   iepDate?: string;
+  /** The district's own student id from the file (SPE-339), carried to confirm. */
+  districtStudentId?: string;
+  /** Set when that id already belongs to a different child — surfaced as an
+   *  exception and withheld from the write (SPE-339). */
+  districtStudentIdConflict?: { districtStudentId: string; existingLabel: string };
 }
 
 export interface ReviewFileReceipt {
@@ -95,7 +100,14 @@ export interface ReviewFileReceipt {
 export type ReviewException =
   | { kind: 'unmatched-student'; name: string; source: 'deliveries' | 'classList' | 'iepDates'; reason?: string }
   | { kind: 'low-confidence-teacher'; rowId: string; studentLabel: string; suggestion: ReviewTeacher }
-  | { kind: 'goals-removed'; rowId: string; studentLabel: string; goals: string[] };
+  | { kind: 'goals-removed'; rowId: string; studentLabel: string; goals: string[] }
+  | {
+      kind: 'district-id-conflict';
+      rowId: string;
+      studentLabel: string;
+      districtStudentId: string;
+      existingLabel: string;
+    };
 
 export interface ReviewSummary {
   totalStudents: number;
@@ -188,6 +200,8 @@ function toReviewRow(student: BulkStudentPreview, srcIndex: number): ReviewRow {
       : undefined,
     teacher,
     iepDates: student.iepDates,
+    districtStudentId: student.districtStudentId,
+    districtStudentIdConflict: student.districtStudentIdConflict,
     goals,
     goalsRemoved,
     targetStudentId,
@@ -233,6 +247,17 @@ export function adaptBulkPreview(data: BulkPreviewData): ReviewModel {
         rowId: row.id,
         studentLabel: row.displayName,
         goals: row.goalsRemoved,
+      });
+    }
+    // SPE-339: the file's Student ID already belongs to someone else. The row
+    // still imports on its own merits; only the disputed id is held back.
+    if (row.districtStudentIdConflict) {
+      exceptions.push({
+        kind: 'district-id-conflict',
+        rowId: row.id,
+        studentLabel: row.displayName,
+        districtStudentId: row.districtStudentIdConflict.districtStudentId,
+        existingLabel: row.districtStudentIdConflict.existingLabel,
       });
     }
   }

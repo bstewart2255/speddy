@@ -21,6 +21,7 @@ function serialize(result: ClassListParseResult) {
       .map(([key, s]) => ({
         key,
         name: s.name,
+        districtStudentId: s.districtStudentId,
         teacher: s.teacher,
       })),
     teachers: result.teachers,
@@ -67,6 +68,26 @@ describe('parseClassListTXT', () => {
     expect(ana).toBeDefined();
     // Ana appears under Barrera (page 1) and Khristo (page 2); first wins.
     expect(ana!.teacher.lastName).toBe('Barrera');
+  });
+
+  // SPE-339: field 2 of each student row is the district's own Student ID. The
+  // name is quoted (it contains a comma), so the id has to be read from what
+  // follows the closing quote, not from a naive comma split.
+  it("captures each student's district Student ID from behind the quoted name", async () => {
+    const result = await parseClassListTXT(readFixture('class-list.txt'));
+    expect(result.students.get('alvarez_ana')!.districtStudentId).toBe('100001');
+    expect(result.students.get('bishop_ben')!.districtStudentId).toBe('100002');
+    // A hyphenated two-word last name still splits correctly.
+    expect(result.students.get('davis-wong_drew')!.districtStudentId).toBe('100004');
+  });
+
+  it('leaves the id null for a row that carries only a name', async () => {
+    const result = await parseClassListTXT(
+      Buffer.from('Teacher#,101,Teacher: Barrera E\n"Solo, Sam"\n', 'utf-8'),
+    );
+    const sam = result.students.get('solo_sam');
+    expect(sam).toBeDefined();
+    expect(sam!.districtStudentId).toBeNull();
   });
 
   it('captures all five distinct teachers including co-teacher and quoted names', async () => {
