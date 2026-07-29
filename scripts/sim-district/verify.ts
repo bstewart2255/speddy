@@ -48,46 +48,46 @@ async function collectCounts(admin: Admin) {
   const simUsers = await resolveSimAuthUsers(admin);
   const simUserIds = [...simUsers.values()];
 
+  // SPE-347: both student scans also carry child_id, so the child set and the
+  // unlinked count come out of the scans we already run — no extra query, and
+  // nothing passes a 200-element id list to a single `.in()` (the helpers chunk
+  // at 150 for a reason; an unchunked list becomes a 414 as the fixture grows).
   const studentIds = new Set<string>();
+  const childIds = new Set<string>();
+  let unlinkedStudents = 0;
+  const takeStudents = (rows: { id: string; child_id: string | null }[]) => {
+    for (const row of rows) {
+      if (studentIds.has(row.id)) continue;
+      studentIds.add(row.id);
+      if (row.child_id) childIds.add(row.child_id);
+      else unlinkedStudents++;
+    }
+  };
   {
-    const { data, error } = await admin.from('students').select('id').in('school_id', SIM_SCHOOL_IDS);
+    const { data, error } = await admin.from('students').select('id, child_id').in('school_id', SIM_SCHOOL_IDS);
     if (error) throw new Error(`student scan failed: ${error.message}`);
-    for (const row of data ?? []) studentIds.add(row.id);
+    takeStudents(data ?? []);
   }
   if (simUserIds.length > 0) {
-    const { data, error } = await admin.from('students').select('id').in('provider_id', simUserIds);
+    const { data, error } = await admin.from('students').select('id, child_id').in('provider_id', simUserIds);
     if (error) throw new Error(`student scan by provider failed: ${error.message}`);
-    for (const row of data ?? []) studentIds.add(row.id);
+    takeStudents(data ?? []);
   }
   const simStudentIds = [...studentIds];
 
-  // SPE-347: the children those caseload rows serve. Collected the same two
-  // ways as students (via the link, and by sim school so an orphan would still
-  // be counted rather than silently ignored by the orphan scan).
-  const childIds = new Set<string>();
-  if (simStudentIds.length > 0) {
-    const { data, error } = await admin.from('students').select('child_id').in('id', simStudentIds);
-    if (error) throw new Error(`child link scan failed: ${error.message}`);
-    for (const row of data ?? []) if (row.child_id) childIds.add(row.child_id);
-  }
-  {
-    const { data, error } = await admin.from('children').select('id').in('school_id', SIM_SCHOOL_IDS);
-    if (error) throw new Error(`children scan by school failed: ${error.message}`);
+  // Children whose caseload rows are already gone would be invisible to the
+  // scan above, so also sweep by sim school AND sim district — a child with no
+  // school_id still carries the district. Without both, an orphan would sit in
+  // the namespace and `--expect-empty` would report a clean teardown anyway.
+  for (const [column, values] of [
+    ['school_id', SIM_SCHOOL_IDS],
+    ['district_id', [DISTRICT.id]],
+  ] as const) {
+    const { data, error } = await admin.from('children').select('id').in(column, values as string[]);
+    if (error) throw new Error(`children scan by ${column} failed: ${error.message}`);
     for (const row of data ?? []) childIds.add(row.id);
   }
   const simChildIds = [...childIds];
-
-  // Unlinked caseload rows would mean the auto-create trigger did not fire.
-  let unlinkedStudents = 0;
-  if (simStudentIds.length > 0) {
-    const { count, error } = await admin
-      .from('students')
-      .select('*', { count: 'exact', head: true })
-      .in('id', simStudentIds)
-      .is('child_id', null);
-    if (error) throw new Error(`unlinked student scan failed: ${error.message}`);
-    unlinkedStudents = count ?? 0;
-  }
 
   const careCaseIds = CARE_REFERRALS.filter(c => c.withCase).map(c => careCaseId(c.key));
 

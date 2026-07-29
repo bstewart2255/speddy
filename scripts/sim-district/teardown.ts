@@ -43,11 +43,16 @@ export async function teardown(admin: Admin): Promise<Record<string, number>> {
     if (error) throw new Error(`student lookup by school failed: ${error.message}`);
     for (const row of data ?? []) { studentIds.add(row.id); if (row.child_id) childIds.add(row.child_id); }
   }
-  {
-    // Also sweep by school, so a child orphaned by a half-failed prior teardown
-    // (its students already gone) is still cleaned up — teardown is idempotent.
-    const { data, error } = await admin.from('children').select('id').in('school_id', SIM_SCHOOL_IDS);
-    if (error) throw new Error(`children lookup by school failed: ${error.message}`);
+  // Also sweep by school AND by district, so a child orphaned by a half-failed
+  // prior teardown (its students already gone) is still cleaned up — teardown is
+  // idempotent. Both keys are needed: `students.school_id` is nullable, so a
+  // child created from such a row carries the district but no school.
+  for (const [column, values] of [
+    ['school_id', SIM_SCHOOL_IDS],
+    ['district_id', [DISTRICT.id]],
+  ] as const) {
+    const { data, error } = await admin.from('children').select('id').in(column, values as string[]);
+    if (error) throw new Error(`children lookup by ${column} failed: ${error.message}`);
     for (const row of data ?? []) childIds.add(row.id);
   }
   const simStudentIds = [...studentIds];

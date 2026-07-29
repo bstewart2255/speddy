@@ -312,12 +312,18 @@ BEGIN
   FOR rec IN
     WITH RECURSIVE
     -- Phase 2 groups: same district + same normalized district student id.
+    -- Both sides must name the SAME, KNOWN district. A district student id is
+    -- meaningless without a district, so two rows that merely agree on "district
+    -- unknown" are not evidence of the same child — treating NULL as a matching
+    -- value would merge unrelated children from different real districts (2
+    -- production rows have no district_id), and a merge is not reversible.
     dsid_edges AS (
       SELECT a.child_id AS x, b.child_id AS y
       FROM public.students a
       JOIN public.students b
         ON b.child_id > a.child_id
-       AND a.district_id IS NOT DISTINCT FROM b.district_id
+       AND a.district_id IS NOT NULL
+       AND a.district_id = b.district_id
        AND upper(btrim(a.district_student_id)) = upper(btrim(b.district_student_id))
       WHERE NULLIF(btrim(a.district_student_id), '') IS NOT NULL
         AND NULLIF(btrim(b.district_student_id), '') IS NOT NULL
@@ -402,6 +408,27 @@ BEGIN
     v_ids := rec.child_ids;
 
     IF rec.held_out THEN
+      -- A hold-out is a judgement call about a MATCHER guess ("are these the
+      -- same kid?"). It cannot override the district's own identifier: leaving
+      -- two children that share a (district, district student id) un-merged
+      -- would make ux_children_district_student_id below fail and roll the whole
+      -- migration back, with an error pointing at the index instead of at the
+      -- real contradiction. Fail here, precisely, instead.
+      IF EXISTS (
+        SELECT 1
+        FROM public.students a
+        JOIN public.students b
+          ON b.id > a.id
+         AND a.district_id IS NOT NULL
+         AND a.district_id = b.district_id
+         AND upper(btrim(a.district_student_id)) = upper(btrim(b.district_student_id))
+        WHERE a.child_id = ANY (v_ids)
+          AND b.child_id = ANY (v_ids)
+          AND NULLIF(btrim(a.district_student_id), '') IS NOT NULL
+      ) THEN
+        RAISE EXCEPTION 'SPE-347: held-out group % shares a district student id, so it cannot stay un-merged (ux_children_district_student_id would reject it). Either merge it or clear the duplicate id first.',
+          rec.label;
+      END IF;
       v_held := v_held + 1;
       RAISE NOTICE 'SPE-347 HELD OUT (awaiting owner confirmation, not merged): % [%] children=%',
         rec.label, rec.providers, v_ids;
@@ -555,16 +582,22 @@ $spe347_backfill$;
 --
 -- Normalization matches the matcher's (trim + upper) so the backstop agrees
 -- with the comparison it backs. Blank/NULL ids are excluded so the many
--- children with no id yet do not collide. NULLS NOT DISTINCT covers rows whose
--- district_id is NULL (2 in production) — with Postgres's default, two such
--- rows would never compare equal and the constraint would quietly not apply.
+-- children with no id yet do not collide.
+--
+-- Rows with NO district are excluded too — a deliberate difference from the
+-- students index, which uses NULLS NOT DISTINCT. "Unique within a district" has
+-- no meaning for a row whose district is unknown, and NULLS NOT DISTINCT would
+-- make two such children (2 production rows have no district_id) collide on a
+-- shared id even though nothing says they are the same child. Excluding them
+-- keeps the constraint saying only what it can actually know.
 --
 -- Created AFTER the backfill on purpose: the merge phase above is what collapses
 -- duplicate ids, so a failure here is a loud, correct signal that it did not.
 CREATE UNIQUE INDEX IF NOT EXISTS ux_children_district_student_id
   ON public.children (district_id, (upper(btrim(district_student_id))))
-  NULLS NOT DISTINCT
-  WHERE district_student_id IS NOT NULL AND btrim(district_student_id) <> '';
+  WHERE district_id IS NOT NULL
+    AND district_student_id IS NOT NULL
+    AND btrim(district_student_id) <> '';
 
 -- ===========================================================================
 -- 6. Auto-create / attach on INSERT, and the child_id write guard

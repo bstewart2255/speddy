@@ -170,6 +170,45 @@ async function main(): Promise<void> {
       `${label} cannot write a child`, `${rows?.length ?? 0} row(s)`);
   }
 
+  // Deliberate, documented asymmetry (SPE-347 hardening §5): the mirrors are
+  // SECURITY DEFINER and authorize nothing — the SOURCE table's policy is the
+  // gate. `student_details`'s UPDATE policy has an SEA branch with no column
+  // restriction, so an SEA CAN change a child's name through student_details
+  // even though children_update refuses them a direct write. Not a new
+  // capability (they can already write those columns today) and invisible while
+  // nothing reads `children`, but it becomes user-visible at the cross-provider
+  // read switch. Pinned here so it cannot change unnoticed.
+  console.log('mirror authorization is the SOURCE table\'s, not children_update:');
+  {
+    const leahId = await profileId('leah');
+    const { data: delegated } = await admin
+      .from('schedule_sessions').select('student_id').eq('assigned_to_sea_id', leahId).limit(50);
+    const candidates = [...new Set((delegated ?? []).map(r => r.student_id))];
+    const { data: withDetails } = await admin
+      .from('student_details').select('student_id').in('student_id', candidates.slice(0, 50)).limit(1);
+    const target = withDetails?.[0]?.student_id as string | undefined;
+
+    if (!target) {
+      check(false, 'found an SEA-delegated student with details', 'none in the fixture');
+    } else {
+      const { data: link } = await admin.from('students').select('child_id').eq('id', target).single();
+      const leah = await signIn('leah');
+      const before = await childFirstName(link!.child_id as string);
+      const stamp = `spe347-sea-${Date.now()}`;
+
+      const { data: direct } = await leah.from('children')
+        .update({ first_name: stamp }).eq('id', link!.child_id).select('id');
+      check((direct?.length ?? 0) === 0 && (await childFirstName(link!.child_id as string)) === before,
+        'SEA cannot write the child DIRECTLY', `${direct?.length ?? 0} row(s)`);
+
+      const { data: viaDetails } = await leah.from('student_details')
+        .update({ first_name: stamp }).eq('student_id', target).select('student_id');
+      check((viaDetails?.length ?? 0) === 1 && (await childFirstName(link!.child_id as string)) === stamp,
+        'SEA CAN write it through student_details (known, documented)',
+        `${viaDetails?.length ?? 0} row(s)`);
+    }
+  }
+
   console.log('students.child_id is managed by the database:');
   {
     const { error } = await rachel.from('students').insert({
@@ -185,6 +224,57 @@ async function main(): Promise<void> {
     const { data: still } = await admin.from('students').select('child_id').eq('id', own.id).single();
     check(updErr?.code === '42501' && still?.child_id === own.child_id,
       'UPDATE that moves child_id is refused', `code=${updErr?.code}`);
+  }
+
+  // Regression test for the escalation the deep self-review caught before merge:
+  // the first cut of students_child_link() ATTACHED a new caseload row to an
+  // existing child when (district_id, district_student_id) matched. Both columns
+  // are client-supplied and unconstrained, so any provider could link themselves
+  // to any child in any district and read/overwrite its name and DOB. The
+  // trigger now never attaches — it creates its own child, dropping the
+  // contested id — while the insert that the attach existed to protect still
+  // succeeds.
+  console.log('a claimed district student id cannot borrow another child:');
+  {
+    const aliciaId = await profileId('alicia');
+    const claimedId = `SPE347-PROBE-${Date.now()}`;
+    const { data: victim } = await rachel.from('students').insert({
+      provider_id: rachelId, initials: 'QV', grade_level: '3',
+      school_id: WILLOW, district_id: 'SIM-D001', state_id: 'CA',
+      district_student_id: claimedId,
+    }).select('id, child_id').single();
+
+    const { data: victimChild } = await admin.from('children')
+      .select('district_student_id').eq('id', victim!.child_id).single();
+    check(victimChild?.district_student_id === claimedId,
+      'the first row to claim an id keeps it', `${victimChild?.district_student_id}`);
+
+    // Alicia is at MAPLE and has no relationship to this child.
+    const { data: attacker, error: attackErr } = await alicia.from('students').insert({
+      provider_id: aliciaId, initials: 'QV', grade_level: '3',
+      school_id: 'SIM-S002', district_id: 'SIM-D001', state_id: 'CA',
+      district_student_id: claimedId,
+    }).select('id, child_id').single();
+
+    check(!attackErr && !!attacker?.child_id,
+      'a second provider claiming the same id still imports fine',
+      attackErr ? attackErr.message : 'inserted');
+    check(attacker?.child_id !== victim!.child_id,
+      'it does NOT borrow the first child', `${attacker?.child_id} vs ${victim!.child_id}`);
+
+    const { count: canSee } = await alicia.from('children')
+      .select('*', { count: 'exact', head: true }).eq('id', victim!.child_id);
+    check(canSee === 0, 'and gains no access to it', `count=${canSee}`);
+
+    const { data: theirChild } = await admin.from('children')
+      .select('district_student_id').eq('id', attacker!.child_id).single();
+    check(theirChild?.district_student_id === null,
+      'their own child is created WITHOUT the contested id', `${theirChild?.district_student_id}`);
+
+    for (const row of [victim!, attacker!]) {
+      await admin.from('students').delete().eq('id', row.id);
+      await admin.from('children').delete().eq('id', row.child_id);
+    }
   }
 
   console.log('auto-create + dual-write, through a real session:');

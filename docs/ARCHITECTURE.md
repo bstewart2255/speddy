@@ -523,11 +523,17 @@ erDiagram
   holds one row per provider per child. Cross-district recurrence stays legal.
 - **Rows are created by the database, never by a caller.** A `BEFORE INSERT`
   trigger (`trg_students_child_link` → `students_child_link()`, SECURITY DEFINER)
-  links every new `students` row: it **attaches** to the existing child when
-  `district_student_id` already identifies one in that district, otherwise it
-  **creates** one. Manual add, roster import and `upsert_students_atomic` were
-  not modified. Name-and-initials matching with human confirmation is a separate
-  step (**SPE-348**); the trigger only does exact id equality.
+  creates the child for every new `students` row. Manual add, roster import and
+  `upsert_students_atomic` were not modified.
+  **It never attaches to an existing child**, deliberately: an earlier cut did
+  attach when `(district_id, district_student_id)` matched, and because both
+  columns are client-supplied and unconstrained (`students_insert` pins only
+  `provider_id`), any provider could link themselves to any child in any
+  district and read or overwrite its name and DOB — verified exploitable on a
+  replica before merge. When the claimed id is already held in that district,
+  the trigger creates this provider's child **without** it and logs the
+  collision; the caseload row still lands, and the two children stay separate
+  until the human-confirmed create-or-attach step (**SPE-348**) reconciles them.
 - **`child_id` is not the caller's to set.** The same trigger refuses (`42501`)
   any attempt by an end-user session to set or change it. `students_insert`'s
   `WITH CHECK` only constrains `provider_id`, so without that guard a signed-in
@@ -538,16 +544,35 @@ erDiagram
   overwrites** — writes on both tables are routinely partial (the import RPC
   `COALESCE`s almost every column; a PostgREST `PATCH` carries only what the
   caller sent), so an absent value means "not provided", not "cleared".
-  Divergence on a child more than one caseload row points at is `RAISE LOG`ged.
+  `district_student_id` is stricter still: the mirror only ever **fills an empty
+  one**, because it is an identity claim, and overwriting it made the value flap
+  between two merged rows on every write. Divergence on a child more than one
+  caseload row points at is `RAISE LOG`ged.
+- **The mirrors authorize nothing — the source table's policy is the gate.**
+  Both are SECURITY DEFINER. That has one consequence worth knowing:
+  `student_details`'s UPDATE policy has an SEA branch with no column
+  restriction, so an SEA **can** change a child's name/DOB/IEP dates *through
+  `student_details`* even though `children_update` refuses them a direct write.
+  Not a new capability (they can already write those columns) and invisible
+  while nothing reads `children` — but at the cross-provider read switch it
+  would start reaching the co-serving provider's view of the child, so that
+  ticket decides whether to narrow it. Pinned by an assertion in
+  `sim:verify-children-rls`.
 - **RLS.** `children_select` **mirrors every branch of `students_select`**
   through the link — owning provider, the student's teacher, an assigned
   specialist or SEA, an SEA at the school, a site admin for that school — so
   nobody who can see a student is blind to its child. `children_update` is
-  narrower: only a **linked provider**. That edit scope is deliberately coarse
-  (any co-serving provider may edit), matching today's reality where each
-  copy-owner edits freely; case-manager-only tightening is **SPE-201**. There is
-  **no INSERT or DELETE policy, and no INSERT/DELETE grant** — the definer
-  trigger is the only way a row is born, and nothing deletes one.
+  narrower: only a **linked provider**, and the UPDATE **grant is column-scoped**
+  to the identity/compliance fields (name, DOB, initials, grade, IEP + triennial
+  dates, accommodations). The scoping and identifier columns — `district_id`,
+  `school_id`, `state_id`, `district_student_id` — are database-managed: they are
+  mirrored from the caseload row, and letting a provider rewrite one would move a
+  child between districts or re-stamp its district identifier. That edit scope is
+  otherwise deliberately coarse (any co-serving provider may edit), matching
+  today's reality where each copy-owner edits freely; case-manager-only
+  tightening is **SPE-201**. There is **no INSERT or DELETE policy, and no
+  INSERT/DELETE grant** — the definer trigger is the only way a row is born, and
+  nothing deletes one.
   No policy on `students` references `children`, so there is no recursion
   surface (§2, SPE-332).
 - **Retention: children survive provider offboarding.** `students` is
@@ -559,7 +584,8 @@ erDiagram
   caller until something re-links it. Re-attaching orphaned children is part of
   the cross-provider read-switch step, not this one (§7).
 
-**Source of truth:** `supabase/migrations/20260729_spe347_children_foundation.sql`;
+**Source of truth:** `supabase/migrations/20260729_spe347_children_foundation.sql`
++ `20260729_spe347_children_hardening.sql`;
 live `children` table + `children_select` / `children_update` policies;
 `students_child_link()`, `students_mirror_child_facts()`,
 `student_details_mirror_child_facts()`; `scripts/sim-district/manifest.ts`
