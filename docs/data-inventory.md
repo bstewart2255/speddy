@@ -7,6 +7,11 @@ California Student Privacy Alliance (see SPE-59), and the companion to
 
 > Grounded in the live database schema (project `qkcruccytmmdajfavpgb`), verified
 > 2026-06-12. Keep current as the schema changes.
+>
+> **Correction 2026-07-28:** added the Parent/Guardian Name row —
+> `care_referrals.requested_by` (Lane B requester name/relationship, added
+> 2026-05-16) was missed by the June sweep; caught during the JSUSD DPA
+> review (PR #788).
 
 ---
 
@@ -28,7 +33,8 @@ California Student Privacy Alliance (see SPE-59), and the companion to
 | **Conduct / Behavior** | Limited | Optional | Behavior-area IEP goals; CARE referral reason | `student_details.iep_goals`, `care_referrals.referral_reason` |
 | **Communications** | Limited | Optional | Provider session/progress notes (free text) | `schedule_sessions.session_notes`, `manual_goal_progress.notes`, `care_meeting_notes` |
 | **Student Identifiers (local/state)** | **Yes (extension)** | Derived | Speddy student UUID (backend). **SEIS ID (SSID) is _not_ stored in the backend DB, but the Chrome extension persists it — with student name, grade, and school — in the provider's local browser storage (`chrome.storage.local`) when passive discrepancy detection runs.** | `students.id`; extension `chrome.storage.local` |
-| **Parent/Guardian Contact** | **No** | — | — | — |
+| **Parent/Guardian Name** | Limited | Optional | Requesting parent/guardian's name + relationship on Lane B (parent-written-request) CARE referrals | `care_referrals.requested_by` |
+| **Parent/Guardian Contact** | **No** | — | No dedicated address / email / phone fields (none collected by design; free-text fields such as `requested_by` are not validated against incidentally entered contact details) | — |
 | **Student Contact Info** | **No** | — | No student email / phone / address | — |
 | **Student Survey Responses** | **No** | — | — | — |
 | **Transcript / official grades** | **No** | — | Grade level only; no transcript/GPA | — |
@@ -97,7 +103,7 @@ extension API key (`api_keys`); see [`offboarding-runbook.md`](./offboarding-run
 ## Notable points (for the NDPA / due diligence)
 
 1. **Full student names and date of birth _are_ collected** (`student_details`). This corrects the earlier SPE-59 draft inventory, which said "initials, not full names." Names + DOB must be disclosed on the Schedule of Data.
-2. **The CARE module holds special-education evaluation data** — full student names, referral reasons, and psych/speech/OT testing + eligibility outcomes. This is among the most sensitive data here (special-ed records under FERPA/IDEA) and should be called out explicitly.
+2. **The CARE module holds special-education evaluation data** — full student names, referral reasons, and psych/speech/OT testing + eligibility outcomes; Lane B referrals also record the requesting parent/guardian's name and relationship (`requested_by`). This is among the most sensitive data here (special-ed records under FERPA/IDEA) and should be called out explicitly.
 3. **Student work images** are stored (Supabase Storage, private buckets, served via short-lived signed URLs).
 4. **Minimization wins worth stating:** no SEIS ID (SSID) stored in the backend DB (it is held only in the provider's local browser storage by the Chrome extension — see Section A), no parent/guardian or student contact info, no SSN, no race/ethnicity/gender, no health data beyond special-ed status.
 5. **Provider IP addresses** are logged (`sign_in_logs`, `analytics_events`) — provider PII, not student.

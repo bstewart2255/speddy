@@ -155,7 +155,8 @@ Check exactly these; leave everything else unchecked.
 | Enrollment | Student grade level | ☑ | `students.grade_level` |
 | Enrollment | Specific curriculum programs | ☑ (SPIRE / Reveal Math curriculum tracking) | `curriculum_tracking` |
 | Enrollment | Homeroom / Guidance counselor / Year of graduation / Other | ☐ | — |
-| Parent/Guardian Contact, ID, Name | all | ☐ — not collected | `data-inventory.md` §A |
+| Parent/Guardian Contact, ID | all | ☐ — not collected | `data-inventory.md` §A |
+| Parent/Guardian Name | First and/or last | ☑ (limited: requesting parent/guardian's name + relationship on Lane B CARE referrals — corrected 2026-07-28, was ☐) | `care_referrals.requested_by`; `data-inventory.md` §A |
 | Schedule | Student scheduled courses | ☑ (special-education service sessions: day/time, service type, group) | `schedule_sessions`, `bell_schedules`, `special_activities` |
 | Schedule | Teacher names | ☑ | `students.teacher_name`, `teachers` |
 | Special Indicator | Student disability information | ☑ | `care_cases.eligibility_category/outcome`, `student_details` |
@@ -224,7 +225,7 @@ Source: `subprocessors.md` (last reviewed 2026-06-11).
 | Subprocessor | Function | Student data | Location | Agreement |
 |---|---|---|---|---|
 | Supabase | Database, auth, file storage — system of record | Yes — all categories in Exhibit B | US (us-west-1, N. California) | DPA available; **sign via dashboard → Legal Documents [ACTION]** |
-| Vercel | Application hosting; traffic + runtime logs | Yes — in transit and incidentally in logs | US-configurable | DPA incorporated into ToS (Pro/Enterprise); **confirm plan tier + save copy [ACTION]** |
+| Vercel | Application hosting; traffic + runtime logs | Yes — in transit and incidentally in logs | US-configurable | DPA incorporated into ToS — **on Pro since 2026-07-28**; **save copy [ACTION]** |
 | Sentry | Error monitoring, minimized (no logs/replay, PII scrubbed, `sendDefaultPii: false`) | Incidental only | US ingest | DPA self-serve; **accept in Settings → Legal & Compliance [ACTION]** |
 | Help Scout | Support help desk + chat widget | No by design (provider PII only) | US | DPA v2 via ToS; DPF + SCCs (SPE-170, on file) |
 | OpenAI — **planned, NOT enabled** | AI lesson generation (when enabled) | None today (hard-gated off); initials + IEP goal text when enabled | US | DPA executed 2026-06-12 (SPE-163) |
@@ -262,11 +263,10 @@ only when active); Supabase Auth transactional email.
    - **Supabase**: DPA must be signed — Supabase dashboard → Organization →
      Legal Documents (PandaDoc flow). Save the executed copy.
    - **Vercel**: DPA is incorporated by reference into the Terms of Service
-     (deemed signed) for **Pro/Enterprise** customers. **Confirmed
-     2026-06-12: currently on HOBBY plan → upgrade to Pro required before
-     signing** (Hobby is non-commercial and outside the DPA's scope) —
-     tracked as **SPE-173** (blocks SPE-59). After upgrading, save a copy of
-     vercel.com/legal/dpa for the records file.
+     (deemed signed) for **Pro/Enterprise** customers. ~~Currently on HOBBY
+     plan~~ **Upgraded Hobby → Pro 2026-07-28 (owner-confirmed)** — the DPA
+     now applies. Remaining (SPE-173): save a copy of vercel.com/legal/dpa
+     for the records file; sanity-check the daily crons on Pro.
    - **Sentry**: self-serve click-accept — Sentry → Settings → Legal &
      Compliance (requires Owner/Billing role); DocuSign option if a signed
      copy is preferred. Save the acceptance record.
@@ -312,7 +312,7 @@ only when active); Supabase Auth transactional email.
 5. ☑ AI stance: "No AI used at this time" (decided 2026-06-12; attorney confirms, brief item 3; enablement runbook = SPE-174)
 6. ☑ Framework: NIST CSF 1.1 + mapping memo `docs/security-framework-mapping.md` (done 2026-06-12; attorney confirms, brief item 5)
 7. ☐ Email CITE about Exhibit H (tracked: **SPE-172**)
-8. ☐ Sign Supabase DPA (dashboard) · accept Sentry DPA (Settings → Legal & Compliance) · **upgrade Vercel Hobby → Pro (SPE-173)** + save DPA copy; collate with OpenAI/Anthropic/Help Scout records (Gap 8)
+8. ☐ Sign Supabase DPA (dashboard) · accept Sentry DPA (Settings → Legal & Compliance) · ~~upgrade Vercel Hobby → Pro~~ **done 2026-07-28** — save Vercel DPA copy (SPE-173); collate with OpenAI/Anthropic/Help Scout records (Gap 8)
 9. ☑ Security overview rewritten to current reality, v2.0 (Gap 9 — done 2026-06-12)
 10. ☑ MFA references removed from privacy page (Gap 10 — done 2026-06-12)
 11. ☑ Incident-response plan written: `docs/incident-response-plan.md` (Gap 11 — done 2026-06-12; **[DPO]** review recommended)
