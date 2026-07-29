@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Card } from '@/app/components/ui/card';
 import { getCurrentTeacher, getMySpecialActivities, createSpecialActivity, deleteSpecialActivity } from '@/lib/supabase/queries/teacher-portal';
+import { SPECIAL_ACTIVITY_TYPES } from '@/lib/constants/activity-types';
 
 interface SpecialActivity {
   id: string;
@@ -218,14 +219,26 @@ export default function TeacherSpecialActivitiesPage() {
                   <label htmlFor="activity_name" className="block text-sm font-medium text-gray-700">
                     Activity Name
                   </label>
-                  <input
-                    type="text"
+                  {/* The DB CHECK constraint only admits SPECIAL_ACTIVITY_TYPES;
+                      free text let teachers submit values Postgres rejects with
+                      a raw constraint error (SPE-343). Same picker as the
+                      provider form (add-special-activity-form.tsx). */}
+                  <select
                     name="activity_name"
                     id="activity_name"
                     required
+                    defaultValue=""
                     className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                    placeholder="e.g., PE, Library, Art"
-                  />
+                  >
+                    <option value="" disabled>
+                      Select an activity
+                    </option>
+                    {SPECIAL_ACTIVITY_TYPES.map((type) => (
+                      <option key={type} value={type}>
+                        {type}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 <div>
