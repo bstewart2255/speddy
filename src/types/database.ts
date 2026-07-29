@@ -935,6 +935,82 @@ export type Database = {
           },
         ]
       }
+      children: {
+        Row: {
+          accommodations: string[]
+          created_at: string
+          date_of_birth: string | null
+          district_id: string | null
+          district_student_id: string | null
+          first_name: string | null
+          grade_level: string
+          id: string
+          initials: string
+          last_name: string | null
+          school_id: string | null
+          state_id: string | null
+          upcoming_iep_date: string | null
+          upcoming_triennial_date: string | null
+          updated_at: string
+        }
+        Insert: {
+          accommodations?: string[]
+          created_at?: string
+          date_of_birth?: string | null
+          district_id?: string | null
+          district_student_id?: string | null
+          first_name?: string | null
+          grade_level: string
+          id?: string
+          initials: string
+          last_name?: string | null
+          school_id?: string | null
+          state_id?: string | null
+          upcoming_iep_date?: string | null
+          upcoming_triennial_date?: string | null
+          updated_at?: string
+        }
+        Update: {
+          accommodations?: string[]
+          created_at?: string
+          date_of_birth?: string | null
+          district_id?: string | null
+          district_student_id?: string | null
+          first_name?: string | null
+          grade_level?: string
+          id?: string
+          initials?: string
+          last_name?: string | null
+          school_id?: string | null
+          state_id?: string | null
+          upcoming_iep_date?: string | null
+          upcoming_triennial_date?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "children_district_id_fkey"
+            columns: ["district_id"]
+            isOneToOne: false
+            referencedRelation: "districts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "children_school_id_fkey"
+            columns: ["school_id"]
+            isOneToOne: false
+            referencedRelation: "schools"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "children_state_id_fkey"
+            columns: ["state_id"]
+            isOneToOne: false
+            referencedRelation: "states"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       conversation_participants: {
         Row: {
           added_at: string
@@ -3711,6 +3787,7 @@ export type Database = {
       }
       students: {
         Row: {
+          child_id: string | null
           created_at: string | null
           district_id: string | null
           district_student_id: string | null
@@ -3729,6 +3806,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          child_id?: string | null
           created_at?: string | null
           district_id?: string | null
           district_student_id?: string | null
@@ -3747,6 +3825,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          child_id?: string | null
           created_at?: string | null
           district_id?: string | null
           district_student_id?: string | null
@@ -3765,6 +3844,13 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "students_child_id_fkey"
+            columns: ["child_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "students_district_id_fkey"
             columns: ["district_id"]

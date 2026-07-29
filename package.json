@@ -33,7 +33,8 @@
     "sim:reset": "tsx scripts/sim-district/seed.ts",
     "sim:teardown": "tsx scripts/sim-district/teardown.ts",
     "sim:verify": "tsx scripts/sim-district/verify.ts",
-    "sim:verify-rls": "tsx scripts/sim-district/verify-profiles-rls.ts"
+    "sim:verify-rls": "tsx scripts/sim-district/verify-profiles-rls.ts",
+    "sim:verify-children-rls": "tsx scripts/sim-district/verify-children-rls.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.56.0",

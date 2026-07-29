@@ -21,6 +21,7 @@ import {
   SEEDED_TABLES,
   SESSION_GROUPS,
   SWEPT_TABLES,
+  TOTAL_CHILDREN,
   TOTAL_STUDENTS,
   careCaseId,
 } from './manifest';
@@ -47,18 +48,47 @@ async function collectCounts(admin: Admin) {
   const simUsers = await resolveSimAuthUsers(admin);
   const simUserIds = [...simUsers.values()];
 
+  // SPE-347: both student scans also carry child_id, so the child set and the
+  // unlinked count come out of the scans we already run — no extra query, and
+  // nothing passes a 200-element id list to a single `.in()` (the helpers chunk
+  // at 150 for a reason; an unchunked list becomes a 414 as the fixture grows).
   const studentIds = new Set<string>();
+  const childIds = new Set<string>();
+  let unlinkedStudents = 0;
+  const takeStudents = (rows: { id: string; child_id: string | null }[]) => {
+    for (const row of rows) {
+      if (studentIds.has(row.id)) continue;
+      studentIds.add(row.id);
+      if (row.child_id) childIds.add(row.child_id);
+      else unlinkedStudents++;
+    }
+  };
   {
-    const { data, error } = await admin.from('students').select('id').in('school_id', SIM_SCHOOL_IDS);
+    const { data, error } = await admin.from('students').select('id, child_id').in('school_id', SIM_SCHOOL_IDS);
     if (error) throw new Error(`student scan failed: ${error.message}`);
-    for (const row of data ?? []) studentIds.add(row.id);
+    takeStudents(data ?? []);
   }
   if (simUserIds.length > 0) {
-    const { data, error } = await admin.from('students').select('id').in('provider_id', simUserIds);
+    const { data, error } = await admin.from('students').select('id, child_id').in('provider_id', simUserIds);
     if (error) throw new Error(`student scan by provider failed: ${error.message}`);
-    for (const row of data ?? []) studentIds.add(row.id);
+    takeStudents(data ?? []);
   }
   const simStudentIds = [...studentIds];
+
+  // Children whose caseload rows are already gone would be invisible to the
+  // scan above, so also sweep by sim school AND sim district — a child with no
+  // school_id still carries the district. Without both, an orphan would sit in
+  // the namespace and `--expect-empty` would report a clean teardown anyway.
+  for (const [column, values] of [
+    ['school_id', SIM_SCHOOL_IDS],
+    ['district_id', [DISTRICT.id]],
+  ] as const) {
+    const { data, error } = await admin.from('children').select('id').in(column, values as string[]);
+    if (error) throw new Error(`children scan by ${column} failed: ${error.message}`);
+    for (const row of data ?? []) childIds.add(row.id);
+  }
+  const simChildIds = [...childIds];
+
   const careCaseIds = CARE_REFERRALS.filter(c => c.withCase).map(c => careCaseId(c.key));
 
   const counts: Record<string, number> = {
@@ -70,6 +100,8 @@ async function collectCounts(admin: Admin) {
     provider_schools: simUserIds.length > 0 ? await countWhereIn(admin, 'provider_schools', 'provider_id', simUserIds) : 0,
     user_site_schedules: simUserIds.length > 0 ? await countWhereIn(admin, 'user_site_schedules', 'user_id', simUserIds) : 0,
     teachers: await countWhereIn(admin, 'teachers', 'school_id', SIM_SCHOOL_IDS),
+    children: simChildIds.length,
+    'students with no child': unlinkedStudents,
     students: simStudentIds.length,
     student_details: simStudentIds.length > 0 ? await countWhereIn(admin, 'student_details', 'student_id', simStudentIds) : 0,
     bell_schedules: await countWhereIn(admin, 'bell_schedules', 'school_id', SIM_SCHOOL_IDS),
@@ -193,6 +225,11 @@ async function main() {
     expect('admin_permissions', n => n === 6, '6');
     expect('teachers', n => n === RECORD_TEACHERS.length + teacherLogins, String(RECORD_TEACHERS.length + teacherLogins));
     expect('students', n => n === TOTAL_STUDENTS, String(TOTAL_STUDENTS));
+    // SPE-347: one children row per child. Fewer children than students is the
+    // whole point — the gap is exactly the fixture's shared pairs (spec §6),
+    // and TOTAL_CHILDREN derives from the same childKey() the seed uses.
+    expect('children', n => n === TOTAL_CHILDREN, String(TOTAL_CHILDREN));
+    expect('students with no child', n => n === 0, '0');
     expect('student_details', n => n > 0, '> 0');
     expect('bell_schedules', n => n > 0, '> 0');
     expect('school_hours', n => n > 0, '> 0');

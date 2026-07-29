@@ -272,6 +272,18 @@ Field conventions:
 
 - `initials` only in `students` (as the model intends); fictional full names +
   DOBs live in `student_details` with `-Sim` surnames.
+- **One `children` row per child (SPE-347), 200 for 202 caseload rows.** A
+  `students` row is one provider's caseload entry; the child it serves is the
+  `children` row it points at. The "same child" quirk above is what makes the
+  two numbers differ: Tomás's first two Willow students share Rachel's two
+  children (`childKey()` in the manifest), so the fixture models a co-served
+  child the way the schema now means it. `TOTAL_CHILDREN` derives from the same
+  function the seed uses, so the count cannot drift from the rule.
+  One collision is deliberately **not** shared: Tomás and Hannah each carry a
+  grade-7 `HL` at Cedar with the same teacher, which the SPE-255/290 matcher
+  also calls one child. It is an artifact of the initials generator rather than
+  a designed pair, so it stays two children — negative space for SPE-348's
+  create-or-attach step, which must cope with exactly that shape.
 - Both scoping systems set on every row: legacy text (`school_site`,
   `school_district`) **and** structured FKs (`school_id`, `district_id`,
   `state_id`), plus `teacher_name` text **and** `teacher_id` FK — mirroring
