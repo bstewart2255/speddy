@@ -159,6 +159,27 @@ describe('attachChildMatches (SPE-348)', () => {
     expect(noInserts.rpc).not.toHaveBeenCalled();
   });
 
+  it('degrades when the client THROWS, not just when it returns an error', async () => {
+    // A preview must never 500 because the offer lookup blew up. Regression:
+    // the first cut only handled a returned `error`, so a client without `rpc`
+    // (or a network throw) failed the whole import preview.
+    const previews = [preview()];
+    const client = {
+      rpc: jest.fn().mockRejectedValue(new Error('supabase.rpc is not a function')),
+    } as unknown as ImportSupabaseClient;
+
+    await expect(run(previews, client)).resolves.toBeUndefined();
+    expect(previews[0].childMatch).toBeUndefined();
+  });
+
+  it('ignores a non-array payload rather than iterating it', async () => {
+    const previews = [preview()];
+    const { client } = stubClient({ data: { nope: true } });
+
+    await expect(run(previews, client)).resolves.toBeUndefined();
+    expect(previews[0].childMatch).toBeUndefined();
+  });
+
   it('does not claim a child with a disputed Student ID (SPE-339 withholds it)', async () => {
     // The preview drops a conflicting id, so nothing here should resurrect it.
     const previews = [preview({ districtStudentIdConflict: { districtStudentId: '100482', existingLabel: 'Other Kid' } })];

@@ -154,9 +154,19 @@ AS $function$
     WHERE r.initials IS NOT NULL
       AND r.grade_level IS NOT NULL
       AND (r.norm_name IS NULL OR cand.norm_name IS NULL)
+      -- Teacher agreement, verbatim from `matching_provider_student_ids`: ids
+      -- win when BOTH sides have one, and the name is a fallback only when one
+      -- side is missing an id. Without that second guard two rows with
+      -- DIFFERENT teacher ids whose display names happen to collide would count
+      -- as the same teacher — and on this rung (nameless pupils, same initials
+      -- and grade) the teacher is the only thing left doing any work.
       AND (
         (cand.teacher_id IS NOT NULL AND r.teacher_id IS NOT NULL AND cand.teacher_id = r.teacher_id)
-        OR (cand.teacher_name IS NOT NULL AND cand.teacher_name = r.teacher_name)
+        OR (
+          (cand.teacher_id IS NULL OR r.teacher_id IS NULL)
+          AND cand.teacher_name IS NOT NULL
+          AND cand.teacher_name = r.teacher_name
+        )
       )
 
     UNION ALL
@@ -227,9 +237,11 @@ AS $function$
       c.idx,
       bool_or(c.reason = 'id-name-disagreement')  AS has_disagreement,
       count(*) FILTER (WHERE c.reason <> 'id-name-disagreement') AS match_count,
-      -- Only meaningful when match_count = 1.
-      min(c.child_id) FILTER (WHERE c.reason <> 'id-name-disagreement') AS child_id,
-      min(c.reason)   FILTER (WHERE c.reason <> 'id-name-disagreement') AS reason
+      -- Only meaningful when match_count = 1. Both aggregates see the same
+      -- filtered input in the same order, so [1] picks the id and the reason off
+      -- the SAME candidate. (There is no min(uuid) in Postgres anyway.)
+      (array_agg(c.child_id) FILTER (WHERE c.reason <> 'id-name-disagreement'))[1] AS child_id,
+      (array_agg(c.reason)   FILTER (WHERE c.reason <> 'id-name-disagreement'))[1] AS reason
     FROM cands c
     GROUP BY c.idx
   )

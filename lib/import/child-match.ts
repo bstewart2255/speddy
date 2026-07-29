@@ -80,13 +80,18 @@ export async function attachChildMatches(params: {
 
   if (rows.length === 0) return;
 
-  const { data, error } = await supabase.rpc('find_shared_child_candidates', {
-    p_school_id: schoolId,
-    p_rows: rows,
-  });
-
-  if (error) {
-    // Degrade to today's behaviour: no offers, import unaffected.
+  // Degrade to today's behaviour on ANY failure — a returned error or a thrown
+  // one. The offer is an improvement on the status quo, never a precondition for
+  // importing, so it must not be able to fail the preview.
+  let data: unknown = null;
+  try {
+    const result = await supabase.rpc('find_shared_child_candidates', {
+      p_school_id: schoolId,
+      p_rows: rows,
+    });
+    if (result.error) throw result.error;
+    data = result.data;
+  } catch (error) {
     log.error(
       'Failed to look up shared-child candidates for import preview',
       error instanceof Error ? error : null,
@@ -95,7 +100,9 @@ export async function attachChildMatches(params: {
     return;
   }
 
-  for (const candidate of (data as CandidateRow[] | null) ?? []) {
+  if (!Array.isArray(data)) return;
+
+  for (const candidate of data as CandidateRow[]) {
     const target = previews[askIndexes[candidate.idx]];
     if (!target) continue;
 

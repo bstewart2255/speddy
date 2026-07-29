@@ -113,6 +113,14 @@ function makeSupabase(tables: TableData) {
   return {
     auth: { getUser: async () => ({ data: { user: { id: USER_ID } }, error: null }) },
     from: (table: string) => builder(table),
+    // SPE-348: the preview asks find_shared_child_candidates whether any new row
+    // is a child a colleague already serves. Answer "none" so these
+    // characterizations keep pinning the pre-348 shape exactly; the offer
+    // plumbing has its own tests in __tests__/unit/lib/import/child-match.test.ts.
+    rpc: async (fn: string) =>
+      fn === 'find_shared_child_candidates'
+        ? { data: [], error: null }
+        : { data: null, error: null },
   };
 }
 
