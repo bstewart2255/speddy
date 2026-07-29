@@ -41,6 +41,7 @@ import {
   careHistoryId,
   careNoteId,
   careReferralId,
+  childId,
   derivePassword,
   groupAssignmentFor,
   personaEmail,
@@ -254,8 +255,15 @@ async function main() {
   }
   counts['teachers'] = await bulkInsert(admin, 'teachers', teacherRows);
 
-  // ---- Students + details --------------------------------------------------
-  console.log('Step 6/9: students + student_details...');
+  // ---- Children + students + details ---------------------------------------
+  // SPE-347: `children` is the child record, `students` the per-provider
+  // caseload row. Children are inserted FIRST (students.child_id is an FK) and
+  // the two shared pairs resolve to ONE children row each via childKey(), so
+  // the fixture models a co-served child the way the schema now means it.
+  // Setting child_id explicitly also keeps the auto-create trigger out of the
+  // way: it only fires when child_id arrives NULL.
+  console.log('Step 6/9: children + students + student_details...');
+  const childRows = new Map<string, Record<string, unknown>>();
   const studentRows: Record<string, unknown>[] = [];
   const detailRows: Record<string, unknown>[] = [];
   for (const rule of CASELOADS) {
@@ -266,8 +274,34 @@ async function main() {
       const grade = studentGrade(rule, i);
       const mix = sessionMix(i);
       const teacher = studentTeacher(rule, i);
+      const childUuid = childId(rule.providerKey, rule.schoolId, i);
+      const name = studentFullName(rule.providerKey, rule.schoolId, i);
+      const gradeNum = grade === 'K' ? 0 : parseInt(grade, 10);
+      const hasDetails = i < nDetails;
+      // First writer wins for a shared child. CASELOADS lists Rachel before
+      // Tomás, so the canonical (Rachel) row supplies the child's facts; the
+      // mirror rows derive identical values anyway.
+      if (!childRows.has(childUuid)) {
+        childRows.set(childUuid, {
+          id: childUuid,
+          first_name: hasDetails ? name.firstName : null,
+          last_name: hasDetails ? name.lastName : null,
+          date_of_birth: hasDetails ? `${seedDate.getUTCFullYear() - 6 - gradeNum}-0${(i % 9) + 1}-1${i % 9}` : null,
+          initials: studentInitials(rule.providerKey, rule.schoolId, i),
+          grade_level: grade,
+          school_id: school.id,
+          district_id: DISTRICT.id,
+          state_id: DISTRICT.state_id,
+          upcoming_iep_date: hasDetails ? addDays(seedDate, (i * 17) % 300 + 7) : null,
+          upcoming_triennial_date: hasDetails ? addDays(seedDate, (i * 37) % 900 + 30) : null,
+          accommodations: hasDetails
+            ? [ACCOMMODATION_BANK[i % ACCOMMODATION_BANK.length], ACCOMMODATION_BANK[(i + 1) % ACCOMMODATION_BANK.length]]
+            : [],
+        });
+      }
       studentRows.push({
         id,
+        child_id: childUuid,
         provider_id: userIds.get(rule.providerKey)!,
         initials: studentInitials(rule.providerKey, rule.schoolId, i),
         grade_level: grade,
@@ -281,9 +315,7 @@ async function main() {
         district_id: DISTRICT.id,
         school_id: school.id,
       });
-      if (i < nDetails) {
-        const name = studentFullName(rule.providerKey, rule.schoolId, i);
-        const gradeNum = grade === 'K' ? 0 : parseInt(grade, 10);
+      if (hasDetails) {
         detailRows.push({
           id: studentDetailsId(id),
           student_id: id,
@@ -306,6 +338,7 @@ async function main() {
       }
     }
   }
+  counts['children'] = await bulkInsert(admin, 'children', [...childRows.values()]);
   counts['students'] = await bulkInsert(admin, 'students', studentRows);
   counts['student_details'] = await bulkInsert(admin, 'student_details', detailRows);
 

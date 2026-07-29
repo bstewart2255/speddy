@@ -273,6 +273,40 @@ export function studentInitials(providerKey: string, schoolId: string, index: nu
   return String.fromCharCode(65 + (seed[0] % 26)) + String.fromCharCode(65 + (seed[1] % 26));
 }
 
+/**
+ * SPE-347 — the child a caseload row serves.
+ *
+ * `students` rows are per-provider caseload rows; `children` rows are children.
+ * The fixture's "same child on two caseloads" quirk (spec §6) therefore has to
+ * resolve to ONE children row: Tomás's first two Willow students are the same
+ * two kids as Rachel's first two, so they share her child key — the same
+ * mirroring rule studentInitials / studentFullName / studentGrade already use.
+ *
+ * Known non-quirk collision, deliberately NOT shared: Tomás and Hannah each
+ * carry a grade-7 "HL" at Cedar with the same teacher, which the SPE-255/290
+ * matcher also calls one child. That is an artifact of the initials generator,
+ * not a designed pair, so the fixture leaves it as two children — useful
+ * negative space for SPE-348's create-or-attach step, which has to cope with
+ * exactly that shape.
+ */
+export function childKey(providerKey: string, schoolId: string, index: number): string {
+  if (providerKey === 'tomas' && schoolId === WILLOW && index < 2) {
+    return childKey('rachel', WILLOW, index);
+  }
+  return `child:${providerKey}:${schoolId}:${index}`;
+}
+
+export function childId(providerKey: string, schoolId: string, index: number): string {
+  return simUuid(childKey(providerKey, schoolId, index));
+}
+
+/** Distinct children across every caseload — students minus the shared pairs. */
+export const TOTAL_CHILDREN = new Set(
+  CASELOADS.flatMap(rule =>
+    Array.from({ length: rule.count }, (_, i) => childKey(rule.providerKey, rule.schoolId, i)),
+  ),
+).size;
+
 export function studentGrade(rule: CaseloadRule, index: number): string {
   if (rule.providerKey === 'tomas' && rule.schoolId === WILLOW && index < 2) {
     return studentGrade({ providerKey: 'rachel', schoolId: WILLOW, count: 28, serviceType: 'resource' }, index);
@@ -593,7 +627,10 @@ export function careHistoryId(key: string, status: string): string {
 /** Tables seed.ts plants rows in (all rows manifest-keyed). Teardown order = reverse-ish, children first. */
 export const SEEDED_TABLES = [
   'districts', 'schools', 'profiles', 'admin_permissions', 'provider_schools',
-  'user_site_schedules', 'teachers', 'students', 'student_details',
+  // `children` is a PARENT of students (students.child_id), so it seeds before
+  // them and tears down after them — the one entry here whose order is the
+  // reverse of the rest (SPE-347).
+  'user_site_schedules', 'teachers', 'children', 'students', 'student_details',
   'bell_schedules', 'school_hours', 'special_activities',
   'session_groups', 'schedule_sessions',
   'attendance', 'care_referrals', 'care_cases', 'care_meeting_notes',

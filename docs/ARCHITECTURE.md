@@ -65,6 +65,7 @@
 | Session idle timeout | `lib/config/session-timeout.ts`, `lib/hooks/use-activity-tracker.ts`, `app/components/providers/auth-provider.tsx` |
 | SSO provisioning gate | `app/auth/callback/route.ts` |
 | Admin teacher creation | `app/api/admin/create-teacher-account/route.ts` |
+| Student identity (child vs caseload row) | `children` table + `students.child_id`; `supabase/migrations/20260729_spe347_children_foundation.sql` |
 | Scheduling model | `schedule_sessions` table; `lib/scheduling/` |
 | Retention cron jobs | `app/api/cron/*`, `vercel.json` |
 | CARE module | `supabase/migrations/20251222_create_care_meeting_tables.sql`, `lib/supabase/queries/care-referrals.ts` |
@@ -79,6 +80,7 @@
 4. [Account Creation & Invite Flows](#4-account-creation--invite-flows)
 5. [Auth & Session Lifecycle](#5-auth--session-lifecycle)
 6. [Scheduling / Session Data Model](#6-scheduling--session-data-model)
+   — incl. [Student identity — `children` ↔ caseload rows](#student-identity--children--caseload-rows-spe-347)
 7. [Data Lifecycle & Retention](#7-data-lifecycle--retention)
 8. [CARE / Referrals Model](#8-care--referrals-model)
 9. [Elementary vs Secondary (school-level experience)](#9-elementary-vs-secondary-school-level-experience)
@@ -489,6 +491,82 @@ flowchart TD
 
 ## 6. Scheduling / Session Data Model
 
+### Student identity — `children` ↔ caseload rows (SPE-347)
+
+**One child = one `children` row. A `students` row is one provider's caseload
+entry for that child, not the child.** A pupil served by an RSP and an SLP is
+**one** `children` row and **two** `students` rows, each pointing at it via
+`students.child_id`.
+
+That split is new (SPE-347) and, so far, invisible: nothing in the app reads
+`children` yet. Every surface still reads the `students` row it always read, and
+`students` still carries its own copy of the child facts. Retiring those
+duplicated columns is a separate contract ticket (**SPE-350**) after a bake.
+
+```mermaid
+erDiagram
+    CHILDREN ||--o{ STUDENTS : "child_id (no cascade)"
+    PROFILES ||--o{ STUDENTS : "provider_id (CASCADE)"
+    STUDENTS ||--o| STUDENT_DETAILS : "student_id (CASCADE)"
+    STUDENTS ||--o{ SCHEDULE_SESSIONS : "student_id (CASCADE)"
+```
+
+- **What lives where.** `children` holds the child-level facts — name, DOB,
+  initials, grade, school/district/state, `district_student_id`, IEP + triennial
+  dates, accommodations. `students` keeps the per-provider **service** facts:
+  `provider_id`, `sessions_per_week`, `minutes_per_session`, per-discipline
+  goals. All 18 FK dependents (including 11k+ `schedule_sessions`) still key off
+  `students.id` — nothing was re-keyed.
+- **`district_student_id` is unique per district** on `children`
+  (`ux_children_district_student_id`, normalized `upper(btrim(...))`). On
+  `students` the same column had to be **provider**-scoped, because that table
+  holds one row per provider per child. Cross-district recurrence stays legal.
+- **Rows are created by the database, never by a caller.** A `BEFORE INSERT`
+  trigger (`trg_students_child_link` → `students_child_link()`, SECURITY DEFINER)
+  links every new `students` row: it **attaches** to the existing child when
+  `district_student_id` already identifies one in that district, otherwise it
+  **creates** one. Manual add, roster import and `upsert_students_atomic` were
+  not modified. Name-and-initials matching with human confirmation is a separate
+  step (**SPE-348**); the trigger only does exact id equality.
+- **`child_id` is not the caller's to set.** The same trigger refuses (`42501`)
+  any attempt by an end-user session to set or change it. `students_insert`'s
+  `WITH CHECK` only constrains `provider_id`, so without that guard a signed-in
+  user could insert a throwaway caseload row carrying someone else's `child_id`
+  and inherit that child's read **and write** access.
+- **Dual-write.** `AFTER` triggers mirror child facts from `students` and
+  `student_details` onto the linked child. Last write wins, but **NULL never
+  overwrites** — writes on both tables are routinely partial (the import RPC
+  `COALESCE`s almost every column; a PostgREST `PATCH` carries only what the
+  caller sent), so an absent value means "not provided", not "cleared".
+  Divergence on a child more than one caseload row points at is `RAISE LOG`ged.
+- **RLS.** `children_select` **mirrors every branch of `students_select`**
+  through the link — owning provider, the student's teacher, an assigned
+  specialist or SEA, an SEA at the school, a site admin for that school — so
+  nobody who can see a student is blind to its child. `children_update` is
+  narrower: only a **linked provider**. That edit scope is deliberately coarse
+  (any co-serving provider may edit), matching today's reality where each
+  copy-owner edits freely; case-manager-only tightening is **SPE-201**. There is
+  **no INSERT or DELETE policy, and no INSERT/DELETE grant** — the definer
+  trigger is the only way a row is born, and nothing deletes one.
+  No policy on `students` references `children`, so there is no recursion
+  surface (§2, SPE-332).
+- **Retention: children survive provider offboarding.** `students` is
+  `ON DELETE CASCADE` from `profiles`, so deleting a provider destroys their
+  caseload rows and everything hanging off them. `children` is a *parent* —
+  nothing cascades into it — so the child record outlives that. **Caveat worth
+  knowing:** once its last caseload row is gone the child has no link for RLS to
+  reach it by, so it survives in the data but is invisible to every non-service
+  caller until something re-links it. Re-attaching orphaned children is part of
+  the cross-provider read-switch step, not this one (§7).
+
+**Source of truth:** `supabase/migrations/20260729_spe347_children_foundation.sql`;
+live `children` table + `children_select` / `children_update` policies;
+`students_child_link()`, `students_mirror_child_facts()`,
+`student_details_mirror_child_facts()`; `scripts/sim-district/manifest.ts`
+(`childKey` / `childId` / `TOTAL_CHILDREN`).
+
+### The session tables
+
 `schedule_sessions` is the core table. It uses a **template → instance** pattern:
 a template defines a recurring weekly slot; instances are the dated occurrences.
 
@@ -660,6 +738,13 @@ All cron routes authenticate with a shared `CRON_SECRET` (header
 
 ### Deletion semantics
 - **Soft delete:** `schedule_sessions.deleted_at`, `care_referrals.deleted_at`.
+- **Children are not deleted (SPE-347).** `children` has no DELETE policy and no
+  DELETE grant, and nothing cascades into it — so deleting a provider (which
+  cascades away their `students` rows) no longer destroys the child record.
+  The unfinished half: a child whose last caseload row is gone has no link for
+  RLS to reach it by, so it is retained but invisible to non-service callers,
+  and the admin "delete student" flow above does not yet consider whether the
+  child should go with it. Both are on the cross-provider read-switch step.
 - **Hard delete (admin "delete student"):**
   `app/api/admin/students/[studentId]` runs the row delete under the **admin's
   own RLS session** (keeps the DB authz backstop), cascades FK children, then

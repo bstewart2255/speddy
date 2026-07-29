@@ -21,6 +21,7 @@ import {
   SEEDED_TABLES,
   SESSION_GROUPS,
   SWEPT_TABLES,
+  TOTAL_CHILDREN,
   TOTAL_STUDENTS,
   careCaseId,
 } from './manifest';
@@ -59,6 +60,35 @@ async function collectCounts(admin: Admin) {
     for (const row of data ?? []) studentIds.add(row.id);
   }
   const simStudentIds = [...studentIds];
+
+  // SPE-347: the children those caseload rows serve. Collected the same two
+  // ways as students (via the link, and by sim school so an orphan would still
+  // be counted rather than silently ignored by the orphan scan).
+  const childIds = new Set<string>();
+  if (simStudentIds.length > 0) {
+    const { data, error } = await admin.from('students').select('child_id').in('id', simStudentIds);
+    if (error) throw new Error(`child link scan failed: ${error.message}`);
+    for (const row of data ?? []) if (row.child_id) childIds.add(row.child_id);
+  }
+  {
+    const { data, error } = await admin.from('children').select('id').in('school_id', SIM_SCHOOL_IDS);
+    if (error) throw new Error(`children scan by school failed: ${error.message}`);
+    for (const row of data ?? []) childIds.add(row.id);
+  }
+  const simChildIds = [...childIds];
+
+  // Unlinked caseload rows would mean the auto-create trigger did not fire.
+  let unlinkedStudents = 0;
+  if (simStudentIds.length > 0) {
+    const { count, error } = await admin
+      .from('students')
+      .select('*', { count: 'exact', head: true })
+      .in('id', simStudentIds)
+      .is('child_id', null);
+    if (error) throw new Error(`unlinked student scan failed: ${error.message}`);
+    unlinkedStudents = count ?? 0;
+  }
+
   const careCaseIds = CARE_REFERRALS.filter(c => c.withCase).map(c => careCaseId(c.key));
 
   const counts: Record<string, number> = {
@@ -70,6 +100,8 @@ async function collectCounts(admin: Admin) {
     provider_schools: simUserIds.length > 0 ? await countWhereIn(admin, 'provider_schools', 'provider_id', simUserIds) : 0,
     user_site_schedules: simUserIds.length > 0 ? await countWhereIn(admin, 'user_site_schedules', 'user_id', simUserIds) : 0,
     teachers: await countWhereIn(admin, 'teachers', 'school_id', SIM_SCHOOL_IDS),
+    children: simChildIds.length,
+    'students with no child': unlinkedStudents,
     students: simStudentIds.length,
     student_details: simStudentIds.length > 0 ? await countWhereIn(admin, 'student_details', 'student_id', simStudentIds) : 0,
     bell_schedules: await countWhereIn(admin, 'bell_schedules', 'school_id', SIM_SCHOOL_IDS),
@@ -193,6 +225,11 @@ async function main() {
     expect('admin_permissions', n => n === 6, '6');
     expect('teachers', n => n === RECORD_TEACHERS.length + teacherLogins, String(RECORD_TEACHERS.length + teacherLogins));
     expect('students', n => n === TOTAL_STUDENTS, String(TOTAL_STUDENTS));
+    // SPE-347: one children row per child. Fewer children than students is the
+    // whole point — the gap is exactly the fixture's shared pairs (spec §6),
+    // and TOTAL_CHILDREN derives from the same childKey() the seed uses.
+    expect('children', n => n === TOTAL_CHILDREN, String(TOTAL_CHILDREN));
+    expect('students with no child', n => n === 0, '0');
     expect('student_details', n => n > 0, '> 0');
     expect('bell_schedules', n => n > 0, '> 0');
     expect('school_hours', n => n > 0, '> 0');

@@ -26,19 +26,32 @@ export async function teardown(admin: Admin): Promise<Record<string, number>> {
   const simUsersByEmail = await resolveSimAuthUsers(admin);
   const simUserIds = [...simUsersByEmail.values()];
 
-  // Collect sim student ids (owned by sim providers OR scoped to sim schools).
+  // Collect sim student ids (owned by sim providers OR scoped to sim schools),
+  // and the children they link to (SPE-347). `children` is a PARENT of students
+  // and has no cascade path from profiles/students — that is the point of the
+  // table (a child outlives provider offboarding) — so teardown has to delete
+  // it explicitly, AFTER the students that reference it.
   const studentIds = new Set<string>();
+  const childIds = new Set<string>();
   if (simUserIds.length > 0) {
-    const { data, error } = await admin.from('students').select('id').in('provider_id', simUserIds);
+    const { data, error } = await admin.from('students').select('id, child_id').in('provider_id', simUserIds);
     if (error) throw new Error(`student lookup by provider failed: ${error.message}`);
-    for (const row of data ?? []) studentIds.add(row.id);
+    for (const row of data ?? []) { studentIds.add(row.id); if (row.child_id) childIds.add(row.child_id); }
   }
   {
-    const { data, error } = await admin.from('students').select('id').in('school_id', SIM_SCHOOL_IDS);
+    const { data, error } = await admin.from('students').select('id, child_id').in('school_id', SIM_SCHOOL_IDS);
     if (error) throw new Error(`student lookup by school failed: ${error.message}`);
-    for (const row of data ?? []) studentIds.add(row.id);
+    for (const row of data ?? []) { studentIds.add(row.id); if (row.child_id) childIds.add(row.child_id); }
+  }
+  {
+    // Also sweep by school, so a child orphaned by a half-failed prior teardown
+    // (its students already gone) is still cleaned up — teardown is idempotent.
+    const { data, error } = await admin.from('children').select('id').in('school_id', SIM_SCHOOL_IDS);
+    if (error) throw new Error(`children lookup by school failed: ${error.message}`);
+    for (const row of data ?? []) childIds.add(row.id);
   }
   const simStudentIds = [...studentIds];
+  const simChildIds = [...childIds];
 
   // 1. Leaf data keyed to students/providers.
   deleted['attendance'] = await deleteWhereIn(admin, 'attendance', 'student_id', simStudentIds);
@@ -81,9 +94,10 @@ export async function teardown(admin: Admin): Promise<Record<string, number>> {
     admin, 'care_referrals', 'school_id', SIM_SCHOOL_IDS,
   );
 
-  // 5. Students and their detail rows.
+  // 5. Students and their detail rows, then the children they pointed at.
   deleted['student_details'] = await deleteWhereIn(admin, 'student_details', 'student_id', simStudentIds);
   deleted['students'] = await deleteWhereIn(admin, 'students', 'id', simStudentIds);
+  deleted['children'] = await deleteWhereIn(admin, 'children', 'id', simChildIds);
 
   // 6. Teachers, permissions, school assignments.
   deleted['teachers'] = await deleteWhereIn(admin, 'teachers', 'school_id', SIM_SCHOOL_IDS);
