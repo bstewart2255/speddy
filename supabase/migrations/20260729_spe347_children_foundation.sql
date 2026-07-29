@@ -242,6 +242,7 @@ DECLARE
   v_created bigint := 0;
   v_merged bigint := 0;
   v_held bigint := 0;
+  v_ambiguous bigint := 0;
 
   rec record;
   v_ids uuid[];
@@ -388,16 +389,43 @@ BEGIN
     component AS (
       -- (array_agg ORDER BY)[1] rather than min(): Postgres has no min(uuid).
       SELECT node, (array_agg(seed ORDER BY seed))[1] AS comp FROM reach GROUP BY node
+    ),
+    -- The matcher is PAIRWISE and says nothing about transitivity, so a
+    -- connected component is not automatically one child. Three rows that share
+    -- initials + grade + teacher, where A is "Alice Smith", C is "Carol Jones"
+    -- and B has no name at all, produce edges A-B and B-C via the fallback path
+    -- while A-C is explicitly REFUSED by the name-authoritative rule. Merging
+    -- the component would fuse two children the matcher just said are
+    -- different — irreversibly, since the losing rows are deleted.
+    --
+    -- So a component is only merged when it is a CLIQUE: every pair in it
+    -- matched. Anything else is ambiguous by construction (B matches two
+    -- differently-named children and nothing here can say which it is) and is
+    -- left for the human-confirmed create-or-attach step. A pair is trivially a
+    -- clique, so this changes nothing for the shape all real duplicates have.
+    component_size AS (
+      SELECT comp, count(*) AS n FROM component GROUP BY comp
+    ),
+    component_edges AS (
+      -- `edges` holds both directions, so each undirected pair is counted twice.
+      SELECT c1.comp, count(*) / 2 AS pairs
+      FROM component c1
+      JOIN edges e ON e.x = c1.node
+      JOIN component c2 ON c2.node = e.y AND c2.comp = c1.comp
+      GROUP BY c1.comp
     )
     SELECT
       c.comp,
       array_agg(DISTINCT c.node) AS child_ids,
+      bool_and(cs.n * (cs.n - 1) / 2 = ce.pairs) AS is_clique,
       bool_or(
         (s.school_id || '|' || s.grade_level || '|' || s.initials) = ANY (v_holdout_keys)
       ) AS held_out,
       string_agg(DISTINCT coalesce(sc.name, s.school_id) || ' / grade ' || s.grade_level || ' / ' || s.initials, ', ') AS label,
       string_agg(DISTINCT coalesce(p.email, s.provider_id::text), ', ') AS providers
     FROM component c
+    JOIN component_size cs ON cs.comp = c.comp
+    JOIN component_edges ce ON ce.comp = c.comp
     JOIN public.students s ON s.child_id = c.node
     LEFT JOIN public.schools sc ON sc.id = s.school_id
     LEFT JOIN public.profiles p ON p.id = s.provider_id
@@ -406,6 +434,13 @@ BEGIN
     ORDER BY c.comp
   LOOP
     v_ids := rec.child_ids;
+
+    IF NOT rec.is_clique THEN
+      v_ambiguous := v_ambiguous + 1;
+      RAISE NOTICE 'SPE-347 AMBIGUOUS (not merged, needs human confirmation): % [%] — the matcher links these % children only transitively, and at least one pair in the group does NOT match. children=%',
+        rec.label, rec.providers, array_length(v_ids, 1), v_ids;
+      CONTINUE;
+    END IF;
 
     IF rec.held_out THEN
       -- A hold-out is a judgement call about a MATCHER guess ("are these the
@@ -527,8 +562,8 @@ BEGIN
            ELSE ' CONFLICTS RESOLVED (prefer non-null, then newest updated_at): ' || v_conflicts::text END;
   END LOOP;
 
-  RAISE NOTICE 'SPE-347 merge summary: % duplicate row(s) merged away, % group(s) held out for owner confirmation',
-    v_merged, v_held;
+  RAISE NOTICE 'SPE-347 merge summary: % duplicate row(s) merged away, % group(s) held out for owner confirmation, % group(s) left un-merged as ambiguous',
+    v_merged, v_held, v_ambiguous;
 
   -- ---- Phase 4: assertions -----------------------------------------------
   IF (SELECT count(*) FROM public.students) <> v_students_before THEN
@@ -566,8 +601,8 @@ BEGIN
     RAISE EXCEPTION 'SPE-347: orphan children row(s) created';
   END IF;
 
-  RAISE NOTICE 'SPE-347 backfill complete: % students -> % children (% merged, % held out)',
-    v_students_before, (SELECT count(*) FROM public.children), v_merged, v_held;
+  RAISE NOTICE 'SPE-347 backfill complete: % students -> % children (% merged, % held out, % ambiguous)',
+    v_students_before, (SELECT count(*) FROM public.children), v_merged, v_held, v_ambiguous;
 END;
 $spe347_backfill$;
 
