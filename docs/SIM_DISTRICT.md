@@ -369,7 +369,13 @@ scripts/sim-district/
                     seeded AND swept tables (must be 0); always read-only
 ```
 
-npm scripts: `sim:reset`, `sim:teardown`, `sim:verify` (all `npx tsx`).
+npm scripts: `sim:reset`, `sim:teardown`, `sim:verify` (all `npx tsx`), plus the
+real-signed-in-session guards that mocked unit tests structurally cannot cover —
+`sim:verify-rls` (`profiles`), `sim:verify-children-rls` (SPE-347 `children` RLS
++ the child-link trigger) and `sim:verify-child-link` (SPE-348: the server
+re-validating a claimed create-or-attach). Those three sign in as personas, so
+they need `SIM_DISTRICT_PASSWORD` too, and the last two write sim rows — re-seed
+afterwards to restore a pristine fixture.
 Env requirements are scoped per command: all three need
 `NEXT_PUBLIC_SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`;
 `SIM_DISTRICT_PASSWORD` is required **only** by `sim:reset` (it sets persona

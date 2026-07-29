@@ -36,6 +36,20 @@ export interface ReviewWriteResult {
   failed: number;
 }
 
+/**
+ * The single client-side gate that decides whether a new student is linked to an
+ * existing child or created as a fresh one (SPE-348). Pure and exported so the
+ * decision is testable on its own: ONLY an explicit "Yes — same child" on a row
+ * that actually carries an offer produces a claim. Declined and unanswered both
+ * yield undefined, which is today's behaviour — a separate child.
+ */
+export function confirmedChildIdFor(
+  row: Pick<ReviewRow, 'childMatch'>,
+  choice: ChildLinkChoice | undefined,
+): string | undefined {
+  return row.childMatch && choice === 'link' ? row.childMatch.childId : undefined;
+}
+
 interface StudentImportReviewProps {
   isOpen: boolean;
   onClose: () => void;
@@ -105,8 +119,7 @@ export function StudentImportReview({
           .filter((_, i) => goalsSelected.has(i))
           .map((g) => g.text);
         // Only an explicit "Yes — same child" carries a child through (SPE-348).
-        const confirmedChildId =
-          row.childMatch && childLinkChoices[row.id] === 'link' ? row.childMatch.childId : undefined;
+        const confirmedChildId = confirmedChildIdFor(row, childLinkChoices[row.id]);
         return {
           row: resolvedRow,
           initials: selection.initialsFor(row),

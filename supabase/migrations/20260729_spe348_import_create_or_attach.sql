@@ -88,8 +88,21 @@ AS $function$
       NULLIF(upper(regexp_replace(COALESCE(r.value->>'initials', ''), '[^A-Za-z]', '', 'g')), '') AS initials,
       NULLIF(r.value->>'teacherId', '')::uuid                                AS teacher_id,
       NULLIF(lower(btrim(COALESCE(r.value->>'teacherName', ''))), '')        AS teacher_name
-    FROM jsonb_array_elements(p_rows) AS r
-    WHERE jsonb_typeof(p_rows) = 'array'
+    -- Guard the SRF's INPUT rather than filtering its output. A `WHERE
+    -- jsonb_typeof(p_rows) = 'array'` does hold in the current plan (Postgres
+    -- evaluates the constant-per-execution qual as a one-time filter), but
+    -- leaning on qual ordering for a correctness guard is fragile — and this is
+    -- reached from an authenticated-callable RPC with a client-supplied payload,
+    -- where the failure mode is a raw SQL error instead of "no candidates".
+    -- Also caps the batch: a direct PostgREST call is not bounded by a file the
+    -- way the import preview is, and each row cross-joins the school's children.
+    FROM jsonb_array_elements(
+           CASE
+             WHEN jsonb_typeof(p_rows) = 'array' AND jsonb_array_length(p_rows) <= 2000
+             THEN p_rows
+             ELSE '[]'::jsonb
+           END
+         ) AS r
   ),
   cand AS (
     SELECT
