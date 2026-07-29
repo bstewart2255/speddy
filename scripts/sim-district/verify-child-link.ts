@@ -181,6 +181,52 @@ async function main(): Promise<void> {
   check(!!madeChild && madeChild !== childHereOther && madeChild !== childElsewhere,
     '  ...and got its own fresh child, not a shared one');
 
+  // --- 6. The handshake must not leak between rows of one batch -------------
+  // Every element of a batch runs in the SAME transaction, and the handshake is
+  // a transaction-local setting. If it outlived its own INSERT, the NEXT row
+  // would silently attach to a child nobody confirmed for it — a silent
+  // wrong-child attach, the exact failure this whole ticket exists to prevent.
+  // Reasoning cannot settle this; only the database can.
+  const rachel = await signIn('rachel');
+  const rachelId = await profileId('rachel');
+  await rachel.rpc('upsert_students_atomic', {
+    p_provider_id: rachelId,
+    p_students: [{ ...forgedRow('QQA'), districtStudentId: 'SIM348-GUC' }],
+  });
+  const shared = await childOf(rachelId, 'QQA');
+  check(!!shared, 'setup: a colleague established a genuinely offerable child', String(shared));
+
+  const { data: offered } = await tomas.rpc('find_shared_child_candidates', {
+    p_school_id: WILLOW,
+    p_rows: [{
+      idx: 0, initials: 'QQA', gradeLevel: '5', districtStudentId: 'SIM348-GUC',
+      firstName: 'Forged', lastName: 'Claim',
+    }],
+  });
+  check((offered as any[])?.[0]?.childId === shared, '  ...and it is genuinely OFFERED (so the attach below is legitimate)');
+
+  const { data: r6 } = await callUpsert([
+    { ...forgedRow('QQA', shared!), districtStudentId: 'SIM348-GUC' }, // confirmed attach
+    forgedRow('QQB'),                                                  // ordinary row, no claim
+  ]);
+  const rows6 = ((r6 as any)?.results ?? []) as Array<{ success?: boolean; error?: string }>;
+  check(rows6[0]?.success === true, 'a legitimately confirmed attach succeeds', rows6[0]?.error ?? '');
+  check((await childOf(tomasId, 'QQA')) === shared, '  ...onto the offered child');
+  const nextChild = await childOf(tomasId, 'QQB');
+  check(rows6[1]?.success === true && !!nextChild && nextChild !== shared,
+    'THE HANDSHAKE DOES NOT LEAK: the next row in the batch got its OWN child',
+    `next=${nextChild} attached=${shared}`);
+
+  // --- 7. No back-door merge ------------------------------------------------
+  // Two of the CALLER'S OWN caseload rows on one child is a merge, which nothing
+  // in this plan does. The candidate set excludes children the caller already
+  // serves, so the second claim has nothing to match and is refused.
+  const { data: r7 } = await callUpsert([{ ...forgedRow('QQC', shared!), districtStudentId: 'SIM348-GUC' }]);
+  const row7 = (r7 as any)?.results?.[0];
+  check(row7?.success === false && REFUSED_348.test(String(row7?.error ?? '')),
+    'a SECOND caseload row of his own onto that child is refused (no back-door merge)',
+    row7?.error ?? 'IT SUCCEEDED');
+
   console.log(`\n${failures === 0 ? 'All checks passed.' : `${failures} check(s) FAILED.`}`);
   console.log('Re-seed to restore a pristine fixture: npm run sim:reset -- --yes');
   process.exit(failures > 0 ? 1 : 0);
