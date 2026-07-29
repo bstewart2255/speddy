@@ -668,6 +668,18 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_children_district_student_id
 -- Names and DOB are not available at this point — student_details is written
 -- after the students row — so they arrive via the student_details mirror below.
 
+-- !! SUPERSEDED — read 20260729_spe347_children_hardening.sql §1 before this !!
+-- The attach-to-existing branch below is a PRIVILEGE ESCALATION and is replaced
+-- by the next migration. Both key columns (district_id, district_student_id) are
+-- client-supplied and unconstrained, so any provider could name someone else's
+-- district and a guessed student id and be handed a link to that child — and
+-- with it the child's SELECT and UPDATE access. The NULL-district match and the
+-- SELECT-then-INSERT race below go with it.
+--
+-- The body is left as-applied rather than rewritten, so the hardening migration
+-- reads as the fix it is. Any database that stops BETWEEN these two migrations
+-- is running the vulnerable definition and must not be used until both have
+-- applied — production has both.
 CREATE OR REPLACE FUNCTION public.students_child_link()
 RETURNS trigger
 LANGUAGE plpgsql

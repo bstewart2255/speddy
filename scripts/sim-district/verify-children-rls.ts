@@ -81,16 +81,18 @@ async function main(): Promise<void> {
   const { data: rachelRows, error: rErr } = await admin
     .from('students').select('id, child_id').eq('provider_id', rachelId).eq('school_id', WILLOW);
   if (rErr) throw new Error(`caseload lookup failed: ${rErr.message}`);
-  const { data: tomasRows } = await admin
+  const { data: tomasRows, error: tErr } = await admin
     .from('students').select('child_id').eq('provider_id', tomasId).eq('school_id', WILLOW);
+  if (tErr) throw new Error(`Tomás caseload lookup failed: ${tErr.message}`);
   const tomasChildren = new Set((tomasRows ?? []).map(r => r.child_id));
   const shared = (rachelRows ?? []).find(r => tomasChildren.has(r.child_id));
   if (!shared) throw new Error('no co-served child in the fixture — has the seed changed?');
   const sharedChildId = shared.child_id as string;
 
-  const { data: cedar } = await admin
+  const { data: cedar, error: cErr } = await admin
     .from('students').select('child_id').eq('school_id', CEDAR).limit(1).single();
-  const otherChildId = cedar!.child_id as string;
+  if (cErr) throw new Error(`Cedar caseload lookup failed: ${cErr.message}`);
+  const otherChildId = cedar.child_id as string;
 
   const rachel = await signIn('rachel');
   const tomas = await signIn('tomas');
@@ -138,8 +140,11 @@ async function main(): Promise<void> {
     check((rows?.length ?? 0) === 0, 'UPDATE affects 0 rows', `HTTP ${status}, ${rows?.length ?? 0} row(s)`);
     check(after === before && after !== forbidden, 'UPDATE did not persist', `stored=${after}`);
 
+    // Fully-populated row on purpose: if `children` ever gains a NOT NULL, a
+    // sparse insert could fail with 23502 and this check would pass for a reason
+    // that has nothing to do with the grant it is testing.
     const { error: insErr } = await alicia.from('children')
-      .insert({ initials: 'XX', grade_level: '1' });
+      .insert({ initials: 'XX', grade_level: '1', school_id: WILLOW, district_id: 'SIM-D001', state_id: 'CA' });
     check(insErr?.code === '42501', 'direct INSERT is refused', `code=${insErr?.code}`);
 
     const { error: delErr, data: delRows } = await alicia.from('children')
@@ -191,19 +196,21 @@ async function main(): Promise<void> {
     if (!target) {
       check(false, 'found an SEA-delegated student with details', 'none in the fixture');
     } else {
-      const { data: link } = await admin.from('students').select('child_id').eq('id', target).single();
+      const { data: link, error: linkErr } = await admin
+        .from('students').select('child_id').eq('id', target).single();
+      if (linkErr) throw new Error(`child link lookup failed for ${target}: ${linkErr.message}`);
       const leah = await signIn('leah');
-      const before = await childFirstName(link!.child_id as string);
+      const before = await childFirstName(link.child_id as string);
       const stamp = `spe347-sea-${Date.now()}`;
 
       const { data: direct } = await leah.from('children')
-        .update({ first_name: stamp }).eq('id', link!.child_id).select('id');
-      check((direct?.length ?? 0) === 0 && (await childFirstName(link!.child_id as string)) === before,
+        .update({ first_name: stamp }).eq('id', link.child_id).select('id');
+      check((direct?.length ?? 0) === 0 && (await childFirstName(link.child_id as string)) === before,
         'SEA cannot write the child DIRECTLY', `${direct?.length ?? 0} row(s)`);
 
       const { data: viaDetails } = await leah.from('student_details')
         .update({ first_name: stamp }).eq('student_id', target).select('student_id');
-      check((viaDetails?.length ?? 0) === 1 && (await childFirstName(link!.child_id as string)) === stamp,
+      check((viaDetails?.length ?? 0) === 1 && (await childFirstName(link.child_id as string)) === stamp,
         'SEA CAN write it through student_details (known, documented)',
         `${viaDetails?.length ?? 0} row(s)`);
     }
@@ -238,14 +245,15 @@ async function main(): Promise<void> {
   {
     const aliciaId = await profileId('alicia');
     const claimedId = `SPE347-PROBE-${Date.now()}`;
-    const { data: victim } = await rachel.from('students').insert({
+    const { data: victim, error: vErr } = await rachel.from('students').insert({
       provider_id: rachelId, initials: 'QV', grade_level: '3',
       school_id: WILLOW, district_id: 'SIM-D001', state_id: 'CA',
       district_student_id: claimedId,
     }).select('id, child_id').single();
+    if (vErr || !victim) throw new Error(`could not seed the id-claim fixture: ${vErr?.message}`);
 
     const { data: victimChild } = await admin.from('children')
-      .select('district_student_id').eq('id', victim!.child_id).single();
+      .select('district_student_id').eq('id', victim.child_id).single();
     check(victimChild?.district_student_id === claimedId,
       'the first row to claim an id keeps it', `${victimChild?.district_student_id}`);
 
@@ -259,21 +267,21 @@ async function main(): Promise<void> {
     check(!attackErr && !!attacker?.child_id,
       'a second provider claiming the same id still imports fine',
       attackErr ? attackErr.message : 'inserted');
-    check(attacker?.child_id !== victim!.child_id,
-      'it does NOT borrow the first child', `${attacker?.child_id} vs ${victim!.child_id}`);
+    check(attacker?.child_id !== victim.child_id,
+      'it does NOT borrow the first child', `${attacker?.child_id} vs ${victim.child_id}`);
 
     const { count: canSee } = await alicia.from('children')
-      .select('*', { count: 'exact', head: true }).eq('id', victim!.child_id);
+      .select('*', { count: 'exact', head: true }).eq('id', victim.child_id);
     check(canSee === 0, 'and gains no access to it', `count=${canSee}`);
 
     const { data: theirChild } = await admin.from('children')
-      .select('district_student_id').eq('id', attacker!.child_id).single();
+      .select('district_student_id').eq('id', attacker?.child_id).single();
     check(theirChild?.district_student_id === null,
       'their own child is created WITHOUT the contested id', `${theirChild?.district_student_id}`);
 
-    for (const row of [victim!, attacker!]) {
-      await admin.from('students').delete().eq('id', row.id);
-      await admin.from('children').delete().eq('id', row.child_id);
+    for (const row of [victim, attacker].filter(Boolean)) {
+      await admin.from('students').delete().eq('id', row!.id);
+      await admin.from('children').delete().eq('id', row!.child_id);
     }
   }
 

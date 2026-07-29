@@ -278,10 +278,14 @@ async function main() {
       const name = studentFullName(rule.providerKey, rule.schoolId, i);
       const gradeNum = grade === 'K' ? 0 : parseInt(grade, 10);
       const hasDetails = i < nDetails;
-      // First writer wins for a shared child. CASELOADS lists Rachel before
-      // Tomás, so the canonical (Rachel) row supplies the child's facts; the
-      // mirror rows derive identical values anyway.
-      if (!childRows.has(childUuid)) {
+      // First writer wins for a shared child — but a writer that HAS details
+      // beats one that doesn't, so the child never ends up with a NULL name just
+      // because CASELOADS happens to list a detail-less caseload first. (Today
+      // Rachel precedes Tomás and her detail window covers the aliased indices,
+      // so the canonical row wins on both counts; this keeps that true if either
+      // fact changes.) The mirror rows derive identical values anyway.
+      const seeded = childRows.get(childUuid);
+      if (!seeded || (hasDetails && !seeded.first_name)) {
         childRows.set(childUuid, {
           id: childUuid,
           first_name: hasDetails ? name.firstName : null,
