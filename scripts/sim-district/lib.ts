@@ -10,6 +10,7 @@ import {
   DISTRICT,
   SCHOOLS,
   SIM_EMAIL_DOMAIN,
+  SUPABASE_CUSTOM_HOST,
   SUPABASE_PROJECT_REF,
   SWEPT_TABLES,
 } from './manifest';
@@ -33,15 +34,18 @@ export function createAdmin(): Admin {
   return createClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } });
 }
 
-/** Preflight (a): the URL's project ref must equal the manifest pin. */
+/** Preflight (a): the connected host must be a manifest-pinned front for the project. */
 export function assertProjectRef(): void {
   const url = requireEnv('NEXT_PUBLIC_SUPABASE_URL');
-  const host = new URL(url).hostname; // <ref>.supabase.co
-  const ref = host.split('.')[0];
-  if (ref !== SUPABASE_PROJECT_REF) {
+  const host = new URL(url).hostname;
+  // The project's own `<ref>.supabase.co`, or the custom domain pinned in the
+  // manifest — both address the same project.
+  const pinned = `${SUPABASE_PROJECT_REF}.supabase.co`;
+  if (host !== pinned && !(SUPABASE_CUSTOM_HOST && host === SUPABASE_CUSTOM_HOST)) {
     console.error(
-      `Preflight FAILED: connected project ref "${ref}" does not match the manifest pin ` +
-        `"${SUPABASE_PROJECT_REF}". Refusing to touch this database.`,
+      `Preflight FAILED: connected host "${host}" is not the manifest pin "${pinned}"` +
+        (SUPABASE_CUSTOM_HOST ? ` or its custom domain "${SUPABASE_CUSTOM_HOST}"` : '') +
+        `. Refusing to touch this database.`,
     );
     process.exit(1);
   }

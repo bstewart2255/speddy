@@ -21,6 +21,13 @@ import { createHash, createHmac } from 'node:crypto';
 /** Supabase project this manifest is allowed to touch. Preflight hard-fails on mismatch. */
 export const SUPABASE_PROJECT_REF = 'qkcruccytmmdajfavpgb';
 
+/**
+ * Custom domain fronting the same project, once one is active — preflight
+ * accepts it in addition to `<ref>.supabase.co`. Empty means none is set up,
+ * which keeps the check strict until it is. See docs/supabase-custom-domain.md.
+ */
+export const SUPABASE_CUSTOM_HOST: string = '';
+
 /** Reserved, undeliverable email domain — the sole sim identity namespace. */
 export const SIM_EMAIL_DOMAIN = 'sim.speddy.test';
 

@@ -48,6 +48,8 @@ first, then enable.
    - Create an **OAuth 2.0 Client ID** (type: Web application).
    - Authorized redirect URI: `https://qkcruccytmmdajfavpgb.supabase.co/auth/v1/callback`
      (the Supabase project's callback, *not* the app's `/auth/callback`).
+     If the custom domain is set up, `https://auth.speddy.xyz/auth/v1/callback`
+     must be registered **in addition** — see `docs/supabase-custom-domain.md`.
    - Consent screen / Audience: **External**, **Published / In production**. Scopes
      are just `email`/`profile`/`openid`, which need **no Google verification**.
    - Note the **Client ID** and **Client secret**.
@@ -76,6 +78,13 @@ first, then enable.
 
 ## Notes / known edges
 
+- **What users see on the Google screen.** Google shows the root domain of the
+  OAuth callback — today `qkcruccytmmdajfavpgb.supabase.co`. Filling in the
+  Branding form in Google Cloud does *not* change that: Google only substitutes
+  the app name after its verification review, which asks you to prove ownership
+  of every authorized domain — including `supabase.co`, which isn't ours. The
+  reliable fix is to move the callback onto a domain we own; see
+  `docs/supabase-custom-domain.md`.
 - **Account model unchanged.** Admins still create accounts (which creates the
   `auth.users` row with a confirmed email). Google just adds a second way for
   those users to sign in.
