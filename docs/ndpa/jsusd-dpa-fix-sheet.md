@@ -284,7 +284,7 @@ ID, State ID (with §2c note), student name, parent/guardian name (limited —
 Lane B CARE requester, see §2a note), in-app performance, "Other data
 collected."
 
-## 8. Pre-signing checklist (state as of 2026-07-28)
+## 8. Pre-signing checklist (state as of 2026-08-04)
 
 1. ✅ **Vercel Hobby → Pro — upgraded 2026-07-28** (owner-confirmed). The
    Vercel DPA (incorporated via ToS for Pro) now applies. Remaining
