@@ -346,10 +346,15 @@ The following security best practices were already in place:
 
 ---
 
-## Remaining work → tracked in Linear
+## Addendum — 2026-08-04 (not part of the November 2025 audit)
 
-This section was a checklist for ~9 months and nothing on it moved, because a
-checklist in a document is not a backlog. Triaged 2026-08-04:
+> Everything above this line is the November 11, 2025 audit as recorded at the
+> time. **This section is a later update** and its statements carry the
+> 2026-08-04 date, not the audit's. Nothing above has been revised.
+
+Where the audit's "Remaining Manual Tasks" ended up. It stayed a checklist for
+~9 months and nothing on it moved, because a checklist in a document is not a
+backlog. Triaged 2026-08-04:
 
 **Done, no action needed:** leaked password protection (**SPE-11**);
 post-migration testing and query-performance monitoring (completed at the time).
@@ -363,8 +368,9 @@ The pen-test gap is the one with weight beyond housekeeping — it is disclosed 
 a NIST CSF variance in the JSUSD DPA, so it is a promise-adjacent gap rather
 than an internal nice-to-have.
 
-**This document is the record of the November 11, 2025 audit.** It is history —
-do not add new checkboxes to it.
+**Everything above the addendum heading is the record of the November 11, 2025,
+audit.** It is history — do not revise it, and do not add new checkboxes
+anywhere in this file. Later updates go in dated addenda like this one.
 
 ---
 

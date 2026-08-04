@@ -324,7 +324,11 @@ Steps to follow each time, not a backlog. (Open work belongs in Linear.)
 
 1. Identify whether the field is logically required or optional.
 2. Choose the appropriate pattern from the guidelines above.
-3. Add validation at the data layer (queries).
+3. Handle the two cases differently — step 1 decided which applies:
+   - **Required:** enforce non-null at the schema or data boundary and validate
+     it in the query layer, so downstream code can rely on it.
+   - **Optional:** keep the nullable type and handle `null` explicitly. `null`
+     is a valid value here; rejecting it at the data layer would be wrong.
 4. Use a consistent pattern across similar fields.
 5. Test both the null and non-null cases.
 6. Document any assumptions about nullability.
