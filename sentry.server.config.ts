@@ -4,16 +4,30 @@
 
 import * as Sentry from '@sentry/nextjs';
 import { scrubSentryEvent, scrubSentryLog } from '@/lib/monitoring/sentry-scrub';
+import {
+  logSentryStatus,
+  resolveSentryDsn,
+  sentryEnvironment,
+  sentryRelease,
+  sentryTracesSampleRate,
+} from '@/lib/monitoring/sentry-options';
+
+const dsn = resolveSentryDsn('server');
 
 Sentry.init({
-  dsn: 'https://dfe4322e91dde4865165f296d9264784@o4509770864787457.ingest.us.sentry.io/4509837723631616',
+  dsn,
+
+  // Keeps production errors separate from preview/local ones, and ties each
+  // error to the deploy that introduced it. See lib/monitoring/sentry-options.
+  environment: sentryEnvironment,
+  release: sentryRelease,
 
   // Never attach default request PII (cookies, headers, IP, request bodies) to
   // events. Explicit per SPE-167 even though the SDK default is already false.
   sendDefaultPii: false,
 
-  // Define how likely traces are sampled. Adjust this value in production, or use tracesSampler for greater control.
-  tracesSampleRate: 1,
+  // Sampled in production (SPE-216); exception capture is unaffected.
+  tracesSampleRate: sentryTracesSampleRate,
 
   // Sentry Logs disabled (SPE-167): structured logs / forwarded console output
   // can carry student context. During the district pilot we keep Sentry to
@@ -31,3 +45,5 @@ Sentry.init({
     return scrubSentryLog(log);
   },
 });
+
+logSentryStatus('server', dsn);

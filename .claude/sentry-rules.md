@@ -1,5 +1,25 @@
 These examples should be used as guidance when configuring Sentry functionality within a project.
 
+> ## Speddy policy — read before applying anything below
+>
+> The rest of this file is **upstream Sentry sample material**. Two of its
+> defaults are wrong for this repo, and both have already caused incidents:
+>
+> 1. **Never enable Sentry Logs.** `enableLogs` must stay `false` (SPE-167).
+>    Forwarded console output can carry student context, and this is a FERPA
+>    product in a district pilot. The examples below show `enableLogs: true`
+>    because they are upstream samples — do not copy that.
+> 2. **Never copy a DSN literal from this file.** Speddy's initialization lives
+>    in `sentry.server.config.ts`, `sentry.edge.config.ts` and
+>    `instrumentation-client.ts`, and all three read their DSN, environment,
+>    release and sample rate from `lib/monitoring/sentry-options.ts`. Change that
+>    module, not these examples. A stale DSN copied from here is what caused
+>    SPE-175, where every event was rejected for months with nothing reporting
+>    the failure.
+>
+> Session Replay is likewise disabled on purpose (SPE-167). If a change would
+> widen what leaves the app, raise it rather than applying it.
+
 # Exception Catching
 
 Use `Sentry.captureException(error)` to capture an exception and log the error in Sentry.
@@ -69,8 +89,13 @@ async function fetchUserData(userId) {
 
 # Logs
 
+**Speddy: do NOT enable Sentry Logs — keep `enableLogs: false` (SPE-167).** This
+whole section is upstream reference material for how the feature works; it is
+not an instruction to turn it on here. See the policy block at the top of this
+file before changing any logging configuration.
+
 Where logs are used, ensure Sentry is imported using `import * as Sentry from "@sentry/nextjs"`
-Enable logging in Sentry using `Sentry.init({ _experiments: { enableLogs: true } })`
+Upstream enables logging via `Sentry.init({ _experiments: { enableLogs: true } })` — Speddy does not.
 Reference the logger using `const { logger } = Sentry`
 Sentry offers a consoleLoggingIntegration that can be used to log specific console error types automatically without instrumenting the individual logger calls
 
@@ -81,11 +106,15 @@ Initialization does not need to be repeated in other files, it only needs to hap
 
 ### Baseline
 
+> **Upstream sample — not Speddy's configuration.** `enableLogs` must stay
+> `false` here, and the DSN comes from `lib/monitoring/sentry-options.ts`. See
+> the policy block at the top of this file.
+
 ```javascript
 import * as Sentry from '@sentry/nextjs';
 
 Sentry.init({
-  dsn: 'https://dfe4322e91dde4865165f296d9264784@o4509770864787457.ingest.us.sentry.io/4509837723631616',
+  dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
 
   _experiments: {
     enableLogs: true,
@@ -97,7 +126,7 @@ Sentry.init({
 
 ```javascript
 Sentry.init({
-  dsn: 'https://dfe4322e91dde4865165f296d9264784@o4509770864787457.ingest.us.sentry.io/4509837723631616',
+  dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
   integrations: [
     // send console.log, console.warn, and console.error calls as logs to Sentry
     Sentry.consoleLoggingIntegration({ levels: ['log', 'warn', 'error'] }),
