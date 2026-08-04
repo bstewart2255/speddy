@@ -196,7 +196,8 @@ extension API key (`api_keys`); see [`offboarding-runbook.md`](./offboarding-run
    URL, role, school site/district, and OAuth issuer/subject. It has **no
    creating migration, no retention policy, and no deletion path** — it is not
    covered by the cleanup crons. This sits directly against the NDPA's
-   data-retention representation. Tracked separately; see the retention ticket.
+   data-retention representation, and it gates the Exhibit F paragraph in the
+   JSUSD fix sheet §1. **SPE-379.**
 8. **`children` rows deliberately survive provider offboarding** (SPE-347: no
    cascade from `profiles`, and no DELETE policy for anyone). This was the right
    call for data loss — deleting a provider previously destroyed their students'
