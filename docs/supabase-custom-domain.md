@@ -15,7 +15,12 @@ domain, one of which is `supabase.co`. We don't own it. People do get through by
 listing only `speddy.xyz` and explaining the third-party redirect, but reported
 turnaround is 2 days to 2 weeks with inconsistent results.
 
-Owning the callback domain removes the dependency on that review entirely.
+Owning the callback domain settles **which domain users see**, without waiting on
+Google. It is not a substitute for brand verification: displaying our app *name
+and logo* on the consent screen still needs that, so the branding work already
+done in Google Cloud stays worth finishing. Full app verification is a separate
+bar we don't hit — our scopes are only `email`/`profile`/`openid`, which Google
+treats as non-sensitive.
 
 ## Before you start
 
@@ -86,7 +91,7 @@ issues the SSL certificate, which can take up to 30 minutes.
 Google Cloud Console → **Google Auth Platform → Clients** → the Supabase sign-in
 client → Authorized redirect URIs. **Add** (do not replace):
 
-```
+```text
 https://auth.speddy.xyz/auth/v1/callback
 ```
 

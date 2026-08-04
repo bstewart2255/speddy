@@ -29,6 +29,9 @@ export function requireEnv(name: string): string {
 }
 
 export function createAdmin(): Admin {
+  // Pin the project here, not just in the scripts that remember to ask: this is
+  // the one place a service-role client is minted, so no caller can skip it.
+  assertProjectRef();
   const url = requireEnv('NEXT_PUBLIC_SUPABASE_URL');
   const key = requireEnv('SUPABASE_SERVICE_ROLE_KEY');
   return createClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } });
