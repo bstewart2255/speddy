@@ -250,8 +250,31 @@ export const PATCH = withRoute<{ providerId: string }>({}, async ({ req: request
       }
     }
 
-    // Update school assignments if changed
-    if (school_ids && primary_school_id) {
+    // `school_ids` is only asserted by the TypeScript type — the body is
+    // whatever the caller sent. A non-array (e.g. a bare string) would pass a
+    // bare `.length` check and then throw inside `.filter()` below, turning a
+    // bad request into a 500.
+    if (school_ids !== undefined && (!Array.isArray(school_ids) || school_ids.length === 0)) {
+      return NextResponse.json(
+        { error: 'school_ids must be a non-empty array of school ids' },
+        { status: 400 }
+      );
+    }
+
+    // The assignment rewrite below is keyed off `school_ids`, so a primary sent
+    // on its own cannot be applied. Reject it rather than returning success
+    // having changed nothing — that silent no-op is the SPE-95 failure mode.
+    if (primary_school_id && !school_ids?.length) {
+      return NextResponse.json(
+        { error: 'primary_school_id requires school_ids' },
+        { status: 400 }
+      );
+    }
+
+    // Update school assignments if changed. `primary_school_id` is optional
+    // (SPE-360) — it defaults to the first assigned school below, so a caller
+    // sending only `school_ids` still gets the assignment updated.
+    if (school_ids?.length) {
       // Site admins can only assign to their own school
       if (accessCheck.siteAdminSchoolId) {
         const invalidSchools = school_ids.filter(id => id !== accessCheck.siteAdminSchoolId);
@@ -283,12 +306,13 @@ export const PATCH = withRoute<{ providerId: string }>({}, async ({ req: request
         }
       }
 
-      if (!school_ids.includes(primary_school_id)) {
+      if (primary_school_id && !school_ids.includes(primary_school_id)) {
         return NextResponse.json(
           { error: 'Primary school must be one of the assigned schools' },
           { status: 400 }
         );
       }
+      const effectivePrimarySchoolId = primary_school_id || school_ids[0];
 
       // Fetch existing provider_schools for rollback if needed
       const { data: existingProviderSchools } = await adminClient
@@ -318,7 +342,7 @@ export const PATCH = withRoute<{ providerId: string }>({}, async ({ req: request
           school_id: schoolId,
           school_site: school?.name || '',
           school_district: '',
-          is_primary: schoolId === primary_school_id,
+          is_primary: schoolId === effectivePrimarySchoolId,
           district_id: accessCheck.districtId!,
         };
       });
@@ -354,7 +378,7 @@ export const PATCH = withRoute<{ providerId: string }>({}, async ({ req: request
       await adminClient
         .from('profiles')
         .update({
-          school_id: primary_school_id,
+          school_id: effectivePrimarySchoolId,
           works_at_multiple_schools: school_ids.length > 1,
         })
         .eq('id', providerId);

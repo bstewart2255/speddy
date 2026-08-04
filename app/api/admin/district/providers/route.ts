@@ -15,7 +15,13 @@ interface CreateProviderRequest {
   email: string;
   role: ProviderRole;
   school_ids: string[];
-  primary_school_id: string;
+  /**
+   * Optional. The school stamped on `profiles.school_id` and flagged
+   * `is_primary` in `provider_schools`. Admins no longer choose this (SPE-360)
+   * — it defaults to the first assigned school. Still accepted, and still
+   * validated against `school_ids`, so existing callers keep working.
+   */
+  primary_school_id?: string;
 }
 
 /**
@@ -68,12 +74,20 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
 
     // Parse request body
     const body: CreateProviderRequest = await request.json();
-    const { first_name, last_name, email, role, school_ids, primary_school_id } = body;
+    const { first_name, last_name, email, role, school_ids } = body;
 
-    // Validate required fields
-    if (!first_name?.trim() || !last_name?.trim() || !email?.trim() || !role || !school_ids?.length || !primary_school_id) {
+    // Validate required fields. `school_ids` is only asserted by the
+    // TypeScript type, so check the shape too — a non-array would survive a
+    // bare `.length` check and fail later as a 500 instead of a 400.
+    if (!first_name?.trim() || !last_name?.trim() || !email?.trim() || !role || !school_ids?.length) {
       return NextResponse.json(
-        { error: 'Missing required fields: first_name, last_name, email, role, school_ids, primary_school_id' },
+        { error: 'Missing required fields: first_name, last_name, email, role, school_ids' },
+        { status: 400 }
+      );
+    }
+    if (!Array.isArray(school_ids)) {
+      return NextResponse.json(
+        { error: 'school_ids must be an array of school ids' },
         { status: 400 }
       );
     }
@@ -145,13 +159,15 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
       }
     }
 
-    // Validate primary_school_id is in school_ids
-    if (!school_ids.includes(primary_school_id)) {
+    // The primary school is derived, not chosen (SPE-360). Callers may still
+    // send one explicitly; if so it must be one of the assigned schools.
+    if (body.primary_school_id && !school_ids.includes(body.primary_school_id)) {
       return NextResponse.json(
         { error: 'Primary school must be one of the assigned schools' },
         { status: 400 }
       );
     }
+    const primary_school_id = body.primary_school_id || school_ids[0];
 
     // Check if email already exists
     const { data: existingUsers } = await adminClient.auth.admin.listUsers();

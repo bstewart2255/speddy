@@ -302,7 +302,6 @@ export default function SchoolDetailPage() {
           email: providerFormData.email.trim(),
           role: providerFormData.role,
           school_ids: [schoolId],
-          primary_school_id: schoolId,
         }),
       });
 
