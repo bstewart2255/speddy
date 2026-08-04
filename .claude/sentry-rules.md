@@ -81,11 +81,22 @@ Initialization does not need to be repeated in other files, it only needs to hap
 
 ### Baseline
 
+> **Speddy note.** Do not copy a DSN literal out of this file. Speddy's real
+> initialization lives in `sentry.server.config.ts`, `sentry.edge.config.ts` and
+> `instrumentation-client.ts`, and all of them take their DSN, environment,
+> release and sample rate from `lib/monitoring/sentry-options.ts`. Change that
+> module, not these examples. A stale DSN copied from here is exactly what
+> caused SPE-175, where every event was rejected for months with nothing
+> reporting the failure.
+>
+> Also note `enableLogs` is deliberately **false** in Speddy (SPE-167) — the
+> examples below show it on because they are upstream Sentry samples.
+
 ```javascript
 import * as Sentry from '@sentry/nextjs';
 
 Sentry.init({
-  dsn: 'https://dfe4322e91dde4865165f296d9264784@o4509770864787457.ingest.us.sentry.io/4509837723631616',
+  dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
 
   _experiments: {
     enableLogs: true,
@@ -97,7 +108,7 @@ Sentry.init({
 
 ```javascript
 Sentry.init({
-  dsn: 'https://dfe4322e91dde4865165f296d9264784@o4509770864787457.ingest.us.sentry.io/4509837723631616',
+  dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
   integrations: [
     // send console.log, console.warn, and console.error calls as logs to Sentry
     Sentry.consoleLoggingIntegration({ levels: ['log', 'warn', 'error'] }),

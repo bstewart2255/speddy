@@ -29,22 +29,23 @@ const DEFAULT_DSN =
  * a preview-only bug looks like a production incident.
  *
  * On the client only `NEXT_PUBLIC_*` vars are inlined at build time; the others
- * resolve to `undefined` there and this falls through to `NODE_ENV`. On the
- * server every var is readable at runtime.
+ * resolve to `undefined` there. `NEXT_PUBLIC_SENTRY_ENVIRONMENT` is mapped in
+ * next.config.js so the browser gets the real value rather than falling through
+ * to `NODE_ENV` and mislabelling every preview build as production.
  */
 export const sentryEnvironment: string =
-  process.env.NEXT_PUBLIC_VERCEL_ENV ||
+  process.env.NEXT_PUBLIC_SENTRY_ENVIRONMENT ||
   process.env.VERCEL_ENV ||
   process.env.NODE_ENV ||
   'development';
 
 /**
  * Release identifier, so an error can be traced to the deploy that introduced
- * it. Vercel exposes the commit SHA; elsewhere this is undefined and Sentry
- * groups everything under "no release".
+ * it. Sourced from the commit SHA (mapped for the browser in next.config.js);
+ * elsewhere this is undefined and Sentry groups everything under "no release".
  */
 export const sentryRelease: string | undefined =
-  process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA ||
+  process.env.NEXT_PUBLIC_SENTRY_RELEASE ||
   process.env.VERCEL_GIT_COMMIT_SHA ||
   undefined;
 
@@ -59,7 +60,9 @@ export const sentryRelease: string | undefined =
  * there would leak the same resource IDs SPE-216 is about.
  *
  * Set `SENTRY_TRACES_SAMPLE_RATE=0` to disable tracing entirely and keep Sentry
- * to exception capture only.
+ * to exception capture only. next.config.js mirrors that variable into the
+ * browser bundle, so a single setting turns tracing off in every runtime — the
+ * server-only variable alone would leave browser traces still flowing.
  */
 function resolveTracesSampleRate(): number {
   const raw =

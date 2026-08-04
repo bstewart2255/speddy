@@ -44,7 +44,7 @@ export default function Page() {
           Click the button below, and view the sample error on the Sentry{' '}
           <a
             target="_blank"
-            href="https://chickenscratch.sentry.io/issues/?project=4509837723631616"
+            href="https://chicken-scratch-backend.sentry.io/issues/?project=4511849649930240"
           >
             Issues Page
           </a>

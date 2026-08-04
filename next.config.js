@@ -10,6 +10,26 @@ const nextConfig = {
     ignoreBuildErrors: process.env.SKIP_TYPE_CHECK === 'true',
   },
   allowedDevOrigins: ['*.replit.dev', '*.spock.replit.dev', '*.kirk.replit.dev'],
+
+  // Surface the Sentry deployment metadata to the browser bundle.
+  //
+  // instrumentation-client.ts needs the environment, release and trace rate,
+  // but the browser can only read NEXT_PUBLIC_* values. Vercel's own
+  // NEXT_PUBLIC_VERCEL_* system variables depend on the "Automatically expose
+  // System Environment Variables" project setting, so these are derived here
+  // from the plain server-side variables — which are always present at build
+  // time — rather than relying on that setting being enabled.
+  //
+  // Without this, preview builds report client errors as `production` with no
+  // release, and SENTRY_TRACES_SAMPLE_RATE=0 would silently fail to stop
+  // browser traces.
+  env: {
+    NEXT_PUBLIC_SENTRY_ENVIRONMENT:
+      process.env.VERCEL_ENV || process.env.NODE_ENV || 'development',
+    NEXT_PUBLIC_SENTRY_RELEASE: process.env.VERCEL_GIT_COMMIT_SHA || '',
+    NEXT_PUBLIC_SENTRY_TRACES_SAMPLE_RATE: process.env.SENTRY_TRACES_SAMPLE_RATE || '',
+  },
+
   // Ensure CSS is processed correctly
   webpack: config => {
     // Ensure CSS modules work properly
