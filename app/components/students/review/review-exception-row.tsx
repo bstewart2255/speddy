@@ -178,22 +178,22 @@ export function ReviewExceptionRow({
         <div className="min-w-0 flex-1">
           <p>
             <span className="font-medium text-gray-900">{exception.studentLabel}</span>
-            <span className="text-gray-600"> — may be the same child a colleague already serves</span>
+            <span className="text-gray-600"> — may be the same student a colleague already serves</span>
           </p>
           <p className="mt-0.5 text-xs text-gray-600">{describeEvidence(match)}</p>
           <p className="mt-0.5 text-xs text-gray-500">
-            <span className="font-medium text-gray-700">Same child?</span> Yes records them as one
-            child served by two providers. No imports them as a separate student. This doesn&apos;t
+            <span className="font-medium text-gray-700">Same student?</span> Yes records them as one
+            student served by two providers. No imports them as a separate student. This doesn&apos;t
             share your goals or change your caseload.
           </p>
           <div className="mt-1.5 flex flex-wrap items-center gap-2">
-            {choiceButton('link', 'Yes — same child')}
-            {choiceButton('separate', 'No — different child')}
+            {choiceButton('link', 'Yes — same student')}
+            {choiceButton('separate', 'No — different student')}
             <span className="text-xs text-gray-500">
               {!answered
                 ? 'Not answered — will import as a separate student.'
                 : linked
-                  ? 'Will be recorded as the same child.'
+                  ? 'Will be recorded as the same student.'
                   : 'Will import as a separate student.'}
             </span>
           </div>
@@ -215,12 +215,12 @@ export function ReviewExceptionRow({
             <span className="text-gray-600">
               {ambiguous
                 ? ' — more than one possible match'
-                : ' — Student ID points to a different child'}
+                : ' — Student ID points to a different student'}
             </span>
           </p>
           <p className="mt-0.5 text-xs text-gray-500">
             {ambiguous
-              ? `${exception.conflict.count ?? 2} children here could be this student, so nothing will be linked. They'll import as a separate student.`
+              ? `More than one student here could be a match (${exception.conflict.count ?? 2}), so nothing will be linked. They'll import as a separate student.`
               : "A colleague's student has that Student ID under a different name, so nothing will be linked. They'll import as a separate student."}
           </p>
         </div>
