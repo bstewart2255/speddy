@@ -230,9 +230,9 @@ Source: `subprocessors.md` (last reviewed 2026-06-11).
 
 | Subprocessor | Function | Student data | Location | Agreement |
 |---|---|---|---|---|
-| Supabase | Database, auth, file storage — system of record | Yes — all categories in Exhibit B | US (us-west-1, N. California) | DPA available; **sign via dashboard → Legal Documents [ACTION]** |
-| Vercel | Application hosting; traffic + runtime logs | Yes — in transit and incidentally in logs | US-configurable | DPA incorporated into ToS — **on Pro since 2026-07-28**; **save copy [ACTION]** |
-| Sentry | Error monitoring, minimized (no logs/replay, PII scrubbed, `sendDefaultPii: false`) | Incidental only | US ingest | DPA self-serve — **accepted 2026-08-04 (owner-confirmed)**; **save acceptance record [ACTION]** |
+| Supabase | Database, auth, file storage — system of record | Yes — all categories in Exhibit B | US (us-west-1, N. California) | DPA available; sign via dashboard → Legal Documents — **SPE-283** |
+| Vercel | Application hosting; traffic + runtime logs | Yes — in transit and incidentally in logs | US-configurable | DPA incorporated into ToS (Pro plan); save a copy to the records file — **SPE-378** |
+| Sentry | Error monitoring, minimized (no logs/replay, PII scrubbed, `sendDefaultPii: false`) | Incidental only | US ingest | DPA self-serve; acceptance + saving the record — **SPE-283** |
 | Help Scout | Support help desk + chat widget | No by design (provider PII only) | US | DPA v2 via ToS; DPF + SCCs (SPE-170, on file) |
 | OpenAI — **planned, NOT enabled** | AI lesson generation (when enabled) | None today (hard-gated off); initials + IEP goal text when enabled | US | DPA executed 2026-06-12 (SPE-163) |
 | Anthropic — **planned, NOT enabled** | AI generation/grading/parsing (when enabled) | None today (hard-gated off) | US | DPA via Commercial Terms, copy on file 2026-06-12 (SPE-163) |

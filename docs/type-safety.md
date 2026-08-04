@@ -318,16 +318,16 @@ const name2 = teacher.last_name ?? 'Unknown'; // Nullish coalescing
 
 ---
 
-## Migration Checklist
+## Procedure — fixing a nullable type error
 
-When fixing nullable type errors:
+Steps to follow each time, not a backlog. (Open work belongs in Linear.)
 
-- [ ] Identify if the field is logically required or optional
-- [ ] Choose appropriate pattern from guidelines above
-- [ ] Add validation at the data layer (queries)
-- [ ] Use consistent pattern across similar fields
-- [ ] Test both null and non-null cases
-- [ ] Document any assumptions about nullability
+1. Identify whether the field is logically required or optional.
+2. Choose the appropriate pattern from the guidelines above.
+3. Add validation at the data layer (queries).
+4. Use a consistent pattern across similar fields.
+5. Test both the null and non-null cases.
+6. Document any assumptions about nullability.
 
 ---
 

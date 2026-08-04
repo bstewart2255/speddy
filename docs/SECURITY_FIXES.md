@@ -346,26 +346,25 @@ The following security best practices were already in place:
 
 ---
 
-## Remaining Manual Tasks
+## Remaining work → tracked in Linear
 
-### High Priority
+This section was a checklist for ~9 months and nothing on it moved, because a
+checklist in a document is not a backlog. Triaged 2026-08-04:
 
-- [ ] **Enable leaked password protection in Supabase Dashboard** (See Section 2 above)
-- [ ] Test application thoroughly after migrations
-- [ ] Monitor query performance before/after migrations
+**Done, no action needed:** leaked password protection (**SPE-11**);
+post-migration testing and query-performance monitoring (completed at the time).
 
-### Medium Priority
+**Still outstanding → SPE-381:** password complexity requirements and a strength
+indicator in the UI; rate limiting on authentication endpoints specifically;
+security monitoring and alerting (overlaps **SPE-169**); penetration testing of
+authentication flows; and whether to commit to a regular audit cadence.
 
-- [ ] Review and update password complexity requirements in UI
-- [ ] Add password strength indicator to signup/password change forms
-- [ ] Implement rate limiting on authentication endpoints
-- [ ] Set up security monitoring and alerting
+The pen-test gap is the one with weight beyond housekeeping — it is disclosed as
+a NIST CSF variance in the JSUSD DPA, so it is a promise-adjacent gap rather
+than an internal nice-to-have.
 
-### Low Priority
-
-- [ ] Schedule regular security audits (quarterly recommended)
-- [ ] Review and update security documentation
-- [ ] Conduct penetration testing on authentication flows
+**This document is the record of the November 11, 2025 audit.** It is history —
+do not add new checkboxes to it.
 
 ---
 
