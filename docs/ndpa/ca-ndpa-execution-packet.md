@@ -45,7 +45,7 @@ though the Standard Clauses reference one (Art. V §3, Art. VII §3) — see Gap
 | Clause | Commitment | Our position | Source |
 |---|---|---|---|
 | Art. II §2 (+ Ex. G ¶2) | Parent access/correction via the LEA within **45 days** | Supported operationally — requests routed through the district; deletion tooling exists | `offboarding-runbook.md` §A |
-| Art. II §5 | **Written agreements with all subprocessors**, no less stringent | OpenAI, Anthropic, Help Scout DPAs on file. Researched 2026-06-12: **Supabase** DPA requires a signing step (dashboard → Legal Documents); **Vercel** DPA is incorporated into the ToS (deemed signed — Pro/Enterprise plans; confirm plan tier + download copy); **Sentry** DPA is self-serve click-accept (Settings → Legal & Compliance, Owner/Billing role). See Gap 8 | `subprocessors.md`; supabase.com/legal/dpa, vercel.com/legal/dpa, sentry.io/legal/dpa |
+| Art. II §5 | **Written agreements with all subprocessors**, no less stringent | OpenAI, Anthropic, Help Scout DPAs on file. **Sentry** DPA accepted 2026-08-04; **Vercel** DPA applies via ToS on the Pro plan (upgraded 2026-07-28). **One outstanding: the Supabase DPA still requires a signing step** (dashboard → Legal Documents). See Gap 8 | `subprocessors.md`; supabase.com/legal/dpa, vercel.com/legal/dpa, sentry.io/legal/dpa |
 | Art. IV §6 / Art. VII §2 | Dispose of Student Data within **60 days** of written request; destroy on termination | Supported: per-student cascade delete + Storage cleanup, provider/account deletion, district offboarding runbook, extension-cache TTL/clear | `offboarding-runbook.md` (SPE-143, PR #655) |
 | Art. V §1 | US data storage where required; list of storage locations on request | Supabase project region **us-west-1 (N. California)** — verified 2026-06-12; Vercel function region configurable; Sentry US ingest | `subprocessors.md`; live project settings |
 | Art. V §2 | Annual LEA audit right (10 business days' notice + NDA) | Acceptable; no tooling needed | — |
@@ -226,7 +226,7 @@ Source: `subprocessors.md` (last reviewed 2026-06-11).
 |---|---|---|---|---|
 | Supabase | Database, auth, file storage — system of record | Yes — all categories in Exhibit B | US (us-west-1, N. California) | DPA available; **sign via dashboard → Legal Documents [ACTION]** |
 | Vercel | Application hosting; traffic + runtime logs | Yes — in transit and incidentally in logs | US-configurable | DPA incorporated into ToS — **on Pro since 2026-07-28**; **save copy [ACTION]** |
-| Sentry | Error monitoring, minimized (no logs/replay, PII scrubbed, `sendDefaultPii: false`) | Incidental only | US ingest | DPA self-serve; **accept in Settings → Legal & Compliance [ACTION]** |
+| Sentry | Error monitoring, minimized (no logs/replay, PII scrubbed, `sendDefaultPii: false`) | Incidental only | US ingest | DPA self-serve — **accepted 2026-08-04 (owner-confirmed)**; **save acceptance record [ACTION]** |
 | Help Scout | Support help desk + chat widget | No by design (provider PII only) | US | DPA v2 via ToS; DPF + SCCs (SPE-170, on file) |
 | OpenAI — **planned, NOT enabled** | AI lesson generation (when enabled) | None today (hard-gated off); initials + IEP goal text when enabled | US | DPA executed 2026-06-12 (SPE-163) |
 | Anthropic — **planned, NOT enabled** | AI generation/grading/parsing (when enabled) | None today (hard-gated off) | US | DPA via Commercial Terms, copy on file 2026-06-12 (SPE-163) |
@@ -258,8 +258,10 @@ only when active); Supabase Auth transactional email.
    (with honest gaps table). Attorney to confirm sufficiency (brief item 5).
 7. ~~Exhibit H question~~ **Tracked as SPE-172** — email CITE/CSPA; question
    text is in the ticket. Also raised in attorney brief item 5(b).
-8. **Subprocessor DPAs (Art. II §5)** — researched 2026-06-12. Three quick
-   self-serve actions remain (~15 min total):
+8. **Subprocessor DPAs (Art. II §5)** — researched 2026-06-12; two of the
+   three self-serve actions are now done (Vercel 2026-07-28, Sentry
+   2026-08-04). **One remains: signing the Supabase DPA (~10 min).** Records
+   housekeeping — saving the Vercel and Sentry copies — is also outstanding:
    - **Supabase**: DPA must be signed — Supabase dashboard → Organization →
      Legal Documents (PandaDoc flow). Save the executed copy.
    - **Vercel**: DPA is incorporated by reference into the Terms of Service
@@ -267,9 +269,12 @@ only when active); Supabase Auth transactional email.
      plan~~ **Upgraded Hobby → Pro 2026-07-28 (owner-confirmed)** — the DPA
      now applies. Remaining (SPE-173): save a copy of vercel.com/legal/dpa
      for the records file; sanity-check the daily crons on Pro.
-   - **Sentry**: self-serve click-accept — Sentry → Settings → Legal &
-     Compliance (requires Owner/Billing role); DocuSign option if a signed
-     copy is preferred. Save the acceptance record.
+   - **Sentry**: ~~self-serve click-accept — Sentry → Settings → Legal &
+     Compliance~~ **Accepted 2026-08-04 (owner-confirmed)** — the DPA now
+     applies. Remaining: save the acceptance record to the records file.
+     Note Sentry only began actually receiving data on 2026-08-04 (SPE-175):
+     until then its DSN pointed at a nonexistent project and every event was
+     rejected, so no error data reached it despite the listing above.
 9. ~~Stale security overview~~ **Resolved 2026-06-12** — rewritten (v2.0):
    Vercel hosting, us-west-1 data residency, accurate data inventory (full
    names/DOB disclosed), AI-disabled posture, Help Scout + Chrome extension
@@ -312,7 +317,7 @@ only when active); Supabase Auth transactional email.
 5. ☑ AI stance: "No AI used at this time" (decided 2026-06-12; attorney confirms, brief item 3; enablement runbook = SPE-174)
 6. ☑ Framework: NIST CSF 1.1 + mapping memo `docs/security-framework-mapping.md` (done 2026-06-12; attorney confirms, brief item 5)
 7. ☐ Email CITE about Exhibit H (tracked: **SPE-172**)
-8. ☐ Sign Supabase DPA (dashboard) · accept Sentry DPA (Settings → Legal & Compliance) · ~~upgrade Vercel Hobby → Pro~~ **done 2026-07-28** — save Vercel DPA copy (SPE-173); collate with OpenAI/Anthropic/Help Scout records (Gap 8)
+8. ☐ Sign Supabase DPA (dashboard) — **the last outstanding subprocessor DPA** · ~~accept Sentry DPA~~ **done 2026-08-04** · ~~upgrade Vercel Hobby → Pro~~ **done 2026-07-28** — save Sentry acceptance + Vercel DPA copies (SPE-173); collate with OpenAI/Anthropic/Help Scout records (Gap 8)
 9. ☑ Security overview rewritten to current reality, v2.0 (Gap 9 — done 2026-06-12)
 10. ☑ MFA references removed from privacy page (Gap 10 — done 2026-06-12)
 11. ☑ Incident-response plan written: `docs/incident-response-plan.md` (Gap 11 — done 2026-06-12; **[DPO]** review recommended)

@@ -58,7 +58,7 @@ addendum as "No AI used at this time" with a planned-use disclosure.
 6. `incident-response-plan.md` — written IR plan (required by Art. V §4(3))
 7. `security-framework-mapping.md` — NIST CSF 1.1 self-assessment
 8. `offboarding-runbook.md` — deletion/return tooling backing Art. IV §6
-9. Subprocessor DPA records (OpenAI, Anthropic, Help Scout; Supabase/Sentry/Vercel in progress)
+9. Subprocessor DPA records (OpenAI, Anthropic, Help Scout, Sentry, Vercel; Supabase in progress)
 
 ---
 
@@ -201,11 +201,11 @@ defensible reading of Art. IV §6 / Exhibit D.**
 ### 11. Subprocessor flow-down — Art. II §5 (confirmation, one open item)
 
 Status: OpenAI + Anthropic DPAs executed; Help Scout DPA incorporated via
-ToS with DPF/SCCs; Supabase DPA being signed via their dashboard; Sentry
-DPA being click-accepted. **Open item:** production hosting is currently on
-Vercel's **Hobby** plan, whose DPA applies to Pro/Enterprise customers —
-we are upgrading to Pro before signing (Linear SPE-173). **Confirm the
-resulting set satisfies "no less stringent" flow-down.**
+ToS with DPF/SCCs; Sentry DPA accepted 2026-08-04; Vercel DPA applies via
+ToS now that hosting is on the **Pro** plan (upgraded 2026-07-28, Linear
+SPE-173). **Open item:** the Supabase DPA is still being signed via their
+dashboard and is the last one outstanding. **Confirm the resulting set
+satisfies "no less stringent" flow-down.**
 
 ### 12. Public-policy consistency (confirmation)
 

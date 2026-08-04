@@ -52,8 +52,9 @@ secondary-school experience; Rodeo Hills gets the full elementary experience.
   housekeeping: save the DPA copy to the records file; sanity-check crons on Pro.
 - **Attorney FERPA/COPPA sign-off.** The attorney review brief is prepared; final
   counsel sign-off should be confirmed on record.
-- **Subprocessor DPA housekeeping.** OpenAI/Anthropic done (SPE-163). Confirm the
-  Supabase DPA is signed and the Sentry DPA accepted, and save copies.
+- **Subprocessor DPA housekeeping.** OpenAI/Anthropic done (SPE-163); Sentry
+  accepted 2026-08-04 (SPE-283). **Supabase DPA signing is the last one
+  outstanding** — confirm it is signed, and save copies of all of them.
 - **CITE Exhibit H question (SPE-172, open, minor).** How variances attach, given
   v1.5 has no Exhibit H page.
 - **Audit logging (SPE-169, open).** Named in the attorney brief as the most
