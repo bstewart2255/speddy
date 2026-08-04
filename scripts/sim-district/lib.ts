@@ -28,6 +28,7 @@ export function requireEnv(name: string): string {
   return value;
 }
 
+/** Service-role client for the pinned project. Runs the host pin first, always. */
 export function createAdmin(): Admin {
   // Pin the project here, not just in the scripts that remember to ask: this is
   // the one place a service-role client is minted, so no caller can skip it.
@@ -40,7 +41,7 @@ export function createAdmin(): Admin {
 /** Preflight (a): the connected host must be a manifest-pinned front for the project. */
 export function assertProjectRef(): void {
   const url = requireEnv('NEXT_PUBLIC_SUPABASE_URL');
-  const host = new URL(url).hostname;
+  const { hostname: host, protocol } = new URL(url);
   // The project's own `<ref>.supabase.co`, or the custom domain pinned in the
   // manifest — both address the same project.
   const pinned = `${SUPABASE_PROJECT_REF}.supabase.co`;
@@ -49,6 +50,15 @@ export function assertProjectRef(): void {
       `Preflight FAILED: connected host "${host}" is not the manifest pin "${pinned}"` +
         (SUPABASE_CUSTOM_HOST ? ` or its custom domain "${SUPABASE_CUSTOM_HOST}"` : '') +
         `. Refusing to touch this database.`,
+    );
+    process.exit(1);
+  }
+  // Right host, wrong scheme still puts the service-role key on the wire in
+  // cleartext, so the pin is only worth as much as this second check.
+  if (protocol !== 'https:') {
+    console.error(
+      `Preflight FAILED: NEXT_PUBLIC_SUPABASE_URL uses "${protocol}//". The service-role ` +
+        `key must not travel in cleartext — use https://.`,
     );
     process.exit(1);
   }
