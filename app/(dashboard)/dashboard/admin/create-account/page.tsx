@@ -27,6 +27,8 @@ export default function CreateAccountPage() {
     email: '',
     classroom_number: '',
     phone_number: '',
+    // Only used by district admins, who aren't tied to a single school.
+    school_id: '',
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -35,6 +37,7 @@ export default function CreateAccountPage() {
   const [credentials, setCredentials] = useState<{ email: string; temporaryPassword: string } | null>(null);
 
   // Admin state
+  const [permissionsChecked, setPermissionsChecked] = useState(false);
   const [isDistrictAdmin, setIsDistrictAdmin] = useState(false);
   const [isSiteAdmin, setIsSiteAdmin] = useState(false);
   const [siteAdminSchoolId, setSiteAdminSchoolId] = useState<string | null>(null);
@@ -69,37 +72,50 @@ export default function CreateAccountPage() {
         }
       } catch (err) {
         console.error('Error checking admin permissions:', err);
+      } finally {
+        setPermissionsChecked(true);
       }
     };
     checkPermissions();
   }, []);
 
-  // Fetch district schools when specialist mode is activated (district admin)
-  // or auto-set the school for site admins
+  // District admins pick a school for both account types, so load the district's
+  // schools as soon as we know who they are.
   useEffect(() => {
-    if (accountType === 'specialist' && isDistrictAdmin && districtId && districtSchools.length === 0) {
-      const fetchSchools = async () => {
-        setLoadingSchools(true);
-        try {
-          const schools = await getDistrictSchools(districtId);
-          setDistrictSchools(schools.map(s => ({ id: s.id, name: s.name })));
-        } catch (err) {
-          console.error('Error fetching district schools:', err);
-          setError('Failed to load schools');
-        } finally {
-          setLoadingSchools(false);
-        }
-      };
-      fetchSchools();
-    } else if (accountType === 'specialist' && isSiteAdmin && siteAdminSchoolId) {
-      // Site admins can only assign specialists to their own school
+    if (!isDistrictAdmin || !districtId || districtSchools.length > 0) return;
+
+    const fetchSchools = async () => {
+      setLoadingSchools(true);
+      try {
+        const schools = await getDistrictSchools(districtId);
+        setDistrictSchools(schools.map(s => ({ id: s.id, name: s.name })));
+      } catch (err) {
+        console.error('Error fetching district schools:', err);
+        setError('Failed to load schools');
+      } finally {
+        setLoadingSchools(false);
+      }
+    };
+    fetchSchools();
+  }, [isDistrictAdmin, districtId, districtSchools.length]);
+
+  // Site admins can only assign specialists to their own school
+  useEffect(() => {
+    if (accountType === 'specialist' && !isDistrictAdmin && isSiteAdmin && siteAdminSchoolId) {
       setSpecialistData(prev => ({
         ...prev,
         school_ids: [siteAdminSchoolId],
         primary_school_id: siteAdminSchoolId,
       }));
     }
-  }, [accountType, isDistrictAdmin, isSiteAdmin, siteAdminSchoolId, districtId, districtSchools.length]);
+  }, [accountType, isDistrictAdmin, isSiteAdmin, siteAdminSchoolId]);
+
+  // District admins have no school of their own, so the school-scoped teacher
+  // directory can't load for them. Default to the admin dashboard until we know
+  // the directory is safe to link to.
+  const returnHref = permissionsChecked && !isDistrictAdmin
+    ? '/dashboard/admin/teachers'
+    : '/dashboard/admin';
 
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -134,16 +150,18 @@ export default function CreateAccountPage() {
     handleSpecialistInputChange('school_ids', newSelection);
   };
 
-  const checkForDuplicates = async () => {
+  const checkForDuplicates = async (schoolIdOverride?: string) => {
     if (!formData.first_name || !formData.last_name) return;
 
     try {
-      // Get current user's school ID
-      const schoolId = await getCurrentUserSchoolId();
-      if (!schoolId) {
-        setError('Could not determine your school. Please try again.');
-        return;
-      }
+      // District admins pick the school on the form; everyone else inherits theirs.
+      const schoolId = isDistrictAdmin
+        ? (schoolIdOverride ?? formData.school_id)
+        : await getCurrentUserSchoolId();
+
+      // Nothing to compare against yet. This check is advisory, so stay quiet
+      // rather than showing an error the admin can't act on.
+      if (!schoolId) return;
 
       const duplicates = await checkDuplicateTeachers(
         formData.first_name,
@@ -180,15 +198,29 @@ export default function CreateAccountPage() {
           throw new Error('Email is required to create a teacher account');
         }
 
-        // Get current user's school ID
-        const schoolId = await getCurrentUserSchoolId();
+        // District admins create teachers at any school in their district, so the
+        // school comes from the form. Site admins only have their own school.
+        let endpoint: string;
+        let schoolId: string;
 
-        if (!schoolId) {
-          throw new Error('Could not determine your school. Please contact support.');
+        if (isDistrictAdmin) {
+          if (!formData.school_id) {
+            throw new Error('Please select the school this teacher works at');
+          }
+          endpoint = '/api/admin/district/teachers';
+          schoolId = formData.school_id;
+        } else {
+          const ownSchoolId = await getCurrentUserSchoolId();
+
+          if (!ownSchoolId) {
+            throw new Error('Could not determine your school. Please contact support.');
+          }
+          endpoint = '/api/admin/create-teacher-account';
+          schoolId = ownSchoolId;
         }
 
-        // Call the new API endpoint to create teacher account with credentials
-        const response = await fetch('/api/admin/create-teacher-account', {
+        // Call the API endpoint to create teacher account with credentials
+        const response = await fetch(endpoint, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -266,7 +298,7 @@ export default function CreateAccountPage() {
     if (accountType === 'specialist') {
       router.push('/dashboard/admin');
     } else {
-      router.push('/dashboard/admin/teachers');
+      router.push(returnHref);
     }
   };
 
@@ -285,7 +317,9 @@ export default function CreateAccountPage() {
         </Link>
         <h1 className="text-3xl font-bold text-gray-900">Create New Account</h1>
         <p className="mt-2 text-gray-600">
-          Add a teacher or specialist account at your school
+          {isDistrictAdmin
+            ? 'Add a teacher or specialist account at any school in your district'
+            : 'Add a teacher or specialist account at your school'}
         </p>
       </div>
 
@@ -346,7 +380,7 @@ export default function CreateAccountPage() {
                     required
                     value={formData.first_name}
                     onChange={(e) => handleInputChange('first_name', e.target.value)}
-                    onBlur={checkForDuplicates}
+                    onBlur={() => checkForDuplicates()}
                     className="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
                     placeholder="John"
                   />
@@ -361,7 +395,7 @@ export default function CreateAccountPage() {
                     required
                     value={formData.last_name}
                     onChange={(e) => handleInputChange('last_name', e.target.value)}
-                    onBlur={checkForDuplicates}
+                    onBlur={() => checkForDuplicates()}
                     className="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
                     placeholder="Smith"
                   />
@@ -377,6 +411,41 @@ export default function CreateAccountPage() {
                     </svg>
                     <p className="ml-3 text-sm text-yellow-700">{duplicateWarning}</p>
                   </div>
+                </div>
+              )}
+
+              {/* School (district admins aren't tied to a single school) */}
+              {isDistrictAdmin && (
+                <div>
+                  <label htmlFor="teacher_school" className="block text-sm font-medium text-gray-700 mb-1">
+                    School <span className="text-red-500">*</span>
+                  </label>
+                  {loadingSchools ? (
+                    <div className="text-sm text-gray-500">Loading schools...</div>
+                  ) : districtSchools.length === 0 ? (
+                    <div className="text-sm text-gray-500">No schools found in your district</div>
+                  ) : (
+                    <select
+                      id="teacher_school"
+                      required
+                      value={formData.school_id}
+                      onChange={(e) => {
+                        handleInputChange('school_id', e.target.value);
+                        checkForDuplicates(e.target.value);
+                      }}
+                      className="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                    >
+                      <option value="">Select a school</option>
+                      {districtSchools.map((school) => (
+                        <option key={school.id} value={school.id}>
+                          {school.name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  <p className="mt-1 text-xs text-gray-500">
+                    The school this teacher works at.
+                  </p>
                 </div>
               )}
 
@@ -587,7 +656,7 @@ export default function CreateAccountPage() {
           {/* Action Buttons */}
           <div className="flex justify-end space-x-3 pt-4 border-t border-gray-200">
             <Link
-              href="/dashboard/admin/teachers"
+              href={returnHref}
               className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
             >
               Cancel
