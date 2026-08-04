@@ -51,9 +51,10 @@ only real controls (the SPE-134 principle).
 
 **Prerequisite for this paragraph:** the subprocessor-agreements sentence
 must be true when the corrected PDF leaves the building. OpenAI, Anthropic,
-Help Scout, and Vercel (Pro since 2026-07-28) are in place; the **Supabase
-DPA signing and Sentry DPA acceptance (§8 item 2) must be completed before
-sending** — they are two self-serve click-throughs, not negotiations.
+Help Scout, Vercel (Pro since 2026-07-28) and Sentry (accepted 2026-08-04)
+are in place; the **Supabase DPA signing (§8 item 2) must be completed
+before sending** — it is one self-serve click-through, not a negotiation,
+and it is now the only thing holding this paragraph.
 
 ---
 
@@ -289,10 +290,10 @@ collected."
    Vercel DPA (incorporated via ToS for Pro) now applies. Remaining
    housekeeping (SPE-173): save a copy of vercel.com/legal/dpa to the
    records file; sanity-check the two daily crons on Pro.
-2. ☐ Sign the Supabase DPA (dashboard → Organization → Legal Documents);
-   accept the Sentry DPA (Settings → Legal & Compliance). ~15 min total.
+2. ☐ Sign the Supabase DPA (dashboard → Organization → Legal Documents).
+   ~10 min. ~~Accept the Sentry DPA~~ **done 2026-08-04 (owner-confirmed)**.
    **Prerequisite for the Exhibit F representation in §1 — do before the
-   corrected PDF is sent anywhere.**
+   corrected PDF is sent anywhere.** Supabase is now the only one left.
 3. ☐ Apply §§1–6 above to the PDF, then send to counsel with
    `attorney-review-brief.md` (its enclosure list) + this fix sheet.
 4. ☐ SPE-172 — CITE Exhibit H question; now more relevant since this draft
