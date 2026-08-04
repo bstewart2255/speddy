@@ -38,7 +38,7 @@ deletion runbook (`docs/offboarding-runbook.md`).
 |------|--------|--------|
 | District record | ✅ Created | `John Swett Unified` — NCES `0618990`, state `CA`, Contra Costa |
 | Schools | ✅ Created | Rodeo Hills Elementary (K–5), Carquinez Middle (6–8), John Swett High (9–12) — real NCES IDs |
-| District admin — **Megan Tucker** (`mtucker@jsusd.org`) | ⏳ Not yet created | **To be created** by a Speddy admin via `/internal` → district → **Create District Admin**. After creation, set `must_change_password` on her profile so she must rotate the one-time temp password at first login (SPE-190 mitigation). |
+| District admin — **Megan Tucker** (`mtucker@jsusd.org`) | Tracked in **SPE-380** | Account creation via `/internal`, plus the `must_change_password` mitigation for SPE-190. Steps live on the ticket, not here. |
 
 The middle and high schools are typed `Middle` / `High`, so they get the
 secondary-school experience; Rodeo Hills gets the full elementary experience.
@@ -47,19 +47,25 @@ secondary-school experience; Rodeo Hills gets the full elementary experience.
 
 ## 3. Pre-signing items (close before John Swett *signs* — not before they review)
 
-- **Vercel Hobby → Pro upgrade — DONE 2026-07-28** (owner-confirmed; SPE-173).
-  The hosting DPA (incorporated via ToS on Pro) now applies. Remaining
-  housekeeping: save the DPA copy to the records file; sanity-check crons on Pro.
-- **Attorney FERPA/COPPA sign-off.** The attorney review brief is prepared; final
-  counsel sign-off should be confirmed on record.
-- **Subprocessor DPA housekeeping.** OpenAI/Anthropic done (SPE-163); Sentry
-  accepted 2026-08-04 (SPE-283). **Supabase DPA signing is the last one
-  outstanding** — confirm it is signed, and save copies of all of them.
-- **CITE Exhibit H question (SPE-172, open, minor).** How variances attach, given
-  v1.5 has no Exhibit H page.
-- **Audit logging (SPE-169, open).** Named in the attorney brief as the most
-  material security gap; decide whether to disclose as an accepted interim
-  variance (RLS + auth are in place today).
+**Status lives in Linear, not in this list.** This section previously restated
+each item's state and drifted — as of 2026-08-03 it showed the Vercel upgrade as
+done (correct) while its ticket sat open, and the Supabase DPA as outstanding
+(correct) while its ticket sat closed. Two documents disagreeing with the board
+is worse than no list. Check the tickets:
+
+| Item | Ticket |
+|---|---|
+| Sign the Supabase DPA — **the last subprocessor outstanding** | **SPE-283** |
+| Attorney FERPA/COPPA sign-off (brief is prepared) | **SPE-282** |
+| Apply the fix-sheet corrections to the PDF, send to counsel | **SPE-376** |
+| Parent-contact disclosure gate — **new, blocks Exhibit B** | **SPE-212** |
+| CITE question: how Exhibit H variances attach | **SPE-172** |
+| Business phone line before signature | **SPE-377** |
+| Verify retention crons; file the Vercel DPA copy | **SPE-378** |
+| Audit logging — disclose as an interim variance? | **SPE-169** |
+
+Already closed: Vercel Pro upgrade (SPE-173, done 2026-07-28), OpenAI/Anthropic
+DPAs (SPE-163), Help Scout DPA (SPE-170), Sentry DPA acceptance (2026-08-04).
 
 ---
 
