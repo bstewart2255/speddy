@@ -35,7 +35,8 @@
     "sim:verify": "tsx scripts/sim-district/verify.ts",
     "sim:verify-rls": "tsx scripts/sim-district/verify-profiles-rls.ts",
     "sim:verify-children-rls": "tsx scripts/sim-district/verify-children-rls.ts",
-    "sim:verify-child-link": "tsx scripts/sim-district/verify-child-link.ts"
+    "sim:verify-child-link": "tsx scripts/sim-district/verify-child-link.ts",
+    "sim:verify-special-activities-rls": "tsx scripts/sim-district/verify-special-activities-rls.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.56.0",

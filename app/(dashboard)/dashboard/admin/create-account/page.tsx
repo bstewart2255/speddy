@@ -54,7 +54,6 @@ export default function CreateAccountPage() {
     email: '',
     role: 'resource' as 'resource' | 'speech' | 'ot' | 'counseling' | 'sea' | 'psychologist' | 'intervention',
     school_ids: [] as string[],
-    primary_school_id: '',
   });
 
   // Check if current user is a district admin on mount
@@ -109,7 +108,6 @@ export default function CreateAccountPage() {
       setSpecialistData(prev => ({
         ...prev,
         school_ids: [siteAdminSchoolId],
-        primary_school_id: siteAdminSchoolId,
       }));
     }
   }, [accountType, isDistrictAdmin, isSiteAdmin, siteAdminSchoolId]);
@@ -128,21 +126,7 @@ export default function CreateAccountPage() {
   };
 
   const handleSpecialistInputChange = (field: string, value: string | string[]) => {
-    setSpecialistData(prev => {
-      const updated = { ...prev, [field]: value };
-      // Auto-set primary school if only one school is selected
-      if (field === 'school_ids' && Array.isArray(value)) {
-        if (value.length === 1) {
-          updated.primary_school_id = value[0];
-        } else if (value.length === 0) {
-          updated.primary_school_id = '';
-        } else if (!value.includes(updated.primary_school_id)) {
-          // If current primary school was deselected, reset to first selected
-          updated.primary_school_id = value[0];
-        }
-      }
-      return updated;
-    });
+    setSpecialistData(prev => ({ ...prev, [field]: value }));
     setError(null);
   };
 
@@ -279,7 +263,6 @@ export default function CreateAccountPage() {
             email: specialistData.email,
             role: specialistData.role,
             school_ids: specialistData.school_ids,
-            primary_school_id: specialistData.primary_school_id || specialistData.school_ids[0],
           }),
         });
 
@@ -621,33 +604,6 @@ export default function CreateAccountPage() {
                   </p>
                 )}
               </div>
-
-              {/* Primary School Selection (only if multiple schools selected) */}
-              {specialistData.school_ids.length > 1 && (
-                <div>
-                  <label htmlFor="primary_school" className="block text-sm font-medium text-gray-700 mb-1">
-                    Primary School <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    id="primary_school"
-                    value={specialistData.primary_school_id}
-                    onChange={(e) => handleSpecialistInputChange('primary_school_id', e.target.value)}
-                    className="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
-                  >
-                    {specialistData.school_ids.map((schoolId) => {
-                      const school = districtSchools.find(s => s.id === schoolId);
-                      return (
-                        <option key={schoolId} value={schoolId}>
-                          {school?.name || schoolId}
-                        </option>
-                      );
-                    })}
-                  </select>
-                  <p className="mt-1 text-xs text-gray-500">
-                    Select the primary school for this specialist's profile.
-                  </p>
-                </div>
-              )}
             </>
           )}
 
