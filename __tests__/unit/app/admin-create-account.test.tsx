@@ -1,5 +1,5 @@
 import React from 'react'
-import { render, screen, waitFor, userEvent } from '../../../test-utils'
+import { act, render, screen, waitFor, userEvent } from '../../../test-utils'
 import CreateAccountPage from '@/app/(dashboard)/dashboard/admin/create-account/page'
 
 const mockPush = jest.fn()
@@ -127,6 +127,61 @@ describe('Admin Create New Account page', () => {
       expect(screen.queryByText(/could not determine your school/i)).not.toBeInTheDocument()
       expect(mockCheckDuplicateTeachers).not.toHaveBeenCalled()
     })
+  })
+
+  it('blocks submission until the permission lookup settles', async () => {
+    // Until we know the admin's scope we can't tell which endpoint to post to,
+    // so a district admin submitting early would take the site-admin branch.
+    let resolvePerms: (v: unknown) => void = () => {}
+    mockGetCurrentAdminPermissions.mockReturnValue(
+      new Promise(resolve => { resolvePerms = resolve })
+    )
+    const user = userEvent.setup()
+    render(<CreateAccountPage />)
+
+    const submit = screen.getByRole('button', { name: /create account/i })
+    expect(submit).toBeDisabled()
+
+    await user.type(screen.getByLabelText(/first name/i), 'Jane')
+    await user.type(screen.getByLabelText(/last name/i), 'Doe')
+    await user.type(screen.getByLabelText(/email/i), 'jane.doe@school.edu')
+    await user.click(submit)
+    expect(global.fetch).not.toHaveBeenCalled()
+
+    resolvePerms(DISTRICT_ADMIN)
+    await waitFor(() => expect(submit).toBeEnabled())
+    // ...and now it knows to demand a school.
+    expect(await screen.findByLabelText(/school/i)).toBeInTheDocument()
+  })
+
+  it('ignores a duplicate-check response that a newer check superseded', async () => {
+    mockGetCurrentAdminPermissions.mockResolvedValue(DISTRICT_ADMIN)
+    let resolveAlpha: (v: unknown) => void = () => {}
+    mockCheckDuplicateTeachers
+      // Alpha's check hangs; Bravo's answers straight away and wins.
+      .mockImplementationOnce(() => new Promise(resolve => { resolveAlpha = resolve }))
+      .mockResolvedValue([{ first_name: 'Jane', last_name: 'Bravomatch', classroom_number: '9' }])
+
+    const user = userEvent.setup()
+    await renderPage()
+    const schoolSelect = await screen.findByLabelText(/school/i)
+
+    await user.type(screen.getByLabelText(/first name/i), 'Jane')
+    await user.type(screen.getByLabelText(/last name/i), 'Doe')
+    await user.selectOptions(schoolSelect, 'school-a')
+    await user.selectOptions(schoolSelect, 'school-b')
+
+    expect(await screen.findByText(/Bravomatch/)).toBeInTheDocument()
+
+    // The stale Alpha result lands last. It must not replace the warning for
+    // the school the admin is actually creating at.
+    await act(async () => {
+      resolveAlpha([{ first_name: 'Jane', last_name: 'Alphamatch', classroom_number: '3' }])
+      await new Promise(resolve => setTimeout(resolve, 0))
+    })
+
+    expect(screen.queryByText(/Alphamatch/)).not.toBeInTheDocument()
+    expect(screen.getByText(/Bravomatch/)).toBeInTheDocument()
   })
 
   it('keeps Cancel on the dashboard when the permission check fails', async () => {

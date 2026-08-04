@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { checkDuplicateTeachers, getCurrentAdminPermissions, getDistrictSchools } from '@/lib/supabase/queries/admin-accounts';
 import { getCurrentUserSchoolId } from '@/lib/supabase/queries/school-directory';
@@ -36,7 +36,10 @@ export default function CreateAccountPage() {
   const [showCredentialsModal, setShowCredentialsModal] = useState(false);
   const [credentials, setCredentials] = useState<{ email: string; temporaryPassword: string } | null>(null);
 
+  const duplicateCheckSeq = useRef(0);
+
   // Admin state
+  const [permissionsChecked, setPermissionsChecked] = useState(false);
   const [isDistrictAdmin, setIsDistrictAdmin] = useState(false);
   const [isSiteAdmin, setIsSiteAdmin] = useState(false);
   const [siteAdminSchoolId, setSiteAdminSchoolId] = useState<string | null>(null);
@@ -71,6 +74,10 @@ export default function CreateAccountPage() {
         }
       } catch (err) {
         console.error('Error checking admin permissions:', err);
+      } finally {
+        // Marks the lookup as settled either way — submitting before this
+        // resolves would pick the wrong endpoint for a district admin.
+        setPermissionsChecked(true);
       }
     };
     checkPermissions();
@@ -150,6 +157,10 @@ export default function CreateAccountPage() {
   const checkForDuplicates = async (schoolIdOverride?: string) => {
     if (!formData.first_name || !formData.last_name) return;
 
+    // Both name fields and the school picker fire this, so responses can land
+    // out of order. Only the newest request may write the warning.
+    const seq = ++duplicateCheckSeq.current;
+
     try {
       // District admins pick the school on the form; everyone else inherits theirs.
       const schoolId = isDistrictAdmin
@@ -165,6 +176,8 @@ export default function CreateAccountPage() {
         formData.last_name,
         schoolId
       );
+
+      if (seq !== duplicateCheckSeq.current) return;
 
       if (duplicates.length > 0) {
         const names = duplicates.map(t =>
@@ -660,7 +673,7 @@ export default function CreateAccountPage() {
             </Link>
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || !permissionsChecked}
               className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
             >
               {loading ? (
