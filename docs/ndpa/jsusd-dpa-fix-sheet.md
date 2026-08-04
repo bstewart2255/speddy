@@ -62,8 +62,18 @@ only real controls (the SPE-134 principle).
 must be true when the corrected PDF leaves the building. OpenAI, Anthropic,
 Help Scout, Vercel (Pro since 2026-07-28) and Sentry (accepted 2026-08-04)
 are in place; the **Supabase DPA signing (SPE-283) must be completed before
-sending** — it is one self-serve click-through, not a negotiation, and it is
-now the only thing holding this paragraph.
+sending** — it is one self-serve click-through, not a negotiation.
+
+**Second precondition, added 2026-08-04.** This paragraph also represents
+*"enforced data-retention limits with documented deletion and offboarding
+procedures."* Two things currently contradict that, and §1 stays blocked until
+both are resolved:
+
+- **`debug_signup_log`** — provider PII, still being written, 13 months
+  accumulated, no retention window and no offboarding delete path (**SPE-379**).
+- **Cleanup crons unverified** since the Vercel Pro move (**SPE-378**).
+
+Do not treat SPE-283 as the only gate.
 
 ---
 
@@ -132,9 +142,10 @@ been located in the PDF yet, so no field name is given here — **find them on t
 form rather than assuming they are absent**:
 
 - **Communications** — staff-to-staff chat (`conversations`, `messages`).
-  Per-student group threads carry `conversation.student_id`, and message bodies
-  are free text that can discuss any student. The draft's Communications
-  treatment predates the chat module entirely.
+  Per-student group threads carry `conversations.student_id`, and message bodies
+  are free text that can discuss any student; they are soft-deleted
+  (`deleted_at`), not purged. The draft's Communications treatment predates the
+  chat module entirely. Corrected in the execution packet 2026-08-04.
 - **Schedule** — IEP meeting records and attendee lists (`iep_meetings`,
   `iep_meeting_attendees`), which include parent/guardian attendees.
 
@@ -191,8 +202,10 @@ last swept and false by the time it was written:
   **`phone`**, **`email`** — for IEP-meeting confirmation.
 - SPE-212 flagged the NDPA/data-inventory update as a launch gate for that
   feature **on the day it shipped**. It was never actioned.
-- **Today the table holds 0 rows and no UI writes to it.** `app/(dashboard)/
-  dashboard/meetings/page.tsx` exists; nothing references parent contacts.
+- **As of the 2026-08-04 schema sweep the table held 0 rows, and no UI wrote to
+  it.** `app/(dashboard)/dashboard/meetings/page.tsx` exists; nothing referenced
+  parent contacts. **Re-check this before signing** — it is the fact the whole
+  decision rests on, and it is the kind that expires.
 
 So the honest description is **built, not yet collecting** — which the form has
 no box for.

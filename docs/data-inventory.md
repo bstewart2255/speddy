@@ -20,6 +20,15 @@ California Student Privacy Alliance (see SPE-59), and the companion to
 - **2026-07-28** — added the Parent/Guardian **Name** row
   (`care_referrals.requested_by`, Lane B requester name/relationship, added
   2026-05-16); missed by the June sweep, caught during JSUSD DPA review (PR #788).
+- **2026-08-04 (second pass, after review)** — the first pass listed every table
+  but **misfiled four of them** under §D "no personal data": `lessons`
+  (`student_ids`, `student_details`), `lesson_adjustment_queue` and
+  `lesson_performance_history` (`student_id`, `teacher_notes`), plus `todos`,
+  `team_members`, `rotation_group_members` and `school_hours` (provider/staff
+  references). Three tables were missing outright — `care_action_items`,
+  `care_case_status_history`, `conversation_read_state`. Caught by Codex and
+  CodeRabbit on PR #798; the same pass corrected
+  `ca-ndpa-execution-packet.md`, which had inherited the stale facts.
 - **2026-08-04** — full-schema sweep. Four categories were wrong or missing:
   Parent/Guardian **Contact** (`student_parent_contacts` shipped 2026-07-08 and
   was still recorded here as "not collected"), **Student Identifiers**
@@ -39,13 +48,13 @@ California Student Privacy Alliance (see SPE-59), and the companion to
 |---|---|---|---|---|
 | **Student Name** | **Yes** | Optional¹ | First name, last name; initials; CARE referral student name | `children.first_name/last_name`, `student_details.first_name/last_name`, `students.initials`, `children.initials`, `care_referrals.student_name` |
 | **Demographics** | **Yes** | **Optional** | Date of birth | `children.date_of_birth`, `student_details.date_of_birth` |
-| **Disability / Special Indicator** | **Yes (core)** | Optional | IEP goals, accommodations, IEP / triennial / goals dates; special-ed **eligibility process** — academic/speech/psych/OT testing dates & completion, eligibility outcome & category, SST notes link | `student_details`, `children` (`accommodations`, `upcoming_iep_date`, `upcoming_triennial_date`), `care_cases` |
+| **Disability / Special Indicator** | **Yes (core)** | Optional | IEP goals, accommodations, IEP / triennial / goals dates; special-ed **eligibility process** — academic/speech/psych/OT testing dates & completion, eligibility outcome & category, SST notes link; **CARE case action items** (free-text description, assignee, due date) and **case status history** | `student_details`, `children` (`accommodations`, `upcoming_iep_date`, `upcoming_triennial_date`), `care_cases`, `care_action_items`, `care_case_status_history` |
 | **Enrollment** | **Yes** | Required² | Grade level, school/district association, service minutes (sessions/week, minutes/session) | `students`, `children`, `profiles` |
 | **Schedule** | **Yes** | Provider-created | Session day/time, service type, group assignment; **IEP meeting records and attendee lists**; provider calendar events (title, description, location, attendees) | `schedule_sessions`, `session_groups`, `bell_schedules`, `special_activities`, `iep_meetings`, `iep_meeting_attendees`, `calendar_events` |
 | **Attendance** | **Yes** | Optional | Present/absent, absence reason, session date | `attendance`, `schedule_sessions` |
-| **Assessment** | **Yes** | Optional / Derived | Assessment type/date + scores; performance level, accuracy trend, error patterns, confidence; exit-ticket & progress-check results; IEP-goal progress/scores; **curriculum placement** (SPIRE level, Reveal Math grade, current lesson) | `student_assessments`, `student_performance_metrics`, `exit_tickets`, `exit_ticket_results`, `progress_checks`, `progress_check_results`, `iep_goal_progress`, `manual_goal_progress`, `curriculum_tracking` |
+| **Assessment** | **Yes** | Optional / Derived | Assessment type/date + scores; performance level, accuracy trend, error patterns, confidence; exit-ticket & progress-check results; IEP-goal progress/scores; **curriculum placement** (SPIRE level, Reveal Math grade, current lesson); **per-lesson performance** (completion time, accuracy %, engagement level, free-text `teacher_notes`) and queued lesson adjustments | `student_assessments`, `student_performance_metrics`, `exit_tickets`, `exit_ticket_results`, `progress_checks`, `progress_check_results`, `iep_goal_progress`, `manual_goal_progress`, `curriculum_tracking`, `lesson_performance_history`, `lesson_adjustment_queue` |
 | **Student In-App Performance** | **Yes** | Derived | Worksheet responses, accuracy %, skills assessed, AI analysis | `worksheet_submissions` |
-| **Student Work** | **Yes** | Optional | Scanned worksheet **images**, generated worksheets/lessons, uploaded documents (rosters / IEP docs) | `worksheet_submissions.image_url`, `documents`, `worksheets`, `saved_worksheets` |
+| **Student Work** | **Yes** | Optional | Scanned worksheet **images**, generated worksheets/lessons, uploaded documents (rosters / IEP docs). **`lessons` carries `student_ids` and a `student_details` payload**, plus lesson content, provider notes, and the retained AI prompt/response when AI generation was used | `worksheet_submissions.image_url`, `documents`, `worksheets`, `saved_worksheets`, `lessons` |
 | **Conduct / Behavior** | Limited | Optional | Behavior-area IEP goals; CARE referral reason | `student_details.iep_goals`, `care_referrals.referral_reason` |
 | **Communications** | **Yes** | Optional | Provider session/progress notes (free text); **staff-to-staff chat messages, including per-student group conversations** (`conversations.student_id`) and 1:1 DMs — message bodies are free text and may discuss students; student-progress notifications | `schedule_sessions.session_notes`, `manual_goal_progress.notes`, `care_meeting_notes`, `conversations`, `messages`, `conversation_participants`, `progress_notifications` |
 | **Student Identifiers — provider-assigned** | **Yes** | Derived | Speddy student UUID; child UUID | `students.id`, `children.id` |
@@ -77,7 +86,11 @@ _Entry: provider name / email / role are **Required** (account); teacher **phone
 | Teacher name, email, **phone number**, classroom, grade | `teachers` |
 | Teacher meeting-availability preferences | `teacher_availability_prefs` |
 | Staff name, role, program, room; hours; teacher assignments; yard-duty assignments | `staff`, `staff_hours`, `staff_teacher_assignments`, `yard_duty_assignments` |
-| Provider work locations and per-site day schedules | `provider_schools`, `user_site_schedules`, `provider_availability`, `instruction_schedules` |
+| Provider work locations and per-site day schedules | `provider_schools`, `user_site_schedules`, `provider_availability`, `instruction_schedules`, `school_hours` |
+| Teacher rotation-group membership (which teacher, which day/time) | `rotation_group_members` |
+| Team membership (which staff belong to which team) | `teams`, `team_members` |
+| Provider to-do items — **free text (`task`) tied to a user**, so a provider could type a student's name into one | `todos` |
+| Chat read-state metadata (who last read which conversation, and when) | `conversation_read_state` |
 | Admin scope (which schools/districts each admin manages) | `admin_permissions` |
 | Extension API key (bcrypt **hash** only) | `api_keys` |
 | Google Calendar OAuth tokens (**AES-256-GCM app-layer encrypted**, key in env — ciphertext only in DB), connected Google account email, granted scopes | `calendar_connections` |
@@ -98,11 +111,17 @@ _Entry: all **auto-captured** (derived) — not provider- or student-entered._
 
 `states`, `districts`, `schools`, `holidays`, `school_year_config`,
 `activated_school_years`, `assessment_types`, `material_constraints`,
-`activity_type_availability`, `site_meeting_rules`, `school_hours`,
-`rotation_groups`, `rotation_group_members`, `rotation_activity_pairs`,
-`rotation_week_assignments`, `yard_duty_zones`, `lessons`,
-`lesson_adjustment_queue`, `lesson_performance_history`, `todos`,
-`teams`, `team_members`.
+`activity_type_availability`, `site_meeting_rules`, `rotation_groups`,
+`rotation_activity_pairs`, `rotation_week_assignments`, `yard_duty_zones`.
+
+Two qualifications, so the "no personal data" label is exact:
+
+- `districts` and `schools` carry `phone` and `mailing_address`. These are
+  **institutional** contact details from NCES reference data — the school's
+  front office, not a person.
+- `holidays` and `activated_school_years` carry `created_by` / `updated_by` /
+  `activated_by` staff-attribution stamps. They hold no personal *attributes*;
+  the identities they point at are disclosed in §B.
 
 Listed so the sweep is complete and future reviewers can see these were
 considered and excluded, rather than missed.
@@ -200,19 +219,55 @@ This file went stale twice in two months, and both times the error reached a
 contract draft. The cause is the same each time: a feature ships a table, and
 nothing forces this file to notice.
 
-**The check that catches it** — diff every live table against this file:
+Two checks are needed, because **being listed is not the same as being listed
+correctly.** The first draft of this section shipped only check 1, and review
+immediately found four tables that passed it while sitting in the wrong section
+— including `lessons`, which carries `student_ids` and a `student_details`
+payload and had been filed under "no personal data."
+
+**Check 1 — is every table accounted for?**
 
 ```sh
 psql "$DATABASE_URL" -Atc \
   "SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY 1" \
-| while read t; do grep -q "\b$t\b" docs/data-inventory.md || echo "MISSING: $t"; done
+| while read -r t; do grep -q "\`$t[\`.]" docs/data-inventory.md || echo "MISSING: $t"; done
 ```
+
+(The `[\`.]` matters: tables are cited both bare — `` `students` `` — and
+column-qualified — `` `care_referrals.student_name` ``. Matching only the bare
+form reports documented tables as missing, and a check that cries wolf gets
+ignored.)
 
 Every table must appear somewhere — sections A–C if it holds personal data,
 section D if it does not. A table in neither is an unreviewed disclosure gap.
 
-**Run it when:** a migration adds a table, and before any NDPA or Schedule of
-Data document is drafted, corrected, or sent.
+**Check 2 — is each one in the right section?** Check 1 only matches names, so
+it cannot see a misfiling. This lists every table with a column that looks
+personal; each one must be in A–C, never D:
+
+```sh
+psql "$DATABASE_URL" -Atc "
+SELECT c.table_name || ' -> ' || string_agg(c.column_name, ', ' ORDER BY c.column_name)
+FROM information_schema.columns c
+JOIN information_schema.tables t
+  ON t.table_schema = c.table_schema AND t.table_name = c.table_name
+WHERE c.table_schema = 'public' AND t.table_type = 'BASE TABLE'
+  AND (c.column_name ~ '(student|child|user|provider|teacher|profile|assignee|sender|parent)_id'
+       OR c.column_name ~ '(first_name|last_name|full_name|email|phone|address|date_of_birth|initials)'
+       OR c.column_name IN ('task','body','description','notes','teacher_notes','session_notes',
+                            'message','title','content','student_ids','student_details',
+                            'attendees','requested_by','student_name'))
+GROUP BY c.table_name ORDER BY c.table_name;"
+```
+
+Expect a few false positives (`states.full_name` is a state's name;
+`districts.phone` is a front office). Judgment still required — but the list is
+short and the cost of skimming it is minutes.
+
+**Run both when:** a migration adds or alters a table, and before any NDPA or
+Schedule of Data document is drafted, corrected, or sent. Downstream documents
+restate this file rather than re-deriving it, so an error here propagates to
+`ca-ndpa-execution-packet.md`, the fix sheet, and the signed PDF.
 
 _Related: SPE-59 (CITE NDPA), SPE-165 (subprocessor list), SPE-143
 (deletion/retention), SPE-212 (IEP-scheduling compliance gate), SPE-282 (counsel

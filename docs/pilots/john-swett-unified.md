@@ -64,8 +64,8 @@ is worse than no list. Check the tickets:
 | Verify retention crons; file the Vercel DPA copy | **SPE-378** |
 | Audit logging — disclose as an interim variance? | **SPE-169** |
 
-Already closed: Vercel Pro upgrade (SPE-173, done 2026-07-28), OpenAI/Anthropic
-DPAs (SPE-163), Help Scout DPA (SPE-170), Sentry DPA acceptance (2026-08-04).
+Closed items are deliberately not listed. Restating "this one is done" here is
+the same habit that drifted before — check the tickets.
 
 ---
 
