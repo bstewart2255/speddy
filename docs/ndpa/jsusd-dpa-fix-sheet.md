@@ -72,8 +72,14 @@ both are resolved:
 - **`debug_signup_log`** — provider PII, still being written, 13 months
   accumulated, no retention window and no offboarding delete path (**SPE-379**).
 - **Cleanup crons unverified** since the Vercel Pro move (**SPE-378**).
+- **`children` rows survive provider offboarding by design** — no cascade from
+  `profiles`, no DELETE policy for anyone (SPE-347). The offboarding runbook
+  predates the table and does not remove them. Either document that behavior as
+  intended, add an LEA-level deletion path, or narrow this paragraph
+  (**SPE-382**).
 
-Do not treat SPE-283 as the only gate.
+Do not treat SPE-283 as the only gate. All three of the above are the same
+failure — a retention or deletion sentence the system does not currently back.
 
 ---
 
@@ -390,6 +396,7 @@ a ticket:
 | Business phone line before signature (§6) | **SPE-377** |
 | Verify retention crons run; file Vercel DPA copy — **gates §1** | **SPE-378** |
 | `debug_signup_log` retention + deletion path — **gates §1** | **SPE-379** |
+| `children` vs. offboarding/deletion wording — **gates §1** | **SPE-382** |
 
 At execution (not tracked as tickets — they happen in the room): signatures and
 dates, the Exhibit A completion box (`Check Box82`), and the Exhibit E date.

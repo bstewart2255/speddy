@@ -21,7 +21,7 @@ California Student Privacy Alliance (see SPE-59), and the companion to
   (`care_referrals.requested_by`, Lane B requester name/relationship, added
   2026-05-16); missed by the June sweep, caught during JSUSD DPA review (PR #788).
 - **2026-08-04 (second pass, after review)** — the first pass listed every table
-  but **misfiled four of them** under §D "no personal data": `lessons`
+  but **misfiled seven of them** under §D "no personal data": `lessons`
   (`student_ids`, `student_details`), `lesson_adjustment_queue` and
   `lesson_performance_history` (`student_id`, `teacher_notes`), plus `todos`,
   `team_members`, `rotation_group_members` and `school_hours` (provider/staff
@@ -226,18 +226,33 @@ immediately found four tables that passed it while sitting in the wrong section
 — including `lessons`, which carries `student_ids` and a `student_details`
 payload and had been filed under "no personal data."
 
-**Check 1 — is every table accounted for?**
+**Check 1 — is every table accounted for?** Searches **only sections A–D**, the
+part of this file that actually classifies anything:
 
 ```sh
+awk '/^## A\. Student data/,/^## Where each element flows/' \
+  docs/data-inventory.md > /tmp/inv-AD.txt
 psql "$DATABASE_URL" -Atc \
   "SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY 1" \
-| while read -r t; do grep -q "\`$t[\`.]" docs/data-inventory.md || echo "MISSING: $t"; done
+| while read -r t; do grep -q "\`$t[\`.]" /tmp/inv-AD.txt || echo "MISSING: $t"; done
 ```
 
-(The `[\`.]` matters: tables are cited both bare — `` `students` `` — and
-column-qualified — `` `care_referrals.student_name` ``. Matching only the bare
-form reports documented tables as missing, and a check that cries wolf gets
-ignored.)
+Two details that look fussy and are not:
+
+- **Scoping to A–D** stops a table from passing because it is merely *mentioned*
+  somewhere. The corrections log above names a dozen tables, and check 2's own
+  SQL is full of identifiers; searching the whole file would let a table that had
+  been dropped from its section still register as accounted for. Being discussed
+  is not being classified.
+- **`[\`.]`** matches both bare citations — `` `students` `` — and
+  column-qualified ones — `` `care_referrals.student_name` ``. Matching only the
+  bare form reports documented tables as missing, and a check that cries wolf
+  gets ignored.
+
+**Not checked: inventory entries with no live table.** A stale citation is inert
+— it over-discloses, which does not put a false statement in a contract. The
+failure this file exists to prevent runs the other way: data we hold and did not
+disclose. Add the reverse direction if a stale entry ever causes real confusion.
 
 Every table must appear somewhere — sections A–C if it holds personal data,
 section D if it does not. A table in neither is an unreviewed disclosure gap.
