@@ -45,7 +45,7 @@ though the Standard Clauses reference one (Art. V §3, Art. VII §3) — see Gap
 | Clause | Commitment | Our position | Source |
 |---|---|---|---|
 | Art. II §2 (+ Ex. G ¶2) | Parent access/correction via the LEA within **45 days** | Supported operationally — requests routed through the district; deletion tooling exists | `offboarding-runbook.md` §A |
-| Art. II §5 | **Written agreements with all subprocessors**, no less stringent | OpenAI, Anthropic, Help Scout DPAs on file. Researched 2026-06-12: **Supabase** DPA requires a signing step (dashboard → Legal Documents); **Vercel** DPA is incorporated into the ToS (deemed signed — Pro/Enterprise plans; confirm plan tier + download copy); **Sentry** DPA is self-serve click-accept (Settings → Legal & Compliance, Owner/Billing role). See Gap 8 | `subprocessors.md`; supabase.com/legal/dpa, vercel.com/legal/dpa, sentry.io/legal/dpa |
+| Art. II §5 | **Written agreements with all subprocessors**, no less stringent | OpenAI, Anthropic, Help Scout DPAs on file. **Sentry** DPA accepted 2026-08-04; **Vercel** DPA applies via ToS on the Pro plan (upgraded 2026-07-28). **One outstanding: the Supabase DPA still requires a signing step** (dashboard → Legal Documents). See Gap 8 | `subprocessors.md`; supabase.com/legal/dpa, vercel.com/legal/dpa, sentry.io/legal/dpa |
 | Art. IV §6 / Art. VII §2 | Dispose of Student Data within **60 days** of written request; destroy on termination | Supported: per-student cascade delete + Storage cleanup, provider/account deletion, district offboarding runbook, extension-cache TTL/clear | `offboarding-runbook.md` (SPE-143, PR #655) |
 | Art. V §1 | US data storage where required; list of storage locations on request | Supabase project region **us-west-1 (N. California)** — verified 2026-06-12; Vercel function region configurable; Sentry US ingest | `subprocessors.md`; live project settings |
 | Art. V §2 | Annual LEA audit right (10 business days' notice + NDA) | Acceptable; no tooling needed | — |
@@ -258,8 +258,10 @@ only when active); Supabase Auth transactional email.
    (with honest gaps table). Attorney to confirm sufficiency (brief item 5).
 7. ~~Exhibit H question~~ **Tracked as SPE-172** — email CITE/CSPA; question
    text is in the ticket. Also raised in attorney brief item 5(b).
-8. **Subprocessor DPAs (Art. II §5)** — researched 2026-06-12. Three quick
-   self-serve actions remain (~15 min total):
+8. **Subprocessor DPAs (Art. II §5)** — researched 2026-06-12; two of the
+   three self-serve actions are now done (Vercel 2026-07-28, Sentry
+   2026-08-04). **One remains: signing the Supabase DPA (~10 min).** Records
+   housekeeping — saving the Vercel and Sentry copies — is also outstanding:
    - **Supabase**: DPA must be signed — Supabase dashboard → Organization →
      Legal Documents (PandaDoc flow). Save the executed copy.
    - **Vercel**: DPA is incorporated by reference into the Terms of Service
