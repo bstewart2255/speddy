@@ -32,7 +32,9 @@ realtime, edge functions), not just auth — the name just reflects why we bough
 
 ## Steps
 
-Run these in order. Nothing user-visible changes until step 6.
+Run these in order. Steps 1–5 are safe to do any time and change nothing for
+users. **Steps 6–7 are a single maintenance window with a sign-in outage in the
+middle** — read them both before starting either.
 
 ### 1. Buy the add-on
 
@@ -103,27 +105,31 @@ Activate from the same Custom Domains panel, or:
 supabase domains activate --project-ref qkcruccytmmdajfavpgb
 ```
 
-Auth starts advertising `auth.speddy.xyz` as its callback immediately, which is
-what fixes the Google screen. The old `*.supabase.co` domain keeps working —
-both address the same project — so there is no rush on step 8.
+> ⚠️ **Activation causes a short sign-in outage. Schedule it.**
+>
+> The guides page says the project's `*.supabase.co` domain "continues to work",
+> but that is only true of the REST/storage API. The CLI is explicit:
+> *"After the custom hostname is activated, your project's auth services will no
+> longer function on the Supabase-provisioned subdomain."*
+>
+> Our login form, middleware and auth callback all build their Supabase client
+> from `NEXT_PUBLIC_SUPABASE_URL`. So from the moment you activate until the
+> redeploy in step 7 finishes, **nobody can sign in and existing sessions stop
+> refreshing.** Do this outside school hours, and have step 7 queued up first.
 
-### 7. Verify it worked
-
-- Sign out, click **Continue with Google** on the login page — the Google screen
-  should now say `auth.speddy.xyz`.
-- Complete the sign-in and confirm you land in the dashboard (this exercises the
-  provisioning gate in `app/auth/callback/route.ts`, not just the redirect).
-- Sign in with email/password too, to confirm nothing else regressed.
-
-### 8. Optional, later: point the app at the new domain
-
-Not required for the Google fix, and worth doing as its own change so any
-fallout is isolated:
+### 7. Point the app at the new domain — immediately after activating
 
 1. Vercel → `NEXT_PUBLIC_SUPABASE_URL` → `https://auth.speddy.xyz`, then redeploy.
+   This is the step that ends the outage, so do it right away, not later.
 2. Set `SUPABASE_CUSTOM_HOST = 'auth.speddy.xyz'` in
    `scripts/sim-district/manifest.ts` so the sim-district preflight accepts the
    new host (it pins the project by hostname and will otherwise refuse to run).
+
+To shrink the outage to seconds instead of a build: in Vercel, set the env var
+and build the deployment *before* activating, then **promote** it to production
+the moment activation completes. `NEXT_PUBLIC_*` values are baked in at build
+time, so a pre-built deployment is ready to swap in instantly. Don't promote it
+early — before activation, `auth.speddy.xyz` isn't serving yet.
 
 Everything the app builds off that URL follows it, including **signed storage
 URLs**. `app/(dashboard)/dashboard/tools/components/saved-worksheets.tsx`
@@ -131,22 +137,36 @@ validates download URLs against the configured project origin for exactly this
 reason — it used to hardcode `supabase.co`, which would have rejected every
 worksheet download the moment the env var changed.
 
-After this step, smoke-test a worksheet download and a document upload/download
-alongside sign-in.
-
 Nothing else in the codebase pins the Supabase host: there are no CSP or image
 host allowlists, and the Chrome extension only ever talks to `speddy.xyz`.
 
+### 8. Verify
+
+- Sign out, click **Continue with Google** on the login page — the Google screen
+  should now say `auth.speddy.xyz`.
+- Complete the sign-in and confirm you land in the dashboard (this exercises the
+  provisioning gate in `app/auth/callback/route.ts`, not just the redirect).
+- Sign in with email/password too, to confirm nothing else regressed.
+- Download a saved worksheet and upload/download a document, to confirm signed
+  storage URLs still pass the origin check.
+
 ## Rollback
 
-```bash
-supabase domains delete --project-ref qkcruccytmmdajfavpgb
-```
+Order matters here for the same reason activation does.
 
-If step 8 was done, revert `NEXT_PUBLIC_SUPABASE_URL` to
-`https://qkcruccytmmdajfavpgb.supabase.co` **first** and redeploy — otherwise the
-app points at a domain that no longer resolves. Leave the extra Google redirect
-URI in place; a stale entry is harmless.
+1. **Revert `NEXT_PUBLIC_SUPABASE_URL`** to
+   `https://qkcruccytmmdajfavpgb.supabase.co` and redeploy. REST and storage
+   resume immediately; auth stays down because it is still bound to the custom
+   domain.
+2. **Then release the domain**, which returns auth to the project subdomain:
+
+   ```bash
+   supabase domains delete --project-ref qkcruccytmmdajfavpgb
+   ```
+
+Doing it in the other order points the app at a host that has stopped serving,
+which takes down everything rather than just auth. Leave the extra Google
+redirect URI in place; a stale entry is harmless.
 
 ## Alternative considered
 
