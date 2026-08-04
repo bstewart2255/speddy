@@ -76,10 +76,18 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
     const body: CreateProviderRequest = await request.json();
     const { first_name, last_name, email, role, school_ids } = body;
 
-    // Validate required fields
+    // Validate required fields. `school_ids` is only asserted by the
+    // TypeScript type, so check the shape too — a non-array would survive a
+    // bare `.length` check and fail later as a 500 instead of a 400.
     if (!first_name?.trim() || !last_name?.trim() || !email?.trim() || !role || !school_ids?.length) {
       return NextResponse.json(
         { error: 'Missing required fields: first_name, last_name, email, role, school_ids' },
+        { status: 400 }
+      );
+    }
+    if (!Array.isArray(school_ids)) {
+      return NextResponse.json(
+        { error: 'school_ids must be an array of school ids' },
         { status: 400 }
       );
     }

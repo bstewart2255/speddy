@@ -250,12 +250,23 @@ export const PATCH = withRoute<{ providerId: string }>({}, async ({ req: request
       }
     }
 
-    // An explicitly empty school list is a malformed request, not "leave the
-    // assignments alone". Fail loudly — silently ignoring it is how SPE-95
-    // happened.
-    if (school_ids && school_ids.length === 0) {
+    // `school_ids` is only asserted by the TypeScript type — the body is
+    // whatever the caller sent. A non-array (e.g. a bare string) would pass a
+    // bare `.length` check and then throw inside `.filter()` below, turning a
+    // bad request into a 500.
+    if (school_ids !== undefined && (!Array.isArray(school_ids) || school_ids.length === 0)) {
       return NextResponse.json(
-        { error: 'school_ids must contain at least one school' },
+        { error: 'school_ids must be a non-empty array of school ids' },
+        { status: 400 }
+      );
+    }
+
+    // The assignment rewrite below is keyed off `school_ids`, so a primary sent
+    // on its own cannot be applied. Reject it rather than returning success
+    // having changed nothing — that silent no-op is the SPE-95 failure mode.
+    if (primary_school_id && !school_ids?.length) {
+      return NextResponse.json(
+        { error: 'primary_school_id requires school_ids' },
         { status: 400 }
       );
     }

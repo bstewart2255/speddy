@@ -93,11 +93,16 @@ function sameSet(a: Set<string>, b: Set<string>): boolean {
   return a.size === b.size && [...a].every(id => b.has(id));
 }
 
+/**
+ * `maybeSingle`, not `single`: if the DELETE probe below ever succeeds the row
+ * is gone, and `single()` would throw a confusing "readback failed" instead of
+ * letting the missing row flow into the DELETE check that is actually failing.
+ */
 async function activityName(id: string): Promise<string | null> {
   const { data, error } = await admin
-    .from('special_activities').select('activity_name').eq('id', id).single();
+    .from('special_activities').select('activity_name').eq('id', id).maybeSingle();
   if (error) throw new Error(`activity readback failed: ${error.message}`);
-  return data.activity_name as string | null;
+  return (data?.activity_name as string | null) ?? null;
 }
 
 async function main(): Promise<void> {
