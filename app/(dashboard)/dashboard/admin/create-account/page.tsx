@@ -37,7 +37,6 @@ export default function CreateAccountPage() {
   const [credentials, setCredentials] = useState<{ email: string; temporaryPassword: string } | null>(null);
 
   // Admin state
-  const [permissionsChecked, setPermissionsChecked] = useState(false);
   const [isDistrictAdmin, setIsDistrictAdmin] = useState(false);
   const [isSiteAdmin, setIsSiteAdmin] = useState(false);
   const [siteAdminSchoolId, setSiteAdminSchoolId] = useState<string | null>(null);
@@ -72,8 +71,6 @@ export default function CreateAccountPage() {
         }
       } catch (err) {
         console.error('Error checking admin permissions:', err);
-      } finally {
-        setPermissionsChecked(true);
       }
     };
     checkPermissions();
@@ -111,9 +108,9 @@ export default function CreateAccountPage() {
   }, [accountType, isDistrictAdmin, isSiteAdmin, siteAdminSchoolId]);
 
   // District admins have no school of their own, so the school-scoped teacher
-  // directory can't load for them. Default to the admin dashboard until we know
-  // the directory is safe to link to.
-  const returnHref = permissionsChecked && !isDistrictAdmin
+  // directory can't load for them. Only link it once we positively know the
+  // admin has a school; the dashboard works for everyone otherwise.
+  const returnHref = isSiteAdmin && !isDistrictAdmin
     ? '/dashboard/admin/teachers'
     : '/dashboard/admin';
 

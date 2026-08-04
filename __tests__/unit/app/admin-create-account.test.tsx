@@ -129,6 +129,17 @@ describe('Admin Create New Account page', () => {
     })
   })
 
+  it('keeps Cancel on the dashboard when the permission check fails', async () => {
+    mockGetCurrentAdminPermissions.mockRejectedValue(new Error('network'))
+    await renderPage()
+
+    // We can't prove the admin has a school, so don't gamble on the
+    // school-scoped directory loading.
+    await waitFor(() => {
+      expect(screen.getByRole('link', { name: 'Cancel' })).toHaveAttribute('href', '/dashboard/admin')
+    })
+  })
+
   describe('site admin', () => {
     beforeEach(() => {
       mockGetCurrentAdminPermissions.mockResolvedValue(SITE_ADMIN)
