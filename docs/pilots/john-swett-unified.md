@@ -62,6 +62,7 @@ is worse than no list. Check the tickets:
 | CITE question: how Exhibit H variances attach | **SPE-172** |
 | Business phone line before signature | **SPE-377** |
 | Verify retention crons; file the Vercel DPA copy | **SPE-378** |
+| `debug_signup_log` — unbounded provider PII, no deletion path | **SPE-379** |
 | Audit logging — disclose as an interim variance? | **SPE-169** |
 
 Closed items are deliberately not listed. Restating "this one is done" here is

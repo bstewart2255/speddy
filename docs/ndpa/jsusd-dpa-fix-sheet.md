@@ -388,7 +388,8 @@ a ticket:
 | Parent-contact / data-inventory disclosure gate | **SPE-212** |
 | CITE question — how Exhibit H material attaches | **SPE-172** |
 | Business phone line before signature (§6) | **SPE-377** |
-| Verify retention crons run; file Vercel DPA copy | **SPE-378** |
+| Verify retention crons run; file Vercel DPA copy — **gates §1** | **SPE-378** |
+| `debug_signup_log` retention + deletion path — **gates §1** | **SPE-379** |
 
 At execution (not tracked as tickets — they happen in the room): signatures and
 dates, the Exhibit A completion box (`Check Box82`), and the Exhibit E date.
