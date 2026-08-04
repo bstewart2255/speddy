@@ -26,7 +26,10 @@ module.exports = shouldUseSentry
   // For all available options, see:
   // https://www.npmjs.com/package/@sentry/webpack-plugin#options
 
-  org: 'chickenscratch',
+  // These must match the real Sentry org/project slugs, or the source-map
+  // upload silently no-ops and production stack traces stay minified. This was
+  // 'chickenscratch', which is not a slug that exists on our account (SPE-175).
+  org: 'chicken-scratch-backend',
   project: 'speddy',
 
   // Only print logs for uploading source maps in CI

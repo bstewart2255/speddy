@@ -4,14 +4,25 @@
 
 import * as Sentry from '@sentry/nextjs';
 import { scrubSentryEvent, scrubSentryLog } from '@/lib/monitoring/sentry-scrub';
+import {
+  resolveSentryDsn,
+  sentryEnvironment,
+  sentryRelease,
+  sentryTracesSampleRate,
+} from '@/lib/monitoring/sentry-options';
 
 // Only initialize Sentry in production
 if (process.env.NODE_ENV === 'production') {
   Sentry.init({
-    dsn: process.env.NEXT_PUBLIC_SENTRY_DSN || 'https://dfe4322e91dde4865165f296d9264784@o4509770864787457.ingest.us.sentry.io/4509837723631616',
+    dsn: resolveSentryDsn('client'),
 
-    // Adjust this value in production, or use tracesSampler for greater control
-    tracesSampleRate: 1.0,
+    // Keeps production errors separate from preview ones, and ties each error to
+    // the deploy that introduced it. See lib/monitoring/sentry-options.
+    environment: sentryEnvironment,
+    release: sentryRelease,
+
+    // Sampled in production (SPE-216); exception capture is unaffected.
+    tracesSampleRate: sentryTracesSampleRate,
 
     // Never attach default request PII (cookies, headers, IP, bodies) to events.
     // Explicit per SPE-167 even though the SDK default is already false.
