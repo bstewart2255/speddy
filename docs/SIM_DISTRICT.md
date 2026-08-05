@@ -214,8 +214,10 @@ sites are the rare exception, so the sim doesn't model them).
 ### Record-only teachers (no login)
 
 `teachers` rows with `account_id = NULL`, `created_by_admin = true` — the
-"teacher exists as a record, not an account" state that admin rosters and the
-(currently broken, SPE-95) invite flow deal with. **Eighteen across all five
+"teacher exists as a record, not an account" state that admin rosters have to
+deal with, and a legitimate steady state rather than a half-finished signup:
+`teachers` is a directory, and only some of the people in it are also users.
+**Eighteen across all five
 schools** (5 at Willow, 4 at Maple, 4 at Juniper, 2 at Cedar, 3 at Redwood),
 so every school's roster looks staffed and every seeded student has a
 homeroom teacher to hang off. Names (all `-Sim`) and grade assignments live
