@@ -10,6 +10,7 @@ import {
   DISTRICT,
   SCHOOLS,
   SIM_EMAIL_DOMAIN,
+  SUPABASE_CUSTOM_HOST,
   SUPABASE_PROJECT_REF,
   SWEPT_TABLES,
 } from './manifest';
@@ -27,21 +28,37 @@ export function requireEnv(name: string): string {
   return value;
 }
 
+/** Service-role client for the pinned project. Runs the host pin first, always. */
 export function createAdmin(): Admin {
+  // Pin the project here, not just in the scripts that remember to ask: this is
+  // the one place a service-role client is minted, so no caller can skip it.
+  assertProjectRef();
   const url = requireEnv('NEXT_PUBLIC_SUPABASE_URL');
   const key = requireEnv('SUPABASE_SERVICE_ROLE_KEY');
   return createClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } });
 }
 
-/** Preflight (a): the URL's project ref must equal the manifest pin. */
+/** Preflight (a): the connected host must be a manifest-pinned front for the project. */
 export function assertProjectRef(): void {
   const url = requireEnv('NEXT_PUBLIC_SUPABASE_URL');
-  const host = new URL(url).hostname; // <ref>.supabase.co
-  const ref = host.split('.')[0];
-  if (ref !== SUPABASE_PROJECT_REF) {
+  const { hostname: host, protocol } = new URL(url);
+  // The project's own `<ref>.supabase.co`, or the custom domain pinned in the
+  // manifest — both address the same project.
+  const pinned = `${SUPABASE_PROJECT_REF}.supabase.co`;
+  if (host !== pinned && !(SUPABASE_CUSTOM_HOST && host === SUPABASE_CUSTOM_HOST)) {
     console.error(
-      `Preflight FAILED: connected project ref "${ref}" does not match the manifest pin ` +
-        `"${SUPABASE_PROJECT_REF}". Refusing to touch this database.`,
+      `Preflight FAILED: connected host "${host}" is not the manifest pin "${pinned}"` +
+        (SUPABASE_CUSTOM_HOST ? ` or its custom domain "${SUPABASE_CUSTOM_HOST}"` : '') +
+        `. Refusing to touch this database.`,
+    );
+    process.exit(1);
+  }
+  // Right host, wrong scheme still puts the service-role key on the wire in
+  // cleartext, so the pin is only worth as much as this second check.
+  if (protocol !== 'https:') {
+    console.error(
+      `Preflight FAILED: NEXT_PUBLIC_SUPABASE_URL uses "${protocol}//". The service-role ` +
+        `key must not travel in cleartext — use https://.`,
     );
     process.exit(1);
   }

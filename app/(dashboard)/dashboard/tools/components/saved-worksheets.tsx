@@ -131,9 +131,11 @@ export default function SavedWorksheets() {
 
       const data = await response.json();
 
-      // Validate that the URL is from Supabase storage
+      // Validate that the URL is from our Supabase project. Compared against the
+      // configured project origin rather than a hardcoded supabase.co host, so a
+      // custom domain keeps working — see docs/supabase-custom-domain.md.
       const url = new URL(data.signedUrl);
-      if (!url.hostname.includes('supabase.co')) {
+      if (url.origin !== new URL(process.env.NEXT_PUBLIC_SUPABASE_URL!).origin) {
         throw new Error('Invalid download URL');
       }
 

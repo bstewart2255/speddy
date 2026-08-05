@@ -387,10 +387,11 @@ Env requirements are scoped per command. Every command needs
 | `sim:verify`, `sim:teardown` | — | read-only / delete-only, so they never receive the credential secret |
 | the three `sim:verify-*` guards | `SIM_DISTRICT_PASSWORD` + `NEXT_PUBLIC_SUPABASE_ANON_KEY` | they sign IN as personas, which needs the same derived password and a client-side key |
 
-**Preflight, before any write.** Scripts hard-fail unless: **(a)** the
-project ref extracted from `NEXT_PUBLIC_SUPABASE_URL` equals the ref pinned
-in `manifest.ts` — env vars alone don't prove which database you're pointed
-at; **(b)** the sim sentinel checks out — district `SIM-D001` exists with
+**Preflight, before any write.** Scripts hard-fail unless: **(a)** the host in
+`NEXT_PUBLIC_SUPABASE_URL` is a front for the project pinned in `manifest.ts` —
+either `<ref>.supabase.co` or the `SUPABASE_CUSTOM_HOST` custom domain, if one
+is set (`docs/supabase-custom-domain.md`) — because env vars alone don't prove
+which database you're pointed at; **(b)** the sim sentinel checks out — district `SIM-D001` exists with
 the exact expected name; on first seed, sentinel-absent is **not** taken as
 proof of emptiness — bootstrap requires a manifest-wide zero-state check
 (no SIM-owned IDs and no sim-domain auth users anywhere), so a half-failed
