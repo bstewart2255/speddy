@@ -12,6 +12,28 @@ import type {
   SpecialActivity
 } from './types/scheduling-data';
 
+/**
+ * Thrown when a multi-school provider has no workdays recorded for the school
+ * being scheduled (SPE-275 / SPE-367). Typed so callers can present the
+ * actionable "set your work schedule" message instead of a generic failure,
+ * and so a batch across several schools can skip just this one.
+ */
+export class MissingWorkdaysError extends Error {
+  readonly schoolSite: string;
+
+  constructor(schoolSite: string) {
+    super(
+      `No work days are set for ${schoolSite}. ` +
+      `Because you work at more than one school, Speddy needs to know which days ` +
+      `you're at ${schoolSite} before it can schedule sessions there — otherwise it ` +
+      `could place sessions on days you're at another school. ` +
+      `Set them under Settings → Work Schedule, then try again.`
+    );
+    this.name = 'MissingWorkdaysError';
+    this.schoolSite = schoolSite;
+  }
+}
+
 interface TimeSlot {
   dayOfWeek: number;
   startTime: string;
@@ -88,6 +110,20 @@ export interface EnhancedSchedulingResult {
   unplacedStudents: Student[];
   canManuallyPlace: boolean;
   availableSlots?: TimeSlot[];
+  /**
+   * Schools skipped because the provider has no work days recorded there
+   * (SPE-367). Reported separately from `errors` because the caller's
+   * manual-placement branch swallows `errors` entirely — and this one is
+   * always worth showing, since it is the user's to fix and nothing at that
+   * school can be scheduled until they do.
+   */
+  schoolsMissingWorkdays?: string[];
+  /**
+   * How many students sit at those schools. Lets a caller tell "missing work
+   * days is the whole story" from "one school was blocked AND another failed
+   * for real reasons" — the second still deserves the normal failure handling.
+   */
+  workdayBlockedCount?: number;
 }
 
 export class OptimizedScheduler {
@@ -106,7 +142,15 @@ export class OptimizedScheduler {
   constructor(
     private providerId: string,
     private providerRole: string,
-    debug: boolean = false
+    debug: boolean = false,
+    /**
+     * SPE-275: only an itinerant provider's empty workday list is ambiguous.
+     * A single-school provider legitimately has no `user_site_schedules` rows,
+     * and "all weekdays" is the right answer for them — so the fail-closed
+     * guard in `initializeContext` is gated on this. Defaults to false, which
+     * preserves the previous behaviour for any caller that doesn't pass it.
+     */
+    private worksAtMultipleSchools: boolean = false
   ) {
     // Get or create the singleton data manager instance
     this.dataManager = SchedulingDataManager.getInstance();
@@ -223,12 +267,22 @@ export class OptimizedScheduler {
     // Extract work days from preloaded data
     const workDays = preloadedData.workSchedule?.map((s: any) => s.day_of_week) || [];
     
-    // If no work schedule defined, assume all weekdays (backwards compatibility)
+    // SPE-275: this used to fail OPEN — an empty workday list silently became
+    // all five weekdays, so an itinerant provider got sessions placed on days
+    // they are not at the school (observed in prod 2026-07-17: a Monday 8:00 AM
+    // session at a Thursday/Friday-only site).
+    //
+    // The two empty cases are not the same:
+    //   - single-school provider: no `user_site_schedules` rows is normal, and
+    //     all weekdays is the correct answer. Keep the default.
+    //   - multi-school provider: an empty list means we genuinely do not know
+    //     which days they are on site. Refuse rather than invent availability,
+    //     and tell the caller what to fix (SPE-367).
     if (workDays.length === 0) {
-      // Check if provider has any schedule at all (already in preloaded data)
-      if (!preloadedData.workSchedule || preloadedData.workSchedule.length === 0) {
-        workDays.push(1, 2, 3, 4, 5);
+      if (this.worksAtMultipleSchools) {
+        throw new MissingWorkdaysError(schoolSite);
       }
+      workDays.push(1, 2, 3, 4, 5);
     }
     
     this.log(`Work days at ${schoolSite}: ${workDays.join(", ")}`);
@@ -784,12 +838,20 @@ export class OptimizedScheduler {
     const foundSlots: TimeSlot[] = [];
 
     // Use provider's actual work days at this school to prevent cross-school conflicts
-    let validWorkDays = this.context!.workDays;
+    const validWorkDays = this.context!.workDays;
 
-    // If no work days configured, fall back to all weekdays as a safety measure
+    // SPE-275: this used to substitute all five weekdays here too. `initializeContext`
+    // now guarantees a non-empty list (defaulting for single-school providers,
+    // throwing for multi-school ones), so reaching this branch means the context
+    // was built by some other path. Place nothing rather than invent availability —
+    // a missing session is recoverable, a session on a day the provider is at
+    // another school is not.
     if (!validWorkDays || validWorkDays.length === 0) {
-      this.log('WARNING: No work days configured for provider at this school, using all weekdays as fallback');
-      validWorkDays = [1, 2, 3, 4, 5];
+      console.warn(
+        `[Scheduler] No work days in context for ${this.context!.schoolSite}; ` +
+        `placing no sessions rather than assuming all weekdays.`
+      );
+      return foundSlots;
     }
 
     // Sort days to distribute sessions evenly when possible

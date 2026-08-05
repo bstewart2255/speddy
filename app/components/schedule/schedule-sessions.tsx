@@ -176,8 +176,40 @@ Continue?`;
       // Schedule only these students
       const results = await scheduleBatchStudents(studentsNeedingScheduling);
 
+      // SPE-367: surface missing work days on its own, before the branching
+      // below — the manual-placement branch never shows `results.errors`, and
+      // this is the one failure the provider can actually fix.
+      if (results.schoolsMissingWorkdays?.length) {
+        const schools = results.schoolsMissingWorkdays;
+        alert(
+          `Can't schedule at ${schools.join(' or ')} yet.\n\n` +
+          `You work at more than one school, and Speddy doesn't know which days you're ` +
+          `at ${schools.length > 1 ? 'these schools' : schools[0]}. Without that it could place sessions on days ` +
+          `you're somewhere else.\n\n` +
+          `Go to Settings → Work Schedule, set your days, then run Auto-Schedule again.`
+        );
+      }
+
+      // When missing work days is the ONLY reason nothing scheduled, the alert
+      // above has already said the one useful thing. Following it with the
+      // generic "couldn't place due to conflicts, adjust your bell schedules"
+      // message would contradict it and send the provider somewhere useless.
+      //
+      // Every failure must be accounted for by a blocked school — if another
+      // school also failed for real scheduling reasons, that still deserves the
+      // normal handling (including the manual-placement offer).
+      const blockedOnlyByWorkdays =
+        !!results.schoolsMissingWorkdays?.length &&
+        results.totalScheduled === 0 &&
+        results.workdayBlockedCount === results.totalFailed;
+
       // Check if all sessions were successfully scheduled
-      if (results.totalFailed > 0 && results.canManuallyPlace) {
+      if (blockedOnlyByWorkdays) {
+        await saveScheduledSessionIds(user.id);
+        if (onComplete) {
+          onComplete();
+        }
+      } else if (results.totalFailed > 0 && results.canManuallyPlace) {
         // Show manual placement modal (snapshot will be finalized after manual placement)
         setUnplacedStudents(results.unplacedStudents || []);
         setShowManualPlacementModal(true);

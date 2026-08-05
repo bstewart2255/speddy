@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { OptimizedScheduler, EnhancedSchedulingResult } from '../../scheduling/optimized-scheduler';
+import { OptimizedScheduler, MissingWorkdaysError, EnhancedSchedulingResult } from '../../scheduling/optimized-scheduler';
 import { SchedulingDataManager } from '../../scheduling/scheduling-data-manager';
 import type { Database } from '../../../src/types/database';
 
@@ -22,14 +22,14 @@ export function useAutoSchedule(debug: boolean = false) {
 
       const { data: profile } = await supabase
         .from('profiles')
-        .select('role')
+        .select('role, works_at_multiple_schools')
         .eq('id', user.id)
         .single();
 
       if (!profile) throw new Error('Profile not found');
 
       // Create optimized scheduler instance
-      const scheduler = new OptimizedScheduler(user.id, profile.role, debug);
+      const scheduler = new OptimizedScheduler(user.id, profile.role, debug, !!profile.works_at_multiple_schools);
 
       // Initialize context for the student's school
       if (!student.school_site) {
@@ -89,7 +89,7 @@ export function useAutoSchedule(debug: boolean = false) {
 
       const { data: profile } = await supabase
         .from('profiles')
-        .select('role')
+        .select('role, works_at_multiple_schools')
         .eq('id', user.id)
         .single();
 
@@ -128,21 +128,38 @@ export function useAutoSchedule(debug: boolean = false) {
         }
 
         // Create optimized scheduler instance (uses refactored version by default)
-        const scheduler = new OptimizedScheduler(user.id, profile.role, debug);
+        const scheduler = new OptimizedScheduler(user.id, profile.role, debug, !!profile.works_at_multiple_schools);
 
-        // Initialize context once for the school
-        await scheduler.initializeContext(schoolSite, schoolDistrict);
+        try {
+          // Initialize context once for the school
+          await scheduler.initializeContext(schoolSite, schoolDistrict);
 
-        // Schedule all students at this school
-        const schoolResults = await scheduler.scheduleBatch(schoolStudents);
+          // Schedule all students at this school
+          const schoolResults = await scheduler.scheduleBatch(schoolStudents);
 
-        results.totalScheduled += schoolResults.totalScheduled;
-        results.totalFailed += schoolResults.totalFailed;
-        results.errors.push(...schoolResults.errors);
-        results.unplacedStudents.push(...(schoolResults.unplacedStudents || []));
-        results.canManuallyPlace = results.canManuallyPlace || schoolResults.canManuallyPlace;
-        if (schoolResults.availableSlots) {
-          results.availableSlots = schoolResults.availableSlots;
+          results.totalScheduled += schoolResults.totalScheduled;
+          results.totalFailed += schoolResults.totalFailed;
+          results.errors.push(...schoolResults.errors);
+          results.unplacedStudents.push(...(schoolResults.unplacedStudents || []));
+          results.canManuallyPlace = results.canManuallyPlace || schoolResults.canManuallyPlace;
+          if (schoolResults.availableSlots) {
+            results.availableSlots = schoolResults.availableSlots;
+          }
+        } catch (error) {
+          // A school with no work days recorded is skipped, not fatal (SPE-367):
+          // the provider's other schools still schedule, and they get one clear
+          // message naming the school to fix.
+          if (!(error instanceof MissingWorkdaysError)) throw error;
+
+          results.totalFailed += schoolStudents.length;
+          results.errors.push(error.message);
+          results.unplacedStudents.push(...schoolStudents);
+          results.schoolsMissingWorkdays = [
+            ...(results.schoolsMissingWorkdays || []),
+            error.schoolSite,
+          ];
+          results.workdayBlockedCount =
+            (results.workdayBlockedCount || 0) + schoolStudents.length;
         }
       }
 
@@ -175,7 +192,7 @@ export function useAutoSchedule(debug: boolean = false) {
 
       const { data: profile } = await supabase
         .from('profiles')
-        .select('role')
+        .select('role, works_at_multiple_schools')
         .eq('id', user.id)
         .single();
 
@@ -202,15 +219,25 @@ export function useAutoSchedule(debug: boolean = false) {
         const schoolDistrict = schoolStudents[0]?.school_district || '';
         
         // Create scheduler and initialize context
-        const scheduler = new OptimizedScheduler(user.id, profile.role, debug);
-        await scheduler.initializeContext(schoolSite, schoolDistrict);
+        const scheduler = new OptimizedScheduler(user.id, profile.role, debug, !!profile.works_at_multiple_schools);
 
-        // Try manual placement with conflict tolerance
-        const result = await scheduler.tryManualPlacement(schoolStudents, true);
-        
-        allPlacedSessions.push(...result.placedSessions);
-        allFailedStudents.push(...result.failedStudents);
-        allErrors.push(...result.errors);
+        try {
+          await scheduler.initializeContext(schoolSite, schoolDistrict);
+
+          // Try manual placement with conflict tolerance
+          const result = await scheduler.tryManualPlacement(schoolStudents, true);
+
+          allPlacedSessions.push(...result.placedSessions);
+          allFailedStudents.push(...result.failedStudents);
+          allErrors.push(...result.errors);
+        } catch (error) {
+          // Same treatment as the auto path (SPE-367): skip this school, keep
+          // the others, and surface the actionable message.
+          if (!(error instanceof MissingWorkdaysError)) throw error;
+
+          allFailedStudents.push(...schoolStudents);
+          allErrors.push(error.message);
+        }
       }
 
       return {
