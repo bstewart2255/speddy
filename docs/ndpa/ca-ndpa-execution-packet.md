@@ -138,7 +138,13 @@ Excluded services: **none**.
 
 Check exactly these; leave everything else unchecked.
 
-| Category | Element | Check? | Basis (live schema verified 2026-06-12) |
+> **Re-verified against the live schema 2026-08-04.** Three rows below were
+> falsified by features that shipped after the 2026-06-12 basis date and are
+> corrected in place: **Communications**, **Parent/Guardian Contact**, and
+> **Student Identifiers — local district ID**. `data-inventory.md` is the source
+> of these facts; re-run its sweep before relying on this table again.
+
+| Category | Element | Check? | Basis (live schema verified 2026-06-12; re-verified 2026-08-04) |
 |---|---|---|---|
 | Application Technology Meta Data | IP Addresses of users, Use of cookies, etc. | ☑ | `sign_in_logs.ip_address`, `analytics_events`; first-party auth cookies — `data-inventory.md` §C |
 | Application Technology Meta Data | Other—specify | ☑ "Browser user agent, device type, and product-usage event metadata (event type, timestamps, processing time, error codes)" | `data-inventory.md` §C |
@@ -147,7 +153,7 @@ Check exactly these; leave everything else unchecked.
 | Assessment | Observation data | ☐ (provider notes disclosed under "Other" below) **[ATTORNEY]** | `data-inventory.md` §A Communications row |
 | Assessment | Other—specify | ☑ "Curriculum-based and informal assessment results (exit tickets, progress checks), IEP-goal progress data, and derived performance metrics (accuracy, error patterns, performance levels)" | `exit_ticket_results`, `progress_check_results`, `iep_goal_progress`, `manual_goal_progress`, `student_performance_metrics` |
 | Attendance | Student class attendance data | ☑ (session attendance only — not daily school attendance) | `attendance`, `schedule_sessions` |
-| Communications | Online communications captured | ☐ — no student communications are captured **[ATTORNEY]** | `data-inventory.md` §A |
+| Communications | Online communications captured | ☑ **corrected 2026-08-04, was ☐.** In-app staff-to-staff chat stores free-text message bodies, and per-student group threads are keyed to a student (`conversations.student_id`). Messages are soft-deleted (`deleted_at`), not purged. Also student-progress notifications (title + message). The prior "no student communications are captured" basis predated the chat module. **[ATTORNEY]** | `conversations`, `messages`, `progress_notifications` — `data-inventory.md` §A Communications row |
 | Conduct | Conduct or behavioral data | ☑ (limited: behavior-area IEP goals; CARE referral reasons) | `student_details.iep_goals`, `care_referrals.referral_reason` |
 | Demographics | Date of Birth | ☑ | `student_details.date_of_birth` |
 | Demographics | Place of birth / Gender / Ethnicity / Language / Other | ☐ — not collected | `data-inventory.md` §A |
@@ -155,7 +161,7 @@ Check exactly these; leave everything else unchecked.
 | Enrollment | Student grade level | ☑ | `students.grade_level` |
 | Enrollment | Specific curriculum programs | ☑ (SPIRE / Reveal Math curriculum tracking) | `curriculum_tracking` |
 | Enrollment | Homeroom / Guidance counselor / Year of graduation / Other | ☐ | — |
-| Parent/Guardian Contact, ID | all | ☐ — not collected | `data-inventory.md` §A |
+| Parent/Guardian Contact, ID | all | **DECISION REQUIRED — do not leave ☐ by default. [ATTORNEY]** `student_parent_contacts` shipped 2026-07-08 with `phone` and `email` for IEP-meeting confirmation. As of the 2026-08-04 sweep it held 0 rows with no capture UI, so nothing is collected on the Effective Date — but the schema is in production and this DPA runs 3 years under a General Offer. Disclose now, or defer and amend when the capture UI ships. Postal **address** is genuinely not collected either way. | `student_parent_contacts.phone/email` — `data-inventory.md` §A note 2; SPE-212 |
 | Parent/Guardian Name | First and/or last | ☑ (limited: requesting parent/guardian's name + relationship on Lane B CARE referrals — corrected 2026-07-28, was ☐) | `care_referrals.requested_by`; `data-inventory.md` §A |
 | Schedule | Student scheduled courses | ☑ (special-education service sessions: day/time, service type, group) | `schedule_sessions`, `bell_schedules`, `special_activities` |
 | Schedule | Teacher names | ☑ | `students.teacher_name`, `teachers` |
@@ -166,7 +172,7 @@ Check exactly these; leave everything else unchecked.
 | Student Contact Information | all | ☐ — not collected | `data-inventory.md` §A |
 | Student Identifiers | Provider/App assigned student ID | ☑ (internal UUID) | `students.id` |
 | Student Identifiers | State ID number | ☑ with note: "SEIS ID (SSID) is read by the Speddy Chrome extension for discrepancy detection and cached only in the provider's local browser storage (7-day TTL; cleared on logout or API-key revocation). It is never stored on Speddy servers." **[ATTORNEY]** | `data-inventory.md` §A + "Client-side storage"; `offboarding-runbook.md` |
-| Student Identifiers | Local district ID / app username / app passwords | ☐ — students have no app accounts | `data-inventory.md` §A |
+| Student Identifiers | Local district ID / app username / app passwords | ☑ **corrected 2026-08-04, was ☐.** The **district-local student ID** is stored, captured on import from the SEIS Student Goals report (col. B), Aeries class lists, and the roster template (SPE-339, shipped 2026-07-29). Students still have no app accounts — no usernames or passwords. | `students.district_student_id`, `children.district_student_id` — `data-inventory.md` §A |
 | Student Name | First and/or Last | ☑ (full names optional, provider-entered; initials are the core identifier; CARE referrals carry full names) | `student_details.first_name/last_name`, `students.initials`, `care_referrals.student_name` |
 | Student In App Performance | Program/application performance | ☑ | `worksheet_submissions` (accuracy %, skills assessed) |
 | Student Program Membership | activities | ☐ (instructional service grouping is covered under Schedule) **[ATTORNEY]** | — |
@@ -224,9 +230,9 @@ Source: `subprocessors.md` (last reviewed 2026-06-11).
 
 | Subprocessor | Function | Student data | Location | Agreement |
 |---|---|---|---|---|
-| Supabase | Database, auth, file storage — system of record | Yes — all categories in Exhibit B | US (us-west-1, N. California) | DPA available; **sign via dashboard → Legal Documents [ACTION]** |
-| Vercel | Application hosting; traffic + runtime logs | Yes — in transit and incidentally in logs | US-configurable | DPA incorporated into ToS — **on Pro since 2026-07-28**; **save copy [ACTION]** |
-| Sentry | Error monitoring, minimized (no logs/replay, PII scrubbed, `sendDefaultPii: false`) | Incidental only | US ingest | DPA self-serve — **accepted 2026-08-04 (owner-confirmed)**; **save acceptance record [ACTION]** |
+| Supabase | Database, auth, file storage — system of record | Yes — all categories in Exhibit B | US (us-west-1, N. California) | DPA available; sign via dashboard → Legal Documents — **SPE-283** |
+| Vercel | Application hosting; traffic + runtime logs | Yes — in transit and incidentally in logs | US-configurable | DPA incorporated into ToS (Pro plan); save a copy to the records file — **SPE-378** |
+| Sentry | Error monitoring, minimized (no logs/replay, PII scrubbed, `sendDefaultPii: false`) | Incidental only | US ingest | DPA self-serve; acceptance + saving the record — **SPE-283** |
 | Help Scout | Support help desk + chat widget | No by design (provider PII only) | US | DPA v2 via ToS; DPF + SCCs (SPE-170, on file) |
 | OpenAI — **planned, NOT enabled** | AI lesson generation (when enabled) | None today (hard-gated off); initials + IEP goal text when enabled | US | DPA executed 2026-06-12 (SPE-163) |
 | Anthropic — **planned, NOT enabled** | AI generation/grading/parsing (when enabled) | None today (hard-gated off) | US | DPA via Commercial Terms, copy on file 2026-06-12 (SPE-163) |
@@ -300,10 +306,12 @@ only when active); Supabase Auth transactional email.
     a district data-return/transfer request will be fulfilled manually
     within the 60-day Art. IV §6 window (current scale ~100 students).
     SPE-60 stays in the backlog. Attorney to confirm (brief item 10).
-14. **Exhibit B judgment calls** — Communications unchecked (notes disclosed
-    under Other), Observation data unchecked, Program Membership unchecked,
-    State ID checked with the extension-cache note. Confirm framings.
-    **[ATTORNEY]**
+14. **Exhibit B judgment calls** — Observation data unchecked, Program
+    Membership unchecked, State ID checked with the extension-cache note.
+    Confirm framings. **Superseded 2026-08-04:** Communications is now
+    **checked** (the chat module post-dates this note), local district ID is now
+    **checked** (SPE-339), and Parent/Guardian Contact is an open decision, not
+    a framing — see the table above and SPE-212. **[ATTORNEY]**
 15. **Cover-page state-law blank** — confirm whether the locked PDF
     pre-fills the California statute references; if not, counsel supplies.
     **[ATTORNEY]**

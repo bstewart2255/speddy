@@ -242,15 +242,17 @@ const retryStrategy = {
    - Implement retention policies
    - Add audit logging for access
 
-## Deployment Checklist
+## Deployment steps
 
-Before deploying updates:
-- [ ] Run integration tests
-- [ ] Test on staging environment
-- [ ] Verify database migrations
-- [ ] Update environment variables
-- [ ] Test rollback procedure
-- [ ] Monitor error rates post-deploy
+Run through these on each deploy — a procedure, not a backlog. (Open work
+belongs in Linear.)
+
+1. Run integration tests.
+2. Test on the staging environment.
+3. Verify database migrations.
+4. Update environment variables.
+5. Test the rollback procedure.
+6. Monitor error rates post-deploy.
 
 ## Support Documentation
 

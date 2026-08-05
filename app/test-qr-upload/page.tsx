@@ -236,8 +236,8 @@ export default function QRUploadTestPage() {
           
           <div className="mt-4 p-4 bg-yellow-50 rounded">
             <p className="text-sm text-yellow-800">
-              <strong>Note:</strong> For complete testing, use real devices and follow the full checklist in 
-              <code className="bg-yellow-100 px-1 rounded mx-1">docs/QR_UPLOAD_TEST_CHECKLIST.md</code>
+              <strong>Note:</strong> For complete testing, use real devices — this page
+              cannot exercise camera capture or cross-device upload on its own.
             </p>
           </div>
         </div>

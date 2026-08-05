@@ -346,26 +346,31 @@ The following security best practices were already in place:
 
 ---
 
-## Remaining Manual Tasks
+## Addendum — 2026-08-04 (not part of the November 2025 audit)
 
-### High Priority
+> Everything above this line is the November 11, 2025 audit as recorded at the
+> time. **This section is a later update** and its statements carry the
+> 2026-08-04 date, not the audit's. Nothing above has been revised.
 
-- [ ] **Enable leaked password protection in Supabase Dashboard** (See Section 2 above)
-- [ ] Test application thoroughly after migrations
-- [ ] Monitor query performance before/after migrations
+Where the audit's "Remaining Manual Tasks" ended up. It stayed a checklist for
+~9 months and nothing on it moved, because a checklist in a document is not a
+backlog. Triaged 2026-08-04:
 
-### Medium Priority
+**Done, no action needed:** leaked password protection (**SPE-11**);
+post-migration testing and query-performance monitoring (completed at the time).
 
-- [ ] Review and update password complexity requirements in UI
-- [ ] Add password strength indicator to signup/password change forms
-- [ ] Implement rate limiting on authentication endpoints
-- [ ] Set up security monitoring and alerting
+**Still outstanding → SPE-381:** password complexity requirements and a strength
+indicator in the UI; rate limiting on authentication endpoints specifically;
+security monitoring and alerting (overlaps **SPE-169**); penetration testing of
+authentication flows; and whether to commit to a regular audit cadence.
 
-### Low Priority
+The pen-test gap is the one with weight beyond housekeeping — it is disclosed as
+a NIST CSF variance in the JSUSD DPA, so it is a promise-adjacent gap rather
+than an internal nice-to-have.
 
-- [ ] Schedule regular security audits (quarterly recommended)
-- [ ] Review and update security documentation
-- [ ] Conduct penetration testing on authentication flows
+**Everything above the addendum heading is the record of the November 11, 2025,
+audit.** It is history — do not revise it, and do not add new checkboxes
+anywhere in this file. Later updates go in dated addenda like this one.
 
 ---
 

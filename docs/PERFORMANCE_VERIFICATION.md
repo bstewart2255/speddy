@@ -158,14 +158,22 @@ npm run test:performance
 node scripts/performance-benchmark.js
 ```
 
-### Manual Testing Checklist
+### Manual testing — targets to hit
 
-- [ ] Initial page load < 500ms
-- [ ] Drag operations at 60 FPS
-- [ ] Filter changes < 50ms
-- [ ] No memory leaks after 5 min use
-- [ ] Smooth scrolling performance
-- [ ] Quick session assignment updates
+Thresholds to verify against, not a backlog. (Open work belongs in Linear.)
+
+| Measure | Target | Source |
+|---|---|---|
+| Initial page load | < 500 ms | this section |
+| Drag operations | < 16 ms per frame (60 FPS) | render budget, above |
+| Filter changes | < 50 ms | this section |
+| Memory after 5 min use | < 50 MB, and flat — not climbing across the session | Performance Budget, below |
+| Scrolling | < 16 ms per frame (60 FPS) | render budget, above |
+| Session assignment updates | **no defined budget** — observational only | — |
+
+The last row is deliberately not given a number. Inventing one would make it
+look verified when nobody has measured it; if it matters, measure it and set a
+budget below.
 
 ## Browser Performance APIs
 

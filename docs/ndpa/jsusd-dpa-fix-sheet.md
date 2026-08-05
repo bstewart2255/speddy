@@ -10,6 +10,15 @@ corpus: `ca-ndpa-execution-packet.md` (the source of truth for every fill),
 > **Internal doc — do not send to the district.** Not legal advice; items
 > marked **[ATTORNEY]** go to counsel with the attorney review brief.
 >
+> **This file is a specification, not a tracker.** It holds the corrections to
+> make; **status lives in Linear** (§8). Do not add checkboxes to it.
+>
+> **Re-verified against the live schema 2026-08-04** (see §2). Two of the
+> original **must fix** instructions had been falsified by features that shipped
+> after the 2026-07-28 review. **Re-run the table diff in `data-inventory.md`
+> ("Keeping this current") before applying §2** — the facts here have a
+> shelf life, and the last two times they expired it reached a contract draft.
+>
 > **How to apply:** each fix gives the PDF page (matches the printed footer
 > numbers), the row label as it appears on the form, and the internal
 > AcroForm field name in `code` — usable in any PDF editor, or
@@ -52,9 +61,25 @@ only real controls (the SPE-134 principle).
 **Prerequisite for this paragraph:** the subprocessor-agreements sentence
 must be true when the corrected PDF leaves the building. OpenAI, Anthropic,
 Help Scout, Vercel (Pro since 2026-07-28) and Sentry (accepted 2026-08-04)
-are in place; the **Supabase DPA signing (§8 item 2) must be completed
-before sending** — it is one self-serve click-through, not a negotiation,
-and it is now the only thing holding this paragraph.
+are in place; the **Supabase DPA signing (SPE-283) must be completed before
+sending** — it is one self-serve click-through, not a negotiation.
+
+**Second precondition, added 2026-08-04.** This paragraph also represents
+*"enforced data-retention limits with documented deletion and offboarding
+procedures."* Two things currently contradict that, and §1 stays blocked until
+both are resolved:
+
+- **`debug_signup_log`** — provider PII, still being written, 13 months
+  accumulated, no retention window and no offboarding delete path (**SPE-379**).
+- **Cleanup crons unverified** since the Vercel Pro move (**SPE-378**).
+- **`children` rows survive provider offboarding by design** — no cascade from
+  `profiles`, no DELETE policy for anyone (SPE-347). The offboarding runbook
+  predates the table and does not remove them. Either document that behavior as
+  intended, add an LEA-level deletion path, or narrow this paragraph
+  (**SPE-382**).
+
+Do not treat SPE-283 as the only gate. All three of the above are the same
+failure — a retention or deletion sentence the system does not currently back.
 
 ---
 
@@ -64,6 +89,19 @@ The draft checks data we don't collect and omits sensitive data we do.
 Basis for every line: `data-inventory.md` (verified against the live schema).
 All checkboxes below are in the first column ("ALL DPA-COVERED APPS").
 
+> **Re-verified 2026-08-04 against the live schema — two instructions in the
+> original §2a were wrong** and have been moved out of the UNCHECK list. Both
+> were falsified by work that shipped *after* this section was written on
+> 2026-07-28, from a `data-inventory.md` that had not been swept since:
+>
+> - **Local (school district) ID number** — we now store it (SPE-339, shipped
+>   2026-07-29). Moved to §2b; **it stays checked.**
+> - **Parent/Guardian Email and Phone** — `student_parent_contacts` shipped
+>   2026-07-08 with exactly these fields. Moved to §2e as a **counsel decision**.
+>
+> Before applying §2, re-run the table diff in `data-inventory.md`
+> ("Keeping this current"). Do not trust this section on age alone.
+
 ### 2a. UNCHECK — elements Speddy does not collect
 
 | Pg | Row (category — element) | Field | Why |
@@ -71,12 +109,13 @@ All checkboxes below are in the first column ("ALL DPA-COVERED APPS").
 | 11 | Assessment — Observation data | `Check Box60` | **[ATTORNEY]** Decided framing (brief item 4b): leave unchecked; provider notes are disclosed under "Other" (§2c below). |
 | 12 | Demographics — Gender | `Check Box93` | Not collected (no race/ethnicity/gender). |
 | 12 | Demographics — Language information | `Check Box95` | Not collected. |
-| 13 | Parent/Guardian Contact — Address | `Check Box182` | No parent/guardian contact information collected. |
-| 13 | Parent/Guardian Contact — Email | `Check Box189` | Same. |
-| 13 | Parent/Guardian Contact — Phone | `Check Box196` | Same. |
+| 13 | Parent/Guardian Contact — Address | `Check Box182` | No postal address field exists — `student_parent_contacts` holds name, relationship, phone, email only. **Still correct to uncheck** (verified 2026-08-04). |
 | 13 | Special Indicator — English language learner information | `Check Box231` | Not collected. |
 | 14 | Student Contact Information — Address | `Check Box280` | No student contact info collected. |
-| 14 | Student Identifiers — Local (school district) ID number | `Check Box289` | Not collected. Speddy's UUID is the "Provider/app assigned" row (already checked); the SEIS SSID is the "State ID" row. |
+
+> **Removed from this list 2026-08-04:** Parent/Guardian **Email**
+> (`Check Box189`) and **Phone** (`Check Box196`) → §2e. Student Identifiers —
+> **Local (school district) ID number** (`Check Box289`) → §2b, stays checked.
 
 **Keep checked: Parent/Guardian Name (p. 13, `Check Box216`).** The draft
 has this one right — confirmed in code during review: Lane B
@@ -97,9 +136,24 @@ column — now corrected in `data-inventory.md`. The CARE specify text in
 | 13 | Special Indicator — Other indicator information | `Check Box237` | In `Text476` (top of p. 14): *"Special-education referral and eligibility-process records: referral reason and source; academic/speech/psych/OT testing dates and completion status; eligibility meeting dates and outcomes; SST notes links; and, for parent/guardian-initiated (Lane B) referrals, the requesting parent/guardian's name and relationship."* |
 | 15 | Student Work — Student generated content | `Check Box358` | — (scanned worksheet images in Supabase Storage) |
 | 15 | Student Work — Other student work data | `Check Box359` | In `Text483`: *"Documents uploaded by providers that may pertain to students (e.g., rosters, IEP-related documents); generated worksheets/lessons associated with students."* |
+| 14 | Student Identifiers — Local (school district) ID number | `Check Box289` | **Keep checked — added 2026-08-04.** The draft has this right; the original §2a wrongly told you to uncheck it. We store the district-local student ID (`students.district_student_id`, `children.district_student_id`), captured on import from the SEIS Student Goals report (col. B), Aeries class lists, and the roster template (SPE-339, shipped 2026-07-29). Speddy's UUID remains the "Provider/app assigned" row; the SEIS SSID remains the "State ID" row. |
 
 The CARE/eligibility line (row 3) is the one `data-inventory.md` calls
 "among the most sensitive data here" — it must not be omitted.
+
+**Field numbers still to identify during the correction pass.** The 2026-08-04
+sweep found two further categories that the 2026-07-28 review never considered,
+because they were absent from the data inventory. Their Exhibit B rows have not
+been located in the PDF yet, so no field name is given here — **find them on the
+form rather than assuming they are absent**:
+
+- **Communications** — staff-to-staff chat (`conversations`, `messages`).
+  Per-student group threads carry `conversations.student_id`, and message bodies
+  are free text that can discuss any student; they are soft-deleted
+  (`deleted_at`), not purged. The draft's Communications treatment predates the
+  chat module entirely. Corrected in the execution packet 2026-08-04.
+- **Schedule** — IEP meeting records and attendee lists (`iep_meetings`,
+  `iep_meeting_attendees`), which include parent/guardian attendees.
 
 ### 2c. REVISE — existing text fields
 
@@ -134,6 +188,43 @@ keep checked).
   **unchecked** (it is in the draft — keep it that way).
 - Exhibit A completion checkbox (`Check Box82`, p. 10) is currently
   unchecked — tick at execution after counsel review.
+
+### 2e. DECIDE — parent/guardian contact **[ATTORNEY]**
+
+**Do not apply either way without a decision. This is the single highest-risk
+line in the document.**
+
+| Pg | Row (category — element) | Field |
+|---|---|---|
+| 13 | Parent/Guardian Contact — Email | `Check Box189` |
+| 13 | Parent/Guardian Contact — Phone | `Check Box196` |
+
+The original §2a said to uncheck both, on the basis that no parent/guardian
+contact information is collected. That was true when `data-inventory.md` was
+last swept and false by the time it was written:
+
+- `public.student_parent_contacts` shipped **2026-07-08** (migration
+  `20260708_create_iep_meeting_tables.sql`) with `name`, `relationship`,
+  **`phone`**, **`email`** — for IEP-meeting confirmation.
+- SPE-212 flagged the NDPA/data-inventory update as a launch gate for that
+  feature **on the day it shipped**. It was never actioned.
+- **As of the 2026-08-04 schema sweep the table held 0 rows, and no UI wrote to
+  it.** `app/(dashboard)/dashboard/meetings/page.tsx` exists; nothing referenced
+  parent contacts. **Re-check this before signing** — it is the fact the whole
+  decision rests on, and it is the kind that expires.
+
+So the honest description is **built, not yet collecting** — which the form has
+no box for.
+
+**The decision:** disclose now, or defer and amend when the capture UI ships.
+The argument for disclosing now is that this DPA runs **3 years** and carries a
+**General Offer (Exhibit E)** to every subscribing district — so "not collected"
+is a representation that will expire on its own, in a document that is expensive
+to amend across every LEA holding it. The argument for deferring is that it is
+literally accurate on the Effective Date.
+
+Whichever counsel chooses, it must be chosen — not inherited from a stale table.
+Postal **address** is genuinely not collected either way (§2a).
 
 ---
 
@@ -284,25 +375,31 @@ ID, State ID (with §2c note), student name, parent/guardian name (limited —
 Lane B CARE requester, see §2a note), in-app performance, "Other data
 collected."
 
-## 8. Pre-signing checklist (state as of 2026-08-04)
+## 8. Status and open items live in Linear — not here
 
-1. ✅ **Vercel Hobby → Pro — upgraded 2026-07-28** (owner-confirmed). The
-   Vercel DPA (incorporated via ToS for Pro) now applies. Remaining
-   housekeeping (SPE-173): save a copy of vercel.com/legal/dpa to the
-   records file; sanity-check the two daily crons on Pro.
-2. ☐ Sign the Supabase DPA (dashboard → Organization → Legal Documents).
-   ~10 min. ~~Accept the Sentry DPA~~ **done 2026-08-04 (owner-confirmed)**.
-   **Prerequisite for the Exhibit F representation in §1 — do before the
-   corrected PDF is sent anywhere.** Supabase is now the only one left.
-3. ☐ Apply §§1–6 above to the PDF, then send to counsel with
-   `attorney-review-brief.md` (its enclosure list) + this fix sheet.
-4. ☐ SPE-172 — CITE Exhibit H question; now more relevant since this draft
-   defines an Exhibit H.
-5. ☐ Business-phone-line decision (§6).
-6. ☐ Verify Vercel env `CRON_SECRET` + `CLEANUP_ANALYTICS=true` and first
-   cron runs (packet Gap 12) — the retention TTLs we represent depend on it.
-7. At execution: signatures + dates, Exhibit A completion box
-   (`Check Box82`), Exhibit E date.
+This section used to be a checklist. It was wrong twice: it carried SPE-173 as
+open for a week after the Vercel upgrade was done, and it showed the Supabase
+DPA as pending while the ticket covering it sat closed. A checklist in a
+document has no way to notice the world changing underneath it.
 
-_Related: SPE-59 (NDPA master), SPE-169 (audit logging), SPE-172 (Exhibit
-H), SPE-173 (Vercel Pro), SPE-174 (AI-enablement obligations)._
+**This file is now the correction *spec* only** — the replacement text, page
+numbers, and field names to apply. It records no status. Anything actionable is
+a ticket:
+
+| What | Ticket |
+|---|---|
+| Apply §§1–6 to the PDF, send to counsel | **SPE-376** |
+| Sign the Supabase DPA (gates §1's Exhibit F paragraph) | **SPE-283** |
+| Counsel sign-off — all **[ATTORNEY]** items, incl. §2e | **SPE-282** |
+| Parent-contact / data-inventory disclosure gate | **SPE-212** |
+| CITE question — how Exhibit H material attaches | **SPE-172** |
+| Business phone line before signature (§6) | **SPE-377** |
+| Verify retention crons run; file Vercel DPA copy — **gates §1** | **SPE-378** |
+| `debug_signup_log` retention + deletion path — **gates §1** | **SPE-379** |
+| `children` vs. offboarding/deletion wording — **gates §1** | **SPE-382** |
+
+At execution (not tracked as tickets — they happen in the room): signatures and
+dates, the Exhibit A completion box (`Check Box82`), and the Exhibit E date.
+
+_Related: SPE-59 (NDPA master), SPE-169 (audit logging), SPE-174 (AI-enablement
+obligations)._
