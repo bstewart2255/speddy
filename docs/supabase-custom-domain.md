@@ -1,5 +1,15 @@
 # Supabase custom domain (`auth.speddy.xyz`)
 
+> **Status: done — live since 2026-08-04.** The steps below have been executed;
+> keep them as the record of how it was set up and as the rollback procedure.
+> Confirmed by asking Supabase what it advertises to Google:
+> `/auth/v1/authorize?provider=google` now redirects with
+> `redirect_uri=https://auth.speddy.xyz/auth/v1/callback`.
+>
+> One correction learned during the switch: **the old subdomain's `/auth/v1/*`
+> API endpoints keep answering after activation**, so they are *not* a test of
+> whether activation happened. The `redirect_uri` above is the reliable check.
+
 Moves the Supabase API/Auth endpoint from `qkcruccytmmdajfavpgb.supabase.co` to a
 domain we own, so **Google's sign-in screen says `auth.speddy.xyz`** instead of
 the project ref.
@@ -7,8 +17,9 @@ the project ref.
 ## Why this and not Google brand verification
 
 Google shows the root domain of the OAuth **callback** it is about to send the
-user to. Ours is `https://qkcruccytmmdajfavpgb.supabase.co/auth/v1/callback`, so
-that string is what users see. Filling in the Branding form in Google Cloud does
+user to. Before this change ours was
+`https://qkcruccytmmdajfavpgb.supabase.co/auth/v1/callback`, so that project-ref
+string is what users saw. Filling in the Branding form in Google Cloud does
 not change it — Google only substitutes the app name after its **verification
 review**, and that review asks you to prove ownership of every authorized
 domain, one of which is `supabase.co`. We don't own it. People do get through by
@@ -169,9 +180,15 @@ Order matters here for the same reason activation does.
    supabase domains delete --project-ref qkcruccytmmdajfavpgb
    ```
 
-Doing it in the other order points the app at a host that has stopped serving,
-which takes down everything rather than just auth. Leave the extra Google
-redirect URI in place; a stale entry is harmless.
+3. **Clear the manifest pin** — set `SUPABASE_CUSTOM_HOST` back to `''` in
+   `scripts/sim-district/manifest.ts` and merge. Once released, the host no
+   longer fronts our project, so the preflight must stop treating it as a valid
+   place to send `SUPABASE_SERVICE_ROLE_KEY`. Easy to forget, because nothing
+   breaks if you skip it.
+
+Doing 1 and 2 in the other order points the app at a host that has stopped
+serving, which takes down everything rather than just auth. Leave the extra
+Google redirect URI in place; a stale entry is harmless.
 
 ## Alternative considered
 
