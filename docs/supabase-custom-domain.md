@@ -17,8 +17,9 @@ the project ref.
 ## Why this and not Google brand verification
 
 Google shows the root domain of the OAuth **callback** it is about to send the
-user to. Ours is `https://qkcruccytmmdajfavpgb.supabase.co/auth/v1/callback`, so
-that string is what users see. Filling in the Branding form in Google Cloud does
+user to. Before this change ours was
+`https://qkcruccytmmdajfavpgb.supabase.co/auth/v1/callback`, so that project-ref
+string is what users saw. Filling in the Branding form in Google Cloud does
 not change it — Google only substitutes the app name after its **verification
 review**, and that review asks you to prove ownership of every authorized
 domain, one of which is `supabase.co`. We don't own it. People do get through by
@@ -179,9 +180,15 @@ Order matters here for the same reason activation does.
    supabase domains delete --project-ref qkcruccytmmdajfavpgb
    ```
 
-Doing it in the other order points the app at a host that has stopped serving,
-which takes down everything rather than just auth. Leave the extra Google
-redirect URI in place; a stale entry is harmless.
+3. **Clear the manifest pin** — set `SUPABASE_CUSTOM_HOST` back to `''` in
+   `scripts/sim-district/manifest.ts` and merge. Once released, the host no
+   longer fronts our project, so the preflight must stop treating it as a valid
+   place to send `SUPABASE_SERVICE_ROLE_KEY`. Easy to forget, because nothing
+   breaks if you skip it.
+
+Doing 1 and 2 in the other order points the app at a host that has stopped
+serving, which takes down everything rather than just auth. Leave the extra
+Google redirect URI in place; a stale entry is harmless.
 
 ## Alternative considered
 
