@@ -22,11 +22,12 @@ import { createHash, createHmac } from 'node:crypto';
 export const SUPABASE_PROJECT_REF = 'qkcruccytmmdajfavpgb';
 
 /**
- * Custom domain fronting the same project, once one is active — preflight
- * accepts it in addition to `<ref>.supabase.co`. Empty means none is set up,
- * which keeps the check strict until it is. See docs/supabase-custom-domain.md.
+ * Custom domain fronting the same project — preflight accepts it in addition to
+ * `<ref>.supabase.co`. Live since 2026-08-04; both hosts address this project,
+ * so either is a valid connection for the sim scripts. Empty would mean none is
+ * set up. See docs/supabase-custom-domain.md.
  */
-export const SUPABASE_CUSTOM_HOST: string = '';
+export const SUPABASE_CUSTOM_HOST: string = 'auth.speddy.xyz';
 
 /** Reserved, undeliverable email domain — the sole sim identity namespace. */
 export const SIM_EMAIL_DOMAIN = 'sim.speddy.test';

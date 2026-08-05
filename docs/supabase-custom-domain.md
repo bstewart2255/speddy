@@ -1,5 +1,15 @@
 # Supabase custom domain (`auth.speddy.xyz`)
 
+> **Status: done — live since 2026-08-04.** The steps below have been executed;
+> keep them as the record of how it was set up and as the rollback procedure.
+> Confirmed by asking Supabase what it advertises to Google:
+> `/auth/v1/authorize?provider=google` now redirects with
+> `redirect_uri=https://auth.speddy.xyz/auth/v1/callback`.
+>
+> One correction learned during the switch: **the old subdomain's `/auth/v1/*`
+> API endpoints keep answering after activation**, so they are *not* a test of
+> whether activation happened. The `redirect_uri` above is the reliable check.
+
 Moves the Supabase API/Auth endpoint from `qkcruccytmmdajfavpgb.supabase.co` to a
 domain we own, so **Google's sign-in screen says `auth.speddy.xyz`** instead of
 the project ref.
