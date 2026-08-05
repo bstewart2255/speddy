@@ -263,7 +263,7 @@ export const PATCH = withRoute<{ providerId: string }>({}, async ({ req: request
 
     // The assignment rewrite below is keyed off `school_ids`, so a primary sent
     // on its own cannot be applied. Reject it rather than returning success
-    // having changed nothing — that silent no-op is the SPE-95 failure mode.
+    // having changed nothing — a silent no-op reads as "saved" to the admin.
     if (primary_school_id && !school_ids?.length) {
       return NextResponse.json(
         { error: 'primary_school_id requires school_ids' },

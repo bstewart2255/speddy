@@ -39,7 +39,6 @@ This implementation adds Site Admin and District Admin roles to enable school-le
 - `getCurrentAdminPermissions()` - Get current user's admin permissions
 - `isAdminForSchool()` - Check if user is admin for a specific school
 - `getSchoolStaff()` - Get all teachers and specialists at a school
-- `createTeacherAccount()` - Create new teacher record with duplicate checking
 - `checkDuplicateTeachers()` - Find similar teacher names at same school
 - `findPotentialDuplicates()` - Scan for duplicate teachers across the school
 - `getSchoolTeachers()` - Get all teachers at current user's school

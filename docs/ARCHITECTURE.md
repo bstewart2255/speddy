@@ -77,7 +77,7 @@
 1. [User Types & Roles](#1-user-types--roles)
 2. [Permissions & Access Model](#2-permissions--access-model)
 3. [Org Hierarchy & Scoping](#3-org-hierarchy--scoping)
-4. [Account Creation & Invite Flows](#4-account-creation--invite-flows)
+4. [Account Creation Flows](#4-account-creation-flows)
 5. [Auth & Session Lifecycle](#5-auth--session-lifecycle)
 6. [Scheduling / Session Data Model](#6-scheduling--session-data-model)
    — incl. [Student identity — `children` ↔ caseload rows](#student-identity--children--caseload-rows-spe-347)
@@ -286,11 +286,12 @@ erDiagram
 
 ---
 
-## 4. Account Creation & Invite Flows
+## 4. Account Creation Flows
 
 Accounts are **created by admins**, not by end users. Self-signup has been
-**removed** (SPE-111, PR #678); the remaining paths are one real (admin
-creation), one broken (`send_invite`), plus Google SSO sign-in:
+**removed** (SPE-111, PR #678), so there is exactly **one** way an account comes
+into existence — an admin creating it — plus Google SSO sign-in for accounts that
+already exist:
 
 ```mermaid
 flowchart TD
@@ -302,8 +303,6 @@ flowchart TD
     OK --> T
 
     B["Self-signup /signup"] --> GONE["REMOVED at app level (SPE-111, PR #678)<br/>Auth-level enable_signup DISABLED in prod (2026-07-20)<br/>→ direct /auth/v1/signup no longer creates an account;<br/>admin-only enforced"]
-
-    C["send_invite checkbox"] -->|"admin-accounts.ts:436-440"| NOOP["SILENT NO-OP — only console.warn<br/>(SPE-95: admin thinks invite sent)"]
 
     G["Google SSO sign-in"] -->|"/auth/callback"| GATE{"non-Google 'email' identity exists?"}
     GATE -->|yes| GIN["sign in existing account"]
@@ -317,6 +316,15 @@ flowchart TD
   `must_change_password`, so the teacher is **not** force-redirected to
   `/change-password` on first login (that flag is set by the admin
   password-reset flow, not creation — see §5; tracked in **SPE-190**).
+  `app/(dashboard)/dashboard/admin/create-account/page.tsx` is the single UI
+  entry point, and it picks its route by the admin's scope and the account type:
+  `/api/admin/district/teachers`, `/api/admin/district/providers`, or
+  `/api/admin/create-teacher-account`. (`/api/admin/district/site-admin` and
+  `/api/internal/create-admin-account` cover the admin-creating-an-admin cases.)
+  **All of them** call `auth.admin.createUser` with `email_confirm: true`, so an
+  admin-created user's email is pre-verified and they can use "Forgot password"
+  on the sign-in page without ever having signed in — they don't need the temp
+  password to be relayed successfully.
 - **Profile auto-creation trigger:** `on_auth_user_created → handle_new_user()`
   creates a `profiles` row (default role `resource`) for **every** new auth
   user. This is why the SSO gate (§5) can't rely on "profile exists".
@@ -331,10 +339,19 @@ flowchart TD
   > setting, so account creation is unaffected. (Note: `supabase/config.toml` still
   > shows `enable_signup = true`; that is the local-CLI config and does not govern
   > the hosted project — the dashboard setting is authoritative.)
-- **Broken — SPE-95 (Urgent):** the `send_invite` branch in
-  `lib/supabase/queries/admin-accounts.ts:436-440` only `console.warn`s — no
-  invite, no auth user. Admins believe a teacher was invited when nothing
-  happened.
+- **Removed — SPE-95:** `admin-accounts.ts` used to carry unused
+  `createTeacherAccount()` / `createSpecialistAccount()` client helpers whose
+  `send_invite` branch only `console.warn`ed. They were **dead code — nothing
+  ever called them**, and no UI ever rendered a `send_invite` checkbox, so the
+  "admin thinks an invite was sent" scenario this doc previously described was
+  never reachable. Deleted rather than implemented; the admin UI has always
+  posted to the real API routes above.
+  > **Not to be confused with:** teacher *roster* rows that legitimately have no
+  > login. `teachers` is a directory — a row there is a person a provider can
+  > reference on a schedule, and only some of them are also users. As of
+  > 2026-08-05 no real teacher row has an email on file without a matching
+  > `auth.users` row; the 18 that look that way are Sim-district fixtures
+  > (`@sim.speddy.test`), which seed directory-only teachers by design.
 
 **Source of truth:** `app/api/admin/create-teacher-account/route.ts`;
 `app/auth/callback/route.ts`; `lib/supabase/queries/admin-accounts.ts`;
@@ -996,7 +1013,6 @@ Re-check Linear for current state.
 
 | Ticket | Pri | Area | Summary |
 |---|---|---|---|
-| **SPE-95** | Urgent | Account creation | `send_invite` teacher flow is a silent no-op (`admin-accounts.ts:436-440`). |
 | **SPE-111** | High | Cleanup / Security | ✅ App-level self-signup removed (PR #678); production Supabase Auth `enable_signup` **disabled in the dashboard 2026-07-20** → direct `/auth/v1/signup` no longer creates an account; admin-only enforced. No real billing remnants existed. |
 | **SPE-169** | High | Security/FERPA | Build real audit logging; `audit_logs` table + `logAccess()` exist but are unwired/empty. |
 | **SPE-187** | Medium | Security | AI generation routes have no role authz; `withRoute` has no `roles` option. Not live (AI off). |
