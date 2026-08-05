@@ -265,7 +265,12 @@ main()
     // duplicate probe teachers and the next reader cannot tell them from seed.
     if (createdTeacherIds.length > 0) {
       const { error } = await admin.from('teachers').delete().in('id', createdTeacherIds);
-      if (error) console.error(`cleanup failed for ${createdTeacherIds.length} teacher row(s): ${error.message}`);
+      if (error) {
+        // Fail the command: leftover probe teachers are fixture drift, and a
+        // green exit here would hide it behind a passing set of checks.
+        console.error(`cleanup failed for ${createdTeacherIds.length} teacher row(s): ${error.message}`);
+        failures++;
+      }
     }
     process.exit(failures === 0 ? 0 : 1);
   });
