@@ -176,6 +176,15 @@ export const PERSONAS: SimPersona[] = [
     workDays: { [MAPLE]: [1, 2, 3], [REDWOOD]: [4, 5] },
   },
   { key: 'leah', fullName: 'Leah Kim-Sim', role: 'sea', emailLocal: 'sea.willow', schoolIds: [WILLOW] },
+  // SPE-362: the only multi-school SEA. Every other SEA in the fixture (and in
+  // prod, as of 2026-08) sits at one school, so the school-wide SEA read branch
+  // of `students_select` / `children_select` had nothing exercising it across
+  // sites — the gap those policies carried was invisible to the fixture.
+  {
+    key: 'omar', fullName: 'Omar Bekele-Sim', role: 'sea', emailLocal: 'sea.itinerant',
+    schoolIds: [WILLOW, JUNIPER],
+    workDays: { [WILLOW]: [1, 2, 3], [JUNIPER]: [4, 5] },
+  },
   { key: 'nora', fullName: 'Nora Ellison-Sim', role: 'teacher', emailLocal: 'teacher.willow.1', schoolIds: [WILLOW], gradeLevel: '3' },
   { key: 'david', fullName: 'David Osei-Sim', role: 'teacher', emailLocal: 'teacher.willow.2', schoolIds: [WILLOW], gradeLevel: '5' },
   { key: 'fatima', fullName: 'Fatima Haddad-Sim', role: 'teacher', emailLocal: 'teacher.cedar', schoolIds: [CEDAR], gradeLevel: '7' },
