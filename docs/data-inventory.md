@@ -229,16 +229,26 @@ payload and had been filed under "no personal data."
 **Check 1 — is every table accounted for?** Searches **only sections A–D**, the
 part of this file that actually classifies anything:
 
-```sh
+```bash
+set -euo pipefail
+inv_ad=$(mktemp "${TMPDIR:-/tmp}/inv-AD.XXXXXX")
+trap 'rm -f "$inv_ad"' EXIT
+
 awk '/^## A\. Student data/,/^## Where each element flows/' \
-  docs/data-inventory.md > /tmp/inv-AD.txt
+  docs/data-inventory.md > "$inv_ad"
 psql "$DATABASE_URL" -Atc \
   "SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY 1" \
-| while read -r t; do grep -q "\`$t[\`.]" /tmp/inv-AD.txt || echo "MISSING: $t"; done
+| while read -r t; do grep -q "\`$t[\`.]" "$inv_ad" || echo "MISSING: $t"; done
 ```
 
-Two details that look fussy and are not:
+Three details that look fussy and are not:
 
+- **`set -euo pipefail` is the important one.** Without it, a failed `psql` —
+  wrong `DATABASE_URL`, no network, expired credentials — makes the pipeline
+  exit 0 and print nothing. That is **byte-for-byte identical to a clean pass**.
+  A check whose failure mode is silent success is worse than no check at all,
+  and this one gates what goes into a signed agreement. Run it in `bash`, not
+  `sh`; `pipefail` is not POSIX.
 - **Scoping to A–D** stops a table from passing because it is merely *mentioned*
   somewhere. The corrections log above names a dozen tables, and check 2's own
   SQL is full of identifiers; searching the whole file would let a table that had
@@ -249,19 +259,20 @@ Two details that look fussy and are not:
   bare form reports documented tables as missing, and a check that cries wolf
   gets ignored.
 
+Every table must appear somewhere — sections A–C if it holds personal data,
+section D if it does not. A table in neither is an unreviewed disclosure gap.
+
 **Not checked: inventory entries with no live table.** A stale citation is inert
 — it over-discloses, which does not put a false statement in a contract. The
 failure this file exists to prevent runs the other way: data we hold and did not
 disclose. Add the reverse direction if a stale entry ever causes real confusion.
 
-Every table must appear somewhere — sections A–C if it holds personal data,
-section D if it does not. A table in neither is an unreviewed disclosure gap.
-
 **Check 2 — is each one in the right section?** Check 1 only matches names, so
 it cannot see a misfiling. This lists every table with a column that looks
 personal; each one must be in A–C, never D:
 
-```sh
+```bash
+set -euo pipefail
 psql "$DATABASE_URL" -Atc "
 SELECT c.table_name || ' -> ' || string_agg(c.column_name, ', ' ORDER BY c.column_name)
 FROM information_schema.columns c
