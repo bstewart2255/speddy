@@ -250,7 +250,9 @@ async function main(): Promise<void> {
   } else {
     console.log(`\n${failures} check(s) failed.`);
   }
-  process.exit(failures === 0 ? 0 : 1);
+  // Deliberately no process.exit() here: it is synchronous and would preempt
+  // the `.finally()` below, leaking this run's probe teachers into the fixture.
+  // The exit code is set there, after cleanup.
 }
 
 main()
