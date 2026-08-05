@@ -238,7 +238,16 @@ awk '/^## A\. Student data/,/^## Where each element flows/' \
   docs/data-inventory.md > "$inv_ad"
 psql "$DATABASE_URL" -Atc \
   "SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY 1" \
-| while read -r t; do grep -q "\`$t[\`.]" "$inv_ad" || echo "MISSING: $t"; done
+| (
+  missing=0
+  while read -r t; do
+    if ! grep -q "\`$t[\`.]" "$inv_ad"; then
+      printf 'MISSING: %s\n' "$t"
+      missing=1
+    fi
+  done
+  exit "$missing"
+)
 ```
 
 Three details that look fussy and are not:
@@ -249,6 +258,11 @@ Three details that look fussy and are not:
   A check whose failure mode is silent success is worse than no check at all,
   and this one gates what goes into a signed agreement. Run it in `bash`, not
   `sh`; `pipefail` is not POSIX.
+- **The loop exits non-zero when anything is missing.** `echo` returns success,
+  so the obvious one-liner prints `MISSING: …` and still exits 0 — fine for a
+  human reading the output, silently useless the moment anyone wraps this in a
+  script or a CI step. Same failure shape as the point above: it reports a
+  problem while claiming everything passed.
 - **Scoping to A–D** stops a table from passing because it is merely *mentioned*
   somewhere. The corrections log above names a dozen tables, and check 2's own
   SQL is full of identifiers; searching the whole file would let a table that had
