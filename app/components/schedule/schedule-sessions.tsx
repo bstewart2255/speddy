@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useAutoSchedule } from '../../../lib/supabase/hooks/use-auto-schedule';
+import { isBlockedOnlyByMissingWorkdays } from '../../../lib/scheduling/optimized-scheduler';
 import { Button } from '../ui/button';
 import { LongHoverTooltip } from '../ui/long-hover-tooltip';
 import { saveScheduleSnapshot, saveScheduledSessionIds } from './undo-schedule';
@@ -181,8 +182,13 @@ Continue?`;
       // this is the one failure the provider can actually fix.
       if (results.schoolsMissingWorkdays?.length) {
         const schools = results.schoolsMissingWorkdays;
+        // A batch can span several schools, so say what DID schedule before
+        // explaining what didn't — otherwise the run reads as a total failure.
+        const placed = results.totalScheduled > 0
+          ? `Scheduled ${results.totalScheduled} student${results.totalScheduled !== 1 ? 's' : ''} at your other schools.\n\n`
+          : '';
         alert(
-          `Can't schedule at ${schools.join(' or ')} yet.\n\n` +
+          `${placed}Can't schedule at ${schools.join(' or ')} yet.\n\n` +
           `You work at more than one school, and Speddy doesn't know which days you're ` +
           `at ${schools.length > 1 ? 'these schools' : schools[0]}. Without that it could place sessions on days ` +
           `you're somewhere else.\n\n` +
@@ -190,18 +196,11 @@ Continue?`;
         );
       }
 
-      // When missing work days is the ONLY reason nothing scheduled, the alert
-      // above has already said the one useful thing. Following it with the
-      // generic "couldn't place due to conflicts, adjust your bell schedules"
-      // message would contradict it and send the provider somewhere useless.
-      //
-      // Every failure must be accounted for by a blocked school — if another
-      // school also failed for real scheduling reasons, that still deserves the
-      // normal handling (including the manual-placement offer).
-      const blockedOnlyByWorkdays =
-        !!results.schoolsMissingWorkdays?.length &&
-        results.totalScheduled === 0 &&
-        results.workdayBlockedCount === results.totalFailed;
+      // When missing work days explains every failure, the alert above has
+      // already said the one useful thing. Following it with the generic
+      // "couldn't place due to conflicts, adjust your bell schedules" message
+      // would contradict it and send the provider somewhere useless.
+      const blockedOnlyByWorkdays = isBlockedOnlyByMissingWorkdays(results);
 
       // Check if all sessions were successfully scheduled
       if (blockedOnlyByWorkdays) {

@@ -126,6 +126,26 @@ export interface EnhancedSchedulingResult {
   workdayBlockedCount?: number;
 }
 
+/**
+ * True when every failure in a run is explained by a school with no work days
+ * recorded (SPE-367). The caller uses this to suppress its generic "couldn't
+ * place all sessions due to conflicts — adjust your bell schedules" message,
+ * which would contradict the real cause and send the provider somewhere useless.
+ *
+ * Deliberately does NOT require `totalScheduled === 0`: in a batch spanning
+ * several schools, one school can schedule fine while another is blocked, and
+ * that run still has no conflict to report. It DOES require every failure to be
+ * accounted for — if another school failed for real scheduling reasons, that
+ * deserves the normal handling, including the manual-placement offer.
+ */
+export function isBlockedOnlyByMissingWorkdays(result: EnhancedSchedulingResult): boolean {
+  return (
+    !!result.schoolsMissingWorkdays?.length &&
+    result.totalFailed > 0 &&
+    result.workdayBlockedCount === result.totalFailed
+  );
+}
+
 export class OptimizedScheduler {
   private supabase = createClient();
   private context: SchedulingContext | null = null;

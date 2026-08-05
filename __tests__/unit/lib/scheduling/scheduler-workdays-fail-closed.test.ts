@@ -9,7 +9,12 @@ jest.mock('@/lib/supabase/client', () => ({
   createClient: () => mockCreateSupabaseClient(),
 }));
 
-import { OptimizedScheduler, MissingWorkdaysError } from '@/lib/scheduling/optimized-scheduler';
+import {
+  OptimizedScheduler,
+  MissingWorkdaysError,
+  isBlockedOnlyByMissingWorkdays,
+  type EnhancedSchedulingResult,
+} from '@/lib/scheduling/optimized-scheduler';
 
 /**
  * SPE-275 / SPE-367: an empty workday list used to fail OPEN — it silently became
@@ -94,6 +99,55 @@ describe('OptimizedScheduler work days (SPE-275 / SPE-367)', () => {
 
       await scheduler.initializeContext('Rodeo Hills Elementary', 'JSUSD');
       expect(scheduler.context.workDays).toEqual([1, 2, 3, 4, 5]);
+    });
+  });
+
+  /**
+   * Decides whether the caller suppresses its generic "couldn't place all
+   * sessions due to conflicts — adjust your bell schedules" alert. Getting this
+   * wrong either contradicts the real cause or hides a genuine conflict.
+   */
+  describe('isBlockedOnlyByMissingWorkdays', () => {
+    const result = (over: Partial<EnhancedSchedulingResult> = {}): EnhancedSchedulingResult => ({
+      totalScheduled: 0,
+      totalFailed: 0,
+      errors: [],
+      unplacedStudents: [],
+      canManuallyPlace: false,
+      ...over,
+    });
+
+    it('is true when the blocked school explains every failure', () => {
+      expect(isBlockedOnlyByMissingWorkdays(result({
+        totalFailed: 3, workdayBlockedCount: 3, schoolsMissingWorkdays: ['Carquinez Middle'],
+      }))).toBe(true);
+    });
+
+    it('stays true when ANOTHER school scheduled successfully', () => {
+      // The mixed batch: School A placed sessions, School B was blocked. No
+      // conflict caused anything here, so the generic conflict alert would be
+      // wrong — even though totalScheduled > 0.
+      expect(isBlockedOnlyByMissingWorkdays(result({
+        totalScheduled: 5, totalFailed: 3, workdayBlockedCount: 3,
+        schoolsMissingWorkdays: ['Carquinez Middle'],
+      }))).toBe(true);
+    });
+
+    it('is false when another school ALSO failed for real reasons', () => {
+      // 3 blocked by work days + 2 genuinely unplaceable: the second group still
+      // deserves the normal handling, including the manual-placement offer.
+      expect(isBlockedOnlyByMissingWorkdays(result({
+        totalFailed: 5, workdayBlockedCount: 3,
+        schoolsMissingWorkdays: ['Carquinez Middle'],
+      }))).toBe(false);
+    });
+
+    it('is false when no school was blocked at all', () => {
+      expect(isBlockedOnlyByMissingWorkdays(result({ totalFailed: 4 }))).toBe(false);
+    });
+
+    it('is false on a clean run with nothing failed', () => {
+      expect(isBlockedOnlyByMissingWorkdays(result({ totalScheduled: 9 }))).toBe(false);
     });
   });
 
