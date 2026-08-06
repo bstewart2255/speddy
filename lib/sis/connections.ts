@@ -294,7 +294,17 @@ export async function storeCredential(
   return data as SisConnectionSummary;
 }
 
-/** Record the outcome of a connection test. Never stores anything sensitive. */
+/**
+ * Record the outcome of a connection test. Never stores anything sensitive.
+ *
+ * NOTE for SPE-396/397, which will be the first real callers: `last_test_result`
+ * is one of the columns granted to `authenticated`, so whatever lands here is
+ * readable by the district's own staff. Assemble it from named fields (status,
+ * area, message) — never spread a raw provider response into it. A failing SIS
+ * call can echo the submitted credential back in its body, which is why
+ * lib/integrations/aeries/client.ts already discards the body and keeps only
+ * status and path.
+ */
 export async function recordTestResult(params: {
   connectionId: string;
   actorId: string;

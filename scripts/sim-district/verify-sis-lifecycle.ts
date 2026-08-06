@@ -53,16 +53,13 @@ requireEnv('SIS_CREDENTIAL_ENCRYPTION_KEY');
 
 const admin = createAdmin();
 
-// Realistic shapes. The Aeries value is a pasted multi-line PEM (newlines and
-// '=' padding are exactly what a hand-written ciphertext regex gets wrong), and
-// the OneRoster secret is URL-safe-ish with punctuation.
-const AERIES_CERT = [
-  '-----BEGIN CERTIFICATE-----',
-  'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsim+fake/cert+data==',
-  'Zm9yU1BFLTM5NXZlcmlmaWNhdGlvbk9ubHkK/not+a+real+key+a9f2',
-  '-----END CERTIFICATE-----',
-].join('\n');
-const AERIES_CERT_ROTATED = AERIES_CERT.replace('a9f2', 'b7c1');
+// Realistic shapes. An Aeries certificate is 32 hex characters sent as the
+// AERIES-CERT header value (lib/integrations/aeries/config.ts) — NOT a PEM. It
+// matters here: a PEM ends '-----END CERTIFICATE-----', so every PEM masks to
+// the same '••••----' and any assertion comparing hints would pass whether or
+// not the value changed. The OneRoster secret carries punctuation.
+const AERIES_CERT = 'sim395fakecert0000000000000da9f2';
+const AERIES_CERT_ROTATED = 'sim395fakecert0000000000000db7c1';
 const OR_CLIENT_ID = 'sim-oneroster-client-id-0001';
 const OR_CLIENT_SECRET = 'sim~oneroster~secret!value.7f3e';
 
@@ -198,7 +195,7 @@ async function main(): Promise<void> {
       String(storedRaw?.aeries_certificate_encrypted).slice(0, 24) + '…'
     );
     check(
-      !String(storedRaw?.aeries_certificate_encrypted).includes('BEGIN CERTIFICATE'),
+      !String(storedRaw?.aeries_certificate_encrypted).includes(AERIES_CERT),
       'stored value is not the plaintext certificate'
     );
     check(storedRaw?.credential_hint === credentialHint(AERIES_CERT),
@@ -231,10 +228,9 @@ async function main(): Promise<void> {
     const beforeRotation = String(storedRaw?.aeries_certificate_encrypted);
     await storeCredential({ connectionId: shell.id, actorId, certificate: AERIES_CERT_ROTATED });
     const rotated = await readRaw(shell.id);
-    // Comparing the hint alone would be vacuous here: every PEM ends in
-    // "-----END CERTIFICATE-----", so both certs mask to the same '••••----'
-    // and the check would pass even if the rotation never happened. The
-    // substantive assertion is that the stored secret is now the new one.
+    // The hint check below is real now that the fixtures are hex certs ending
+    // in different characters, but it is still the weaker assertion: the
+    // substantive one is that the stored secret itself changed.
     check(
       String(rotated?.aeries_certificate_encrypted) !== beforeRotation,
       'rotation replaced the stored ciphertext'
@@ -365,7 +361,10 @@ async function main(): Promise<void> {
       check(actions.has(expected), `audited: ${expected}`);
     }
     const auditBlob = JSON.stringify(events ?? []);
-    check(!auditBlob.includes('BEGIN CERTIFICATE'), 'no certificate in the audit trail');
+    check(
+      !auditBlob.includes(AERIES_CERT) && !auditBlob.includes(AERIES_CERT_ROTATED),
+      'no certificate in the audit trail'
+    );
     check(!auditBlob.includes(OR_CLIENT_SECRET), 'no client secret in the audit trail');
   } finally {
     console.log('\ncleanup:');

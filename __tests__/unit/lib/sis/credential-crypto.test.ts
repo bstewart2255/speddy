@@ -37,10 +37,19 @@ describe('SIS credential crypto', () => {
     expect(decryptSisCredential(encryptSisCredential(secret))).toBe(secret);
   });
 
-  it('round-trips a multi-line PEM-shaped certificate', () => {
-    // Aeries certificates are pasted by a human out of a web console, so they
-    // arrive with newlines and padding intact. Base64 of the ciphertext must
-    // survive that unchanged.
+  it('round-trips a real-shaped Aeries certificate', () => {
+    // The actual thing: a 32-char hex vendor certificate, sent as the
+    // AERIES-CERT header value (lib/integrations/aeries/config.ts).
+    const cert = '477abe9e7d27439681d62f4e0de1f5e1';
+    expect(decryptSisCredential(encryptSisCredential(cert))).toBe(cert);
+    expect(credentialHint(cert)).toBe('••••f5e1');
+  });
+
+  it('round-trips arbitrary UTF-8, including newlines', () => {
+    // Not a claim about how Aeries certificates arrive — they are 32 hex
+    // characters on a header line. This pins that the envelope is byte-faithful
+    // for any credential a future provider might use, so encryption never
+    // silently mutates what it was handed.
     const pem = [
       '-----BEGIN CERTIFICATE-----',
       randomBytes(48).toString('base64'),
@@ -71,6 +80,30 @@ describe('SIS credential crypto', () => {
     const parts = encryptSisCredential('secret').split('.');
     parts[3] = randomBytes(16).toString('base64');
     expect(() => decryptSisCredential(parts.join('.'))).toThrow();
+  });
+
+  it('rejects a truncated auth tag rather than accepting a weaker one', () => {
+    // Node accepts 4-, 8- and 12-to-15-byte GCM tags via setAuthTag, so without
+    // an explicit check a 4-byte tag verifies successfully — a full-width
+    // guarantee quietly replaced by a much narrower one.
+    const parts = encryptSisCredential('secret').split('.');
+    for (const shortLength of [4, 8, 12, 15]) {
+      const truncated = [...parts];
+      truncated[3] = Buffer.from(parts[3], 'base64')
+        .subarray(0, shortLength)
+        .toString('base64');
+      expect(() => decryptSisCredential(truncated.join('.'))).toThrow(
+        'Unrecognized encrypted SIS credential format'
+      );
+    }
+  });
+
+  it('rejects a wrong-length IV', () => {
+    const parts = encryptSisCredential('secret').split('.');
+    parts[1] = randomBytes(16).toString('base64');
+    expect(() => decryptSisCredential(parts.join('.'))).toThrow(
+      'Unrecognized encrypted SIS credential format'
+    );
   });
 
   it('rejects an envelope with extra fields appended', () => {
@@ -137,6 +170,11 @@ describe('SIS credential crypto', () => {
     });
 
     it('reports unconfigured when the key is the wrong length', () => {
+      // Rejected by the canonical-format regex (43 chars + '='), not by the
+      // byte-length check below it — a 16-byte key is 24 base64 characters, so
+      // it never reaches that branch. Named accurately because a test that
+      // claims to cover the length check while exercising the regex leaves the
+      // length check looking tested when it is not.
       process.env.SIS_CREDENTIAL_ENCRYPTION_KEY =
         randomBytes(16).toString('base64');
       expect(sisCredentialEncryptionConfigured()).toBe(false);

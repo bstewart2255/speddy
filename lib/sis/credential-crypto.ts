@@ -88,12 +88,18 @@ export function decryptSisCredential(encrypted: string): string {
   if (version !== VERSION || !ivB64 || !dataB64 || !tagB64) {
     throw new Error('Unrecognized encrypted SIS credential format');
   }
-  const decipher = createDecipheriv(
-    'aes-256-gcm',
-    getKey(),
-    Buffer.from(ivB64, 'base64')
-  );
-  decipher.setAuthTag(Buffer.from(tagB64, 'base64'));
+  const iv = Buffer.from(ivB64, 'base64');
+  const tag = Buffer.from(tagB64, 'base64');
+  // Node's setAuthTag accepts 4, 8, and 12-15 byte GCM tags as well as 16, so
+  // a truncated tag decrypts happily on a value that still looks like a valid
+  // envelope. Nothing we write produces one — encrypt always emits 12/16 — so
+  // pinning the lengths costs nothing and keeps the tag's guarantee full-width
+  // rather than whatever a stored value happens to claim.
+  if (iv.length !== 12 || tag.length !== 16) {
+    throw new Error('Unrecognized encrypted SIS credential format');
+  }
+  const decipher = createDecipheriv('aes-256-gcm', getKey(), iv);
+  decipher.setAuthTag(tag);
   return Buffer.concat([
     decipher.update(Buffer.from(dataB64, 'base64')),
     decipher.final(),
