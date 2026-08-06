@@ -7,7 +7,7 @@ interface AdminCredentialsModalProps {
     email: string;
     fullName: string;
     temporaryPassword: string;
-    adminType: 'district_admin' | 'site_admin';
+    adminType: 'district_admin' | 'site_admin' | 'district_tech';
   };
   onClose: () => void;
 }
@@ -37,7 +37,12 @@ export function AdminCredentialsModal({ admin, onClose }: AdminCredentialsModalP
     }
   };
 
-  const adminTypeLabel = admin.adminType === 'district_admin' ? 'District Admin' : 'Site Admin';
+  const adminTypeLabel =
+    admin.adminType === 'district_admin'
+      ? 'District Admin'
+      : admin.adminType === 'district_tech'
+        ? 'District Tech Admin'
+        : 'Site Admin';
 
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">

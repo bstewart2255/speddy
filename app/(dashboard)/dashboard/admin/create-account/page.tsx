@@ -20,7 +20,7 @@ const SPECIALIST_ROLES = [
 
 export default function CreateAccountPage() {
   const router = useRouter();
-  const [accountType, setAccountType] = useState<'teacher' | 'specialist'>('teacher');
+  const [accountType, setAccountType] = useState<'teacher' | 'specialist' | 'tech_admin'>('teacher');
   const [formData, setFormData] = useState({
     first_name: '',
     last_name: '',
@@ -46,6 +46,14 @@ export default function CreateAccountPage() {
   const [districtId, setDistrictId] = useState<string | null>(null);
   const [districtSchools, setDistrictSchools] = useState<Array<{ id: string; name: string }>>([]);
   const [loadingSchools, setLoadingSchools] = useState(false);
+
+  // District Tech Admin form data. District-scoped, so no school field —
+  // the API resolves the district from the caller's own grant.
+  const [techAdminData, setTechAdminData] = useState({
+    first_name: '',
+    last_name: '',
+    email: '',
+  });
 
   // Specialist form data
   const [specialistData, setSpecialistData] = useState({
@@ -239,6 +247,34 @@ export default function CreateAccountPage() {
         // Show credentials modal with the generated password
         setCredentials(data.credentials);
         setShowCredentialsModal(true);
+      } else if (accountType === 'tech_admin') {
+        if (!techAdminData.first_name || !techAdminData.last_name) {
+          throw new Error('First name and last name are required');
+        }
+        if (!techAdminData.email) {
+          throw new Error('Email is required');
+        }
+
+        const response = await fetch('/api/admin/district/tech-admin', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            first_name: techAdminData.first_name,
+            last_name: techAdminData.last_name,
+            email: techAdminData.email,
+          }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || 'Failed to create district tech admin account');
+        }
+
+        setCredentials(data.credentials);
+        setShowCredentialsModal(true);
       } else if (accountType === 'specialist') {
         // Validate specialist form
         if (!specialistData.first_name || !specialistData.last_name) {
@@ -288,7 +324,7 @@ export default function CreateAccountPage() {
     setShowCredentialsModal(false);
     setCredentials(null);
     // Redirect based on account type
-    if (accountType === 'specialist') {
+    if (accountType === 'specialist' || accountType === 'tech_admin') {
       router.push('/dashboard/admin');
     } else {
       router.push(returnHref);
@@ -356,6 +392,25 @@ export default function CreateAccountPage() {
                 <div className="font-semibold">Specialist</div>
                 <div className="text-xs mt-1">Resource specialist or service provider</div>
               </button>
+              {/* District-scoped role, so this option only exists for district
+                  admins — a site admin has no district to create one in. */}
+              {isDistrictAdmin && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAccountType('tech_admin');
+                    setError(null);
+                  }}
+                  className={`flex-1 py-3 px-4 rounded-lg border-2 transition-all ${
+                    accountType === 'tech_admin'
+                      ? 'border-purple-500 bg-purple-50 text-purple-700'
+                      : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  <div className="font-semibold">District Tech Admin</div>
+                  <div className="text-xs mt-1">Sets up your SIS connection</div>
+                </button>
+              )}
             </div>
           </div>
 
@@ -617,6 +672,77 @@ export default function CreateAccountPage() {
                 <p className="ml-3 text-sm text-red-700">{error}</p>
               </div>
             </div>
+          )}
+
+          {accountType === 'tech_admin' && (
+            <>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label htmlFor="tech_first_name" className="block text-sm font-medium text-gray-700 mb-1">
+                    First Name <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    id="tech_first_name"
+                    required
+                    value={techAdminData.first_name}
+                    onChange={(e) => {
+                      setTechAdminData(prev => ({ ...prev, first_name: e.target.value }));
+                      setError(null);
+                    }}
+                    className="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Jane"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="tech_last_name" className="block text-sm font-medium text-gray-700 mb-1">
+                    Last Name <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    id="tech_last_name"
+                    required
+                    value={techAdminData.last_name}
+                    onChange={(e) => {
+                      setTechAdminData(prev => ({ ...prev, last_name: e.target.value }));
+                      setError(null);
+                    }}
+                    className="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Smith"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label htmlFor="tech_email" className="block text-sm font-medium text-gray-700 mb-1">
+                  Email Address <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="email"
+                  id="tech_email"
+                  required
+                  value={techAdminData.email}
+                  onChange={(e) => {
+                    setTechAdminData(prev => ({ ...prev, email: e.target.value }));
+                    setError(null);
+                  }}
+                  className="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="tech@district.edu"
+                />
+              </div>
+
+              <div className="rounded-lg bg-purple-50 border border-purple-200 p-4 text-sm text-purple-900">
+                <p className="font-medium mb-1">What this account can do</p>
+                <p>
+                  A District Tech Admin only sees the Integrations area, where they
+                  connect your student information system. They cannot see students,
+                  schedules, CARE, or any other part of Speddy.
+                </p>
+                <p className="mt-2">
+                  They&apos;ll be asked to choose a new password the first time they sign in.
+                </p>
+              </div>
+            </>
           )}
 
           {/* Action Buttons */}

@@ -26,6 +26,7 @@ import { DISTRICT, MAPLE, PERSONAS, derivePassword, simEmail } from './manifest'
 const url = requireEnv('NEXT_PUBLIC_SUPABASE_URL');
 const anon = requireEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY');
 const secret = requireEnv('SIM_DISTRICT_PASSWORD');
+const service = requireEnv('SUPABASE_SERVICE_ROLE_KEY');
 
 interface Session {
   access_token: string;
@@ -76,6 +77,21 @@ async function patchProfile(
   };
 }
 
+/** Rows a session can SELECT from profiles for one target id. */
+async function readProfile(session: Session, targetId: string) {
+  const res = await fetch(`${url}/rest/v1/profiles?id=eq.${targetId}&select=id`, {
+    headers: { apikey: anon, Authorization: `Bearer ${session.access_token}` },
+  });
+  const text = await res.text();
+  let parsed: unknown = null;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    /* error bodies are not always JSON arrays */
+  }
+  return { status: res.status, rows: Array.isArray(parsed) ? parsed : [], body: text };
+}
+
 /**
  * Signature of a refusal from profiles_guard_immutable_columns: its SQLSTATE
  * plus the column list it names. Matching both proves the TRIGGER refused —
@@ -93,7 +109,7 @@ function check(ok: boolean, label: string, detail: string): void {
 }
 
 async function main(): Promise<void> {
-  const needed = ['rsp.willow', 'slp.itinerant', 'siteadmin.willow'];
+  const needed = ['rsp.willow', 'slp.itinerant', 'siteadmin.willow', 'district.admin', 'techadmin.district'];
   for (const local of needed) {
     if (!PERSONAS.some((p) => p.emailLocal === local)) {
       throw new Error(`persona '${local}' is no longer in the manifest — update this script`);
@@ -184,6 +200,60 @@ async function main(): Promise<void> {
     const byTrigger = !r.ok && refusedByTrigger(r.body);
     check(byTrigger, `site admin cannot set ${label}`,
       byTrigger ? `HTTP ${r.status} (trigger)` : `HTTP ${r.status} — ${r.body.slice(0, 90)}`);
+  }
+
+  // ---------------------------------------------------------------------
+  // SELECT visibility for DISTRICT-SCOPED staff (SPE-394).
+  //
+  // profiles_select's district-admin branch matches staff by SCHOOL. A
+  // `district_tech` has school_id IS NULL by design, so before SPE-394 that
+  // branch could never match and a district admin could not see the tech admin
+  // they had just created — verified live: 0 rows, against a control teacher
+  // returning 1. A district-scoped branch now covers school-less staff.
+  //
+  // The negatives below are the point: this widened what a district admin can
+  // read, so the guard has to pin where the widening STOPS.
+  // ---------------------------------------------------------------------
+  console.log('\ndistrict-scoped profile visibility:');
+
+  const districtAdmin = await signIn('district.admin');
+  const techAdmin = await signIn('techadmin.district');
+  const techId = techAdmin.user.id;
+
+  const daSeesTech = await readProfile(districtAdmin, techId);
+  check(daSeesTech.rows.length === 1,
+    'district admin sees the school-less tech admin', `${daSeesTech.rows.length} row(s)`);
+
+  // A site admin is school-scoped; the new branch is district_admin-only and
+  // must not have handed them district-wide sight.
+  const saSeesTech = await readProfile(siteAdmin, techId);
+  check(saSeesTech.rows.length === 0,
+    'site admin still cannot see the tech admin', `${saSeesTech.rows.length} row(s)`);
+
+  // The tech admin gains nothing: it holds a district grant, but with
+  // role='district_tech', which no branch of the policy matches.
+  const techSeesProvider = await readProfile(techAdmin, uid);
+  check(techSeesProvider.rows.length === 0,
+    'tech admin still cannot see other profiles', `${techSeesProvider.rows.length} row(s)`);
+
+  // Cross-district: the widening is pinned to the caller's own grant. This uses
+  // a real, FK-valid foreign district — profiles.district_id is FK-constrained,
+  // so an invented id silently lands NULL and a NULL district matches nothing,
+  // which would make this negative pass no matter what the policy said.
+  const FOREIGN_DISTRICT = '0618990'; // John Swett Unified
+  const foreign = await fetch(
+    `${url}/rest/v1/profiles?district_id=eq.${FOREIGN_DISTRICT}&select=id&limit=1`,
+    { headers: { apikey: service, Authorization: `Bearer ${service}` } },
+  );
+  const foreignRows = (await foreign.json()) as Array<{ id: string }>;
+  if (foreignRows?.length) {
+    const crossRead = await readProfile(districtAdmin, foreignRows[0].id);
+    check(crossRead.rows.length === 0,
+      'district admin sees nothing in another district',
+      `${crossRead.rows.length} row(s) (target district=${FOREIGN_DISTRICT})`);
+  } else {
+    check(false, 'fixture sanity: a profile exists in the foreign district',
+      `none found in ${FOREIGN_DISTRICT} — check cannot run`);
   }
 
   if (failures === 0) {
