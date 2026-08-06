@@ -85,6 +85,20 @@ export async function teardown(admin: Admin): Promise<Record<string, number>> {
     deleted['debug_signup_log (swept)'] = await deleteWhereIn(admin, 'debug_signup_log', 'user_id', [...debugIds]);
   }
 
+  // district_sis_connections: district-scoped, so it has no user/student/school
+  // sweep key. Deleting the sim profiles would only NULL its created_by (the FK
+  // is ON DELETE SET NULL), leaving an orphaned row holding encrypted
+  // credentials behind — the one kind of residue least acceptable to leave in a
+  // shared fixture. Swept explicitly by the sim district id.
+  {
+    const { error, count } = await admin
+      .from('district_sis_connections')
+      .delete({ count: 'exact' })
+      .eq('district_id', DISTRICT.id);
+    if (error) throw new Error(`district_sis_connections sweep failed: ${error.message}`);
+    deleted['district_sis_connections (swept)'] = count ?? 0;
+  }
+
   // 3. School-scoped schedule scaffolding (school_id match catches all seeded
   //    rows; provider_id match catches any strays created by sim providers).
   for (const table of ['special_activities', 'bell_schedules', 'school_hours'] as const) {
