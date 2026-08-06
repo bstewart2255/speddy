@@ -145,22 +145,13 @@ async function main() {
     });
     if (rpcErr) throw new Error(`create_profile_for_new_user failed for ${email}: ${rpcErr.message}`);
 
-    // SPE-393: District Tech Admins carry their district scope in
-    // admin_permissions ONLY — profiles.district_id stays null. Several RLS
-    // policies (care_case_status_history, holidays, exit_ticket_results) match
-    // on the caller's profiles.district_id with no role predicate at all, so
-    // setting it here would hand this role district-wide CARE reads and
-    // contradict the "integrations and nothing else" decision. The walk asserts
-    // that negative, which is what keeps this from being re-set by accident.
-    const districtIdForProfile = p.role === 'district_tech' ? null : DISTRICT.id;
-
     // Pin structured FK ids to manifest values (never trust the name matcher blindly).
     const { error: patchErr } = await admin.from('profiles').update({
       full_name: p.fullName,
       role: p.role,
       state: DISTRICT.state_id,
       state_id: DISTRICT.state_id,
-      district_id: districtIdForProfile,
+      district_id: DISTRICT.id,
       school_id: primarySchool?.id ?? null,
       school_district: DISTRICT.name,
       school_site: primarySchool?.name ?? '',
@@ -175,7 +166,7 @@ async function main() {
       .eq('id', id)
       .single();
     if (checkErr) throw new Error(`profile readback failed for ${email}: ${checkErr.message}`);
-    if (profile.role !== p.role || profile.district_id !== districtIdForProfile ||
+    if (profile.role !== p.role || profile.district_id !== DISTRICT.id ||
         profile.school_id !== (primarySchool?.id ?? null) || profile.district_domain !== SIM_EMAIL_DOMAIN) {
       throw new Error(`profile assertion failed for ${email}: ${JSON.stringify(profile)}`);
     }
@@ -184,9 +175,11 @@ async function main() {
 
   // ---- Admin permissions --------------------------------------------------
   console.log('Step 4/9: admin permissions + provider school assignments...');
-  // district_tech joins this set (SPE-393): admin_permissions is the ONLY place
-  // its district scope lives. The grant itself confers nothing — every policy
-  // that consults this table constrains ap.role to site_admin/district_admin.
+  // district_tech joins this set (SPE-393). The grant is a scope marker only —
+  // every policy that consults this table constrains ap.role to
+  // site_admin/district_admin, so the row confers no data access. Note it gets
+  // NO provider_schools row below and no school_id above: that absence, not the
+  // role string, is what keeps it out of the data (see ARCHITECTURE.md §1).
   const adminPerms = PERSONAS.filter(
     p => p.role === 'district_admin' || p.role === 'site_admin' || p.role === 'district_tech',
   ).map(p => ({

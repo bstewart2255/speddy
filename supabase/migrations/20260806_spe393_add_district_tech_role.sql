@@ -62,3 +62,31 @@ ALTER TABLE public.admin_permissions
 
 COMMENT ON TABLE public.admin_permissions
 IS 'Tracks which schools/districts each site_admin, district_admin and district_tech can manage';
+
+-- ---------------------------------------------------------------------------
+-- 3. is_chat_eligible — the one role check in the schema that is a DENY-list
+--
+-- Every other role gate is an allow-list, so a new role is excluded by simply
+-- not being named. This one is inverted: `role NOT IN ('sea','district_admin')`
+-- means an unnamed role is eligible BY DEFAULT. Left alone, district_tech would
+-- be able to open direct conversations with staff through the chat RLS
+-- policies, which all funnel through this function — the middleware bounce off
+-- /dashboard/chat hides the UI but does nothing about the data layer.
+--
+-- Definition otherwise preserved verbatim (sql, STABLE, SECURITY DEFINER,
+-- pinned search_path) from 20260627_chat_direct_messages.sql.
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.is_chat_eligible(p_uid uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE SECURITY DEFINER
+SET search_path TO 'public', 'pg_temp'
+AS $function$
+  SELECT EXISTS (
+    SELECT 1 FROM public.profiles p
+    WHERE p.id = p_uid AND p.role NOT IN ('sea', 'district_admin', 'district_tech')
+  );
+$function$;
+
+COMMENT ON FUNCTION public.is_chat_eligible(uuid)
+IS 'Chat participation gate. DENY-list: any role not named here is eligible by default — add new non-chat roles explicitly.';

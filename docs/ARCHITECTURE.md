@@ -105,21 +105,33 @@ Functionally the roles group like this:
 | **District tech admin** | `district_tech` | Routed to `/dashboard/tech`. District IT, not SpEd staff: sees the SIS integrations portal and `/dashboard/settings` and **nothing else** — no students, no CARE, no chat, no scheduling, no admin pages. Scope comes from `admin_permissions` (§3); see the carve-out note below. |
 | **Platform admin** | *(flag)* `is_speddy_admin = true` | Not a role. Gates `/internal`. |
 
-#### `district_tech` carries no `profiles.district_id` (SPE-393)
+#### What actually keeps `district_tech` out of the data (SPE-393)
 
-Every other role stores its district on the profile. `district_tech`
-deliberately does **not**: a handful of RLS policies match on the *caller's*
-`profiles.district_id` with **no role predicate at all** —
-`care_case_status_history` (select **and** insert), `holidays`, and
-`exit_ticket_results` — so a populated `district_id` would silently grant this
-role district-wide CARE reads, contradicting the "integrations and nothing
-else" decision. Its district scope therefore lives **only** in
-`admin_permissions.district_id`, which confers nothing on its own because every
-policy consulting that table constrains `ap.role` to
-`site_admin`/`district_admin`.
+Worth writing down, because it is **not** the role string. Nothing in RLS
+mentions `district_tech`. The role reads nothing because it holds none of the
+keys every policy is written against:
 
-The sim-district walk asserts this negative, so re-populating the column turns
-the fixture red rather than leaking quietly.
+- `profiles.school_id` is null and it has **no `provider_schools` rows**, so
+  every "my school ∪ my provider schools" predicate resolves to the empty set.
+- It owns no `students`, no `schedule_sessions`, and no `teachers.account_id`
+  row, so every ownership predicate misses.
+- Its `admin_permissions` grant has `role = 'district_tech'`, and **every**
+  policy consulting that table constrains `ap.role` to
+  `site_admin`/`district_admin`.
+
+A few policies (`care_case_status_history`, `holidays`, `exit_ticket_results`)
+do match on the caller's `profiles.district_id` with no role predicate, which
+looks alarming — but their inner `EXISTS` subqueries read `care_referrals` /
+`care_cases` / `students`, which are **themselves RLS-filtered** for the caller.
+With no school and no caseload, those subqueries return nothing. Verified with a
+real signed-in session rather than by reading the policy: a `teacher`, who *does*
+carry `district_id`, reads **0** `care_case_status_history` rows for exactly this
+reason.
+
+The consequence to remember: this role is protected by *absence*, so the guard
+that matters is never granting it a school, a caseload, or a
+`site_admin`/`district_admin` grant. The sim walk asserts the whole negative
+space so a future change that hands it one of those turns the fixture red.
 
 ### "provider" is a delivery category, not a role
 There is **no `provider` role** in the enum, yet `schedule_sessions.delivered_by`
@@ -312,7 +324,7 @@ erDiagram
   every policy that consults this table constrains `ap.role` to
   `site_admin`/`district_admin`, so the row matches none of them. That is the
   point — it gives the role a district without giving it the district's data
-  (SPE-393; see the §1 carve-out on `profiles.district_id`).
+  (SPE-393; see §1 for what actually keeps the role out).
 
 **Source of truth:** live tables `states`, `districts`, `schools`, `profiles`,
 `provider_schools`, `admin_permissions`;
