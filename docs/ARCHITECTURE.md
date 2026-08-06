@@ -135,14 +135,12 @@ guard:**
    policies *are* saved by nested RLS — their subqueries read `care_referrals` /
    `care_cases`, which are themselves filtered. A `teacher`, who also carries
    `district_id`, reads 0 `care_case_status_history` rows for that reason.)
-2. **`provider_schools` has no INSERT guard.** Its policy is
-   `WITH CHECK (provider_id = auth.uid())` — no role predicate, no
-   school-membership check. Any authenticated user can self-attach to any
-   school and unlock every `get_my_school_ids()`-scoped policy. Confirmed
-   against live RLS for `district_tech`, **and equally for `teacher` and
-   `sea`** — this is a pre-existing, platform-wide hole, not something this
-   role introduces. Tracked separately in Linear; do not mistake the sim walk's
-   green negatives for proof that it is closed.
+2. ~~**`provider_schools` has no INSERT guard.**~~ **Closed by SPE-399.** All
+   three write commands were gated on ownership alone
+   (`provider_id = auth.uid()`), so any authenticated user could self-attach to
+   any school and unlock every `get_my_school_ids()`-scoped policy —
+   reproduced for `district_tech`, `teacher` and `sea` alike. The table is now
+   admin/service-role-writable only; see §3.
 
 So the guard that matters is never granting this role a school, a caseload, or a
 `site_admin`/`district_admin` grant. The sim walk asserts that negative space, so
@@ -323,6 +321,17 @@ erDiagram
     nullable) — the newer normalized refs into the hierarchy tables.
   - Treat this as a migration-in-progress: code may read either. Check which a
     given query uses before assuming.
+- **`provider_schools` is an authorization input, not user data (SPE-399).**
+  `get_my_school_ids()` returns `profiles.school_id` **UNION** the caller's
+  `provider_schools.school_id`, so a row here *grants* a school's worth of
+  reads. It is therefore **admin/service-role-writable only** — all three write
+  policies are `false` for browser sessions. Both application writers
+  (`app/api/admin/district/providers/**`) use the service-role client, and
+  signup writes via `handle_new_user_schools()`, a postgres-owned
+  `SECURITY DEFINER` trigger; neither is affected. Reads are unchanged.
+  Guarded by `npm run sim:verify-provider-schools-rls`.
+  The general lesson: when a table feeds an authorization function, "it's my
+  row" is not a sufficient write check — ownership is the thing being escalated.
 - **`provider_schools` (M:N):** a provider can serve multiple schools; rows carry
   both the legacy text pair and structured ids, plus `is_primary`. RLS policies
   commonly union "my profile's school" with "my `provider_schools` schools".
