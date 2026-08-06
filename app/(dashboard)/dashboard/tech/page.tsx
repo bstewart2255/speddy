@@ -1,17 +1,31 @@
 'use client';
 
 /**
- * District Tech Admin portal home (SPE-393).
+ * District Tech Admin portal (SPE-393 shell, SPE-396 Aeries flow).
  *
- * The shell only: it establishes the route the role is pinned to and explains
- * what will live here. The actual connection surfaces arrive with SPE-396
- * (Aeries API) and SPE-397 (OneRoster); SPE-395 adds the credential store they
- * both write to.
+ * The connection row is read straight from Supabase rather than through an API
+ * route: `district_sis_connections` grants a district's own tech/district admin
+ * SELECT on exactly the non-secret columns (SPE-395), so this read is governed
+ * by the same policy that protects the credentials.
+ *
+ * Columns are named explicitly and MUST stay that way. `select('*')` on this
+ * table is REFUSED for a browser session — `*` expands to columns the grant
+ * excludes, and PostgREST returns 42501 rather than a narrowed row. That is
+ * deliberate: a loud error beats silently shipping a certificate because
+ * someone reached for the usual shorthand.
  */
 
 import { useCallback, useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Card, CardHeader, CardTitle, CardBody } from '../../../components/ui/card';
+import AeriesSetupGuide from '../../../components/tech/aeries-setup-guide';
+import AeriesConnectionCard, {
+  type ConnectionSummary,
+} from '../../../components/tech/aeries-connection-card';
+
+/** Mirrors the GRANT in 20260806_spe395_district_sis_connections.sql. */
+const CONNECTION_COLUMNS =
+  'id, sis_type, base_url, credential_hint, status, dpa_cleared_at, last_tested_at';
 
 interface TechProfile {
   full_name: string | null;
@@ -20,31 +34,45 @@ interface TechProfile {
 
 export default function TechPortalPage() {
   const [profile, setProfile] = useState<TechProfile | null>(null);
+  const [connections, setConnections] = useState<ConnectionSummary[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const supabase = createClient();
 
-  const loadProfile = useCallback(async () => {
+  const load = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      const { data } = await supabase
-        .from('profiles')
-        .select('full_name, school_district')
-        .eq('id', user.id)
-        .single();
+      const [{ data: prof }, { data: conns, error: connError }] = await Promise.all([
+        supabase.from('profiles').select('full_name, school_district').eq('id', user.id).single(),
+        supabase
+          .from('district_sis_connections')
+          .select(CONNECTION_COLUMNS)
+          .order('sis_type'),
+      ]);
 
-      setProfile(data);
+      setProfile(prof);
+      if (connError) {
+        // Surfaced rather than swallowed: if the column grant ever drifts, this
+        // is where it shows up, and a silent empty state would look identical
+        // to "no connection set up yet".
+        setLoadError('Could not load your integration status. Please refresh.');
+        console.error('Failed to load SIS connections:', connError.message);
+      } else {
+        setConnections((conns ?? []) as unknown as ConnectionSummary[]);
+      }
     } catch (error) {
-      console.error('Error loading tech portal profile:', error);
+      console.error('Error loading tech portal:', error);
+      setLoadError('Could not load your integration status. Please refresh.');
     } finally {
       setLoading(false);
     }
   }, [supabase]);
 
   useEffect(() => {
-    loadProfile();
-  }, [loadProfile]);
+    load();
+  }, [load]);
 
   if (loading) {
     return (
@@ -57,62 +85,95 @@ export default function TechPortalPage() {
     );
   }
 
+  const aeries = connections.find((c) => c.sis_type === 'aeries');
+  const districtName = profile?.school_district || 'your district';
+
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900">Integrations</h1>
           <p className="mt-2 text-gray-600">
-            Connect {profile?.school_district || 'your district'}&apos;s student
-            information system to Speddy.
+            Connect {districtName}&apos;s student information system to Speddy.
           </p>
         </div>
 
+        {loadError && (
+          <div
+            role="alert"
+            className="mb-6 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+          >
+            {loadError}
+          </div>
+        )}
+
         <div className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>No connection yet</CardTitle>
-            </CardHeader>
-            <CardBody>
-              <p className="text-sm text-gray-600">
-                Your district doesn&apos;t have a student information system
-                connected. Setup runs with help from the Speddy team — we&apos;ll
-                walk you through it and confirm the connection works before
-                anything syncs.
-              </p>
-              <p className="mt-4 text-sm text-gray-600">
-                Setup can begin once your district&apos;s data privacy agreement
-                is signed. Your Speddy contact will let you know when it&apos;s
-                time.
-              </p>
-            </CardBody>
-          </Card>
+          {!aeries ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>No connection yet</CardTitle>
+              </CardHeader>
+              <CardBody>
+                <p className="text-sm text-gray-600">
+                  Your district doesn&apos;t have a student information system connected yet.
+                  Setup runs with help from the Speddy team — we&apos;ll walk you through it and
+                  confirm the connection works before anything syncs.
+                </p>
+                <p className="mt-4 text-sm text-gray-600">
+                  Setup can begin once your district&apos;s data privacy agreement is signed. Your
+                  Speddy contact will let you know when it&apos;s time.
+                </p>
+              </CardBody>
+            </Card>
+          ) : !aeries.dpa_cleared_at ? (
+            // The DPA gate. Nothing they can do about it from here, so the copy
+            // says who moves it forward instead of offering a dead control.
+            <Card>
+              <CardHeader>
+                <CardTitle>Waiting on your data privacy agreement</CardTitle>
+              </CardHeader>
+              <CardBody>
+                <p className="text-sm text-gray-600">
+                  Before {districtName} can share student data with Speddy, your signed data
+                  privacy agreement needs to be on file. Your Speddy contact is handling that —
+                  they&apos;ll let you know as soon as this page opens up.
+                </p>
+                <p className="mt-4 text-sm text-gray-600">
+                  Nothing is needed from you yet. If you want to get a head start, you can ask
+                  whoever manages your Aeries security settings to be ready.
+                </p>
+              </CardBody>
+            </Card>
+          ) : (
+            <>
+              <AeriesConnectionCard connection={aeries} onChanged={load} />
+              <AeriesSetupGuide />
+            </>
+          )}
 
           <Card>
             <CardHeader>
-              <CardTitle>What you&apos;ll need</CardTitle>
+              <CardTitle>What Speddy does with this access</CardTitle>
             </CardHeader>
             <CardBody>
               <ul className="space-y-3 text-sm text-gray-600">
                 <li>
-                  <span className="font-medium text-gray-900">
-                    Access to your SIS admin settings.
-                  </span>{' '}
-                  For Aeries that&apos;s the API Security page; for OneRoster
-                  it&apos;s wherever your vendor issues API credentials.
+                  <span className="font-medium text-gray-900">Read-only, always.</span> Speddy
+                  never writes anything back to your student information system.
                 </li>
                 <li>
                   <span className="font-medium text-gray-900">
-                    Permission to create an API account.
+                    Your certificate is encrypted and never shown again.
                   </span>{' '}
-                  Speddy only ever reads — we never write back to your SIS.
+                  Not to us in a support screen, and not back to you here — only its last four
+                  characters.
                 </li>
                 <li>
                   <span className="font-medium text-gray-900">
-                    A few minutes to test the connection.
+                    We check each area separately.
                   </span>{' '}
-                  We check each piece separately and tell you in plain language
-                  what&apos;s working and what isn&apos;t.
+                  If something isn&apos;t granted, we tell you exactly which box to tick in
+                  Aeries rather than just saying it failed.
                 </li>
               </ul>
             </CardBody>
