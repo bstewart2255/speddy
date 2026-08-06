@@ -37,15 +37,20 @@ import type {
 const DEFAULT_TIMEOUT_MS = 30_000;
 
 /**
- * `application/x-www-form-urlencoded` per RFC 6749 Appendix B.
+ * `application/x-www-form-urlencoded`, per RFC 6749 §2.3.1 / Appendix B.
  *
- * `encodeURIComponent` alone is not quite it: form encoding writes a space as
- * `+` rather than `%20`. The difference only shows up in a credential that
- * contains a space, which is pathological — but the whole point of encoding
- * here is to be correct for the credentials we cannot predict.
+ * Delegated to `URLSearchParams` rather than hand-rolled. The first version was
+ * `encodeURIComponent(v).replace(/%20/g, '+')`, which gets `:`, `%` and space
+ * right — the three that actually change behaviour — but leaves `!`, `'`, `(`,
+ * `)` and `~` unescaped, where form encoding percent-escapes them.
+ *
+ * For a compliant server that difference is invisible: `!` and `%21` both
+ * decode to `!`. The reason to use the platform's implementation anyway is that
+ * it removes the question entirely — nobody has to re-derive which characters
+ * this needs to cover, which is exactly how the hand-rolled version was wrong.
  */
 function formEncode(value: string): string {
-  return encodeURIComponent(value).replace(/%20/g, '+');
+  return new URLSearchParams({ value }).toString().slice('value='.length);
 }
 
 /** Which half of the exchange failed. The district-facing advice differs entirely. */

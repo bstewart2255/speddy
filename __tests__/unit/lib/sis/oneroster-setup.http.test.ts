@@ -172,6 +172,30 @@ describe('the OneRoster exchange over real HTTP', () => {
     expect(decodeURIComponent(pass.replace(/\+/g, '%20'))).toBe('se%cret with spaces');
   });
 
+  it('encodes the sub-delimiters encodeURIComponent leaves alone', async () => {
+    // The gap CodeRabbit found in the hand-rolled helper this replaced:
+    // encodeURIComponent leaves ! ' ( ) ~ unescaped, where form encoding
+    // percent-escapes them. Invisible to a compliant server — `!` and `%21`
+    // both decode to `!` — but pinning it means nobody has to re-derive the
+    // character set, which is how the hand-rolled version went wrong.
+    handler = allGood;
+    await runOneRosterConnectionTest({
+      baseUrl: `${origin}/admin`,
+      tokenUrl: `${origin}/admin/token/`,
+      clientId: "id!'()~",
+      clientSecret: "secret!'()~",
+    });
+
+    const decoded = Buffer.from(seen[0].auth!.replace(/^Basic /, ''), 'base64').toString('utf8');
+    const [user, pass] = decoded.split(':');
+
+    expect(user).toBe('id%21%27%28%29%7E');
+    expect(pass).toBe('secret%21%27%28%29%7E');
+    // And still round-trips to what the district actually typed.
+    expect(decodeURIComponent(user)).toBe("id!'()~");
+    expect(decodeURIComponent(pass)).toBe("secret!'()~");
+  });
+
   it('leaves an ordinary alphanumeric credential completely untouched', async () => {
     // The encoding must be a no-op for the common case, or it would break every
     // district it was meant to protect.
