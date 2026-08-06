@@ -89,8 +89,11 @@ export function isPrivateAddress(address: string, family: number): boolean {
   // IPv4-mapped (::ffff:10.0.0.1) — judge the embedded v4 address.
   const mapped = v6.match(/^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/);
   if (mapped) return isPrivateAddress(mapped[1], 4);
-  // fc00::/7 unique-local, fe80::/10 link-local.
-  return /^f[cd]/.test(v6) || /^fe[89ab]/.test(v6);
+  // fc00::/7 unique-local, fe80::/10 link-local, ff00::/8 multicast. The
+  // multicast arm matters because the IPv4 side already blocks 224/4 — without
+  // it the two families disagree, and a AAAA record is all it takes to pick the
+  // permissive one.
+  return /^f[cd]/.test(v6) || /^fe[89ab]/.test(v6) || /^ff/.test(v6);
 }
 
 /**

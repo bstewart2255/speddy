@@ -58,6 +58,8 @@ describe('isPrivateAddress', () => {
     ['fe80::1', 'link-local'],
     ['::ffff:10.0.0.1', 'IPv4-mapped private address'],
     ['::ffff:169.254.169.254', 'IPv4-mapped metadata endpoint'],
+    ['ff02::1', 'multicast — all nodes on the link'],
+    ['ff05::1:3', 'multicast — site-local DHCP servers'],
   ])('rejects IPv6 %s (%s)', (addr) => {
     expect(isPrivateAddress(addr, 6)).toBe(true);
   });

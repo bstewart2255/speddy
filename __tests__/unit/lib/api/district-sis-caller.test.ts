@@ -10,6 +10,7 @@
  * for a caller who holds several grants would write one district's credential
  * into another district's row, and nothing downstream would notice.
  */
+const mockEq = jest.fn();
 const mockIn = jest.fn();
 const mockNot = jest.fn();
 let result: { data: unknown; error: unknown } = { data: [], error: null };
@@ -18,17 +19,24 @@ jest.mock('@/lib/supabase/server', () => ({
   createServiceClient: () => ({
     from: () => ({
       select: () => ({
-        eq: () => ({
-          in: (...a: unknown[]) => {
-            mockIn(...a);
-            return {
-              not: (...b: unknown[]) => {
-                mockNot(...b);
-                return Promise.resolve(result);
-              },
-            };
-          },
-        }),
+        // `.eq()` is RECORDED, not ignored. Without this the suite passes even
+        // if `.eq('admin_id', userId)` is dropped — and that regression returns
+        // another administrator's grants, which is the whole thing this
+        // function exists to prevent.
+        eq: (...e: unknown[]) => {
+          mockEq(...e);
+          return {
+            in: (...a: unknown[]) => {
+              mockIn(...a);
+              return {
+                not: (...b: unknown[]) => {
+                  mockNot(...b);
+                  return Promise.resolve(result);
+                },
+              };
+            },
+          };
+        },
       }),
     }),
   }),
@@ -110,6 +118,13 @@ describe('resolveDistrictSisCaller', () => {
     const r = await resolveDistrictSisCaller(USER);
     expect(r.ok).toBe(false);
     expect(r.ok === false && r.denied).toMatch(/2 districts/);
+  });
+
+  it('scopes the lookup to the CALLER, not just to the roles', async () => {
+    result = { data: [{ district_id: 'SIM-D001', role: 'district_tech' }], error: null };
+    await resolveDistrictSisCaller(USER);
+    // The predicate that keeps one admin from resolving another's grants.
+    expect(mockEq).toHaveBeenCalledWith('admin_id', USER);
   });
 
   it('only ever asks for the two roles that may manage SIS connections', async () => {

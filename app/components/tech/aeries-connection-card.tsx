@@ -213,7 +213,7 @@ export default function AeriesConnectionCard({
         </div>
 
         {report && (
-          <div className="mt-6 border-t border-gray-200 pt-5">
+          <div role="status" aria-live="polite" className="mt-6 border-t border-gray-200 pt-5">
             <p
               className={`text-sm font-medium ${report.ok ? 'text-emerald-700' : 'text-amber-700'}`}
             >

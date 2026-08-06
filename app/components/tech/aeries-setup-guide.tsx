@@ -18,7 +18,17 @@ import { Card, CardHeader, CardTitle, CardBody } from '../ui/card';
  * publishes exactly this artifact.
  */
 
-/** Exactly the areas `runAeriesConnectionTest` probes — keep the two in step. */
+/**
+ * The boxes a district must tick. `probed: false` marks one the connection test
+ * does not yet check.
+ *
+ * That distinction is load-bearing rather than cosmetic: the test reports "All
+ * areas granted", and if the guide asks for five boxes while the test checks
+ * four, that sentence quietly vouches for a permission nobody verified. Classes
+ * is needed for secondary student-teacher links (SPE-342) and is requested now
+ * so the district only visits Aeries once — but it is labelled honestly until
+ * there is a probe behind it.
+ */
 export const AERIES_PERMISSION_AREAS = [
   {
     label: 'Student Data',
@@ -35,6 +45,7 @@ export const AERIES_PERMISSION_AREAS = [
   {
     label: 'Classes/Master Schedule',
     why: 'Which teacher a secondary student actually sees, period by period.',
+    probed: false,
   },
   {
     label: 'Student Programs',
@@ -116,6 +127,11 @@ export default function AeriesSetupGuide() {
                 {AERIES_PERMISSION_AREAS.map((a) => (
                   <li key={a.label} className="rounded-md border border-gray-200 bg-gray-50 p-3">
                     <span className="font-medium text-gray-900">{a.label}</span>
+                    {'probed' in a && a.probed === false && (
+                      <span className="ml-2 rounded bg-gray-200 px-1.5 py-0.5 text-[11px] text-gray-600">
+                        not checked by the test yet
+                      </span>
+                    )}
                     <p className="mt-0.5 text-xs text-gray-600">{a.why}</p>
                   </li>
                 ))}

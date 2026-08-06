@@ -55,9 +55,8 @@ export const POST = withRoute(
     try {
       credential = await getDecryptedCredential(connection.id);
     } catch (err) {
-      log.error('Could not decrypt the stored Aeries credential', {
+      log.error('Could not decrypt the stored Aeries credential', err, {
         connectionId: connection.id,
-        error: err instanceof Error ? err.message : String(err),
       });
     }
     if (!credential || credential.sisType !== 'aeries') {
@@ -91,9 +90,8 @@ export const POST = withRoute(
       // Every probe already ran. Turning a bookkeeping failure into a 500 would
       // hide a completed report AND invite the district to run it again, sending
       // four more requests at their SIS to learn what we already know.
-      log.error('Failed to record Aeries test result', {
+      log.error('Failed to record Aeries test result', err, {
         connectionId: connection.id,
-        error: err instanceof Error ? err.message : String(err),
       });
     }
 
