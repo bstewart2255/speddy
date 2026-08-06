@@ -8,6 +8,7 @@ import {
   getSchoolsByDistrict,
   getDistrictAdmins,
 } from '@/lib/supabase/queries/internal-admin';
+import SisConnectionsPanel from '@/app/components/internal/sis-connections-panel';
 
 interface District {
   id: string;
@@ -178,6 +179,9 @@ export default function DistrictDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* SIS connections + the DPA gate (SPE-395) */}
+      <SisConnectionsPanel districtId={district.id} />
 
       {/* Existing admins */}
       {admins.length > 0 && (

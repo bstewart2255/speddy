@@ -708,6 +708,12 @@ export const DECLARED_UNSEEDED_TABLES: string[] = [
   'rotation_group_members', 'rotation_activity_pairs', 'rotation_week_assignments',
   'activity_type_availability', 'activated_school_years', 'school_year_config',
   'holidays',
+  // SIS integration (SPE-395). Not seeded: a connection row is created live by
+  // the feature under test, and holds encrypted district credentials, so the
+  // fixture should never carry one at rest. Swept bespoke in teardown by
+  // district_id — SWEPT_TABLES only keys on user/student/school identities,
+  // and this table is district-scoped.
+  'district_sis_connections',
   // Personal / auxiliary:
   'documents', 'curriculum_tracking', 'calendar_connections', 'calendar_events',
   'api_keys', 'teams', 'team_members', 'material_constraints',

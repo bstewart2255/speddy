@@ -1,0 +1,228 @@
+-- SPE-395: per-district SIS credential store, encrypted at rest.
+--
+-- Today the Aeries client is env-var-only — one global connection for the whole
+-- platform. This gives each district its own stored connection, which is what
+-- the tech portal (SPE-396 Aeries / SPE-397 OneRoster) and the exploration
+-- tooling (SPE-398) both read.
+--
+-- ---------------------------------------------------------------------------
+-- HOW CREDENTIALS ARE KEPT AWAY FROM CLIENTS
+-- ---------------------------------------------------------------------------
+-- RLS is ROW-level: it cannot hide a column. A policy that lets a district_tech
+-- read "their" connection row lets them read every column of it, ciphertext
+-- included. `calendar_connections` accepts that — its owner can select
+-- `access_token_encrypted` — on the grounds that ciphertext without the key is
+-- inert.
+--
+-- That is not good enough here. A district's Aeries certificate unlocks every
+-- student record in the district, it is long-lived, and it would sit in a
+-- browser's memory and network log on every page that reads connection status.
+-- Ciphertext is a second line of defence, not a reason to hand it out.
+--
+-- So this table uses COLUMN-level grants on top of row-level RLS:
+--
+--   REVOKE SELECT ON district_sis_connections FROM authenticated;
+--   GRANT  SELECT (<non-credential columns>) TO authenticated;
+--
+-- `authenticated` therefore cannot name a credential column at all — PostgREST
+-- refuses with 42501 rather than returning it. The service role, which the API
+-- routes use for the encrypt/decrypt paths, is unaffected (it bypasses both RLS
+-- and column grants).
+--
+-- VERIFIED, not assumed. Against a throwaway probe table on this project, with
+-- a real signed-in session and the same grant shape:
+--
+--   select=id,safe_col    -> HTTP 200, row returned
+--   select=secret_col     -> HTTP 403, {"code":"42501"} permission denied
+--   select=*              -> HTTP 403, {"code":"42501"} permission denied
+--   select=id,secret_col  -> HTTP 403, {"code":"42501"} permission denied
+--
+-- So `select('*')` FAILS for a browser session rather than silently returning
+-- a narrowed row. That is deliberate: a loud, immediate error beats silently
+-- shipping a certificate because someone reached for the usual shorthand.
+-- Callers must name the columns they want.
+--
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS public.district_sis_connections (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  -- varchar(36), matching districts.id and every other district FK in the
+  -- schema. Was varchar(20) — districts created through /api/internal/
+  -- create-district get a 36-char UUID id, so a narrower column would have
+  -- rejected them with value-too-long before the FK was even consulted.
+  district_id varchar(36) NOT NULL REFERENCES public.districts(id),
+  sis_type text NOT NULL CHECK (sis_type IN ('aeries', 'oneroster')),
+
+  -- Connection config (non-secret).
+  base_url text,
+  token_url text,  -- OneRoster only
+
+  -- Credentials. Ciphertext ONLY, produced by lib/sis/credential-crypto.ts
+  -- (AES-256-GCM, `v1.<iv>.<ct>.<tag>`). There is deliberately no plaintext
+  -- column to "temporarily" write to.
+  aeries_certificate_encrypted text,
+  oneroster_client_id_encrypted text,
+  oneroster_client_secret_encrypted text,
+
+  -- Last 4 of the credential, for display. The only part ever shown to a client.
+  credential_hint text,
+
+  -- Lifecycle. pending_dpa is the entry state: credential intake stays closed
+  -- until a Speddy operator records the signed DPA.
+  status text NOT NULL DEFAULT 'pending_dpa'
+    CHECK (status IN ('pending_dpa', 'awaiting_credentials', 'testing',
+                      'connected', 'error', 'disabled')),
+  dpa_cleared_at timestamptz,
+
+  last_tested_at timestamptz,
+  last_test_result jsonb,
+
+  -- ON DELETE SET NULL: this is provenance, not a dependency. Without it,
+  -- deleting the admin who set up a connection would fail on this FK — the
+  -- provider-deletion flow nulls known nullable references, but cannot know
+  -- about one added later. Losing the attribution beats blocking the delete
+  -- or cascading away a live district connection.
+  created_by uuid REFERENCES public.profiles(id) ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+
+  -- One connection per SIS per district.
+  CONSTRAINT district_sis_connections_district_sis_key UNIQUE (district_id, sis_type),
+
+  -- Credentials cannot exist before the DPA is recorded. Enforced here rather
+  -- than only in the API, so the rule survives a future route that forgets it.
+  CONSTRAINT district_sis_connections_no_credentials_before_dpa CHECK (
+    dpa_cleared_at IS NOT NULL
+    OR (aeries_certificate_encrypted IS NULL
+        AND oneroster_client_id_encrypted IS NULL
+        AND oneroster_client_secret_encrypted IS NULL)
+  ),
+
+  -- Ciphertext-shaped or nothing. The module is the only intended writer, but
+  -- "there is deliberately no plaintext column" is a comment, not a rule — this
+  -- makes it one. A privileged writer that skipped encryption, or wrote the raw
+  -- paste into the wrong column, is rejected by the database instead of sitting
+  -- there looking like a stored credential.
+  --
+  -- Regexes checked against real values before being written here: a genuine
+  -- `v1.<iv>.<ct>.<tag>` passes with or without base64 padding; a PEM
+  -- certificate, a raw secret, a v2 envelope, and 3- or 5-part envelopes all
+  -- fail.
+  CONSTRAINT district_sis_connections_ciphertext_shape CHECK (
+    (aeries_certificate_encrypted IS NULL
+      OR aeries_certificate_encrypted ~ '^v1\.[A-Za-z0-9+/]+={0,2}\.[A-Za-z0-9+/]+={0,2}\.[A-Za-z0-9+/]+={0,2}$')
+    AND (oneroster_client_id_encrypted IS NULL
+      OR oneroster_client_id_encrypted ~ '^v1\.[A-Za-z0-9+/]+={0,2}\.[A-Za-z0-9+/]+={0,2}\.[A-Za-z0-9+/]+={0,2}$')
+    AND (oneroster_client_secret_encrypted IS NULL
+      OR oneroster_client_secret_encrypted ~ '^v1\.[A-Za-z0-9+/]+={0,2}\.[A-Za-z0-9+/]+={0,2}\.[A-Za-z0-9+/]+={0,2}$')
+  ),
+
+  -- credential_hint is the ONE column on this table a browser can read, so it
+  -- is the one place a leak would actually reach a client. Pin it to exactly
+  -- what credentialHint() produces: the mask alone, or the mask plus four
+  -- characters. A full secret written here by mistake is rejected.
+  CONSTRAINT district_sis_connections_hint_shape CHECK (
+    credential_hint IS NULL OR credential_hint ~ '^••••(.{4})?$'
+  ),
+
+  -- Credentials must match the row's sis_type, and a OneRoster pair is
+  -- all-or-nothing. Without this the table would accept an Aeries certificate
+  -- on a oneroster row, or a client id with no secret — shapes no server-side
+  -- reader should have to defend against, and which would surface as a
+  -- confusing runtime failure at connection-test time rather than at write time.
+  CONSTRAINT district_sis_connections_credential_shape CHECK (
+    (sis_type = 'aeries'
+      AND oneroster_client_id_encrypted IS NULL
+      AND oneroster_client_secret_encrypted IS NULL)
+    OR
+    (sis_type = 'oneroster'
+      AND aeries_certificate_encrypted IS NULL
+      AND ((oneroster_client_id_encrypted IS NULL
+            AND oneroster_client_secret_encrypted IS NULL)
+        OR (oneroster_client_id_encrypted IS NOT NULL
+            AND oneroster_client_secret_encrypted IS NOT NULL)))
+  )
+);
+
+-- updated_at maintained in the DB, not by convention. Credential rotations,
+-- connection tests, DPA changes and status transitions all come from
+-- different writers; relying on each to remember would leave the column
+-- reading as the creation time forever. Same trigger calendar_connections uses.
+DROP TRIGGER IF EXISTS district_sis_connections_set_updated_at
+  ON public.district_sis_connections;
+CREATE TRIGGER district_sis_connections_set_updated_at
+  BEFORE UPDATE ON public.district_sis_connections
+  FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+CREATE INDEX IF NOT EXISTS district_sis_connections_district_idx
+  ON public.district_sis_connections (district_id);
+
+COMMENT ON TABLE public.district_sis_connections IS
+  'Per-district SIS connection + app-layer-encrypted credentials (SPE-395). Credential columns are readable only by the service role — authenticated holds column-level SELECT on the non-secret columns only. Never add a plaintext credential column.';
+
+-- ---------------------------------------------------------------------------
+-- Row-level policies: scope a caller to their OWN district.
+-- ---------------------------------------------------------------------------
+ALTER TABLE public.district_sis_connections ENABLE ROW LEVEL SECURITY;
+
+-- Read: the district's tech admin and its district admin(s). Writes are NOT
+-- granted to browser sessions at all — every mutation runs server-side through
+-- an API route, because every mutation involves crypto. Same reasoning as
+-- provider_schools in SPE-399: this table is an integration control surface,
+-- and "it's my district's row" is not a reason to let a browser write it.
+CREATE POLICY district_sis_connections_select
+ON public.district_sis_connections
+FOR SELECT
+TO authenticated
+USING (
+  EXISTS (
+    SELECT 1
+    FROM admin_permissions ap
+    WHERE ap.admin_id = (SELECT auth.uid())
+      AND ap.role IN ('district_tech', 'district_admin')
+      AND ap.district_id IS NOT NULL
+      AND (ap.district_id)::text = (district_sis_connections.district_id)::text
+  )
+);
+
+CREATE POLICY district_sis_connections_insert
+ON public.district_sis_connections
+FOR INSERT
+TO authenticated
+WITH CHECK (false);
+
+CREATE POLICY district_sis_connections_update
+ON public.district_sis_connections
+FOR UPDATE
+TO authenticated
+USING (false)
+WITH CHECK (false);
+
+CREATE POLICY district_sis_connections_delete
+ON public.district_sis_connections
+FOR DELETE
+TO authenticated
+USING (false);
+
+-- ---------------------------------------------------------------------------
+-- Column-level grants: the part that actually hides the credentials.
+-- ---------------------------------------------------------------------------
+REVOKE ALL ON public.district_sis_connections FROM authenticated, anon;
+
+GRANT SELECT (
+  id,
+  district_id,
+  sis_type,
+  base_url,
+  token_url,
+  credential_hint,
+  status,
+  dpa_cleared_at,
+  last_tested_at,
+  last_test_result,
+  created_by,
+  created_at,
+  updated_at
+) ON public.district_sis_connections TO authenticated;
+
+-- anon gets nothing at all: this table has no logged-out surface.
