@@ -138,7 +138,16 @@ describe('POST /api/auth/change-password', () => {
     updateUserResult = {
       error: { code: 'weak_password', message: 'too weak', reasons: ['characters', 'pwned'] },
     };
-    expect((await (await POST(req())).json()).error).toMatch(/known data breach/i);
+
+    const res = await POST(req());
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.error).toMatch(/known data breach/i);
+    // Not BOTH messages: a breached password that also happens to be short
+    // still needs the breach advice, and appending "add numbers and symbols"
+    // would send them right back to making variations.
+    expect(body.error).not.toMatch(/numbers and symbols/i);
   });
 
   it('falls back to the formatting advice when reasons are absent', async () => {
@@ -146,6 +155,7 @@ describe('POST /api/auth/change-password', () => {
     // generic strength advice than to accuse someone of a breach.
     updateUserResult = { error: { code: 'weak_password', message: 'too weak' } };
     const res = await POST(req());
+    expect(res.status).toBe(400);
     expect((await res.json()).error).toMatch(/not strong enough/i);
   });
 
