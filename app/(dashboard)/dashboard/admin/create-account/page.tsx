@@ -264,6 +264,12 @@ export default function CreateAccountPage() {
             first_name: techAdminData.first_name,
             last_name: techAdminData.last_name,
             email: techAdminData.email,
+            // Send the district this page is already scoped to. Without it, an
+            // admin holding more than one district grant gets a 400 from the
+            // route and cannot use this form at all. The route still validates
+            // the id against the caller's own grants, so this selects among
+            // them rather than widening anything.
+            district_id: districtId,
           }),
         });
 

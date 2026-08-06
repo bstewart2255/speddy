@@ -39,10 +39,15 @@
 
 DROP POLICY IF EXISTS profiles_select ON public.profiles;
 
+-- TO authenticated, NOT public. 20260531_scope_public_select_policies_to_authenticated.sql
+-- deliberately narrowed this policy to `authenticated`; a DROP + CREATE without
+-- restating that silently reverts the hardening, because CREATE POLICY defaults
+-- to `public`. Caught in review (Codex, PR #805) after exactly that happened —
+-- the live policy had gone back to {public}.
 CREATE POLICY profiles_select
 ON public.profiles
 FOR SELECT
-TO public
+TO authenticated
 USING (
   -- own row
   (id = (SELECT auth.uid()))
