@@ -33,9 +33,9 @@
   table is the real data-authorization layer, scoped by school/ownership.
   Middleware only does **coarse route redirects**; the API `withRoute` wrapper
   does auth + rate-limit + an AI kill-switch but **has no role gate**.
-- **`profiles.role` has 11 values** (live CHECK constraint):
+- **`profiles.role` has 12 values** (live CHECK constraint):
   `resource, speech, ot, counseling, specialist, sea, teacher, site_admin,
-  district_admin, psychologist, intervention`.
+  district_admin, psychologist, intervention, district_tech`.
 - **`is_speddy_admin` is a separate boolean**, not a role — it gates `/internal`
   (platform/internal admin).
 - **"provider" is not a role.** It's a *delivery category*. `delivered_by`
@@ -57,7 +57,7 @@
 
 | Concern | File / migration |
 |---|---|
-| Role enum (source of truth) | `supabase/migrations/20260410_add_intervention_role.sql` + live `profiles_role_check` |
+| Role enum (source of truth) | `supabase/migrations/20260806_spe393_add_district_tech_role.sql` + live `profiles_role_check` |
 | Role → delivery mapping | `lib/auth/role-utils.ts` (`normalizeDeliveredBy`, `SPECIALIST_SOURCE_ROLES`) |
 | Role display labels | `lib/utils/role-utils.ts` (`formatRoleLabel`) |
 | Route guards | `middleware.ts` |
@@ -105,7 +105,7 @@ Functionally the roles group like this:
 | **District tech admin** | `district_tech` | Routed to `/dashboard/tech`. District IT, not SpEd staff: sees the SIS integrations portal and `/dashboard/settings` and **nothing else** — no students, no CARE, no chat, no scheduling, no admin pages. Scope comes from `admin_permissions` (§3); see the carve-out note below. |
 | **Platform admin** | *(flag)* `is_speddy_admin = true` | Not a role. Gates `/internal`. |
 
-#### What actually keeps `district_tech` out of the data (SPE-393)
+### What actually keeps `district_tech` out of the data (SPE-393)
 
 Worth writing down, because it is **not** the role string. Nothing in RLS
 mentions `district_tech`. As seeded, the role reads no domain data because it

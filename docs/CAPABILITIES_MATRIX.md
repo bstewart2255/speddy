@@ -184,7 +184,8 @@ The front door for student concerns, before and around the IEP: a shared
 queue instead of sticky notes and hallway conversations.
 
 - Anyone on staff can submit a referral: academic, behavioral, attendance,
-  social-emotional, speech, OT, or other.
+  social-emotional, speech, OT, or other. (District tech admins are the one
+  exception — they hold no student-facing surface at all.)
 - Two intake lanes, matching how referrals actually arrive:
   - **Discussion lane** — a teacher or staff concern enters a pending queue,
     the team reviews it, and it becomes an active case (or doesn't).
@@ -268,8 +269,8 @@ entering data.
   provider there can coordinate with them.
 - Chat: built-in messaging between staff at the school — the scheduling
   conversation happens next to the schedule. Available to providers, site
-  admins, and teachers; SEAs and district admins are deliberately excluded
-  from the chat module.
+  admins, and teachers; SEAs, district admins, and district tech admins are
+  deliberately excluded from the chat module.
 - Teacher portal: teachers see when their students are pulled and add their
   own class activities (Library day, field trips) that providers'
   conflict-detection respects.
