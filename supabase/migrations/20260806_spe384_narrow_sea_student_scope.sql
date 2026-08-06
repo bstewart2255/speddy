@@ -20,10 +20,22 @@
 -- already present directly above it:
 --
 --     EXISTS (SELECT 1 FROM schedule_sessions
---             WHERE student_id = students.id AND assigned_to_sea_id = auth.uid())
+--             WHERE student_id = students.id
+--               AND assigned_to_sea_id = auth.uid()
+--               AND delivered_by = 'sea')
 --
--- which is the same grant the RPC gives, minus the `delivered_by` filter — an
--- SEA assigned to a session can still read that student either way.
+-- which is exactly the grant the RPC gives: an SEA reads a student when they
+-- are assigned to an SEA-DELIVERED session for that student, and not otherwise.
+--
+-- The `delivered_by = 'sea'` half looks redundant next to
+-- `schedule_sessions_delivered_by_assignee_integrity`, which forces
+-- `assigned_to_sea_id` to NULL when `delivered_by` is 'provider' or
+-- 'specialist'. It is not: `delivered_by` is nullable, and a CHECK constraint
+-- is satisfied when its expression evaluates to NULL, so a row with a NULL
+-- `delivered_by` and an SEA assigned passes the constraint and would otherwise
+-- be readable through RLS while `get_sea_students()` skipped it. No such row
+-- exists today (all 3,184 SEA-assigned sessions carry 'sea'), so this closes
+-- the gap without removing anyone's access.
 --
 -- This SUPERSEDES the SEA half of SPE-362 (20260805): that migration widened
 -- this branch from primary-school-only to all assigned schools. The branch is
@@ -59,6 +71,7 @@ CREATE POLICY "students_select" ON students
       SELECT 1 FROM schedule_sessions
       WHERE schedule_sessions.student_id = students.id
         AND schedule_sessions.assigned_to_sea_id = (SELECT auth.uid())
+        AND schedule_sessions.delivered_by = 'sea'
     )
     OR EXISTS (
       SELECT 1 FROM admin_permissions
@@ -93,6 +106,7 @@ CREATE POLICY "children_select" ON children
             SELECT 1 FROM schedule_sessions ss
             WHERE ss.student_id = s.id
               AND ss.assigned_to_sea_id = (SELECT auth.uid())
+              AND ss.delivered_by = 'sea'
           )
           OR EXISTS (
             SELECT 1 FROM admin_permissions ap

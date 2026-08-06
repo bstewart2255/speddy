@@ -135,12 +135,19 @@ async function profileIdFor(personaKey: string): Promise<string> {
 }
 
 /**
- * An SEA's caseload per the service client: the students they are actually
- * assigned to through a session. After SPE-384 this is their whole world.
+ * An SEA's caseload per the service client: the students they are assigned to
+ * through an SEA-DELIVERED session. After SPE-384 this is their whole world.
+ *
+ * `delivered_by` is filtered here for the same reason the policy filters it —
+ * the column is nullable, so a CHECK constraint cannot guarantee that an
+ * `assigned_to_sea_id` row is SEA-delivered. Deriving the expectation the same
+ * way the policy does is what keeps this a real check rather than a tautology.
  */
 async function caseloadStudentIds(seaId: string): Promise<Set<string>> {
   const { data, error } = await admin
-    .from('schedule_sessions').select('student_id').eq('assigned_to_sea_id', seaId);
+    .from('schedule_sessions').select('student_id')
+    .eq('assigned_to_sea_id', seaId)
+    .eq('delivered_by', 'sea');
   if (error) throw new Error(`caseload lookup failed for ${seaId}: ${error.message}`);
   return new Set((data ?? []).map(r => r.student_id as string));
 }
