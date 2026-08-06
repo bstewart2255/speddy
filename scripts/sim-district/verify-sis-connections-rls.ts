@@ -40,6 +40,7 @@ import {
   decryptSisCredential,
   encryptSisCredential,
 } from '../../lib/sis/credential-crypto';
+import { BROWSER_CONNECTION_COLUMNS } from '../../lib/sis/connection-columns';
 
 const url = requireEnv('NEXT_PUBLIC_SUPABASE_URL');
 const anon = requireEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY');
@@ -52,7 +53,19 @@ const CREDENTIAL_COLUMNS = [
   'oneroster_client_id_encrypted',
   'oneroster_client_secret_encrypted',
 ];
-const SAFE_COLUMNS = 'id,district_id,sis_type,status,credential_hint,dpa_cleared_at';
+// The page's OWN column list, imported rather than hand-copied. The previous
+// literal here was a subset — it omitted base_url and token_url — so the portal
+// could start selecting a column the grant did not cover, break for every
+// district with a 42501 on the whole select, and leave this script green.
+// PostgREST wants no spaces in `select`.
+const SAFE_COLUMNS = BROWSER_CONNECTION_COLUMNS.replace(/\s+/g, '');
+
+// The page deliberately does NOT select district_id — it has no use for it — so
+// the tenancy assertion below has to ask for it explicitly. Splitting these two
+// reads is the point: SAFE_COLUMNS proves the PAGE's select works against the
+// live grant, and this proves the policy's district clause is load-bearing.
+// Collapsing them means one of those two properties stops being checked.
+const ISOLATION_COLUMNS = `${SAFE_COLUMNS},district_id`;
 
 let failures = 0;
 function check(ok: boolean, label: string, detail = ''): void {
@@ -174,10 +187,11 @@ async function main(): Promise<void> {
       // that makes the policy's district clause load-bearing: drop it and this
       // read returns 2 rows and fails, instead of quietly passing because the
       // only other personas are excluded on role.
+      const owned = await read(token, ISOLATION_COLUMNS);
       check(
-        safe.rows.length === 1 && safe.rows[0]?.district_id === DISTRICT.id,
+        owned.rows.length === 1 && owned.rows[0]?.district_id === DISTRICT.id,
         `${label}: sees ONLY their own district's connection`,
-        `${safe.rows.length} row(s), district=${safe.rows[0]?.district_id ?? 'none'}`);
+        `${owned.rows.length} row(s), district=${owned.rows[0]?.district_id ?? 'none'}`);
 
       for (const col of CREDENTIAL_COLUMNS) {
         const r = await read(token, col);

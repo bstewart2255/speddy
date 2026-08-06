@@ -17,6 +17,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { BROWSER_CONNECTION_COLUMNS } from '@/lib/sis/connection-columns';
 import { Card, CardHeader, CardTitle, CardBody } from '../../../components/ui/card';
 import AeriesSetupGuide from '../../../components/tech/aeries-setup-guide';
 import AeriesConnectionCard, {
@@ -25,9 +26,10 @@ import AeriesConnectionCard, {
 import OneRosterSetupGuide from '../../../components/tech/oneroster-setup-guide';
 import OneRosterConnectionCard from '../../../components/tech/oneroster-connection-card';
 
-/** Mirrors the GRANT in 20260806_spe395_district_sis_connections.sql. */
-const CONNECTION_COLUMNS =
-  'id, sis_type, base_url, token_url, credential_hint, status, dpa_cleared_at, last_tested_at';
+// Shared with scripts/sim-district/verify-sis-connections-rls.ts, so the
+// verification cannot silently check a different column list than the one this
+// page actually sends.
+const CONNECTION_COLUMNS = BROWSER_CONNECTION_COLUMNS;
 
 interface TechProfile {
   full_name: string | null;
