@@ -98,6 +98,33 @@ CREATE TABLE IF NOT EXISTS public.district_sis_connections (
         AND oneroster_client_secret_encrypted IS NULL)
   ),
 
+  -- Ciphertext-shaped or nothing. The module is the only intended writer, but
+  -- "there is deliberately no plaintext column" is a comment, not a rule — this
+  -- makes it one. A privileged writer that skipped encryption, or wrote the raw
+  -- paste into the wrong column, is rejected by the database instead of sitting
+  -- there looking like a stored credential.
+  --
+  -- Regexes checked against real values before being written here: a genuine
+  -- `v1.<iv>.<ct>.<tag>` passes with or without base64 padding; a PEM
+  -- certificate, a raw secret, a v2 envelope, and 3- or 5-part envelopes all
+  -- fail.
+  CONSTRAINT district_sis_connections_ciphertext_shape CHECK (
+    (aeries_certificate_encrypted IS NULL
+      OR aeries_certificate_encrypted ~ '^v1\.[A-Za-z0-9+/]+={0,2}\.[A-Za-z0-9+/]+={0,2}\.[A-Za-z0-9+/]+={0,2}$')
+    AND (oneroster_client_id_encrypted IS NULL
+      OR oneroster_client_id_encrypted ~ '^v1\.[A-Za-z0-9+/]+={0,2}\.[A-Za-z0-9+/]+={0,2}\.[A-Za-z0-9+/]+={0,2}$')
+    AND (oneroster_client_secret_encrypted IS NULL
+      OR oneroster_client_secret_encrypted ~ '^v1\.[A-Za-z0-9+/]+={0,2}\.[A-Za-z0-9+/]+={0,2}\.[A-Za-z0-9+/]+={0,2}$')
+  ),
+
+  -- credential_hint is the ONE column on this table a browser can read, so it
+  -- is the one place a leak would actually reach a client. Pin it to exactly
+  -- what credentialHint() produces: the mask alone, or the mask plus four
+  -- characters. A full secret written here by mistake is rejected.
+  CONSTRAINT district_sis_connections_hint_shape CHECK (
+    credential_hint IS NULL OR credential_hint ~ '^••••(.{4})?$'
+  ),
+
   -- Credentials must match the row's sis_type, and a OneRoster pair is
   -- all-or-nothing. Without this the table would accept an Aeries certificate
   -- on a oneroster row, or a client id with no secret — shapes no server-side
