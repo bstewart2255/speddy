@@ -84,9 +84,18 @@ async function read(token: string, select: string) {
   return { status: res.status, code, rows: Array.isArray(parsed) ? parsed : [], body: text.slice(0, 140) };
 }
 
+// A real district that is NOT the sim district. The policy's district clause is
+// only load-bearing if a foreign row exists for the in-district personas to be
+// refused — without one, "nobody else sees it" is proven entirely by personas
+// the ROLE clause already excludes, and dropping the district match from the
+// policy would leave this script fully green while every district_admin on the
+// platform could read every district's connection.
+const FOREIGN_DISTRICT = '0618990';
+
 async function main(): Promise<void> {
   const CERT = 'FAKE-AERIES-CERT-FOR-SIM-VERIFICATION-a9f2';
   let connectionId: string | null = null;
+  let foreignConnectionId: string | null = null;
 
   try {
     // Service-role write: the path the real API routes use.
@@ -107,6 +116,29 @@ async function main(): Promise<void> {
       createErr ? createErr.message : 'created');
     if (createErr) throw new Error('cannot continue without a connection row');
     connectionId = created!.id;
+
+    // The foreign-tenant row. Deliberately a different district so the district
+    // half of the SELECT policy has to do work.
+    // String()-wrapped so this is a RUNTIME check. Comparing the literals
+    // directly is a compile error ("no overlap") — TypeScript already proves
+    // them different today, but that proof evaporates the moment the manifest
+    // changes, which is exactly when this check earns its place.
+    check(String(FOREIGN_DISTRICT) !== String(DISTRICT.id),
+      'the foreign district is genuinely a different district',
+      `${FOREIGN_DISTRICT} vs ${DISTRICT.id}`);
+    const { data: foreign, error: foreignErr } = await admin
+      .from('district_sis_connections')
+      .insert({
+        district_id: FOREIGN_DISTRICT,
+        sis_type: 'aeries',
+        base_url: 'https://other.aeries.test',
+        status: 'connected',
+      })
+      .select('id')
+      .single();
+    check(!foreignErr, 'seeded a connection for another district',
+      foreignErr ? foreignErr.message : 'created');
+    if (!foreignErr) foreignConnectionId = foreign!.id;
 
     // Round-trip through the DB, proving what we stored is what we get back.
     const { data: stored } = await admin
@@ -138,6 +170,14 @@ async function main(): Promise<void> {
       const safe = await read(token, SAFE_COLUMNS);
       check(safe.status === 200 && safe.rows.length === 1,
         `${label}: reads connection status`, `HTTP ${safe.status}, ${safe.rows.length} row(s)`);
+      // EXACTLY one row, and it must be their own district's. This is the check
+      // that makes the policy's district clause load-bearing: drop it and this
+      // read returns 2 rows and fails, instead of quietly passing because the
+      // only other personas are excluded on role.
+      check(
+        safe.rows.length === 1 && safe.rows[0]?.district_id === DISTRICT.id,
+        `${label}: sees ONLY their own district's connection`,
+        `${safe.rows.length} row(s), district=${safe.rows[0]?.district_id ?? 'none'}`);
 
       for (const col of CREDENTIAL_COLUMNS) {
         const r = await read(token, col);
@@ -184,6 +224,18 @@ async function main(): Promise<void> {
       const { error } = await admin.from('district_sis_connections').delete().eq('id', connectionId);
       check(!error, 'cleanup: connection row removed', error?.message ?? 'deleted');
     }
+    if (foreignConnectionId) {
+      const { error } = await admin
+        .from('district_sis_connections')
+        .delete()
+        .eq('id', foreignConnectionId);
+      check(!error, 'cleanup: foreign-district row removed', error?.message ?? 'deleted');
+    }
+    const { count: foreignLeft } = await admin
+      .from('district_sis_connections')
+      .select('id', { count: 'exact', head: true })
+      .eq('district_id', FOREIGN_DISTRICT);
+    check(foreignLeft === 0, 'no residue left in the foreign district', `${foreignLeft} row(s)`);
     const { count } = await admin
       .from('district_sis_connections')
       .select('id', { count: 'exact', head: true })

@@ -43,9 +43,8 @@ export const PATCH = withRoute<{ connectionId: string }, { cleared: boolean }>(
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to update DPA state';
-      log.error('Failed to update DPA state', {
+      log.error('Failed to update DPA state', err, {
         connectionId: params.connectionId,
-        error: message,
       });
       if (message === SIS_CONNECTION_NOT_FOUND) {
         return NextResponse.json({ error: SIS_CONNECTION_NOT_FOUND }, { status: 404 });
@@ -72,9 +71,8 @@ export const PATCH = withRoute<{ connectionId: string }, { cleared: boolean }>(
       const connection = await getConnection(params.connectionId);
       return NextResponse.json({ connection });
     } catch (err) {
-      log.error('DPA change committed but the read-back failed', {
+      log.error('DPA change committed but the read-back failed', err, {
         connectionId: params.connectionId,
-        error: err instanceof Error ? err.message : String(err),
       });
       return NextResponse.json({ connection: null });
     }

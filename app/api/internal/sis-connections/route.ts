@@ -59,10 +59,9 @@ export const POST = withRoute(
       return NextResponse.json({ connection });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to create SIS connection';
-      log.error('Failed to create SIS connection', {
+      log.error('Failed to create SIS connection', err, {
         districtId: body.districtId,
         sisType: body.sisType,
-        error: message,
       });
       // The unique constraint is the one failure a staff member can trigger by
       // double-clicking, so name it rather than returning a raw Postgres string.

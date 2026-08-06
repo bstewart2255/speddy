@@ -86,6 +86,14 @@ export class AeriesClient {
         signal: controller.signal,
         // Never cache SIS responses (student PII, changing data).
         cache: 'no-store',
+        // Refuse redirects outright (SPE-396). The base URL is district-supplied
+        // and validated against private-network ranges before we dial it, but
+        // that check covers the host WE resolve — following a 302 would hand the
+        // destination back to the remote server, letting a public host bounce an
+        // authenticated request into an internal address and defeat the guard
+        // entirely. The Aeries API does not redirect; if it ever starts, this
+        // fails loudly rather than silently.
+        redirect: 'error',
       });
 
       if (!res.ok) {

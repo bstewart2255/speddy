@@ -298,9 +298,8 @@ export async function storeCredential(
   if (error) {
     // The message can carry a constraint name but never a credential — the
     // patch values are ciphertext and PostgREST does not echo them here.
-    log.error('Failed to store SIS credential', {
+    log.error('Failed to store SIS credential', error, {
       connectionId: input.connectionId,
-      error: error.message,
     });
     throw new Error(`Failed to store SIS credential: ${error.message}`);
   }

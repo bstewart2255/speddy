@@ -28,7 +28,11 @@ import { lookup } from 'dns/promises';
 
 /** Reject any literal IP address, and names that cannot be public. */
 export function assertPublicAeriesHostSyntax(hostname: string): void {
-  const host = hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  // Strip a single trailing dot before ANY comparison. `localhost.` and
+  // `sis.internal.` are the fully-qualified forms of exactly the names below,
+  // resolve identically, and would otherwise sail past both checks — found by
+  // probing this guard rather than by reading it.
+  const host = hostname.toLowerCase().replace(/^\[|\]$/g, '').replace(/\.$/, '');
 
   // No district hands out a bare IP for their SIS; every real instance is a
   // hostname. Refusing literals removes the whole IPv4/IPv6 literal surface

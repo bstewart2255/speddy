@@ -78,9 +78,19 @@ describe('assertPublicAeriesHostSyntax', () => {
     expect(() => assertPublicAeriesHostSyntax(host)).toThrow(/not an IP address/i);
   });
 
-  it.each(['localhost', 'sub.localhost'])('refuses %s', (host) => {
+  it.each(['localhost', 'sub.localhost', 'localhost.'])('refuses %s', (host) => {
     expect(() => assertPublicAeriesHostSyntax(host)).toThrow(/this server/i);
   });
+
+  it.each(['localhost.', 'sis.internal.', 'aeries.local.'])(
+    'refuses the fully-qualified trailing-dot form %s',
+    (host) => {
+      // Found by probing the guard rather than reading it: a trailing dot is
+      // the fully-qualified form of the same name and resolves identically,
+      // but `endsWith('.internal')` and `=== 'localhost'` both miss it.
+      expect(() => assertPublicAeriesHostSyntax(host)).toThrow();
+    },
+  );
 
   it.each(['sis.internal', 'aeries.local', 'server.corp', 'box.lan'])(
     'refuses the internal-only name %s',

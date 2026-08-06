@@ -158,6 +158,14 @@ describe('lib/sis/connections', () => {
       for (const col of CREDENTIAL_COLUMNS) {
         expect(calls[0].select).not.toContain(col);
       }
+      // The `not.toBe('*')` guard matters MORE here than on listConnections:
+      // getConnection's row is serialized straight to the browser by the DPA
+      // route, so a `select('*')` would ship credential ciphertext into a staff
+      // browser. Without this line the test passes on `'*'` — the string
+      // contains none of the column names above. (Caught by mutation: switching
+      // to `select('*')` left all 25 tests green.)
+      expect(calls[0].select).not.toBe('*');
+      expect(calls[0].select).toContain('credential_hint');
     });
   });
 
