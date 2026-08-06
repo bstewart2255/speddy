@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { withRoute } from '@/lib/api/with-route';
-import { requireSpeddyAdmin } from '@/lib/api/require-speddy-admin';
+import { speddyAdminDenialReason } from '@/lib/api/speddy-admin-denial-reason';
 import { logger } from '@/lib/logger';
 import { createConnection, listConnections } from '@/lib/sis/connections';
 
@@ -14,7 +14,7 @@ const forbidden = () =>
 export const GET = withRoute(
   { query: z.object({ districtId: z.string().min(1) }) },
   async ({ userId, query }) => {
-    const denied = await requireSpeddyAdmin(userId);
+    const denied = await speddyAdminDenialReason(userId);
     if (denied) {
       log.warn('Non-speddy-admin tried to read SIS connections', { userId, denied });
       return forbidden();
@@ -42,7 +42,7 @@ export const POST = withRoute(
     }),
   },
   async ({ userId, body }) => {
-    const denied = await requireSpeddyAdmin(userId);
+    const denied = await speddyAdminDenialReason(userId);
     if (denied) {
       log.warn('Non-speddy-admin tried to create a SIS connection', { userId, denied });
       return forbidden();
@@ -72,7 +72,9 @@ export const POST = withRoute(
           { status: 409 }
         );
       }
-      return NextResponse.json({ error: message }, { status: 500 });
+      // Fixed message, not `message`: a PostgREST error carries constraint,
+      // column and foreign-key names. The detail belongs in the log line above.
+      return NextResponse.json({ error: 'Failed to create SIS connection' }, { status: 500 });
     }
   }
 );

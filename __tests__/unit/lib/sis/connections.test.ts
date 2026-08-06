@@ -91,12 +91,13 @@ jest.mock('@/lib/logger', () => ({
 import {
   disconnect,
   getConnection,
+  getDecryptedCredential,
   listConnections,
   recordTestResult,
   setDpaCleared,
   storeCredential,
 } from '@/lib/sis/connections';
-import { decryptSisCredential } from '@/lib/sis/credential-crypto';
+import { decryptSisCredential, encryptSisCredential } from '@/lib/sis/credential-crypto';
 
 const CREDENTIAL_COLUMNS = [
   'aeries_certificate_encrypted',
@@ -412,9 +413,66 @@ describe('lib/sis/connections', () => {
     });
   });
 
-  describe('disconnect', () => {
-    it('clears credentials and the stale test result, keeping the row', async () => {
+  describe('getDecryptedCredential', () => {
+    it('returns the decrypted certificate for a populated aeries row', async () => {
+      const CERT = 'sim395fakecert0000000000000da9f2';
+      results.push({
+        data: { sis_type: 'aeries', aeries_certificate_encrypted: encryptSisCredential(CERT) },
+        error: null,
+      });
+
+      await expect(getDecryptedCredential(CONNECTION_ID)).resolves.toEqual({
+        sisType: 'aeries',
+        certificate: CERT,
+      });
+    });
+
+    it('returns null when the connection holds no credential yet', async () => {
+      // pending_dpa / awaiting_credentials is an ordinary state, not an error —
+      // callers must not have to distinguish "absent" from "failed".
+      results.push({
+        data: { sis_type: 'aeries', aeries_certificate_encrypted: null },
+        error: null,
+      });
+
+      await expect(getDecryptedCredential(CONNECTION_ID)).resolves.toBeNull();
+    });
+
+    it('returns null for a half-populated OneRoster pair rather than a partial credential', async () => {
+      results.push({
+        data: {
+          sis_type: 'oneroster',
+          oneroster_client_id_encrypted: encryptSisCredential('client-id'),
+          oneroster_client_secret_encrypted: null,
+        },
+        error: null,
+      });
+
+      await expect(getDecryptedCredential(CONNECTION_ID)).resolves.toBeNull();
+    });
+
+    it('returns null when the connection does not exist', async () => {
       results.push({ data: null, error: null });
+      await expect(getDecryptedCredential(CONNECTION_ID)).resolves.toBeNull();
+    });
+  });
+
+  describe('disconnect', () => {
+    it('refuses an unknown id instead of auditing a no-op', async () => {
+      // An UPDATE matching no row returns no error, so without a row check this
+      // would report success and write a disconnect audit record for a
+      // connection that never existed.
+      results.push({ data: null, error: null });
+
+      await expect(
+        disconnect({ connectionId: CONNECTION_ID, actorId: ACTOR_ID })
+      ).rejects.toThrow('SIS connection not found');
+
+      expect(mockAudit).not.toHaveBeenCalled();
+    });
+
+    it('clears credentials and the stale test result, keeping the row', async () => {
+      results.push({ data: { id: CONNECTION_ID }, error: null });
 
       await disconnect({ connectionId: CONNECTION_ID, actorId: ACTOR_ID });
 

@@ -122,8 +122,14 @@ async function main(): Promise<void> {
     // kind of check that looks green for the wrong reason.
     check(stored!.credential_hint === credentialHint(CERT),
       'hint stored masked', String(stored!.credential_hint));
-    check(!stored!.credential_hint!.includes(CERT.slice(0, -4)),
-      'hint reveals nothing but the last 4');
+    // Asserted by SHAPE, not by containment. The obvious
+    // `!hint.includes(CERT.slice(0, -4))` cannot fail: the hint is 8 characters
+    // and that prefix is 38, so an 8-character string can never contain it —
+    // the check stayed green no matter what the hint held.
+    const hint = String(stored!.credential_hint);
+    check(
+      hint.length === 8 && hint.startsWith('••••') && hint.slice(4) === CERT.slice(-4),
+      'hint is the mask plus exactly the last 4, nothing more', hint);
 
     console.log('\ndistrict staff — status readable, credentials NOT:');
     for (const [persona, label] of [['theo', 'district_tech (Theo)'], ['dana', 'district_adm (Dana)']] as const) {
@@ -145,11 +151,16 @@ async function main(): Promise<void> {
         `HTTP ${star.status} code=${star.code ?? 'none'}`);
 
       // Browser writes denied outright — every mutation is server-side.
+      // Assert WHY it was refused. `!wErr ? count === 0 : true` passed for ANY
+      // error — a renamed column, a bad payload, a dropped connection — which
+      // is exactly the trap this file's header says it avoids. An RLS-denied
+      // UPDATE is either 0 rows affected (policy filtered it) or 42501 (the
+      // column grant refused first); nothing else counts.
       const { error: wErr, count } = await client
         .from('district_sis_connections')
         .update({ status: 'disabled' }, { count: 'exact' })
         .eq('id', connectionId);
-      check(!wErr ? count === 0 : true,
+      check(wErr ? wErr.code === '42501' : count === 0,
         `${label}: cannot modify the connection from a browser`,
         wErr ? `err=${wErr.code}` : `${count} row(s) affected`);
 

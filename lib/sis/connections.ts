@@ -35,6 +35,33 @@ const log = logger.child({ module: 'sis-connections' });
 
 export type SisType = 'aeries' | 'oneroster';
 
+/**
+ * Thrown when an operation names a connection that does not exist.
+ *
+ * Exported so routes can map it to a 404 by identity. Matching on the message
+ * text instead would silently degrade to a 500 the day someone rewords the
+ * string, and nothing would link the two files to warn them.
+ */
+export const SIS_CONNECTION_NOT_FOUND = 'SIS connection not found';
+
+/**
+ * What may be recorded about a connection test.
+ *
+ * Deliberately narrow rather than `unknown`. `last_test_result` is one of the
+ * columns granted to `authenticated`, so anything written here is readable by
+ * that district's staff — and a failing SIS call can echo the submitted
+ * credential back in its response body. A type is the only thing that stops a
+ * future caller spreading a raw provider response into it: Postgres cannot tell
+ * a certificate from a diagnostics blob, and a doc comment does not fail a
+ * build. (lib/integrations/aeries/client.ts already discards response bodies
+ * for the same reason.)
+ */
+export interface SisTestResult {
+  status?: number;
+  area?: string;
+  message?: string;
+}
+
 export type SisConnectionStatus =
   | 'pending_dpa'
   | 'awaiting_credentials'
@@ -230,7 +257,7 @@ export async function storeCredential(
   if (loadError) {
     throw new Error(`Failed to load SIS connection: ${loadError.message}`);
   }
-  if (!existing) throw new Error('SIS connection not found');
+  if (!existing) throw new Error(SIS_CONNECTION_NOT_FOUND);
   if (!existing.dpa_cleared_at) {
     throw new Error(
       'This district has no recorded DPA — credentials cannot be stored until one is on file'
@@ -309,7 +336,7 @@ export async function recordTestResult(params: {
   connectionId: string;
   actorId: string;
   ok: boolean;
-  result: unknown;
+  result: SisTestResult;
 }): Promise<void> {
   const supabase = createServiceClient();
   const { error } = await supabase
@@ -345,7 +372,13 @@ export async function disconnect(params: {
   actorId: string;
 }): Promise<void> {
   const supabase = createServiceClient();
-  const { error } = await supabase
+  // `.select().maybeSingle()` so a bogus id is a genuine failure. An UPDATE
+  // matching no row returns no error, so without this a disconnect against a
+  // connection that does not exist would report success AND write an
+  // `sis_connection_disconnected` audit record for it — a false entry in the
+  // one log someone reads during an incident. The other mutations check
+  // existence up front; this was the only one that did not.
+  const { data, error } = await supabase
     .from('district_sis_connections')
     .update({
       aeries_certificate_encrypted: null,
@@ -356,9 +389,12 @@ export async function disconnect(params: {
       last_test_result: null,
       status: 'disabled',
     })
-    .eq('id', params.connectionId);
+    .eq('id', params.connectionId)
+    .select('id')
+    .maybeSingle();
 
   if (error) throw new Error(`Failed to disconnect: ${error.message}`);
+  if (!data) throw new Error(SIS_CONNECTION_NOT_FOUND);
 
   await logServerAuditEvent({
     user_id: params.actorId,
@@ -393,7 +429,7 @@ export async function setDpaCleared(params: {
   if (loadError) {
     throw new Error(`Failed to load SIS connection: ${loadError.message}`);
   }
-  if (!existing) throw new Error('SIS connection not found');
+  if (!existing) throw new Error(SIS_CONNECTION_NOT_FOUND);
 
   // Recording a DPA lifts the entry state and nothing else. A DPA renewal on a
   // live connection must not knock it back to `awaiting_credentials` — the

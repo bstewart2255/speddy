@@ -215,12 +215,12 @@ async function main(): Promise<void> {
     const decrypted = await getDecryptedCredential(shell.id);
     check(
       decrypted?.sisType === 'aeries' && decrypted.certificate === AERIES_CERT,
-      'certificate decrypts to the exact multi-line original',
+      'certificate decrypts to the exact original',
       decrypted?.sisType === 'aeries' ? `${decrypted.certificate.length} chars` : 'MISMATCH'
     );
 
     console.log('\nrecord a test, then rotate:');
-    await recordTestResult({ connectionId: shell.id, actorId, ok: true, result: { http: 200 } });
+    await recordTestResult({ connectionId: shell.id, actorId, ok: true, result: { status: 200, area: 'students', message: 'ok' } });
     const tested = await readRaw(shell.id);
     check(tested?.status === 'connected', 'a passing test marks it connected', String(tested?.status));
     check(!!tested?.last_tested_at, 'last_tested_at persisted', String(tested?.last_tested_at));
