@@ -181,6 +181,18 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
         })
         .eq('id', newUserId);
 
+      if (updateError && adminType === 'district_tech') {
+        // Fatal for this role only. Both things this update carries are
+        // load-bearing for district_tech and for nothing else here:
+        // `district_id` is what makes the account visible to its district admin
+        // (profiles_select's district branch, SPE-394), and
+        // `must_change_password` is the forced rotation. A district_tech that
+        // silently skipped this would exist, authorize correctly via
+        // admin_permissions, and still be invisible with an un-rotated temp
+        // password — the worst of both. Throwing rolls the auth user back.
+        throw new Error(`Profile scoping update failed: ${updateError.message}`);
+      }
+
       if (updateError) {
         log.warn('Failed to update profile with NCES IDs', { error: updateError });
         // Non-fatal - profile was still created
