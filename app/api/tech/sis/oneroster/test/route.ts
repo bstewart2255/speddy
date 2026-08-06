@@ -46,7 +46,16 @@ export const POST = withRoute(
       );
     }
 
-    const connections = await listConnections(caller.districtId);
+    // Wrapped for the same reason the write route wraps it: withRoute's catch
+    // echoes error.message to the client when NODE_ENV=development, and a
+    // Supabase error names tables and constraints.
+    let connections;
+    try {
+      connections = await listConnections(caller.districtId);
+    } catch (err) {
+      log.error('Failed to load SIS connections', err, { districtId: caller.districtId });
+      return NextResponse.json({ error: 'Could not load your connection.' }, { status: 500 });
+    }
     const connection = connections.find((c) => c.sis_type === 'oneroster');
     if (!connection) {
       return NextResponse.json({ error: 'No OneRoster connection to test.' }, { status: 404 });

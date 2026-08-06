@@ -77,6 +77,10 @@ export default function OneRosterConnectionCard({
     baseUrl.trim() && tokenUrl.trim() && clientId.trim() && clientSecret.trim();
 
   const save = async () => {
+    // setSaving(true) does not disable the button until the next render, so a
+    // double click inside one tick starts two writes. Each test run reaches the
+    // district's own SIS and writes an audit row.
+    if (saving) return;
     setSaving(true);
     setError(null);
     setReport(null);
@@ -102,6 +106,7 @@ export default function OneRosterConnectionCard({
   };
 
   const test = async () => {
+    if (testing) return;
     setTesting(true);
     setError(null);
     try {

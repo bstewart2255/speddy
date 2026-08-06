@@ -69,13 +69,28 @@ export function normalizeOneRosterBaseUrl(input: string): string {
  * endpoint differently don't produce two different stored rows.
  */
 export function normalizeOneRosterTokenUrl(input: string): string {
-  return normalizeSisUrl(input, (url) => `${url.origin}${url.pathname.replace(/\/+$/, '')}`);
+  return normalizeSisUrl(
+    input,
+    (url) => `${url.origin}${url.pathname.replace(/\/+$/, '')}`,
+    'OneRoster token address',
+  );
 }
 
-/** Shared parse/guard/https path for both URLs, so neither can skip a check. */
-function normalizeSisUrl(input: string, shape: (url: URL) => string): string {
+/**
+ * Shared parse/guard/https path for both URLs, so neither can skip a check.
+ *
+ * `what` names the FIELD, not the product. This flow has two URLs and the
+ * message goes straight to the district: telling someone whose token address is
+ * blank to "enter your OneRoster address" sends them to correct the field that
+ * is already right.
+ */
+function normalizeSisUrl(
+  input: string,
+  shape: (url: URL) => string,
+  what = 'OneRoster address',
+): string {
   const trimmed = input.trim();
-  if (!trimmed) throw new Error('Enter your OneRoster address.');
+  if (!trimmed) throw new Error(`Enter your ${what}.`);
 
   const withScheme = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
 
@@ -89,9 +104,7 @@ function normalizeSisUrl(input: string, shape: (url: URL) => string): string {
   }
 
   if (url.protocol !== 'https:') {
-    throw new Error(
-      'The OneRoster address must start with https:// so credentials stay encrypted.',
-    );
+    throw new Error(`The ${what} must start with https:// so credentials stay encrypted.`);
   }
 
   assertPublicSisHostSyntax(url.hostname, ONEROSTER_URL_LABELS);
@@ -183,9 +196,22 @@ async function step(
   key: OneRosterStepResult['key'],
   label: string,
   run: () => Promise<number>,
+  /** What an empty result means, when empty is not a success. */
+  emptyMeans?: string,
 ): Promise<OneRosterStepResult> {
   try {
     const count = await run();
+    if (emptyMeans && count === 0) {
+      // Raised by CodeRabbit, and it is right: a 200 with `{"orgs": []}` was
+      // reporting "Connected. OneRoster is ready." A district's OneRoster
+      // always exposes at least the district org, so nothing coming back does
+      // not mean "no data yet" — it means nothing is shared with us, and the
+      // district would discover that only when no data ever arrived.
+      //
+      // 'denied' rather than 'error': the connection genuinely works. What is
+      // missing is a sharing setting, which is a different thing to go fix.
+      return { key, label, status: 'denied', message: emptyMeans, count };
+    }
     return { key, label, status: 'ok', message: 'Working.', count };
   } catch (err) {
     return { key, label, ...explain(err, label) };
@@ -246,16 +272,26 @@ export async function runOneRosterConnectionTest(params: {
 
   // One record is enough to prove the collection is readable. Walking it would
   // pull the district's whole roster to learn nothing more.
-  const orgs = await step('orgs', 'Districts and schools', async () => {
-    const rows = await client.getOrgs({ limit: 1 });
-    return rows.length;
-  });
+  const orgs = await step(
+    'orgs',
+    'Districts and schools',
+    async () => {
+      const rows = await client.getOrgs({ limit: 1 });
+      return rows.length;
+    },
+    'Connected, but nothing is shared with Speddy yet. In Aeries, check that OneRoster is enabled under District-level School Options → OneRoster Settings.',
+  );
   steps.push(orgs);
 
-  const schools = await step('schools', 'Schools', async () => {
-    const rows = await client.getSchools({ limit: 1 });
-    return rows.length;
-  });
+  const schools = await step(
+    'schools',
+    'Schools',
+    async () => {
+      const rows = await client.getSchools({ limit: 1 });
+      return rows.length;
+    },
+    'Connected, but no schools came back. Check that your schools are included in the OneRoster settings in Aeries.',
+  );
   steps.push(schools);
 
   const failed = steps.filter((s) => s.status !== 'ok');

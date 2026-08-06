@@ -168,7 +168,7 @@ export default function TechPortalPage() {
 
           {oneroster &&
             (!oneroster.dpa_cleared_at ? (
-              dpaGate('Aeries security')
+              dpaGate('OneRoster')
             ) : (
               <>
                 {/*

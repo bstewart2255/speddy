@@ -23,7 +23,7 @@ jest.mock('@/lib/integrations/oneroster', () => {
     OneRosterClient: class {
       fetchToken = (...a: unknown[]) => mockFetchToken(...a);
       getOrgs = (...a: unknown[]) => mockGetOrgs(...a);
-      getSchools = jest.fn().mockResolvedValue([]);
+      getSchools = jest.fn().mockResolvedValue([{ sourcedId: 'school-1' }]);
     },
   };
 });

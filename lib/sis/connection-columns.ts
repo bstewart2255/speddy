@@ -21,3 +21,23 @@
  */
 export const BROWSER_CONNECTION_COLUMNS =
   'id, sis_type, base_url, token_url, credential_hint, status, dpa_cleared_at, last_tested_at';
+
+/**
+ * The row shape those columns produce.
+ *
+ * Kept in this file rather than in a component so a column change and the field
+ * change it implies happen in one place — the two drifting apart is how the page
+ * ends up reading a field the grant never returned.
+ *
+ * `token_url` is null for Aeries and carries the OAuth2 endpoint for OneRoster.
+ */
+export interface ConnectionSummary {
+  id: string;
+  sis_type: string;
+  base_url: string | null;
+  token_url: string | null;
+  credential_hint: string | null;
+  status: string;
+  dpa_cleared_at: string | null;
+  last_tested_at: string | null;
+}

@@ -36,6 +36,18 @@ import type {
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 
+/**
+ * `application/x-www-form-urlencoded` per RFC 6749 Appendix B.
+ *
+ * `encodeURIComponent` alone is not quite it: form encoding writes a space as
+ * `+` rather than `%20`. The difference only shows up in a credential that
+ * contains a space, which is pathological — but the whole point of encoding
+ * here is to be correct for the credentials we cannot predict.
+ */
+function formEncode(value: string): string {
+  return encodeURIComponent(value).replace(/%20/g, '+');
+}
+
 /** Which half of the exchange failed. The district-facing advice differs entirely. */
 export type OneRosterPhase = 'token' | 'request';
 
@@ -82,8 +94,15 @@ export class OneRosterClient {
   async fetchToken(timeoutMs = DEFAULT_TIMEOUT_MS): Promise<string> {
     if (this.token) return this.token;
 
+    // Each component is form-urlencoded BEFORE being joined and base64'd, per
+    // RFC 6749 §2.3.1. For the ordinary alphanumeric credential this is a
+    // no-op, so it costs nothing in the common case — but Basic auth splits on
+    // the FIRST colon, so a consumer ID containing one produces a credential
+    // the token endpoint cannot parse back. The route deliberately accepts any
+    // credential shape (vendors differ and there is nothing safe to validate
+    // against), which is exactly why this cannot assume a safe character set.
     const basic = Buffer.from(
-      `${this.config.clientId}:${this.config.clientSecret}`,
+      `${formEncode(this.config.clientId)}:${formEncode(this.config.clientSecret)}`,
     ).toString('base64');
 
     const body = new URLSearchParams({
@@ -166,14 +185,42 @@ export class OneRosterClient {
 
   /** `GET /orgs` — districts and schools. The first call that needs real access. */
   async getOrgs(options?: OneRosterRequestOptions): Promise<RawOneRosterOrg[]> {
-    const body = await this.get<{ orgs?: RawOneRosterOrg[] }>('orgs', options);
-    return body?.orgs ?? [];
+    return this.collection<RawOneRosterOrg>('orgs', options);
   }
 
   /** `GET /schools` — orgs already filtered to schools. */
   async getSchools(options?: OneRosterRequestOptions): Promise<RawOneRosterSchool[]> {
-    const body = await this.get<{ orgs?: RawOneRosterSchool[] }>('schools', options);
-    return body?.orgs ?? [];
+    return this.collection<RawOneRosterSchool>('schools', options);
+  }
+
+  /**
+   * Read a OneRoster collection, refusing anything that isn't one.
+   *
+   * `body?.orgs ?? []` was the obvious shape and it was wrong in a way that
+   * matters more than a crash: a 200 carrying `{"error": "..."}` — a proxy
+   * error page, a maintenance response, an HTML-to-JSON gateway — produced an
+   * empty array, which the diagnostics reported as "Working." with a count of
+   * zero. The district was told "Connected. OneRoster is ready." about a
+   * response we could not use at all, which is the one failure this whole
+   * feature exists to prevent.
+   *
+   * An empty roster is legitimate and stays legitimate; a MISSING collection is
+   * not. Only the latter is refused.
+   */
+  private async collection<T>(
+    path: string,
+    options?: OneRosterRequestOptions,
+  ): Promise<T[]> {
+    const body = await this.get<{ orgs?: T[] }>(path, options);
+    if (!body || !Array.isArray(body.orgs)) {
+      throw new OneRosterApiError(
+        `${path} answered, but not with a OneRoster collection.`,
+        502,
+        path,
+        'request',
+      );
+    }
+    return body.orgs;
   }
 
   // -- Internal ---------------------------------------------------------------
@@ -245,7 +292,13 @@ export class OneRosterClient {
 
   private buildUrl(path: string, options: OneRosterRequestOptions): string {
     const cleanPath = path.replace(/^\/+/, '');
-    const url = new URL(`${this.config.baseUrl}${ONEROSTER_API_PATH}/${cleanPath}`);
+    // A stored base_url can carry a trailing slash — normalizeOneRosterBaseUrl
+    // strips one at write time, but the test path re-validates a stored row
+    // without re-normalizing it. `...//ims/oneroster/v1p1/orgs` 404s on most
+    // servers, and the district then reads "that address has no OneRoster data"
+    // about an address that is perfectly correct.
+    const base = this.config.baseUrl.replace(/\/+$/, '');
+    const url = new URL(`${base}${ONEROSTER_API_PATH}/${cleanPath}`);
 
     if (options.limit != null) url.searchParams.set('limit', String(options.limit));
     if (options.offset != null) url.searchParams.set('offset', String(options.offset));

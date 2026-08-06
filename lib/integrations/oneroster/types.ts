@@ -35,7 +35,13 @@ export interface RawOneRosterSchool extends RawOneRosterOrg {
  * returned to the browser. It lives for the duration of one connection test.
  */
 export interface OneRosterTokenResponse {
-  access_token: string;
+  /**
+   * Optional because the client casts an UNVALIDATED JSON body to this type.
+   * Declaring it required would state a guarantee the parse does not make, and
+   * would let a future caller skip the runtime check that catches a 200 with no
+   * token in it.
+   */
+  access_token?: string;
   token_type?: string;
   expires_in?: number;
   scope?: string;

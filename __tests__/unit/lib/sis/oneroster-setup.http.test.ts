@@ -45,7 +45,7 @@ interface Seen {
 const everything = (r: Seen) =>
   [r.url, r.body, ...Object.entries(r.headers).map(([k, v]) => `${k}: ${v}`)].join('\n');
 
-type Handler = (req: Seen) => { status: number; body?: unknown };
+type Handler = (req: Seen) => { status: number; body?: unknown; headers?: Record<string, string> };
 
 let server: Server;
 let origin: string;
@@ -67,8 +67,8 @@ beforeAll(async () => {
         body,
       };
       seen.push(entry);
-      const { status, body: out } = handler(entry);
-      res.writeHead(status, { 'Content-Type': 'application/json' });
+      const { status, body: out, headers } = handler(entry);
+      res.writeHead(status, { 'Content-Type': 'application/json', ...(headers ?? {}) });
       res.end(out === undefined ? '' : JSON.stringify(out));
     });
   });
@@ -146,6 +146,41 @@ describe('the OneRoster exchange over real HTTP', () => {
     }
   });
 
+  it('form-encodes each credential before building the Basic header (RFC 6749 §2.3.1)', async () => {
+    // Raised by Codex. Basic auth splits on the FIRST colon, so a consumer ID
+    // containing one produces a credential the token endpoint cannot parse
+    // back — and this route deliberately accepts any credential shape, because
+    // vendors differ and there is nothing safe to validate against.
+    handler = allGood;
+    await runOneRosterConnectionTest({
+      baseUrl: `${origin}/admin`,
+      tokenUrl: `${origin}/admin/token/`,
+      clientId: 'id:with:colons',
+      clientSecret: 'se%cret with spaces',
+    });
+
+    const decoded = Buffer.from(
+      seen[0].auth!.replace(/^Basic /, ''),
+      'base64',
+    ).toString('utf8');
+
+    // Exactly one colon survives — the separator. The ones inside the id are
+    // encoded, so the server can split and decode back to the real values.
+    expect(decoded.split(':')).toHaveLength(2);
+    const [user, pass] = decoded.split(':');
+    expect(decodeURIComponent(user)).toBe('id:with:colons');
+    expect(decodeURIComponent(pass.replace(/\+/g, '%20'))).toBe('se%cret with spaces');
+  });
+
+  it('leaves an ordinary alphanumeric credential completely untouched', async () => {
+    // The encoding must be a no-op for the common case, or it would break every
+    // district it was meant to protect.
+    handler = allGood;
+    await run();
+    const decoded = Buffer.from(seen[0].auth!.replace(/^Basic /, ''), 'base64').toString('utf8');
+    expect(decoded).toBe(`${CLIENT_ID}:${CLIENT_SECRET}`);
+  });
+
   it('asks for client_credentials and only the roster-core scope', async () => {
     handler = allGood;
     await run();
@@ -203,6 +238,42 @@ describe('the OneRoster exchange over real HTTP', () => {
     expect(stepOf(report, 'orgs').message).not.toMatch(/not the certificate/i);
   });
 
+  it('a 200 that is NOT a collection is refused, not reported as "Working"', async () => {
+    // Raised by Codex, and confirmed against the real code before fixing: with
+    // `body?.orgs ?? []`, a 200 carrying {"error": "..."} — a proxy error page,
+    // a maintenance response, an HTML-to-JSON gateway — became an empty array,
+    // and the district was told "Connected. OneRoster is ready." about a
+    // response we could not use at all.
+    handler = (req) =>
+      req.url.includes('/token')
+        ? { status: 200, body: { access_token: TOKEN } }
+        : { status: 200, body: { error: 'upstream unavailable' } };
+
+    const report = await run();
+    expect(report.ok).toBe(false);
+    expect(report.summary).not.toMatch(/ready/i);
+    expect(stepOf(report, 'orgs').status).not.toBe('ok');
+  });
+
+  it('an EMPTY collection reports "nothing is shared", not "ready"', async () => {
+    // Raised by CodeRabbit, and it was right where I was wrong: I first wrote
+    // this asserting the opposite. A district's OneRoster always exposes at
+    // least the district org, so zero rows does not mean "no data yet" — it
+    // means nothing is shared with us, and telling them "Connected. OneRoster
+    // is ready." is precisely the confident-wrong-advice this feature exists to
+    // prevent. 'denied', not 'error': the connection itself genuinely works.
+    handler = (req) =>
+      req.url.includes('/token')
+        ? { status: 200, body: { access_token: TOKEN } }
+        : { status: 200, body: { orgs: [] } };
+
+    const report = await run();
+    expect(report.ok).toBe(false);
+    expect(report.summary).not.toMatch(/ready/i);
+    expect(stepOf(report, 'orgs').status).toBe('denied');
+    expect(stepOf(report, 'orgs').message).toMatch(/nothing is shared/i);
+  });
+
   it('a 200 token response with no access_token is not reported as unreachable', async () => {
     // A real OneRoster failure mode. Reporting it as a network problem sends
     // the district to look at a firewall that is working perfectly.
@@ -218,45 +289,34 @@ describe('the OneRoster exchange over real HTTP', () => {
     // The escape `redirect: 'error'` exists to close: a public host answering
     // 302 toward an internal address. Following it would carry the district's
     // consumer secret to a destination the guard never validated.
+    //
+    // Driven through the shared `handler` rather than by swapping the server's
+    // request listener. The first version of this test called
+    // `server.removeAllListeners('request')` and never restored it, so every
+    // test written after it would have silently received a 302 — a landmine for
+    // whoever appended the next case.
     let redirected = false;
     handler = (req) => {
       if (req.url.includes('/elsewhere')) {
         redirected = true;
         return { status: 200, body: { access_token: TOKEN } };
       }
-      return { status: 302, body: {} };
+      return { status: 302, headers: { Location: `${origin}/elsewhere` } };
     };
-    // 302 needs a Location header; add one via a bespoke handler.
-    server.removeAllListeners('request');
-    server.on('request', (req, res) => {
-      let body = '';
-      req.on('data', (c) => (body += c));
-      req.on('end', () => {
-        seen.push({
-          url: req.url ?? '',
-          method: req.method ?? '',
-          auth: req.headers.authorization,
-          headers: Object.fromEntries(
-            Object.entries(req.headers).map(([k, v]) => [k, Array.isArray(v) ? v.join(',') : String(v ?? '')]),
-          ),
-          body,
-        });
-        if ((req.url ?? '').includes('/elsewhere')) {
-          redirected = true;
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ access_token: TOKEN }));
-          return;
-        }
-        res.writeHead(302, { Location: `${origin}/elsewhere` });
-        res.end();
-      });
-    });
 
     const report = await run();
     expect(report.ok).toBe(false);
     expect(redirected).toBe(false);
     expect(seen).toHaveLength(1);
     expect(stepOf(report, 'token').status).not.toBe('ok');
+  });
+
+  it('leaves the shared server usable for the tests that follow it', async () => {
+    // Guards the landmine above: if the redirect case ever swaps the listener
+    // again, this fails immediately instead of in whatever test comes next.
+    handler = allGood;
+    const report = await run();
+    expect(report.ok).toBe(true);
   });
 
   it('surfaces a dead server as unreachable, not as a credential problem', async () => {
