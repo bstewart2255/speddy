@@ -105,10 +105,47 @@ describe('POST /api/auth/change-password', () => {
     expect(mockLogInfo).toHaveBeenCalled();
   });
 
-  it('explains a weak password too', async () => {
-    updateUserResult = { error: { code: 'weak_password', message: 'Password is too weak' } };
+  it('explains a badly-FORMED password', async () => {
+    updateUserResult = {
+      error: { code: 'weak_password', message: 'too weak', reasons: ['length'] },
+    };
     const res = await POST(req());
     expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/not strong enough/i);
+  });
+
+  it('tells a BREACHED password apart from a badly-formed one', async () => {
+    // The two need opposite advice, and Supabase distinguishes them in
+    // `reasons`. validatePassword() has already required length, case, a digit
+    // and a symbol before we get here — so "add numbers and symbols" is advice
+    // this person has already followed, and it hides the real problem: their
+    // password is public, and they will try small variations of it.
+    updateUserResult = {
+      error: { code: 'weak_password', message: 'too weak', reasons: ['pwned'] },
+    };
+
+    const res = await POST(req());
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.error).toMatch(/known data breach/i);
+    expect(body.error).toMatch(/not a variation/i);
+    // The formatting advice must NOT appear — it is the wrong instruction here.
+    expect(body.error).not.toMatch(/numbers and symbols/i);
+  });
+
+  it('treats pwned as breached even when combined with other reasons', async () => {
+    updateUserResult = {
+      error: { code: 'weak_password', message: 'too weak', reasons: ['characters', 'pwned'] },
+    };
+    expect((await (await POST(req())).json()).error).toMatch(/known data breach/i);
+  });
+
+  it('falls back to the formatting advice when reasons are absent', async () => {
+    // Older auth-js, or a shape we did not anticipate. Better to give the
+    // generic strength advice than to accuse someone of a breach.
+    updateUserResult = { error: { code: 'weak_password', message: 'too weak' } };
+    const res = await POST(req());
     expect((await res.json()).error).toMatch(/not strong enough/i);
   });
 

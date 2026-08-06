@@ -8,21 +8,42 @@ import { withRoute } from '@/lib/api/with-route';
 const bodySchema = z.object({ password: z.string().min(1) }).passthrough();
 
 /**
- * Supabase auth failures the person at the keyboard can actually fix, in our
- * own words.
+ * Turn a Supabase auth failure into something the person at the keyboard can
+ * act on — or `undefined`, meaning "not one we have wording for".
  *
- * Deliberately a small allow-list rather than passing Supabase's message
- * through. Upstream copy is written for developers ("New password should be
- * different from the old password"), can change between releases without us
- * noticing, and echoing arbitrary auth-server text to a browser is a habit
- * worth not forming. Anything absent from this map stays generic.
+ * Deliberately an allow-list rather than passing Supabase's message through.
+ * Upstream copy is written for developers ("New password should be different
+ * from the old password"), can change between releases without us noticing, and
+ * echoing arbitrary auth-server text to a browser is a habit worth not forming.
  */
-const USER_FIXABLE_AUTH_ERRORS: Record<string, string> = {
-  same_password:
-    'Your new password must be different from the temporary one you were given. Please choose a different password.',
-  weak_password:
-    'That password is not strong enough. Try making it longer, or adding numbers and symbols.',
-};
+function friendlyAuthError(error: { code?: string; reasons?: string[] }): string | undefined {
+  if (error.code === 'same_password') {
+    return 'Your new password must be different from the temporary one you were given. Please choose a different password.';
+  }
+
+  if (error.code === 'weak_password') {
+    // `weak_password` covers two situations that need OPPOSITE advice, and
+    // Supabase distinguishes them in `reasons` (`length` / `characters` /
+    // `pwned`).
+    //
+    // The distinction is not academic here: validatePassword() has ALREADY
+    // required 8+ characters, upper, lower, a number and a symbol before we
+    // reach this line. So a weak_password coming back from Supabase has passed
+    // every formatting rule we have, which makes `pwned` — the password appears
+    // in a known breach — by far the likeliest reason.
+    //
+    // Telling that person to "add numbers and symbols" is advice they have
+    // already followed, and worse, it hides the actual problem: they will try
+    // small variations of a password that is already public. Raised by Codex on
+    // the PR that introduced this mapping.
+    if (error.reasons?.includes('pwned')) {
+      return 'That password has appeared in a known data breach, so it is not safe to use. Please choose a different password — not a variation of this one.';
+    }
+    return 'That password is not strong enough. Try making it longer, or adding numbers and symbols.';
+  }
+
+  return undefined;
+}
 
 /**
  * API endpoint for users to change their password after admin reset.
@@ -72,7 +93,7 @@ export const POST = withRoute({ body: bodySchema }, async ({ userId, body }) => 
       // screen every admin-created account sees. And a person choosing a
       // password we decline is not a server fault, so each attempt was filed in
       // error monitoring as though Speddy had broken.
-      const friendly = USER_FIXABLE_AUTH_ERRORS[updateError.code ?? ''];
+      const friendly = friendlyAuthError(updateError);
       if (friendly) {
         log.info('Password change refused for a user-fixable reason', {
           userId,
