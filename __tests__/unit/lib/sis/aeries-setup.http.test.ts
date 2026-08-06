@@ -20,7 +20,7 @@
  *
  * The guard is stubbed because these servers are on 127.0.0.1 over plain http,
  * both of which it correctly refuses. That is the point of stubbing the whole
- * of `assertSafeAeriesUrl` rather than half of it: this suite is about
+ * of `assertSafeSisUrl` rather than half of it: this suite is about
  * transport, and URL policy is proven elsewhere — ssrf-guard.test.ts for the
  * classification, aeries-setup.guard-wiring.test.ts for the fact that
  * runAeriesConnectionTest actually calls the guard and refuses an http:// base.
@@ -30,7 +30,7 @@ import type { AddressInfo } from 'net';
 
 jest.mock('@/lib/sis/ssrf-guard', () => ({
   ...jest.requireActual('@/lib/sis/ssrf-guard'),
-  assertSafeAeriesUrl: jest.fn().mockResolvedValue(undefined),
+  assertSafeSisUrl: jest.fn().mockResolvedValue(undefined),
 }));
 
 import { runAeriesConnectionTest } from '@/lib/sis/aeries-setup';

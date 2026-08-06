@@ -22,10 +22,12 @@ import AeriesSetupGuide from '../../../components/tech/aeries-setup-guide';
 import AeriesConnectionCard, {
   type ConnectionSummary,
 } from '../../../components/tech/aeries-connection-card';
+import OneRosterSetupGuide from '../../../components/tech/oneroster-setup-guide';
+import OneRosterConnectionCard from '../../../components/tech/oneroster-connection-card';
 
 /** Mirrors the GRANT in 20260806_spe395_district_sis_connections.sql. */
 const CONNECTION_COLUMNS =
-  'id, sis_type, base_url, credential_hint, status, dpa_cleared_at, last_tested_at';
+  'id, sis_type, base_url, token_url, credential_hint, status, dpa_cleared_at, last_tested_at';
 
 interface TechProfile {
   full_name: string | null;
@@ -86,7 +88,32 @@ export default function TechPortalPage() {
   }
 
   const aeries = connections.find((c) => c.sis_type === 'aeries');
+  const oneroster = connections.find((c) => c.sis_type === 'oneroster');
   const districtName = profile?.school_district || 'your district';
+
+  /**
+   * The DPA gate, shared by both connectors. Nothing the district can do about
+   * it from here, so the copy says who moves it forward instead of offering a
+   * dead control.
+   */
+  const dpaGate = (product: string) => (
+    <Card>
+      <CardHeader>
+        <CardTitle>Waiting on your data privacy agreement</CardTitle>
+      </CardHeader>
+      <CardBody>
+        <p className="text-sm text-gray-600">
+          Before {districtName} can share student data with Speddy, your signed data privacy
+          agreement needs to be on file. Your Speddy contact is handling that — they&apos;ll let
+          you know as soon as this page opens up.
+        </p>
+        <p className="mt-4 text-sm text-gray-600">
+          Nothing is needed from you yet. If you want to get a head start, you can ask whoever
+          manages your {product} settings to be ready.
+        </p>
+      </CardBody>
+    </Card>
+  );
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -108,7 +135,7 @@ export default function TechPortalPage() {
         )}
 
         <div className="space-y-6">
-          {!aeries ? (
+          {!aeries && !oneroster && (
             <Card>
               <CardHeader>
                 <CardTitle>No connection yet</CardTitle>
@@ -125,31 +152,50 @@ export default function TechPortalPage() {
                 </p>
               </CardBody>
             </Card>
-          ) : !aeries.dpa_cleared_at ? (
-            // The DPA gate. Nothing they can do about it from here, so the copy
-            // says who moves it forward instead of offering a dead control.
-            <Card>
-              <CardHeader>
-                <CardTitle>Waiting on your data privacy agreement</CardTitle>
-              </CardHeader>
-              <CardBody>
-                <p className="text-sm text-gray-600">
-                  Before {districtName} can share student data with Speddy, your signed data
-                  privacy agreement needs to be on file. Your Speddy contact is handling that —
-                  they&apos;ll let you know as soon as this page opens up.
-                </p>
-                <p className="mt-4 text-sm text-gray-600">
-                  Nothing is needed from you yet. If you want to get a head start, you can ask
-                  whoever manages your Aeries security settings to be ready.
-                </p>
-              </CardBody>
-            </Card>
-          ) : (
-            <>
-              <AeriesConnectionCard connection={aeries} onChanged={load} />
-              <AeriesSetupGuide />
-            </>
           )}
+
+          {aeries &&
+            (!aeries.dpa_cleared_at ? (
+              dpaGate('Aeries security')
+            ) : (
+              <>
+                <AeriesConnectionCard connection={aeries} onChanged={load} />
+                <AeriesSetupGuide />
+              </>
+            ))}
+
+          {oneroster &&
+            (!oneroster.dpa_cleared_at ? (
+              dpaGate('Aeries security')
+            ) : (
+              <>
+                {/*
+                  The limitation, stated where the work happens rather than
+                  buried in a FAQ. A district can complete this whole setup
+                  correctly and still not see the thing Speddy is for, and
+                  finding that out afterwards is how trust gets spent.
+                */}
+                <div className="rounded-md border border-blue-200 bg-blue-50 p-4">
+                  <p className="text-sm font-medium text-blue-900">
+                    What OneRoster can and can&apos;t give us
+                  </p>
+                  <p className="mt-1 text-sm text-blue-800">
+                    OneRoster shares your students, staff, schools and class rosters. It does not
+                    carry special education information — there is no IEP flag, no program
+                    membership and no eligibility date anywhere in the standard. That isn&apos;t a
+                    setting we can ask you to turn on; it simply isn&apos;t part of OneRoster.
+                  </p>
+                  <p className="mt-2 text-sm text-blue-800">
+                    So your team will still identify their own caseloads in Speddy. This
+                    connection saves them from typing student and teacher names, and keeps those
+                    lists current. If you want Speddy to see special education records directly,
+                    that needs the Aeries connection instead — your Speddy contact can set it up.
+                  </p>
+                </div>
+                <OneRosterConnectionCard connection={oneroster} onChanged={load} />
+                <OneRosterSetupGuide />
+              </>
+            ))}
 
           <Card>
             <CardHeader>
@@ -163,14 +209,14 @@ export default function TechPortalPage() {
                 </li>
                 <li>
                   <span className="font-medium text-gray-900">
-                    Your certificate is encrypted and never shown again.
+                    Whatever you paste in is encrypted and never shown again.
                   </span>{' '}
                   Not to us in a support screen, and not back to you here — only its last four
                   characters.
                 </li>
                 <li>
                   <span className="font-medium text-gray-900">
-                    We check each area separately.
+                    We check each piece separately.
                   </span>{' '}
                   If something isn&apos;t granted, we tell you exactly which box to tick in
                   Aeries rather than just saying it failed.

@@ -1,5 +1,8 @@
 /**
  * Keep district-supplied SIS addresses pointed at the public internet (SPE-396).
+
+ * Shared by every SIS connector (Aeries, OneRoster). Only the wording of a
+ * refusal differs per product — see `SisUrlLabels`.
  *
  * WHY THIS EXISTS. A district tech admin types the address their SIS lives at,
  * and our server then makes authenticated requests to it and reports, per
@@ -10,9 +13,9 @@
  * and "unreachable" for you.
  *
  * Two layers, because either alone is bypassable:
- *   - syntactic (`assertPublicAeriesHostSyntax`): reject IP literals and
+ *   - syntactic (`assertPublicSisHostSyntax`): reject IP literals and
  *     obviously-internal names before anything is stored;
- *   - resolved (`assertPublicAeriesHost`): resolve the name and reject if it
+ *   - resolved (`assertPublicSisHost`): resolve the name and reject if it
  *     lands on a private, loopback, link-local, or carrier-NAT address —
  *     because `sis.example.com` is free to be an A record for 10.0.0.5.
  *
@@ -26,8 +29,34 @@
  */
 import { lookup } from 'dns/promises';
 
+/**
+ * What to call the thing in a refusal message, and an address to show as an
+ * example.
+ *
+ * The guard is shared by every SIS we connect to, and the wording is the only
+ * part that differs. Telling a OneRoster district to "enter your Aeries web
+ * address" is its own small bug, and the alternative — a second copy of this
+ * file per SIS — is much worse: it is the security control that would drift.
+ */
+export interface SisUrlLabels {
+  /** What the district calls it: "Aeries", "OneRoster". */
+  product: string;
+  /** A concrete address of the right shape for that product. */
+  example: string;
+}
+
+export const AERIES_URL_LABELS: SisUrlLabels = {
+  product: 'Aeries',
+  example: 'https://yourdistrict.aeries.net',
+};
+
+export const ONEROSTER_URL_LABELS: SisUrlLabels = {
+  product: 'OneRoster',
+  example: 'https://yourdistrictapi.aeries.net/admin',
+};
+
 /** Reject any literal IP address, and names that cannot be public. */
-export function assertPublicAeriesHostSyntax(hostname: string): void {
+export function assertPublicSisHostSyntax(hostname: string, labels: SisUrlLabels): void {
   // Strip ALL trailing dots before ANY comparison. `localhost.` is the
   // fully-qualified form of `localhost`, resolves identically, and would
   // otherwise sail past every check below.
@@ -45,12 +74,14 @@ export function assertPublicAeriesHostSyntax(hostname: string): void {
   // before it needs picking apart.
   if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host) || host.includes(':')) {
     throw new Error(
-      'Enter your Aeries web address as a name (for example https://yourdistrict.aeries.net), not an IP address.',
+      `Enter your ${labels.product} web address as a name (for example ${labels.example}), not an IP address.`,
     );
   }
 
   if (host === 'localhost' || host.endsWith('.localhost')) {
-    throw new Error('That address points at this server rather than your Aeries instance.');
+    throw new Error(
+      `That address points at this server rather than your ${labels.product} instance.`,
+    );
   }
 
   // Names that only resolve inside a private network. Speddy runs in the cloud
@@ -58,14 +89,14 @@ export function assertPublicAeriesHostSyntax(hostname: string): void {
   // failure later even in the innocent case.
   if (/\.(local|internal|intranet|lan|home|corp|localdomain)$/.test(host)) {
     throw new Error(
-      'That address is only reachable inside your network. Speddy connects over the public internet, so Aeries needs a publicly reachable address.',
+      `That address is only reachable inside your network. Speddy connects over the public internet, so ${labels.product} needs a publicly reachable address.`,
     );
   }
 
   // A single label ("aeries", "sis") is an intranet short name.
   if (!host.includes('.')) {
     throw new Error(
-      'That address looks like an internal shortcut. Use the full public address, for example https://yourdistrict.aeries.net',
+      `That address looks like an internal shortcut. Use the full public address, for example ${labels.example}`,
     );
   }
 }
@@ -103,7 +134,7 @@ export function isPrivateAddress(address: string, family: number): boolean {
   // Enumerating the ways to write "loopback" in IPv6 is not a winnable game.
   //
   // So: the only globally routable IPv6 is 2000::/3. Everything outside it is
-  // special-purpose by IANA assignment and cannot be a district's Aeries host.
+  // special-purpose by IANA assignment and cannot be a district's SIS host.
   // One rule, and every encoding above is refused by construction rather than
   // by having been thought of.
   const v6 = address.toLowerCase().split('%')[0]; // drop any zone id (fe80::1%eth0)
@@ -128,21 +159,21 @@ export function isPrivateAddress(address: string, family: number): boolean {
  * one public and one private A record would otherwise pass and then be dialled
  * at whichever the resolver picked.
  */
-export async function assertPublicAeriesHost(hostname: string): Promise<void> {
-  assertPublicAeriesHostSyntax(hostname);
+export async function assertPublicSisHost(hostname: string, labels: SisUrlLabels): Promise<void> {
+  assertPublicSisHostSyntax(hostname, labels);
 
   let addresses: { address: string; family: number }[];
   try {
     addresses = await lookup(hostname, { all: true });
   } catch {
     throw new Error(
-      `We couldn't find ${hostname}. Check the address — it should look like https://yourdistrict.aeries.net`,
+      `We couldn't find ${hostname}. Check the address — it should look like ${labels.example}`,
     );
   }
 
   if (!addresses.length || addresses.some((a) => isPrivateAddress(a.address, a.family))) {
     throw new Error(
-      'That address resolves to a private network address, so Speddy cannot use it. Aeries needs to be reachable over the public internet.',
+      `That address resolves to a private network address, so Speddy cannot use it. ${labels.product} needs to be reachable over the public internet.`,
     );
   }
 }
@@ -163,19 +194,21 @@ export async function assertPublicAeriesHost(hostname: string): Promise<void> {
  * Callers get one function so the two halves cannot drift apart, and so a test
  * that stubs the guard stubs all of it rather than silently keeping half.
  */
-export async function assertSafeAeriesUrl(baseUrl: string): Promise<void> {
+export async function assertSafeSisUrl(baseUrl: string, labels: SisUrlLabels): Promise<void> {
   let parsed: URL;
   try {
     parsed = new URL(baseUrl);
   } catch {
     throw new Error(
-      'That does not look like a web address. It should look like https://yourdistrict.aeries.net',
+      `That does not look like a web address. It should look like ${labels.example}`,
     );
   }
 
   if (parsed.protocol !== 'https:') {
-    throw new Error('The Aeries address must start with https:// so credentials stay encrypted.');
+    throw new Error(
+      `The ${labels.product} address must start with https:// so credentials stay encrypted.`,
+    );
   }
 
-  await assertPublicAeriesHost(parsed.hostname);
+  await assertPublicSisHost(parsed.hostname, labels);
 }

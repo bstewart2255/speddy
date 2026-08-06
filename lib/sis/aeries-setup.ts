@@ -22,7 +22,7 @@
  * Server-only: reaches an external SIS with a decrypted credential.
  */
 import { AeriesApiError, AeriesClient } from '@/lib/integrations/aeries';
-import { assertPublicAeriesHostSyntax, assertSafeAeriesUrl } from './ssrf-guard';
+import { AERIES_URL_LABELS, assertPublicSisHostSyntax, assertSafeSisUrl } from './ssrf-guard';
 import type { SisTestResult } from './connections';
 
 export const AERIES_API_PATH = '/aeries/api/v5';
@@ -68,9 +68,9 @@ export function normalizeAeriesBaseUrl(input: string): string {
   }
 
   // Refuse anything that could point our server at a private network. This is
-  // the syntactic half; assertPublicAeriesHost() resolves the name too, and is
+  // the syntactic half; assertPublicSisHost() resolves the name too, and is
   // what the store and test paths actually await.
-  assertPublicAeriesHostSyntax(url.hostname);
+  assertPublicSisHostSyntax(url.hostname, AERIES_URL_LABELS);
 
   // Strip whatever path they landed on and append the API path ourselves.
   // /admin, /student, a deep link — none of it is the API root, and guessing
@@ -170,7 +170,7 @@ export async function runAeriesConnectionTest(params: {
   // Re-checked here, not just at write time: the stored row could predate the
   // guard, and a name's addresses can change after it was saved.
   try {
-    await assertSafeAeriesUrl(params.baseUrl);
+    await assertSafeSisUrl(params.baseUrl, AERIES_URL_LABELS);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'That address cannot be used.';
     return {

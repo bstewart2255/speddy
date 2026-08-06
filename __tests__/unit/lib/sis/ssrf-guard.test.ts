@@ -13,9 +13,11 @@
  * at it.
  */
 import {
-  assertPublicAeriesHost,
-  assertPublicAeriesHostSyntax,
+  assertPublicSisHost,
+  assertPublicSisHostSyntax,
   isPrivateAddress,
+  AERIES_URL_LABELS as L,
+  ONEROSTER_URL_LABELS,
 } from '@/lib/sis/ssrf-guard';
 
 const mockLookup = jest.fn();
@@ -108,7 +110,7 @@ describe('isPrivateAddress', () => {
   });
 });
 
-describe('assertPublicAeriesHostSyntax', () => {
+describe('assertPublicSisHostSyntax', () => {
   it.each([
     ['127.0.0.1', 'loopback literal'],
     ['10.0.0.5', 'private literal'],
@@ -116,11 +118,11 @@ describe('assertPublicAeriesHostSyntax', () => {
     ['::1', 'IPv6 literal'],
     ['[::1]', 'bracketed IPv6 literal'],
   ])('refuses the IP literal %s (%s)', (host) => {
-    expect(() => assertPublicAeriesHostSyntax(host)).toThrow(/not an IP address/i);
+    expect(() => assertPublicSisHostSyntax(host, L)).toThrow(/not an IP address/i);
   });
 
   it.each(['localhost', 'sub.localhost', 'localhost.'])('refuses %s', (host) => {
-    expect(() => assertPublicAeriesHostSyntax(host)).toThrow(/this server/i);
+    expect(() => assertPublicSisHostSyntax(host, L)).toThrow(/this server/i);
   });
 
   it.each(['localhost.', 'sis.internal.', 'aeries.local.'])(
@@ -129,38 +131,58 @@ describe('assertPublicAeriesHostSyntax', () => {
       // Found by probing the guard rather than reading it: a trailing dot is
       // the fully-qualified form of the same name and resolves identically,
       // but `endsWith('.internal')` and `=== 'localhost'` both miss it.
-      expect(() => assertPublicAeriesHostSyntax(host)).toThrow();
+      expect(() => assertPublicSisHostSyntax(host, L)).toThrow();
     },
   );
 
   it.each(['sis.internal', 'aeries.local', 'server.corp', 'box.lan'])(
     'refuses the internal-only name %s',
     (host) => {
-      expect(() => assertPublicAeriesHostSyntax(host)).toThrow(/inside your network/i);
+      expect(() => assertPublicSisHostSyntax(host, L)).toThrow(/inside your network/i);
     },
   );
 
   it('refuses a single-label intranet shortcut', () => {
-    expect(() => assertPublicAeriesHostSyntax('aeries')).toThrow(/internal shortcut/i);
+    expect(() => assertPublicSisHostSyntax('aeries', L)).toThrow(/internal shortcut/i);
+  });
+
+  // The reason this guard takes labels at all. One audited control serves every
+  // SIS, but a OneRoster district must not be told to check their "Aeries web
+  // address" — the alternative to this parameter was a second copy of the file,
+  // which is the security control most likely to drift out of sync.
+  it('speaks the right product name to a OneRoster district', () => {
+    expect(() => assertPublicSisHostSyntax('127.0.0.1', ONEROSTER_URL_LABELS)).toThrow(
+      /OneRoster web address/i,
+    );
+    expect(() => assertPublicSisHostSyntax('sis.internal', ONEROSTER_URL_LABELS)).toThrow(
+      /so OneRoster needs a publicly reachable address/i,
+    );
+    // Not `.not.toThrow(/Aeries/i)` — that fails, and correctly so: the
+    // OneRoster example address is `yourdistrictapi.aeries.net`, because Aeries
+    // is who hosts OneRoster for these districts. What must not leak is the
+    // PRODUCT name in the instruction, so that is what is asserted.
+    expect(() => assertPublicSisHostSyntax('127.0.0.1', ONEROSTER_URL_LABELS)).not.toThrow(
+      /Aeries web address/i,
+    );
   });
 
   it('accepts a real district hostname', () => {
-    expect(() => assertPublicAeriesHostSyntax('jsusd.aeries.net')).not.toThrow();
-    expect(() => assertPublicAeriesHostSyntax('sis.somedistrict.k12.ca.us')).not.toThrow();
+    expect(() => assertPublicSisHostSyntax('jsusd.aeries.net', L)).not.toThrow();
+    expect(() => assertPublicSisHostSyntax('sis.somedistrict.k12.ca.us', L)).not.toThrow();
   });
 });
 
-describe('assertPublicAeriesHost', () => {
+describe('assertPublicSisHost', () => {
   it('accepts a name that resolves publicly', async () => {
     mockLookup.mockResolvedValue([{ address: '104.16.0.1', family: 4 }]);
-    await expect(assertPublicAeriesHost('demo.aeries.net')).resolves.toBeUndefined();
+    await expect(assertPublicSisHost('demo.aeries.net', L)).resolves.toBeUndefined();
   });
 
   it('refuses a public-looking name that resolves to a private address', async () => {
     // The attack the syntax check alone cannot stop: nothing prevents a
     // district from pointing sis.example.com at 10.0.0.5.
     mockLookup.mockResolvedValue([{ address: '10.0.0.5', family: 4 }]);
-    await expect(assertPublicAeriesHost('sis.example.com')).rejects.toThrow(/private network/i);
+    await expect(assertPublicSisHost('sis.example.com', L)).rejects.toThrow(/private network/i);
   });
 
   it('refuses when ANY resolved address is private, not just the first', async () => {
@@ -170,21 +192,21 @@ describe('assertPublicAeriesHost', () => {
       { address: '104.16.0.1', family: 4 },
       { address: '192.168.1.10', family: 4 },
     ]);
-    await expect(assertPublicAeriesHost('sis.example.com')).rejects.toThrow(/private network/i);
+    await expect(assertPublicSisHost('sis.example.com', L)).rejects.toThrow(/private network/i);
   });
 
   it('refuses a name that resolves to nothing', async () => {
     mockLookup.mockResolvedValue([]);
-    await expect(assertPublicAeriesHost('sis.example.com')).rejects.toThrow(/private network/i);
+    await expect(assertPublicSisHost('sis.example.com', L)).rejects.toThrow(/private network/i);
   });
 
   it('reports an unresolvable name as a typo, not a security refusal', async () => {
     mockLookup.mockRejectedValue(new Error('ENOTFOUND'));
-    await expect(assertPublicAeriesHost('typo.aeries.net')).rejects.toThrow(/couldn't find/i);
+    await expect(assertPublicSisHost('typo.aeries.net', L)).rejects.toThrow(/couldn't find/i);
   });
 
   it('applies the syntax check before spending a DNS lookup', async () => {
-    await expect(assertPublicAeriesHost('127.0.0.1')).rejects.toThrow(/not an IP address/i);
+    await expect(assertPublicSisHost('127.0.0.1', L)).rejects.toThrow(/not an IP address/i);
     expect(mockLookup).not.toHaveBeenCalled();
   });
 });

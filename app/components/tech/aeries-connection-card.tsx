@@ -13,10 +13,16 @@ import type { AeriesAreaResult, AeriesTestReport } from '@/lib/sis/aeries-setup'
  * one — there is no "reveal", and there is nothing to reveal.
  */
 
+/**
+ * The non-secret columns a browser session may read (SPE-395's GRANT). Shared
+ * with the OneRoster card — `token_url` is null for Aeries and carries the
+ * OAuth2 endpoint for OneRoster.
+ */
 export interface ConnectionSummary {
   id: string;
   sis_type: string;
   base_url: string | null;
+  token_url: string | null;
   credential_hint: string | null;
   status: string;
   dpa_cleared_at: string | null;
