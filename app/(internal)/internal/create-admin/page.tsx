@@ -33,7 +33,7 @@ interface CreatedAdmin {
   email: string;
   fullName: string;
   temporaryPassword: string;
-  adminType: 'district_admin' | 'site_admin';
+  adminType: 'district_admin' | 'site_admin' | 'district_tech';
 }
 
 export default function CreateAdminPage() {
@@ -42,7 +42,7 @@ export default function CreateAdminPage() {
   // Form state
   const [email, setEmail] = useState('');
   const [fullName, setFullName] = useState('');
-  const [adminType, setAdminType] = useState<'district_admin' | 'site_admin'>('district_admin');
+  const [adminType, setAdminType] = useState<'district_admin' | 'site_admin' | 'district_tech'>('district_admin');
   const [selectedState, setSelectedState] = useState('');
   const [selectedDistrict, setSelectedDistrict] = useState('');
   const [selectedSchool, setSelectedSchool] = useState('');
@@ -67,7 +67,7 @@ export default function CreateAdminPage() {
     const district = searchParams.get('district');
     const school = searchParams.get('school');
 
-    if (type === 'site_admin' || type === 'district_admin') {
+    if (type === 'site_admin' || type === 'district_admin' || type === 'district_tech') {
       setAdminType(type);
     }
     if (state) setSelectedState(state);
@@ -289,11 +289,24 @@ export default function CreateAdminPage() {
               />
               <span className="ml-2 text-slate-300">Site Admin</span>
             </label>
+            <label className="flex items-center">
+              <input
+                type="radio"
+                name="adminType"
+                value="district_tech"
+                checked={adminType === 'district_tech'}
+                onChange={() => setAdminType('district_tech')}
+                className="w-4 h-4 text-purple-600 bg-slate-700 border-slate-600 focus:ring-purple-500"
+              />
+              <span className="ml-2 text-slate-300">District Tech Admin</span>
+            </label>
           </div>
           <p className="mt-1 text-sm text-slate-500">
             {adminType === 'district_admin'
               ? 'Can manage all schools in the district'
-              : 'Can manage a single school'}
+              : adminType === 'district_tech'
+                ? 'SIS integrations only — no students, schedules or CARE'
+                : 'Can manage a single school'}
           </p>
         </div>
 

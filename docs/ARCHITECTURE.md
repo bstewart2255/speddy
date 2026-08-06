@@ -225,6 +225,33 @@ why SPE-320 shipped broken with three green test files.
 **Source of truth:** `supabase/migrations/20260724_fix_profiles_update_rls_recursion.sql`;
 live `profiles_update` policy + `profiles_guard_immutable_columns` trigger.
 
+### `profiles_select`: school-scoped, plus a district branch (SPE-394)
+
+Most branches of `profiles_select` find people by **school** — the school-ids
+union, providers-at-my-schools, the site-admin branch, and the district admin's
+"anyone at a school in my district" branch. That works for everyone who has a
+school, and silently fails for everyone who doesn't.
+
+`district_tech` has `school_id IS NULL` by design, so the district-admin branch
+(which joins `schools.id = profiles.school_id`) could never match it: a district
+admin could not see the tech admin they had just created. Verified live — 0 rows,
+against a control teacher in the same district returning 1. The same blind spot
+applied to `district_admin` profiles, which are equally school-less.
+
+A district branch now sits alongside the school one, matching
+`ap.district_id = profiles.district_id` for a `district_admin` caller. The
+widening is bounded to the caller's own grant rows, and the guard pins where it
+stops: a site admin still cannot see the tech admin, the tech admin gains no
+extra reads, and nothing crosses district lines.
+
+**Generalisation worth remembering:** a policy written in terms of `school_id` is
+invisible to district-scoped roles. When adding a role without a school, check
+every policy that identifies people by school — absence of a match reads exactly
+like "no permission", so it fails quietly rather than loudly.
+
+**Source of truth:** `supabase/migrations/20260806_spe394_profiles_select_district_scope.sql`;
+guarded by `npm run sim:verify-rls` ("district-scoped profile visibility").
+
 ### Route-guard matrix (from `middleware.ts`)
 
 | Path prefix | Who's allowed | Else → |
@@ -389,8 +416,21 @@ flowchart TD
   `app/(dashboard)/dashboard/admin/create-account/page.tsx` is the single UI
   entry point, and it picks its route by the admin's scope and the account type:
   `/api/admin/district/teachers`, `/api/admin/district/providers`, or
-  `/api/admin/create-teacher-account`. (`/api/admin/district/site-admin` and
-  `/api/internal/create-admin-account` cover the admin-creating-an-admin cases.)
+  `/api/admin/create-teacher-account`. (`/api/admin/district/site-admin`,
+  `/api/admin/district/tech-admin` and `/api/internal/create-admin-account`
+  cover the admin-creating-an-admin cases.)
+- **`district_tech` is the exception to the paragraph above (SPE-394).**
+  `/api/admin/district/tech-admin` **does** set `must_change_password: true` at
+  creation, so its temp password is force-rotated at first login — verified live:
+  the account is redirected to `/change-password`, cannot reach `/dashboard/tech`
+  until it rotates, and lands there once it does. The middleware ordering this
+  relies on is load-bearing: the `must_change_password` check (`middleware.ts`
+  ~line 107) runs **before** the `district_tech` route pinning (~line 149), so
+  the rotation wins over the role's portal redirect. `/internal` sets the same
+  flag for this role so it behaves identically however it is minted. The
+  pre-existing roles are deliberately unchanged here — that is SPE-364's call.
+  The creator is a **district admin**, not Speddy staff: the district's own admin
+  provisions their IT contact, with `/internal` as an onboarding fallback.
   **All of them** call `auth.admin.createUser` with `email_confirm: true`, so an
   admin-created user's email is pre-verified and they can use "Forgot password"
   on the sign-in page without ever having signed in — they don't need the temp

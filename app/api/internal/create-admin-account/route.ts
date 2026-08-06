@@ -62,9 +62,13 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
     // Normalize email to lowercase for consistency
     const normalizedEmail = email.toLowerCase().trim();
 
-    if (adminType !== 'district_admin' && adminType !== 'site_admin') {
+    if (
+      adminType !== 'district_admin' &&
+      adminType !== 'site_admin' &&
+      adminType !== 'district_tech'
+    ) {
       return NextResponse.json(
-        { error: 'Invalid admin type. Must be district_admin or site_admin' },
+        { error: 'Invalid admin type. Must be district_admin, site_admin or district_tech' },
         { status: 400 }
       );
     }
@@ -169,8 +173,25 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
           state_id: stateId,
           district_id: districtId,
           school_id: adminType === 'site_admin' ? schoolId : null,
+          // district_tech must behave identically however it is minted, so it
+          // gets the same forced rotation as the district-admin route (SPE-394).
+          // Deliberately not applied to the pre-existing admin types here —
+          // changing their behavior is SPE-364's call, not this ticket's.
+          ...(adminType === 'district_tech' ? { must_change_password: true } : {}),
         })
         .eq('id', newUserId);
+
+      if (updateError && adminType === 'district_tech') {
+        // Fatal for this role only. Both things this update carries are
+        // load-bearing for district_tech and for nothing else here:
+        // `district_id` is what makes the account visible to its district admin
+        // (profiles_select's district branch, SPE-394), and
+        // `must_change_password` is the forced rotation. A district_tech that
+        // silently skipped this would exist, authorize correctly via
+        // admin_permissions, and still be invisible with an un-rotated temp
+        // password — the worst of both. Throwing rolls the auth user back.
+        throw new Error(`Profile scoping update failed: ${updateError.message}`);
+      }
 
       if (updateError) {
         log.warn('Failed to update profile with NCES IDs', { error: updateError });
