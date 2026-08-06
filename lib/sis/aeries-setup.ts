@@ -22,6 +22,7 @@
  * Server-only: reaches an external SIS with a decrypted credential.
  */
 import { AeriesApiError, AeriesClient } from '@/lib/integrations/aeries';
+import { assertPublicAeriesHost, assertPublicAeriesHostSyntax } from './ssrf-guard';
 import type { SisTestResult } from './connections';
 
 export const AERIES_API_PATH = '/aeries/api/v5';
@@ -66,6 +67,11 @@ export function normalizeAeriesBaseUrl(input: string): string {
     throw new Error('The Aeries address must start with https:// so credentials stay encrypted.');
   }
 
+  // Refuse anything that could point our server at a private network. This is
+  // the syntactic half; assertPublicAeriesHost() resolves the name too, and is
+  // what the store and test paths actually await.
+  assertPublicAeriesHostSyntax(url.hostname);
+
   // Strip whatever path they landed on and append the API path ourselves.
   // /admin, /student, a deep link — none of it is the API root, and guessing
   // from their path is how you end up with .../admin/aeries/api/v5.
@@ -78,7 +84,7 @@ export interface AeriesAreaResult {
   key: 'connection' | 'schools' | 'students' | 'teachers' | 'programs';
   /** The label as it appears on the Aeries API Security page. */
   label: string;
-  status: 'ok' | 'denied' | 'error';
+  status: 'ok' | 'denied' | 'error' | 'untested';
   /** Plain-English outcome. Never contains a name, an ID, or the certificate. */
   message: string;
   /** Aggregate only — how many records the area returned, when it succeeded. */
@@ -161,6 +167,19 @@ export async function runAeriesConnectionTest(params: {
   baseUrl: string;
   certificate: string;
 }): Promise<AeriesTestReport> {
+  // Re-checked here, not just at write time: the stored row could predate the
+  // guard, and a name's addresses can change after it was saved.
+  try {
+    await assertPublicAeriesHost(new URL(params.baseUrl).hostname);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'That address cannot be used.';
+    return {
+      ok: false,
+      areas: [{ key: 'connection', label: 'Connection', status: 'error', message }],
+      summary: 'Could not connect to Aeries.',
+    };
+  }
+
   const client = new AeriesClient({
     baseUrl: params.baseUrl,
     certificate: params.certificate,
@@ -174,6 +193,12 @@ export async function runAeriesConnectionTest(params: {
   let schoolCodes: number[] = [];
   const schools = await probe('schools', 'Schools', async () => {
     const list = await client.getSchools({ fields: ['SchoolCode', 'Name'] });
+    // Without this, a non-array body makes `.map` throw a TypeError, which
+    // `explain` reads as a network failure — telling a district their reachable
+    // instance is unreachable.
+    if (!Array.isArray(list)) {
+      throw new AeriesApiError('Aeries returned an unexpected response for Schools.', 502, 'schools');
+    }
     schoolCodes = list.map((s) => s.SchoolCode).filter((c) => Number.isFinite(c));
     return list.length;
   });
@@ -185,7 +210,10 @@ export async function runAeriesConnectionTest(params: {
   );
 
   if (schools.status !== 'ok' || schoolCodes.length === 0) {
-    const blocked: AeriesAreaResult['status'] = 'error';
+    // 'untested', not 'error': these areas were never probed, and rendering
+    // three red permission failures for checkboxes we never looked at sends the
+    // district to fix things that may be perfectly fine.
+    const blocked: AeriesAreaResult['status'] = 'untested';
     const why =
       schools.status === 'ok'
         ? 'No schools were returned, so the remaining areas could not be checked.'
@@ -236,7 +264,10 @@ export async function runAeriesConnectionTest(params: {
       // the only area denied, the connection still "works" — which is exactly
       // the confusing half-success worth naming explicitly.
       const rows = await client.getStudentPrograms(school, 0, undefined, {
-        fields: ['StudentID', 'ProgramCode'],
+        // ProgramCode only. Asking for StudentID too would pull an identifiable
+        // program-membership record into memory on a flow whose whole contract
+        // is that it never touches student data.
+        fields: ['ProgramCode'],
         startingRecord: 1,
         endingRecord: 1,
       });
@@ -244,20 +275,23 @@ export async function runAeriesConnectionTest(params: {
     }),
   );
 
-  const failed = areas.filter((a) => a.status !== 'ok');
-  const programsDenied = areas.some((a) => a.key === 'programs' && a.status !== 'ok');
+  // `connection` mirrors the Schools outcome, so counting it would report one
+  // failure as two to a district trying to work out how much is left to fix.
+  const permissionAreas = areas.filter((a) => a.key !== 'connection');
+  const failed = permissionAreas.filter((a) => a.status !== 'ok');
+  const programsNotOk = areas.some((a) => a.key === 'programs' && a.status !== 'ok');
 
   let summary: string;
   if (failed.length === 0) {
     summary = 'All areas granted. Aeries is ready.';
-  } else if (failed.length === 1 && programsDenied) {
+  } else if (failed.length === 1 && programsNotOk) {
     // Named specially because it is the likeliest single miss and the most
     // consequential: everything appears to work, but no special-education data
     // ever arrives.
     summary =
       'Connected, but Student Programs is not granted — Speddy cannot see special education records without it.';
   } else {
-    summary = `${failed.length} of ${areas.length} areas need attention in Aeries.`;
+    summary = `${failed.length} of ${permissionAreas.length} areas need attention in Aeries.`;
   }
 
   return { ok: failed.length === 0, areas, summary };

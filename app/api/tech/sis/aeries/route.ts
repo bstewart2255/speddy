@@ -32,10 +32,13 @@ export const POST = withRoute(
       certificate: z
         .string()
         .trim()
-        // Aeries vendor certificates are 32 hex characters. Checking the shape
-        // here turns the single most common paste error (grabbing the wrong
-        // field off the API Security page) into an immediate, specific message
-        // instead of a failed connection test minutes later.
+        // 32 alphanumerics, matching the error text. Deliberately NOT tightened
+        // to hex, even though every certificate we have seen is hex and the docs
+        // say "32-char": the costs are asymmetric. Rejecting a valid certificate
+        // locks a district out with no workaround; accepting a malformed one
+        // costs one connection test that fails with a clear message. Aeries' own
+        // docs call it "case-sensitive", which hex would not need to be — so the
+        // character set is not certain enough to refuse on.
         .regex(/^[A-Za-z0-9]{32}$/, 'An Aeries certificate is 32 letters and numbers'),
     }),
     rateLimit: { requests: 10, windowSeconds: 60, name: 'tech-sis-aeries-store' },
@@ -65,7 +68,19 @@ export const POST = withRoute(
       );
     }
 
-    const connections = await listConnections(caller.districtId);
+    // Wrapped rather than left to the route wrapper: withRoute's catch echoes
+    // error.message to the client when NODE_ENV=development, and a Supabase
+    // error names tables and constraints.
+    let connections;
+    try {
+      connections = await listConnections(caller.districtId);
+    } catch (err) {
+      log.error('Failed to load SIS connections', {
+        districtId: caller.districtId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return NextResponse.json({ error: 'Could not load your connection.' }, { status: 500 });
+    }
     const connection = connections.find((c) => c.sis_type === 'aeries');
     if (!connection) {
       return NextResponse.json(

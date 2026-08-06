@@ -16,11 +16,19 @@
  */
 import { AeriesApiError } from '@/lib/integrations/aeries';
 
+// The setup module now resolves the host before probing (SSRF guard). Tests of
+// the DIAGNOSTICS must not depend on DNS, so the resolved check is stubbed to
+// pass here; ssrf-guard.test.ts covers the guard itself.
+jest.mock('@/lib/sis/ssrf-guard', () => ({
+  ...jest.requireActual('@/lib/sis/ssrf-guard'),
+  assertPublicAeriesHost: jest.fn().mockResolvedValue(undefined),
+}));
+
 const mockGetSchools = jest.fn();
 const mockGetSchoolStudents = jest.fn();
 const mockGetSchoolTeachers = jest.fn();
 const mockGetStudentPrograms = jest.fn();
-let lastClientConfig: { baseUrl: string; certificate: string } | null = null;
+let mockClientConfig: { baseUrl: string; certificate: string } | null = null;
 
 jest.mock('@/lib/integrations/aeries', () => {
   const actual = jest.requireActual('@/lib/integrations/aeries');
@@ -28,7 +36,7 @@ jest.mock('@/lib/integrations/aeries', () => {
     ...actual,
     AeriesClient: class {
       constructor(config: { baseUrl: string; certificate: string }) {
-        lastClientConfig = config;
+        mockClientConfig = config;
       }
       getSchools = (...a: unknown[]) => mockGetSchools(...a);
       getSchoolStudents = (...a: unknown[]) => mockGetSchoolStudents(...a);
@@ -57,7 +65,7 @@ const area = (r: Awaited<ReturnType<typeof run>>, key: string) => r.areas.find((
 
 beforeEach(() => {
   jest.clearAllMocks();
-  lastClientConfig = null;
+  mockClientConfig = null;
 });
 
 describe('normalizeAeriesBaseUrl', () => {
@@ -117,7 +125,7 @@ describe('runAeriesConnectionTest', () => {
   it('passes the supplied credential to the client, not the env default', async () => {
     grantAll();
     await run();
-    expect(lastClientConfig).toEqual({
+    expect(mockClientConfig).toEqual({
       baseUrl: `https://x.aeries.net${AERIES_API_PATH}`,
       certificate: CERT,
     });
@@ -146,6 +154,17 @@ describe('runAeriesConnectionTest', () => {
       expect(programs.message).toContain('Student Programs');
       expect(programs.message).toMatch(/read-only box/);
       expect(programs.message).not.toMatch(/certificate/i);
+    });
+
+    it('403 on Schools reports a denial, not an unreachable instance', async () => {
+      // The district granted the certificate but never ticked Schools. Nothing
+      // downstream can be probed, but the cause is a checkbox, not the network.
+      mockGetSchools.mockRejectedValue(new AeriesApiError('forbidden', 403, 'schools'));
+      const report = await run();
+
+      expect(area(report, 'schools').status).toBe('denied');
+      expect(area(report, 'schools').message).toContain('Schools');
+      expect(report.summary).toMatch(/Could not connect/i);
     });
   });
 
@@ -185,6 +204,10 @@ describe('runAeriesConnectionTest', () => {
 
     for (const key of ['students', 'teachers', 'programs']) {
       expect(area(report, key).message).toMatch(/Not checked/);
+      // 'untested', not 'error' — the UI colours by status, and three red
+      // permission failures for areas nobody probed sends the district off to
+      // fix checkboxes that may already be correct.
+      expect(area(report, key).status).toBe('untested');
     }
     // And it must not have called them — probing with a cert Aeries just
     // rejected produces three more misleading failures.
@@ -211,6 +234,12 @@ describe('runAeriesConnectionTest', () => {
 
       const teacherOpts = mockGetSchoolTeachers.mock.calls[0][1];
       expect(teacherOpts.endingRecord).toBe(1);
+
+      // ProgramCode only: asking for StudentID too would pull an identifiable
+      // program-membership record into memory on an aggregate-only flow.
+      const programOpts = mockGetStudentPrograms.mock.calls[0][3];
+      expect(programOpts.fields).toEqual(['ProgramCode']);
+      expect(programOpts.fields).not.toContain('StudentID');
     });
 
     it('never surfaces a student name or the certificate in any message', async () => {
