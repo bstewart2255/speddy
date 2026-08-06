@@ -14,21 +14,26 @@
  *      primary school, while `teachers_select` already unioned
  *      `provider_schools`. So they saw teachers at every assigned school but
  *      could add at only one. The one path here with live impact.
- *   2. `students_select` (SEA branch) — a multi-school SEA saw school-wide
- *      students at their primary school alone.
- *   3. `children_select` (SEA branch) — the same gap on the child record.
+ *   2. `students_select` (SEA branch) — SPE-384 REMOVED this branch entirely.
+ *      It granted an SEA school-wide reads, which disagreed with the product:
+ *      the Students and Plan pages go through `get_sea_students()`, scoped by
+ *      session assignment. Assignment-scoped won, so the policy was narrowed to
+ *      match the UI rather than the UI widened to match the policy. This
+ *      supersedes SPE-362's widening of the same branch.
+ *   3. `children_select` (SEA branch) — the same branch, same removal.
  *
  * The contract asserted here:
  *   - a multi-school provider can create a teacher at a NON-primary assigned
  *     school, and still at their primary one;
  *   - and at NO school they are unassigned to — this widens to
  *     `provider_schools`, not to the district;
- *   - a multi-school SEA reads students and children at EVERY assigned school;
- *   - a single-school SEA is unchanged (no accidental widening of the common case);
- *   - and — the check that matters most — a multi-school NON-SEA provider does
- *     NOT pick up school-wide student reads. The SEA branch is gated on
- *     `role = 'sea'`; widening the school-id half of it must not leak the
- *     school-wide grant to everyone else assigned to that school.
+ *   - an SEA reads exactly their caseload — the students they are assigned to
+ *     through a session — and NOT the rest of their own school;
+ *   - an SEA assigned to nobody reads nothing, at any of their schools, which is
+ *     the cleanest read on the removed branch since it was their only route;
+ *   - and no other role loses anything: the removed branch was gated on
+ *     `role = 'sea'`, so a non-SEA must still read exactly what they read
+ *     before, via the provider and session branches.
  *
  * Three traps this deliberately avoids (CLAUDE.md):
  *   - assert the ROWS, not the HTTP status — an RLS-filtered write is a 2xx
@@ -118,6 +123,36 @@ function sameSet(a: Set<string>, b: Set<string>): boolean {
   return a.size === b.size && [...a].every(id => b.has(id));
 }
 
+function intersect(a: Set<string>, b: Set<string>): Set<string> {
+  return new Set([...a].filter(id => b.has(id)));
+}
+
+async function profileIdFor(personaKey: string): Promise<string> {
+  const { data, error } = await admin
+    .from('profiles').select('id').eq('email', personaEmail(personaKey)).single();
+  if (error) throw new Error(`profile lookup failed for ${personaKey}: ${error.message}`);
+  return data.id as string;
+}
+
+/**
+ * An SEA's caseload per the service client: the students they are actually
+ * assigned to through a session. After SPE-384 this is their whole world.
+ */
+async function caseloadStudentIds(seaId: string): Promise<Set<string>> {
+  const { data, error } = await admin
+    .from('schedule_sessions').select('student_id').eq('assigned_to_sea_id', seaId);
+  if (error) throw new Error(`caseload lookup failed for ${seaId}: ${error.message}`);
+  return new Set((data ?? []).map(r => r.student_id as string));
+}
+
+async function childIdsForStudents(studentIds: Set<string>): Promise<Set<string>> {
+  if (studentIds.size === 0) return new Set();
+  const { data, error } = await admin
+    .from('students').select('child_id').in('id', [...studentIds]).not('child_id', 'is', null);
+  if (error) throw new Error(`child link lookup failed: ${error.message}`);
+  return new Set((data ?? []).map(r => r.child_id as string));
+}
+
 /** A fully-populated teacher row: see the header note on 23502 vs 42501. */
 function teacherRow(schoolId: string, tag: string): Record<string, unknown> {
   return {
@@ -187,62 +222,66 @@ async function main(): Promise<void> {
       'and no Maple teacher row was created');
   }
 
-  console.log('students_select — a multi-school SEA reads every assigned school:');
+  console.log('students_select — an SEA sees their CASELOAD, not their school (SPE-384):');
   {
     const willow = await fixtureStudentIds(WILLOW);
     const juniper = await fixtureStudentIds(JUNIPER);
-    const maple = await fixtureStudentIds(MAPLE);
 
-    const omarWillow = await visibleStudentIds(omar, WILLOW);
-    check(sameSet(omarWillow, willow), 'Omar sees Willow students (his primary — worked before)',
-      `${omarWillow.size}/${willow.size}`);
-
-    // Before the fix this was 0.
-    const omarJuniper = await visibleStudentIds(omar, JUNIPER);
-    check(sameSet(omarJuniper, juniper), 'Omar sees Juniper students (assigned, NOT primary)',
-      `${omarJuniper.size}/${juniper.size}`);
-
-    const omarMaple = await visibleStudentIds(omar, MAPLE);
-    check(omarMaple.size === 0, 'Omar sees NO Maple students (not assigned)',
-      `count=${omarMaple.size}/${maple.size}`);
+    // Leah is assigned to a handful of Willow students. The contract is that she
+    // sees exactly those — not the other ~40 at the same school.
+    const leahCaseload = await caseloadStudentIds(await profileIdFor('leah'));
+    const expected = intersect(leahCaseload, willow);
+    check(expected.size > 0 && expected.size < willow.size,
+      'fixture is non-vacuous: Leah has a caseload smaller than her school',
+      `caseload ${expected.size} of ${willow.size} at Willow`);
 
     const leahWillow = await visibleStudentIds(leah, WILLOW);
-    const leahJuniper = await visibleStudentIds(leah, JUNIPER);
-    check(sameSet(leahWillow, willow) && leahJuniper.size === 0,
-      'single-school SEA unchanged: Willow only',
-      `willow ${leahWillow.size}/${willow.size}, juniper ${leahJuniper.size}`);
+    // Before the narrowing this was all 43 — the whole school.
+    check(sameSet(leahWillow, expected),
+      'Leah sees exactly her caseload at Willow, not the school',
+      `${leahWillow.size}/${willow.size} (caseload ${expected.size})`);
+
+    // Omar is assigned to nobody, so for him the school-wide grant was the ONLY
+    // thing making students visible. He is the cleanest read on its removal.
+    const omarWillow = await visibleStudentIds(omar, WILLOW);
+    const omarJuniper = await visibleStudentIds(omar, JUNIPER);
+    check(omarWillow.size === 0 && omarJuniper.size === 0,
+      'unassigned SEA sees NO students at either assigned school',
+      `willow ${omarWillow.size}/${willow.size}, juniper ${omarJuniper.size}/${juniper.size}`);
   }
 
-  console.log('...but the school-wide grant stays SEA-only:');
+  console.log('...and no other role loses anything:');
   {
-    // The SEA branch is `school_id IN (my schools) AND role = 'sea'`. Widening
-    // the school-id half must not hand school-wide reads to a non-SEA who is
-    // also assigned to that school. Tomás should see only students he is
-    // actually tied to at Juniper — as provider, or via a session.
+    // The removed branch was gated on `role = 'sea'`, so a non-SEA must read
+    // exactly what they read before: their own students, via provider or session.
     const juniper = await fixtureStudentIds(JUNIPER);
     const tomasJuniper = await visibleStudentIds(tomas, JUNIPER);
     check(tomasJuniper.size > 0 && tomasJuniper.size < juniper.size,
-      'non-SEA at Juniper sees only their OWN students, not school-wide',
+      'non-SEA at Juniper still sees their OWN students (unchanged)',
       `${tomasJuniper.size}/${juniper.size}`);
   }
 
-  console.log('children_select — same SEA branch, through students:');
+  console.log('children_select — same narrowing, through students:');
   {
     const willowKids = await fixtureChildIds(WILLOW);
     const juniperKids = await fixtureChildIds(JUNIPER);
 
+    // Leah's caseload children only — not every child at Willow.
+    const leahCaseload = await caseloadStudentIds(await profileIdFor('leah'));
+    const expectedKids = await childIdsForStudents(leahCaseload);
+    const leahWillowKids = await visibleChildIds(leah, willowKids);
+    check(expectedKids.size > 0 && expectedKids.size < willowKids.size,
+      'fixture is non-vacuous: Leah\'s caseload children are fewer than the school\'s',
+      `${expectedKids.size} of ${willowKids.size}`);
+    check(sameSet(leahWillowKids, intersect(expectedKids, willowKids)),
+      'Leah sees only her caseload\'s children at Willow',
+      `${leahWillowKids.size}/${willowKids.size}`);
+
     const omarWillowKids = await visibleChildIds(omar, willowKids);
-    check(sameSet(omarWillowKids, willowKids), 'Omar sees Willow children (primary)',
-      `${omarWillowKids.size}/${willowKids.size}`);
-
-    // Before the fix this was 0.
     const omarJuniperKids = await visibleChildIds(omar, juniperKids);
-    check(sameSet(omarJuniperKids, juniperKids), 'Omar sees Juniper children (assigned, NOT primary)',
-      `${omarJuniperKids.size}/${juniperKids.size}`);
-
-    const leahJuniperKids = await visibleChildIds(leah, juniperKids);
-    check(leahJuniperKids.size === 0, 'single-school SEA sees NO Juniper children',
-      `count=${leahJuniperKids.size}/${juniperKids.size}`);
+    check(omarWillowKids.size === 0 && omarJuniperKids.size === 0,
+      'unassigned SEA sees NO children at either assigned school',
+      `willow ${omarWillowKids.size}/${willowKids.size}, juniper ${omarJuniperKids.size}/${juniperKids.size}`);
   }
 
   if (failures === 0) {
