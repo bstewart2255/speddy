@@ -8,6 +8,44 @@ import { withRoute } from '@/lib/api/with-route';
 const bodySchema = z.object({ password: z.string().min(1) }).passthrough();
 
 /**
+ * Turn a Supabase auth failure into something the person at the keyboard can
+ * act on — or `undefined`, meaning "not one we have wording for".
+ *
+ * Deliberately an allow-list rather than passing Supabase's message through.
+ * Upstream copy is written for developers ("New password should be different
+ * from the old password"), can change between releases without us noticing, and
+ * echoing arbitrary auth-server text to a browser is a habit worth not forming.
+ */
+function friendlyAuthError(error: { code?: string; reasons?: string[] }): string | undefined {
+  if (error.code === 'same_password') {
+    return 'Your new password must be different from the temporary one you were given. Please choose a different password.';
+  }
+
+  if (error.code === 'weak_password') {
+    // `weak_password` covers two situations that need OPPOSITE advice, and
+    // Supabase distinguishes them in `reasons` (`length` / `characters` /
+    // `pwned`).
+    //
+    // The distinction is not academic here: validatePassword() has ALREADY
+    // required 8+ characters, upper, lower, a number and a symbol before we
+    // reach this line. So a weak_password coming back from Supabase has passed
+    // every formatting rule we have, which makes `pwned` — the password appears
+    // in a known breach — by far the likeliest reason.
+    //
+    // Telling that person to "add numbers and symbols" is advice they have
+    // already followed, and worse, it hides the actual problem: they will try
+    // small variations of a password that is already public. Raised by Codex on
+    // the PR that introduced this mapping.
+    if (error.reasons?.includes('pwned')) {
+      return 'That password has appeared in a known data breach, so it is not safe to use. Please choose a different password — not a variation of this one.';
+    }
+    return 'That password is not strong enough. Try making it longer, or adding numbers and symbols.';
+  }
+
+  return undefined;
+}
+
+/**
  * API endpoint for users to change their password after admin reset.
  * This endpoint:
  * 1. Verifies the user is authenticated
@@ -46,7 +84,28 @@ export const POST = withRoute({ body: bodySchema }, async ({ userId, body }) => 
     const { error: updateError } = await supabase.auth.updateUser({ password });
 
     if (updateError) {
-      log.error('Failed to update password', updateError, { userId });
+      // Supabase answers with a typed code here, and this handler used to throw
+      // it away: every refusal became "Failed to update password" with a 500.
+      //
+      // Two costs, both real. Someone who retyped the temporary password they
+      // were just given — a very natural thing to do on a screen headed "Change
+      // Your Password" — was told nothing about what was wrong, on the FIRST
+      // screen every admin-created account sees. And a person choosing a
+      // password we decline is not a server fault, so each attempt was filed in
+      // error monitoring as though Speddy had broken.
+      const friendly = friendlyAuthError(updateError);
+      if (friendly) {
+        log.info('Password change refused for a user-fixable reason', {
+          userId,
+          code: updateError.code,
+        });
+        return NextResponse.json({ error: friendly }, { status: 400 });
+      }
+
+      // Anything we do not recognise keeps the old behaviour: say nothing
+      // specific and treat it as ours to investigate. Never pass an upstream
+      // auth message through verbatim.
+      log.error('Failed to update password', updateError, { userId, code: updateError.code });
       return NextResponse.json({ error: 'Failed to update password' }, { status: 500 });
     }
 
