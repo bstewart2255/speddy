@@ -76,16 +76,30 @@ function check(ok: boolean, label: string, detail = ''): void {
  * fixture and, worse, leaving three personas holding the escalated authorization
  * the failing check just reported. The verifier must not become the thing that
  * makes the leak durable.
+ *
+ * Each undo returns its PostgREST error, if any. supabase-js RESOLVES on a
+ * failed write — it does not throw — so a try/catch alone would let a cleanup
+ * that did nothing look like a cleanup that worked. That is the same trap this
+ * script warns about above for UPDATE/DELETE, and it matters more here: a
+ * silently-failed undo leaves the fixture escalated while reporting success.
  */
-const cleanups: Array<() => Promise<void>> = [];
+type Undo = () => Promise<{ error: { message: string } | null }>;
+
+const cleanups: Array<{ what: string; undo: Undo }> = [];
+
+/** Fixed id for the service-role write probe, so the final sweep can look for it. */
+const probeId = '00000000-0000-4000-8000-00000000e399';
+
+/** Captured during the run so the post-cleanup assertions can re-read her rows. */
+let mariaId: string | null = null;
 
 async function runCleanups(): Promise<void> {
-  for (const undo of cleanups.reverse()) {
+  for (const { what, undo } of cleanups.reverse()) {
     try {
-      await undo();
+      const { error } = await undo();
+      if (error) check(false, `cleanup: ${what}`, error.message);
     } catch (err) {
-      failures++;
-      console.log(`  [FAIL] ${'cleanup step threw'.padEnd(64)} ${String(err)}`);
+      check(false, `cleanup threw: ${what}`, String(err));
     }
   }
 }
@@ -144,8 +158,9 @@ async function assertCannotSelfAttach(
   // Register the undo BEFORE asserting, so a thrown assertion cannot strand the row.
   if (data?.length) {
     const ids = data.map(r => r.id);
-    cleanups.push(async () => {
-      await admin.from('provider_schools').delete().in('id', ids);
+    cleanups.push({
+      what: `remove ${label} probe row(s)`,
+      undo: async () => await admin.from('provider_schools').delete().in('id', ids),
     });
   }
 
@@ -186,8 +201,9 @@ async function main(): Promise<void> {
   console.log('\nlegitimate multi-school provider (Maria: Maple + Juniper):');
   const maria = await signIn('maria');
   const { data: { user: mariaUser } } = await maria.auth.getUser();
+  mariaId = mariaUser!.id;
 
-  const { data: before } = await maria
+  const { data: before, error: beforeErr } = await maria
     .from('provider_schools')
     .select('id, school_id')
     .order('school_id');
@@ -195,9 +211,9 @@ async function main(): Promise<void> {
   // so a sorted array puts them in the opposite order to how they read.
   const beforeIds = new Set((before ?? []).map(r => r.school_id));
   check(
-    beforeIds.size === 2 && beforeIds.has(MAPLE) && beforeIds.has(JUNIPER),
+    !beforeErr && beforeIds.size === 2 && beforeIds.has(MAPLE) && beforeIds.has(JUNIPER),
     'reads exactly her own two schools (reads untouched)',
-    [...beforeIds].join(', ') || 'none',
+    beforeErr ? `read failed: ${beforeErr.message}` : ([...beforeIds].join(', ') || 'none'),
   );
 
   const targetRow = before?.[0];
@@ -208,22 +224,27 @@ async function main(): Promise<void> {
     // below is permitted — the regression this is looking for — the fixture
     // would otherwise be left with Maria repointed at Willow or missing a
     // school entirely.
-    const { data: original } = await admin
+    const { data: original, error: snapshotErr } = await admin
       .from('provider_schools').select('*').eq('id', targetRow.id).single();
+    check(!snapshotErr && !!original, 'snapshotted Maria\'s row for restore',
+      snapshotErr ? snapshotErr.message : targetRow.id);
+
     if (original) {
-      cleanups.push(async () => {
-        const { count } = await admin
-          .from('provider_schools')
-          .select('id', { count: 'exact', head: true })
-          .eq('id', original.id);
-        if (count === 0) {
-          await admin.from('provider_schools').insert(original);
-        } else {
-          await admin
+      cleanups.push({
+        what: 'restore Maria\'s row',
+        undo: async () => {
+          const { count, error: countErr } = await admin
             .from('provider_schools')
-            .update({ school_id: original.school_id, school_site: original.school_site })
+            .select('id', { count: 'exact', head: true })
             .eq('id', original.id);
-        }
+          if (countErr) return { error: countErr };
+          return count === 0
+            ? await admin.from('provider_schools').insert(original)
+            : await admin
+                .from('provider_schools')
+                .update({ school_id: original.school_id, school_site: original.school_site })
+                .eq('id', original.id);
+        },
       });
     }
 
@@ -257,9 +278,9 @@ async function main(): Promise<void> {
   // The service client — how the real admin flows write — must still work.
   // (sim:reset already proves this at scale; re-assert it here so this script
   // fails loudly if a future tightening catches the admin path too.)
-  const probeId = '00000000-0000-4000-8000-00000000e399';
-  cleanups.push(async () => {
-    await admin.from('provider_schools').delete().eq('id', probeId);
+  cleanups.push({
+    what: 'remove service-role probe row',
+    undo: async () => await admin.from('provider_schools').delete().eq('id', probeId),
   });
   const { error: adminInsertErr } = await admin.from('provider_schools').insert({
     id: probeId,
@@ -286,15 +307,36 @@ main()
     // Always. A failing run is precisely the run that has rows to undo.
     await runCleanups();
 
-    // Prove the undo worked rather than trusting it: the fixture must hold no
-    // provider_schools row for a persona that should have none, and Maria must
-    // be back to exactly her two schools.
-    const { data: leftovers } = await admin
+    // Prove the undo worked rather than trusting it. Three separate things can
+    // be left behind, and each needs its own check — a persona probe row, the
+    // service-role probe row (which carries a REAL school_site, so the
+    // school_site='probe' sweep below cannot see it), and Maria's row being
+    // repointed or missing.
+    const { data: leftovers, error: leftoverErr } = await admin
       .from('provider_schools')
       .select('provider_id, school_id, school_site')
       .eq('school_site', 'probe');
-    check((leftovers?.length ?? 0) === 0, 'fixture left clean (no probe rows remain)',
-      `${leftovers?.length ?? 0} leftover row(s)`);
+    check(!leftoverErr && (leftovers?.length ?? 0) === 0,
+      'no persona probe rows remain',
+      leftoverErr ? leftoverErr.message : `${leftovers?.length ?? 0} leftover row(s)`);
+
+    const { count: probeCount, error: probeErr } = await admin
+      .from('provider_schools')
+      .select('id', { count: 'exact', head: true })
+      .eq('id', probeId);
+    check(!probeErr && probeCount === 0, 'service-role probe row removed',
+      probeErr ? probeErr.message : `${probeCount} row(s)`);
+
+    const { data: mariaAfter, error: mariaErr } = await admin
+      .from('provider_schools')
+      .select('school_id')
+      .eq('provider_id', mariaId);
+    const afterIds = new Set((mariaAfter ?? []).map(r => r.school_id));
+    check(
+      !mariaErr && afterIds.size === 2 && afterIds.has(MAPLE) && afterIds.has(JUNIPER),
+      'Maria restored to exactly Maple + Juniper',
+      mariaErr ? mariaErr.message : ([...afterIds].join(', ') || 'none'),
+    );
 
     console.log(`\n${failures === 0 ? 'All checks passed.' : `${failures} check(s) FAILED.`}`);
     process.exit(failures > 0 ? 1 : 0);
