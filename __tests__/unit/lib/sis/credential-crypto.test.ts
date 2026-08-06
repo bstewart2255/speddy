@@ -9,12 +9,27 @@ import {
 describe('SIS credential crypto', () => {
   const key = randomBytes(32).toString('base64');
 
+  // Snapshot and restore BOTH keys. These tests mutate and delete process.env
+  // entries that later files in the same Jest worker may depend on, so leaving
+  // the environment modified would make an unrelated suite fail depending on
+  // file order — the kind of failure that looks like a real bug for an hour.
+  const original = {
+    sis: process.env.SIS_CREDENTIAL_ENCRYPTION_KEY,
+    calendar: process.env.CALENDAR_TOKEN_ENCRYPTION_KEY,
+  };
+
   beforeEach(() => {
     process.env.SIS_CREDENTIAL_ENCRYPTION_KEY = key;
   });
 
-  afterAll(() => {
-    delete process.env.SIS_CREDENTIAL_ENCRYPTION_KEY;
+  afterEach(() => {
+    for (const [name, value] of [
+      ['SIS_CREDENTIAL_ENCRYPTION_KEY', original.sis],
+      ['CALENDAR_TOKEN_ENCRYPTION_KEY', original.calendar],
+    ] as const) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
   });
 
   it('round-trips a credential', () => {
@@ -58,6 +73,22 @@ describe('SIS credential crypto', () => {
     expect(() => decryptSisCredential(parts.join('.'))).toThrow();
   });
 
+  it('rejects an envelope with extra fields appended', () => {
+    // The GCM tag authenticates the ciphertext, not the envelope, so trailing
+    // junk must be rejected structurally or it decrypts as if it were absent.
+    const encrypted = encryptSisCredential('secret');
+    expect(() => decryptSisCredential(`${encrypted}.junk`)).toThrow(
+      'Unrecognized encrypted SIS credential format'
+    );
+  });
+
+  it('rejects an envelope with too few fields', () => {
+    const parts = encryptSisCredential('secret').split('.');
+    expect(() => decryptSisCredential(parts.slice(0, 3).join('.'))).toThrow(
+      'Unrecognized encrypted SIS credential format'
+    );
+  });
+
   it('rejects unrecognized formats', () => {
     expect(() => decryptSisCredential('not-an-encrypted-credential')).toThrow(
       'Unrecognized encrypted SIS credential format'
@@ -80,7 +111,6 @@ describe('SIS credential crypto', () => {
     expect(() => decryptSisCredential(encrypted)).toThrow(
       'SIS_CREDENTIAL_ENCRYPTION_KEY is not set'
     );
-    delete process.env.CALENDAR_TOKEN_ENCRYPTION_KEY;
   });
 
   describe('configuration guard', () => {
@@ -90,6 +120,19 @@ describe('SIS credential crypto', () => {
 
     it('reports unconfigured when the key is absent', () => {
       delete process.env.SIS_CREDENTIAL_ENCRYPTION_KEY;
+      expect(sisCredentialEncryptionConfigured()).toBe(false);
+    });
+
+    it('rejects a valid key with trailing junk', () => {
+      // Buffer.from ignores unrecognised base64 characters, so this decodes to
+      // a plausible 32 bytes. Only a canonical-format check catches it.
+      process.env.SIS_CREDENTIAL_ENCRYPTION_KEY = `${key}!!!`;
+      expect(sisCredentialEncryptionConfigured()).toBe(false);
+      expect(() => encryptSisCredential('secret')).toThrow('canonical base64');
+    });
+
+    it('rejects a key with embedded whitespace or newlines', () => {
+      process.env.SIS_CREDENTIAL_ENCRYPTION_KEY = `${key}\n`;
       expect(sisCredentialEncryptionConfigured()).toBe(false);
     });
 

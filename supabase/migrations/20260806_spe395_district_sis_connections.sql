@@ -29,17 +29,28 @@
 -- routes use for the encrypt/decrypt paths, is unaffected (it bypasses both RLS
 -- and column grants).
 --
--- Consequence worth knowing: `select('*')` on this table FAILS for a browser
--- session, because `*` expands to columns it may not read. That is deliberate —
--- a loud, immediate error is a better failure mode than silently shipping a
--- certificate to the client because someone reached for the usual shorthand.
+-- VERIFIED, not assumed. Against a throwaway probe table on this project, with
+-- a real signed-in session and the same grant shape:
+--
+--   select=id,safe_col    -> HTTP 200, row returned
+--   select=secret_col     -> HTTP 403, {"code":"42501"} permission denied
+--   select=*              -> HTTP 403, {"code":"42501"} permission denied
+--   select=id,secret_col  -> HTTP 403, {"code":"42501"} permission denied
+--
+-- So `select('*')` FAILS for a browser session rather than silently returning
+-- a narrowed row. That is deliberate: a loud, immediate error beats silently
+-- shipping a certificate because someone reached for the usual shorthand.
 -- Callers must name the columns they want.
 --
 -- ---------------------------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS public.district_sis_connections (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  district_id varchar(20) NOT NULL REFERENCES public.districts(id),
+  -- varchar(36), matching districts.id and every other district FK in the
+  -- schema. Was varchar(20) — districts created through /api/internal/
+  -- create-district get a 36-char UUID id, so a narrower column would have
+  -- rejected them with value-too-long before the FK was even consulted.
+  district_id varchar(36) NOT NULL REFERENCES public.districts(id),
   sis_type text NOT NULL CHECK (sis_type IN ('aeries', 'oneroster')),
 
   -- Connection config (non-secret).
@@ -66,7 +77,12 @@ CREATE TABLE IF NOT EXISTS public.district_sis_connections (
   last_tested_at timestamptz,
   last_test_result jsonb,
 
-  created_by uuid REFERENCES public.profiles(id),
+  -- ON DELETE SET NULL: this is provenance, not a dependency. Without it,
+  -- deleting the admin who set up a connection would fail on this FK — the
+  -- provider-deletion flow nulls known nullable references, but cannot know
+  -- about one added later. Losing the attribution beats blocking the delete
+  -- or cascading away a live district connection.
+  created_by uuid REFERENCES public.profiles(id) ON DELETE SET NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
 
@@ -80,8 +96,36 @@ CREATE TABLE IF NOT EXISTS public.district_sis_connections (
     OR (aeries_certificate_encrypted IS NULL
         AND oneroster_client_id_encrypted IS NULL
         AND oneroster_client_secret_encrypted IS NULL)
+  ),
+
+  -- Credentials must match the row's sis_type, and a OneRoster pair is
+  -- all-or-nothing. Without this the table would accept an Aeries certificate
+  -- on a oneroster row, or a client id with no secret — shapes no server-side
+  -- reader should have to defend against, and which would surface as a
+  -- confusing runtime failure at connection-test time rather than at write time.
+  CONSTRAINT district_sis_connections_credential_shape CHECK (
+    (sis_type = 'aeries'
+      AND oneroster_client_id_encrypted IS NULL
+      AND oneroster_client_secret_encrypted IS NULL)
+    OR
+    (sis_type = 'oneroster'
+      AND aeries_certificate_encrypted IS NULL
+      AND ((oneroster_client_id_encrypted IS NULL
+            AND oneroster_client_secret_encrypted IS NULL)
+        OR (oneroster_client_id_encrypted IS NOT NULL
+            AND oneroster_client_secret_encrypted IS NOT NULL)))
   )
 );
+
+-- updated_at maintained in the DB, not by convention. Credential rotations,
+-- connection tests, DPA changes and status transitions all come from
+-- different writers; relying on each to remember would leave the column
+-- reading as the creation time forever. Same trigger calendar_connections uses.
+DROP TRIGGER IF EXISTS district_sis_connections_set_updated_at
+  ON public.district_sis_connections;
+CREATE TRIGGER district_sis_connections_set_updated_at
+  BEFORE UPDATE ON public.district_sis_connections
+  FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
 CREATE INDEX IF NOT EXISTS district_sis_connections_district_idx
   ON public.district_sis_connections (district_id);

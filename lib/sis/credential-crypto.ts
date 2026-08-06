@@ -26,6 +26,16 @@ function getKey(): Buffer {
   if (!raw) {
     throw new Error('SIS_CREDENTIAL_ENCRYPTION_KEY is not set');
   }
+  // Canonical base64, checked BEFORE decoding. Buffer.from(x, 'base64')
+  // silently discards characters it doesn't recognise, so a good 32-byte key
+  // with junk appended ("…=!!!") decodes to a valid-looking 32 bytes and would
+  // sail past a length check alone. A key that is subtly not the key you think
+  // it is fails at decrypt time, long after the ciphertext was written.
+  if (!/^[A-Za-z0-9+/]{43}=$/.test(raw)) {
+    throw new Error(
+      'SIS_CREDENTIAL_ENCRYPTION_KEY must be canonical base64 of 32 bytes (openssl rand -base64 32)'
+    );
+  }
   const key = Buffer.from(raw, 'base64');
   if (key.length !== 32) {
     throw new Error(
@@ -67,7 +77,14 @@ export function encryptSisCredential(plaintext: string): string {
 }
 
 export function decryptSisCredential(encrypted: string): string {
-  const [version, ivB64, dataB64, tagB64] = encrypted.split('.');
+  // Exactly four parts. Destructuring alone ignores extras, so
+  // `<valid-envelope>.junk` would decrypt happily — the GCM tag covers the
+  // ciphertext, not the envelope around it.
+  const parts = encrypted.split('.');
+  if (parts.length !== 4) {
+    throw new Error('Unrecognized encrypted SIS credential format');
+  }
+  const [version, ivB64, dataB64, tagB64] = parts;
   if (version !== VERSION || !ivB64 || !dataB64 || !tagB64) {
     throw new Error('Unrecognized encrypted SIS credential format');
   }
