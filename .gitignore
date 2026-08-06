@@ -155,3 +155,6 @@ html-report/
 /test-lesson-output.json
 /speddy-chrome-extension.tar.gz
 /speddy-extension-v2.0.0.zip
+
+# SIS exploration reports (SPE-398) — contain district student IDs, never commit
+/sis-reports/

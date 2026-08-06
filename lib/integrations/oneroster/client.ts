@@ -30,11 +30,18 @@ import {
 } from './config';
 import type {
   OneRosterTokenResponse,
+  RawOneRosterEnrollment,
   RawOneRosterOrg,
   RawOneRosterSchool,
+  RawOneRosterUser,
 } from './types';
 
 const DEFAULT_TIMEOUT_MS = 30_000;
+
+/** Page size for `getAllPages`. Conservative — these are district SISs. */
+export const ONEROSTER_DEFAULT_PAGE_SIZE = 1000;
+/** Hard cap on pages walked, so a server that ignores `offset` cannot loop. */
+const MAX_PAGES = 1000;
 
 /**
  * `application/x-www-form-urlencoded`, per RFC 6749 §2.3.1 / Appendix B.
@@ -198,6 +205,61 @@ export class OneRosterClient {
     return this.collection<RawOneRosterSchool>('schools', options);
   }
 
+  /** `GET /students` — the roster. Used by the SPE-398 exploration tooling. */
+  async getStudents(options?: OneRosterRequestOptions): Promise<RawOneRosterUser[]> {
+    return this.namedCollection<RawOneRosterUser>('students', 'users', options);
+  }
+
+  /** `GET /teachers` — needed to resolve a Speddy teacher to a SIS teacher. */
+  async getTeachers(options?: OneRosterRequestOptions): Promise<RawOneRosterUser[]> {
+    return this.namedCollection<RawOneRosterUser>('teachers', 'users', options);
+  }
+
+  /** `GET /enrollments` — the student↔class↔teacher edges (SPE-398 report 3). */
+  async getEnrollments(options?: OneRosterRequestOptions): Promise<RawOneRosterEnrollment[]> {
+    return this.namedCollection<RawOneRosterEnrollment>('enrollments', 'enrollments', options);
+  }
+
+  /**
+   * Walk a collection to completion, in bounded pages.
+   *
+   * OneRoster paginates with `limit`/`offset`, and a single large `limit` is
+   * not a substitute: servers cap it silently, so a district bigger than the
+   * guess comes back truncated with no indication. That failure is especially
+   * nasty for the SPE-398 reports — a short roster makes the DISTRICT's data
+   * look incomplete, when the truncation was ours.
+   *
+   * Exhausting MAX_PAGES without a short page throws rather than returning what
+   * it has, for the same reason: silently truncated results here become a wrong
+   * match rate that nobody re-checks.
+   */
+  async getAllPages<T>(
+    path: string,
+    key: string,
+    options: Omit<OneRosterRequestOptions, 'limit' | 'offset'> & { pageSize?: number } = {},
+  ): Promise<T[]> {
+    const { pageSize = ONEROSTER_DEFAULT_PAGE_SIZE, ...rest } = options;
+    const all: T[] = [];
+
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const batch = await this.namedCollection<T>(path, key, {
+        ...rest,
+        limit: pageSize,
+        offset: page * pageSize,
+      });
+      all.push(...batch);
+      if (batch.length < pageSize) return all;
+    }
+
+    throw new OneRosterApiError(
+      `OneRoster pagination exceeded ${MAX_PAGES} pages for ${path}; aborting rather than ` +
+        'returning a silently truncated collection',
+      508,
+      path,
+      'request',
+    );
+  }
+
   /**
    * Read a OneRoster collection, refusing anything that isn't one.
    *
@@ -216,8 +278,23 @@ export class OneRosterClient {
     path: string,
     options?: OneRosterRequestOptions,
   ): Promise<T[]> {
-    const body = await this.get<{ orgs?: T[] }>(path, options);
-    if (!body || !Array.isArray(body.orgs)) {
+    return this.namedCollection<T>(path, 'orgs', options);
+  }
+
+  /**
+   * The same refusal, for collections OneRoster names something other than
+   * `orgs` — `users` for students and teachers, `enrollments` for enrollments.
+   * Kept as one function so the "a 200 is not automatically a collection" rule
+   * cannot hold for some endpoints and quietly lapse for others.
+   */
+  private async namedCollection<T>(
+    path: string,
+    key: string,
+    options?: OneRosterRequestOptions,
+  ): Promise<T[]> {
+    const body = await this.get<Record<string, unknown>>(path, options);
+    const rows = body?.[key];
+    if (!Array.isArray(rows)) {
       throw new OneRosterApiError(
         `${path} answered, but not with a OneRoster collection.`,
         502,
@@ -225,7 +302,7 @@ export class OneRosterClient {
         'request',
       );
     }
-    return body.orgs;
+    return rows as T[];
   }
 
   // -- Internal ---------------------------------------------------------------

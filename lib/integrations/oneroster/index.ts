@@ -7,6 +7,7 @@
 export {
   OneRosterClient,
   OneRosterApiError,
+  ONEROSTER_DEFAULT_PAGE_SIZE,
   type OneRosterPhase,
   type OneRosterRequestOptions,
 } from './client';
@@ -20,5 +21,7 @@ export {
 export type {
   RawOneRosterOrg,
   RawOneRosterSchool,
+  RawOneRosterUser,
+  RawOneRosterEnrollment,
   OneRosterTokenResponse,
 } from './types';

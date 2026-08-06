@@ -42,6 +42,7 @@ import {
   careNoteId,
   careReferralId,
   childId,
+  districtStudentNumber,
   derivePassword,
   groupAssignmentFor,
   personaEmail,
@@ -295,6 +296,10 @@ async function main() {
       if (!seeded || (hasDetails && !seeded.first_name)) {
         childRows.set(childUuid, {
           id: childUuid,
+          // The district's own student number (SPE-339) — the key SPE-398's
+          // match-rate report joins on. Null for roughly one child in six, so
+          // the "no ID entered" branch is exercised rather than assumed away.
+          district_student_id: districtStudentNumber(rule.providerKey, rule.schoolId, i),
           first_name: hasDetails ? name.firstName : null,
           last_name: hasDetails ? name.lastName : null,
           date_of_birth: hasDetails ? `${seedDate.getUTCFullYear() - 6 - gradeNum}-0${(i % 9) + 1}-1${i % 9}` : null,
