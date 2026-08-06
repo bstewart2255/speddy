@@ -222,7 +222,13 @@ async function main() {
     expect('districts', n => n === 1, '1');
     expect('schools', n => n === SCHOOLS.length, String(SCHOOLS.length));
     expect('profiles', n => n === PERSONAS.length, String(PERSONAS.length));
-    expect('admin_permissions', n => n === 6, '6');
+    // Derived, not hardcoded: the seed grants one row per admin-ish persona
+    // (site_admin, district_admin, and — since SPE-393 — district_tech), so
+    // adding such a persona shouldn't require editing a magic number here.
+    const scopedGrants = PERSONAS.filter(
+      p => p.role === 'district_admin' || p.role === 'site_admin' || p.role === 'district_tech',
+    ).length;
+    expect('admin_permissions', n => n === scopedGrants, String(scopedGrants));
     expect('teachers', n => n === RECORD_TEACHERS.length + teacherLogins, String(RECORD_TEACHERS.length + teacherLogins));
     expect('students', n => n === TOTAL_STUDENTS, String(TOTAL_STUDENTS));
     // SPE-347: one children row per child. Fewer children than students is the

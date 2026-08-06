@@ -84,8 +84,12 @@ export default function SettingsPage() {
             <WorkScheduleSettings />
           )}
 
-          {/* Curriculums Settings */}
-          <CurriculumsSettings />
+          {/* Curriculums Settings — teaching roles only. District Tech Admins
+              (SPE-393) reach this page for their account details alone and have
+              no caseload to pick curriculums for. */}
+          {userProfile?.role !== 'district_tech' && (
+            <CurriculumsSettings />
+          )}
 
           {/* Email notifications — daily schedule email opt-in (SPE-320).
               Providers toggle their own; resource specialists additionally

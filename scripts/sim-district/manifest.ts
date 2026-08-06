@@ -127,6 +127,7 @@ export function schoolById(id: string): SimSchool {
 
 export type SimRole =
   | 'district_admin'
+  | 'district_tech'
   | 'site_admin'
   | 'resource'
   | 'speech'
@@ -150,6 +151,10 @@ export interface SimPersona {
 
 export const PERSONAS: SimPersona[] = [
   { key: 'dana', fullName: 'Dana Alvarez-Sim', role: 'district_admin', emailLocal: 'district.admin', schoolIds: [] },
+  // SPE-393: District Tech Admin — district-wide scope, integrations portal
+  // only. Exists chiefly to be walked NEGATIVELY: the fixture's job is proving
+  // this persona cannot reach students, CARE, chat, scheduling or admin pages.
+  { key: 'theo', fullName: 'Theo Nakamura-Sim', role: 'district_tech', emailLocal: 'techadmin.district', schoolIds: [] },
   { key: 'priya', fullName: 'Priya Natarajan-Sim', role: 'site_admin', emailLocal: 'siteadmin.willow', schoolIds: [WILLOW] },
   { key: 'elena', fullName: 'Elena Rodriguez-Sim', role: 'site_admin', emailLocal: 'siteadmin.maple', schoolIds: [MAPLE] },
   { key: 'kwame', fullName: 'Kwame Mensah-Sim', role: 'site_admin', emailLocal: 'siteadmin.juniper', schoolIds: [JUNIPER] },

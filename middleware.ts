@@ -134,7 +134,35 @@ export async function middleware(request: NextRequest) {
   const isTeacherRoute = pathname.startsWith('/dashboard/teacher')
   const isCareRoute = pathname.startsWith('/dashboard/care')
   const isChatRoute = pathname.startsWith('/dashboard/chat')
+  const isTechRoute = pathname.startsWith('/dashboard/tech')
+  const isSettingsRoute = pathname.startsWith('/dashboard/settings')
   const isDashboardRoute = pathname.startsWith('/dashboard')
+
+  // District Tech Admins (SPE-393) see the integrations portal and nothing
+  // else — no student data, no CARE, no chat, no scheduling, no admin pages.
+  // This runs BEFORE the CARE/Chat early return below, which would otherwise
+  // wave them straight through: that exemption is unconditional for every
+  // authenticated user, so an "everything except" rule placed after it would
+  // silently leak both surfaces.
+  // The one exemption is /internal, which stays governed by is_speddy_admin
+  // below — that flag is orthogonal to the role and shouldn't be revoked here.
+  if (userRole === 'district_tech' && !(isInternalRoute && isSpeddyAdmin)) {
+    // Settings is the one shared page they keep: it renders their own account
+    // only, and they need somewhere to change their password.
+    if (isTechRoute || isSettingsRoute) {
+      return response
+    }
+    const redirectUrl = request.nextUrl.clone()
+    redirectUrl.pathname = '/dashboard/tech'
+    return NextResponse.redirect(redirectUrl)
+  }
+
+  // Conversely, nobody else has a reason to be in the tech portal.
+  if (isTechRoute) {
+    const redirectUrl = request.nextUrl.clone()
+    redirectUrl.pathname = '/dashboard'
+    return NextResponse.redirect(redirectUrl)
+  }
 
   // CARE and Chat are cross-role surfaces: exempt them from the admin/teacher
   // section redirects below so site admins and teachers can reach them. (Chat

@@ -90,7 +90,7 @@
 
 ## 1. User Types & Roles
 
-`profiles.role` is a single `text` column constrained to **11 values** (live
+`profiles.role` is a single `text` column constrained to **12 values** (live
 `profiles_role_check`). A separate boolean `profiles.is_speddy_admin` marks
 platform/internal admins and is **orthogonal** to `role`.
 
@@ -102,7 +102,24 @@ Functionally the roles group like this:
 | **SEA** (Special Ed Assistant) | `sea` | Delivers sessions under supervision. Intentionally **lesson view-only** at the RLS layer (`20260529_restrict_sea_lesson_access.sql`). Normalizes to `delivered_by = 'sea'`. |
 | **Gen-ed teacher** | `teacher` | Routed to `/dashboard/teacher`. |
 | **Org admins** | `site_admin`, `district_admin` | Routed to `/dashboard/admin`. Scope comes from `admin_permissions` (§3). |
+| **District tech admin** | `district_tech` | Routed to `/dashboard/tech`. District IT, not SpEd staff: sees the SIS integrations portal and `/dashboard/settings` and **nothing else** — no students, no CARE, no chat, no scheduling, no admin pages. Scope comes from `admin_permissions` (§3); see the carve-out note below. |
 | **Platform admin** | *(flag)* `is_speddy_admin = true` | Not a role. Gates `/internal`. |
+
+#### `district_tech` carries no `profiles.district_id` (SPE-393)
+
+Every other role stores its district on the profile. `district_tech`
+deliberately does **not**: a handful of RLS policies match on the *caller's*
+`profiles.district_id` with **no role predicate at all** —
+`care_case_status_history` (select **and** insert), `holidays`, and
+`exit_ticket_results` — so a populated `district_id` would silently grant this
+role district-wide CARE reads, contradicting the "integrations and nothing
+else" decision. Its district scope therefore lives **only** in
+`admin_permissions.district_id`, which confers nothing on its own because every
+policy consulting that table constrains `ap.role` to
+`site_admin`/`district_admin`.
+
+The sim-district walk asserts this negative, so re-populating the column turns
+the fixture red rather than leaking quietly.
 
 ### "provider" is a delivery category, not a role
 There is **no `provider` role** in the enum, yet `schedule_sessions.delivered_by`
@@ -123,9 +140,10 @@ psychologist, intervention]` (`lib/auth/role-utils.ts`).
 
 **Display labels** (`formatRoleLabel`, `lib/utils/role-utils.ts`): `speech→Speech`,
 `ot→OT`, `counseling→Counseling`, `resource→Resource`, `psychologist→Psych`,
-`specialist→Specialist`; anything else is capitalized.
+`specialist→Specialist`, `district_tech→District Tech Admin`; anything else is
+capitalized.
 
-**Source of truth:** `supabase/migrations/20260410_add_intervention_role.sql`
+**Source of truth:** `supabase/migrations/20260806_spe393_add_district_tech_role.sql`
 (latest `profiles_role_check`); `lib/auth/role-utils.ts`;
 `lib/utils/role-utils.ts`; `supabase/migrations/20260529_restrict_sea_lesson_access.sql`.
 
@@ -191,8 +209,14 @@ live `profiles_update` policy + `profiles_guard_immutable_columns` trigger.
 | `/internal` | `is_speddy_admin` only | `/dashboard` |
 | `/dashboard/admin` | `site_admin`, `district_admin` | `/dashboard` |
 | `/dashboard/teacher` | `teacher` | `/dashboard` |
-| `/dashboard/care` | **all authenticated users** | — |
-| other `/dashboard/*` | authenticated; admins & teachers redirected to their own dashboards | — |
+| `/dashboard/tech` | `district_tech` only | `/dashboard` |
+| `/dashboard/care` | all authenticated users **except `district_tech`** | `/dashboard/tech` |
+| other `/dashboard/*` | authenticated; admins & teachers redirected to their own dashboards; `district_tech` redirected to `/dashboard/tech` (its only other allowed page is `/dashboard/settings`) | — |
+
+> **Ordering matters:** the `district_tech` branch runs *before* the
+> CARE/Chat early return. That return is unconditional for every authenticated
+> user, so an "everything except" rule placed after it would wave the role
+> straight into both surfaces (SPE-393).
 
 > **Known gap — SPE-187 (security, Medium):** the AI generation routes
 > (`app/api/lessons/generate`, `lessons/v2`, `exit-tickets/generate`,
@@ -279,6 +303,16 @@ erDiagram
   level (`school_id`/`district_id`/`state_id` nullable; `granted_by`,
   `granted_at`). This is what gives `site_admin`/`district_admin` their reach in
   RLS — distinct from `is_speddy_admin`, which is platform-wide.
+  Two CHECK constraints guard it: one enumerating the allowed
+  `role` values, one pairing each role with the scope column it requires
+  (`site_admin ⇒ school_id`, `district_admin ⇒ district_id`,
+  `district_tech ⇒ district_id`). Both must be updated together when a role is
+  added, or the insert fails on whichever was missed.
+  A `district_tech` grant is a **scope marker only** and confers no data access:
+  every policy that consults this table constrains `ap.role` to
+  `site_admin`/`district_admin`, so the row matches none of them. That is the
+  point — it gives the role a district without giving it the district's data
+  (SPE-393; see the §1 carve-out on `profiles.district_id`).
 
 **Source of truth:** live tables `states`, `districts`, `schools`, `profiles`,
 `provider_schools`, `admin_permissions`;
