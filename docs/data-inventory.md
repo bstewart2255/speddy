@@ -126,6 +126,50 @@ Two qualifications, so the "no personal data" label is exact:
 Listed so the sweep is complete and future reviewers can see these were
 considered and excluded, rather than missed.
 
+## E. Integration credentials (no personal data; highest sensitivity)
+
+_Entry: **provided by the district's own IT staff**, through the tech portal._
+
+| Element | Source |
+|---|---|
+| District SIS connection config (SIS type, base URL, OAuth token URL) | `district_sis_connections` |
+| District SIS credentials — Aeries certificate; OneRoster client id + secret | `district_sis_connections` (**ciphertext only**) |
+| Masked credential hint (last 4 characters) | `district_sis_connections.credential_hint` |
+| Connection lifecycle — status, DPA-cleared timestamp, last test time and per-area diagnostics | `district_sis_connections` |
+
+Filed as its own class rather than under §D, and the distinction is not
+cosmetic. This table holds **no personal data** — but it holds the keys to a
+district's entire student information system, which makes it the most sensitive
+row in the database by consequence even though it is the least sensitive by
+content. Listing it beside bell schedules under "no personal data" would be
+true and misleading in the same sentence.
+
+How it is protected, so the NDPA answer is exact rather than reassuring:
+
+- **Encrypted at rest at the application layer**, AES-256-GCM, under
+  `SIS_CREDENTIAL_ENCRYPTION_KEY` — a key held in the environment and never in
+  the database, and deliberately separate from the calendar-token key so either
+  can be rotated without the other. Database-level encryption at rest (Supabase)
+  sits underneath this, not instead of it.
+- **Never returned to a browser.** Row-level security cannot hide a column, so
+  the credential columns are additionally withheld by **column-level grants**:
+  an authenticated session cannot name them and is refused outright. Only the
+  masked hint is client-readable.
+- **No plaintext column exists**, and CHECK constraints reject any value in a
+  credential column that is not a well-formed ciphertext envelope — so a bug
+  that skipped encryption is refused by the database rather than stored.
+- **Not writable from a browser at all**; every mutation runs server-side.
+- **Credentials cannot be stored before the district's DPA is recorded** — also
+  a CHECK constraint, not only an application rule.
+
+`created_by` is a staff-attribution stamp, as in §D; the identity it points at
+is disclosed in §B.
+
+**Not student data, and not a subprocessor disclosure.** Speddy stores the
+credential; the SIS vendor (Aeries, or the district's OneRoster provider) is the
+district's own system, not a Speddy subprocessor. What flows *back* through that
+connection becomes §A student data and is disclosed there.
+
 ---
 
 ## Where each element flows (see [`subprocessors.md`](./subprocessors.md))
