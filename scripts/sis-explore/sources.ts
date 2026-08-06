@@ -11,7 +11,11 @@
  * reads the same whether the district is on Aeries or OneRoster.
  */
 import { AeriesClient } from '@/lib/integrations/aeries';
-import { OneRosterClient } from '@/lib/integrations/oneroster';
+import {
+  OneRosterClient,
+  type RawOneRosterEnrollment,
+  type RawOneRosterUser,
+} from '@/lib/integrations/oneroster';
 import { getDecryptedCredential, listConnections } from '@/lib/sis/connections';
 import { createServiceClient } from '@/lib/supabase/server';
 import {
@@ -35,13 +39,28 @@ export interface IdCandidate {
   students: SisStudent[];
 }
 
+export interface DerivedForField {
+  teacherLinks: SisTeacherLink[];
+  /** District IDs flagged special education, in the chosen namespace. */
+  spedDistrictIds?: string[];
+}
+
 export interface SisSnapshot {
   candidates: IdCandidate[];
-  teacherLinks: SisTeacherLink[];
+  /**
+   * Derived data, keyed to the identifier field the caller actually picks.
+   *
+   * A FUNCTION rather than a field, because the choice happens after the fetch.
+   * The first version returned teacher links keyed on OneRoster's `identifier`
+   * and Aeries' special-education flags keyed on `StudentID`, both hard-coded —
+   * so the moment report 1 picked any other field, those two reports silently
+   * compared different namespaces and produced total disagreement. Both bots
+   * flagged it; it would have made the answer to the owner's named question
+   * confidently wrong.
+   */
+  forField(field: string): DerivedForField;
   /** SIS teacher key → lowercased email, for resolving Speddy's teachers. */
   teacherEmails: Map<string, string>;
-  /** District IDs flagged special education. Aeries only. */
-  spedDistrictIds?: string[];
   /** What could not be fetched, and why. Printed with the report. */
   notes: string[];
 }
@@ -95,7 +114,14 @@ export async function loadSchools(districtId: string): Promise<SchoolRow[]> {
  */
 export async function loadSpeddyTeacherEmails(districtId: string): Promise<Map<string, string>> {
   const supabase = createServiceClient();
-  const { data: schools } = await supabase.from('schools').select('id').eq('district_id', districtId);
+  // The error is checked, not discarded: a failed lookup returning an empty map
+  // would classify EVERY teacher as unresolvable and read as a finding about
+  // the district's data rather than a Speddy read failure.
+  const { data: schools, error: schoolsError } = await supabase
+    .from('schools')
+    .select('id')
+    .eq('district_id', districtId);
+  if (schoolsError) throw new Error(`Could not read schools: ${schoolsError.message}`);
   const schoolIds = (schools ?? []).map((s: { id: string }) => s.id);
   if (schoolIds.length === 0) return new Map();
 
@@ -195,12 +221,34 @@ export async function fetchAeries(client: AeriesClient): Promise<SisSnapshot> {
       'teachers — that is a gap in this tool, not a finding about the district.',
   );
 
-  return { candidates, teacherLinks: [], teacherEmails, spedDistrictIds: [...spedIds], notes };
+  // StudentID → this row's value for each candidate field, so the flags can be
+  // translated into whichever namespace report 1 selects.
+  const byStudentId = new Map<string, Record<string, string | null>>();
+  for (const r of rows) {
+    const key = str(r.StudentID);
+    if (key) {
+      byStudentId.set(key, Object.fromEntries(candidateFields.map((f) => [f, str(r[f])])));
+    }
+  }
+
+  return {
+    candidates,
+    forField: (field) => ({
+      teacherLinks: [],
+      spedDistrictIds: [...spedIds]
+        .map((sid) => byStudentId.get(sid)?.[field] ?? null)
+        .filter((v): v is string => !!v),
+    }),
+    teacherEmails,
+    notes,
+  };
 }
 
 export async function fetchOneRoster(client: OneRosterClient): Promise<SisSnapshot> {
   const notes: string[] = [];
-  const students = await client.getStudents({ limit: 5000 });
+  // Paged to completion. A fixed `limit` silently truncates a large district,
+  // and a short roster makes THEIR data look incomplete when the loss was ours.
+  const students = await client.getAllPages<RawOneRosterUser>('students', 'users');
 
   const candidates: IdCandidate[] = (['identifier', 'sourcedId'] as const).map((field) => ({
     field,
@@ -213,22 +261,31 @@ export async function fetchOneRoster(client: OneRosterClient): Promise<SisSnapsh
   }));
 
   const teacherEmails = new Map<string, string>();
-  for (const t of await client.getTeachers({ limit: 5000 })) {
+  for (const t of await client.getAllPages<RawOneRosterUser>('teachers', 'users')) {
     if (t.email) teacherEmails.set(t.sourcedId, t.email.trim().toLowerCase());
   }
 
-  const enrollments = await client.getEnrollments({ limit: 20000 });
-  // Keyed on `identifier` — the district's own number — because that is what
-  // the rest of the analysis joins on. If report 1 says `sourcedId` is the
-  // field that actually matches, the run is re-done with that choice.
-  const byIdentifier = new Map<string, string>();
-  for (const s of students) if (s.identifier) byIdentifier.set(s.sourcedId, String(s.identifier));
-  const teacherLinks = enrollmentsToTeacherLinks(enrollments, byIdentifier);
+  const enrollments = await client.getAllPages<RawOneRosterEnrollment>('enrollments', 'enrollments');
 
   notes.push(
     'OneRoster carries no special-education flag, so report 4 is unavailable on this path. ' +
       'That is a property of the standard (SPE-392), not a permission the district can grant.',
   );
 
-  return { candidates, teacherLinks, teacherEmails, notes };
+  return {
+    candidates,
+    // Built per chosen field, not hard-coded to `identifier`. Keying the links
+    // on a different field than the analysis joins on reports every matched
+    // secondary student as having no teachers, and 0% coverage.
+    forField: (field) => {
+      const bySourcedId = new Map<string, string>();
+      for (const st of students) {
+        const value = field === 'sourcedId' ? st.sourcedId : st[field];
+        if (value) bySourcedId.set(st.sourcedId, String(value));
+      }
+      return { teacherLinks: enrollmentsToTeacherLinks(enrollments, bySourcedId) };
+    },
+    teacherEmails,
+    notes,
+  };
 }

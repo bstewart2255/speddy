@@ -10,6 +10,12 @@ npm run sis:explore -- --district=SIM-D001
 npm run sis:explore -- --district=SIM-D001 --out=/tmp/report.md
 ```
 
+`--out` may point anywhere **outside** the repository, or under `sis-reports/`
+inside it. Any other in-repo path is refused, up front, before the run touches
+the district's SIS — `/sis-reports/` is the only path git ignores, and a report
+written beside tracked files is one `git add -A` away from committing student
+IDs. The file is written `0600`.
+
 It needs a stored SIS connection with a credential — set one up through the tech
 portal first (SPE-396 for Aeries, SPE-397 for OneRoster).
 
@@ -45,8 +51,8 @@ portal first (SPE-396 for Aeries, SPE-397 for OneRoster).
 ## Where the output goes, and why it is split
 
 - **The terminal** gets aggregates only. Safe to paste into Linear or a chat.
-- **`sis-reports/`** (git-ignored) gets the same findings plus student-level
-  district IDs.
+- **`sis-reports/`** (git-ignored, mode `0600`) gets the same findings plus
+  student-level district IDs.
 
 The realistic way the PII rule breaks is not carelessness — it is someone
 copying a terminal transcript into a ticket. So the terminal simply never holds

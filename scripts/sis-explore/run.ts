@@ -21,7 +21,7 @@
  *   npm run sis:explore -- --district=SIM-D001 --out=/tmp/report.md
  */
 import { mkdirSync, writeFileSync } from 'fs';
-import { dirname, resolve } from 'path';
+import { dirname, resolve, sep } from 'path';
 import { AeriesClient } from '@/lib/integrations/aeries';
 import { OneRosterClient } from '@/lib/integrations/oneroster';
 import {
@@ -64,11 +64,47 @@ function chooseCandidate(
   speddy: Parameters<typeof analyzeIdSemantics>[0],
 ): { chosen: IdCandidate; report: IdSemanticsReport; all: { field: string; report: IdSemanticsReport }[] } {
   const all = candidates.map((c) => ({ field: c.field, report: analyzeIdSemantics(speddy, c.students) }));
+  if (all.length === 0) {
+    throw new Error('The SIS snapshot offered no identifier fields to compare.');
+  }
   let best = 0;
   for (let i = 1; i < all.length; i++) {
     if (all[i].report.overlap > all[best].report.overlap) best = i;
   }
   return { chosen: candidates[best], report: all[best].report, all };
+}
+
+/**
+ * Decide where the full report may be written.
+ *
+ * The privacy control for this tool IS the ignore rule, and `--out=report.md`
+ * would have written student IDs into a tracked directory while the CLI
+ * cheerfully printed "that file is git-ignored". So a path inside the repo is
+ * accepted only under the ignored directory; anywhere outside the repo is the
+ * caller's own business and is allowed.
+ */
+export function resolveOutPath(
+  requested: string | undefined,
+  districtId: string,
+  sisType: string,
+): string {
+  const repoRoot = resolve(__dirname, '..', '..');
+  if (!requested) {
+    return resolve(repoRoot, DEFAULT_OUT_DIR, `${districtId}-${sisType}.md`);
+  }
+
+  const target = resolve(requested);
+  const inRepo = target === repoRoot || target.startsWith(repoRoot + sep);
+  if (!inRepo) return target;
+
+  const allowed = resolve(repoRoot, DEFAULT_OUT_DIR);
+  if (target === allowed || target.startsWith(allowed + sep)) return target;
+
+  throw new Error(
+    `Refusing to write a student-level report to ${target}.\n` +
+      `Inside the repository, reports may only go under ${DEFAULT_OUT_DIR}/ — the only path ` +
+      'git ignores. Pass an --out path outside the repository, or drop --out entirely.',
+  );
 }
 
 async function main(): Promise<void> {
@@ -80,6 +116,11 @@ async function main(): Promise<void> {
 
   console.log(`\nSIS exploration · district ${districtId}`);
   console.log('Read-only. Nothing is written to Speddy tables or to the SIS.\n');
+
+  // Validated BEFORE any fetching. A run makes real requests against a
+  // district's production SIS; discovering the output path is refusable only
+  // after all of them is a waste of their server and the operator's time.
+  const outPath = resolveOutPath(arg('out'), districtId, 'pending');
 
   const { connection, credential } = await loadConnection(districtId);
   console.log(`Connection: ${connection.sis_type} · ${connection.base_url ?? '(no base url)'}\n`);
@@ -111,6 +152,9 @@ async function main(): Promise<void> {
   ]);
 
   const { chosen, report: idSemantics, all } = chooseCandidate(snapshot.candidates, speddy);
+  // Derived AFTER the field is chosen — teacher links and special-education
+  // flags have to live in the same namespace the analysis joins on.
+  const derived = snapshot.forField(chosen.field);
 
   // Speddy teacher → SIS teacher, by email. Built here rather than in the
   // analysis so the analysis stays pure and the "we could not resolve this
@@ -132,13 +176,13 @@ async function main(): Promise<void> {
     teacherLinkage: analyzeTeacherLinkage(
       speddy,
       chosen.students,
-      snapshot.teacherLinks,
+      derived.teacherLinks,
       schools,
       speddyTeacherToSisKey,
     ),
     spedFlags:
-      credential.sisType === 'aeries' && snapshot.spedDistrictIds
-        ? analyzeSpedFlags(speddy, snapshot.spedDistrictIds)
+      credential.sisType === 'aeries' && derived.spedDistrictIds
+        ? analyzeSpedFlags(speddy, derived.spedDistrictIds)
         : undefined,
   };
 
@@ -156,16 +200,23 @@ async function main(): Promise<void> {
     for (const n of snapshot.notes) console.log(`- ${n}`);
   }
 
-  const out = resolve(arg('out') ?? `${DEFAULT_OUT_DIR}/${districtId}-${connection.sis_type}.md`);
+  // Re-resolved now the SIS type is known, so the default filename names it.
+  // Already proven acceptable above; this cannot newly throw for a custom path.
+  const out = arg('out') ? outPath : resolveOutPath(undefined, districtId, connection.sis_type);
   mkdirSync(dirname(out), { recursive: true });
-  writeFileSync(out, renderFull(findings), 'utf8');
+  // 0600: the report is student-level PII on a shared machine.
+  writeFileSync(out, renderFull(findings), { encoding: 'utf8', mode: 0o600 });
 
   const n = detailIds(findings).length;
   console.log(`\nFull report (${n} student-level ID(s)) written to:\n  ${out}`);
-  console.log('That file is git-ignored. Do not paste it into Linear or a chat.');
+  console.log('Contains district student IDs. Do not paste it into Linear or a chat.');
 }
 
-main().catch((err) => {
-  console.error(`\nFAILED: ${err instanceof Error ? err.message : String(err)}`);
-  process.exit(1);
-});
+// Only when invoked as a CLI. Without this guard, importing anything from this
+// file — a test of `resolveOutPath`, say — runs the whole exploration.
+if (require.main === module) {
+  main().catch((err) => {
+    console.error(`\nFAILED: ${err instanceof Error ? err.message : String(err)}`);
+    process.exit(1);
+  });
+}

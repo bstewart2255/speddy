@@ -7,6 +7,7 @@
 export {
   OneRosterClient,
   OneRosterApiError,
+  ONEROSTER_DEFAULT_PAGE_SIZE,
   type OneRosterPhase,
   type OneRosterRequestOptions,
 } from './client';

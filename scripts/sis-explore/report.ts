@@ -148,6 +148,10 @@ export function renderFull(f: Findings): string {
     '',
     section('District IDs entered in Speddy but not found in the SIS', m.unmatchedIds),
     section('Secondary students with more than one SIS teacher', t.multiTeacherIds),
+    section(
+      'District IDs entered on more than one child',
+      m.duplicates.map((d) => `${d.districtStudentId} → children ${d.childIds.join(', ')}`),
+    ),
     ...(sp
       ? [
           section('Flagged special education in Aeries, absent from Speddy', sp.sisOnlyIds),
@@ -161,6 +165,7 @@ export function renderFull(f: Findings): string {
 export function detailIds(f: Findings): string[] {
   return [
     ...f.matchRate.unmatchedIds,
+    ...f.matchRate.duplicates.map((d) => d.districtStudentId),
     ...f.teacherLinkage.multiTeacherIds,
     ...(f.spedFlags?.sisOnlyIds ?? []),
     ...(f.spedFlags?.speddyOnlyIds ?? []),

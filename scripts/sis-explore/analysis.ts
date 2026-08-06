@@ -18,6 +18,18 @@
  * meaningless; if nothing matches, teacher linkage has nothing to link.
  */
 import { isSecondarySchool, parseGradeLevel } from '../../lib/school-helpers';
+import { normalizeDistrictStudentId } from '../../lib/utils/student-matcher';
+
+/**
+ * Compare IDs the way the rest of the app already does (`.trim().toUpperCase()`).
+ *
+ * Raised by Codex. Raw exact-match would call `abc123` and `ABC123` different
+ * students, where the import path (`lib/import/classify.ts`) treats them as the
+ * same — so a formatting-only difference could report `no-overlap` and void the
+ * whole run. Comparison is normalized; the values SHOWN in the detail report
+ * stay exactly as they were entered, so somebody can look them up.
+ */
+const norm = (id: string | null | undefined): string => normalizeDistrictStudentId(id);
 
 // ---------------------------------------------------------------------------
 // Inputs — normalized so Aeries and OneRoster produce the same shapes.
@@ -119,9 +131,9 @@ export function analyzeIdSemantics(
 ): IdSemanticsReport {
   const speddyIds = speddy.map((s) => s.districtStudentId).filter((v): v is string => !!v);
   const sisIds = sis.map((s) => s.districtStudentId).filter((v): v is string => !!v);
-  const sisSet = new Set(sisIds);
-  const overlap = new Set(speddyIds.filter((id) => sisSet.has(id))).size;
-  const distinctSpeddy = new Set(speddyIds).size;
+  const sisSet = new Set(sisIds.map(norm));
+  const overlap = new Set(speddyIds.map(norm).filter((id) => sisSet.has(id))).size;
+  const distinctSpeddy = new Set(speddyIds.map(norm)).size;
 
   let verdict: IdSemanticsReport['verdict'];
   let verdictReason: string;
@@ -191,7 +203,7 @@ export function analyzeMatchRate(
   sis: SisStudent[],
 ): MatchRateReport {
   const sisSet = new Set(
-    sis.map((s) => s.districtStudentId).filter((v): v is string => !!v),
+    sis.map((s) => norm(s.districtStudentId)).filter((v) => v !== ''),
   );
 
   // Children, not caseload rows: a co-served child appears on two providers'
@@ -202,15 +214,16 @@ export function analyzeMatchRate(
   const children = [...byChild.values()];
 
   const withId = children.filter((c) => !!c.districtStudentId);
-  const matched = withId.filter((c) => sisSet.has(c.districtStudentId!));
-  const unmatched = withId.filter((c) => !sisSet.has(c.districtStudentId!));
+  const matched = withId.filter((c) => sisSet.has(norm(c.districtStudentId)));
+  const unmatched = withId.filter((c) => !sisSet.has(norm(c.districtStudentId)));
 
   const collisions = new Map<string, string[]>();
   for (const c of children) {
     if (!c.districtStudentId) continue;
-    const list = collisions.get(c.districtStudentId) ?? [];
+    const key = norm(c.districtStudentId);
+    const list = collisions.get(key) ?? [];
     list.push(c.childId);
-    collisions.set(c.districtStudentId, list);
+    collisions.set(key, list);
   }
 
   const backfillGap = children.filter(
@@ -287,7 +300,7 @@ export function analyzeTeacherLinkage(
     schools.filter((s) => isSecondarySchool(s)).map((s) => s.id),
   );
   const sisSet = new Set(
-    sis.map((s) => s.districtStudentId).filter((v): v is string => !!v),
+    sis.map((s) => norm(s.districtStudentId)).filter((v) => v !== ''),
   );
 
   const byChild = new Map<string, SpeddyStudent>();
@@ -303,14 +316,15 @@ export function analyzeTeacherLinkage(
   };
 
   const subjects = [...byChild.values()].filter(
-    (s) => s.districtStudentId && sisSet.has(s.districtStudentId) && isSecondary(s),
+    (s) => s.districtStudentId && sisSet.has(norm(s.districtStudentId)) && isSecondary(s),
   );
 
   const linksByStudent = new Map<string, Set<string>>();
   for (const l of links) {
-    const set = linksByStudent.get(l.districtStudentId) ?? new Set<string>();
+    const key = norm(l.districtStudentId);
+    const set = linksByStudent.get(key) ?? new Set<string>();
     set.add(l.teacherKey);
-    linksByStudent.set(l.districtStudentId, set);
+    linksByStudent.set(key, set);
   }
 
   const teachersPerStudent: Record<number, number> = {};
@@ -322,7 +336,7 @@ export function analyzeTeacherLinkage(
   const multiTeacherIds: string[] = [];
 
   for (const s of subjects) {
-    const sisTeachers = linksByStudent.get(s.districtStudentId!) ?? new Set<string>();
+    const sisTeachers = linksByStudent.get(norm(s.districtStudentId)) ?? new Set<string>();
     const n = sisTeachers.size;
     teachersPerStudent[n] = (teachersPerStudent[n] ?? 0) + 1;
     if (n === 0) noSis++;
@@ -378,9 +392,9 @@ export function analyzeSpedFlags(
   speddy: SpeddyStudent[],
   sisSpedDistrictIds: string[],
 ): SpedFlagReport {
-  const sisSet = new Set(sisSpedDistrictIds);
+  const sisSet = new Set(sisSpedDistrictIds.map(norm).filter((v) => v !== ''));
   const speddySet = new Set(
-    speddy.map((s) => s.districtStudentId).filter((v): v is string => !!v),
+    speddy.map((s) => norm(s.districtStudentId)).filter((v) => v !== ''),
   );
 
   const inBoth = [...speddySet].filter((id) => sisSet.has(id));

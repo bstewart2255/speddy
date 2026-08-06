@@ -38,6 +38,11 @@ import type {
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 
+/** Page size for `getAllPages`. Conservative — these are district SISs. */
+export const ONEROSTER_DEFAULT_PAGE_SIZE = 1000;
+/** Hard cap on pages walked, so a server that ignores `offset` cannot loop. */
+const MAX_PAGES = 1000;
+
 /**
  * `application/x-www-form-urlencoded`, per RFC 6749 §2.3.1 / Appendix B.
  *
@@ -213,6 +218,46 @@ export class OneRosterClient {
   /** `GET /enrollments` — the student↔class↔teacher edges (SPE-398 report 3). */
   async getEnrollments(options?: OneRosterRequestOptions): Promise<RawOneRosterEnrollment[]> {
     return this.namedCollection<RawOneRosterEnrollment>('enrollments', 'enrollments', options);
+  }
+
+  /**
+   * Walk a collection to completion, in bounded pages.
+   *
+   * OneRoster paginates with `limit`/`offset`, and a single large `limit` is
+   * not a substitute: servers cap it silently, so a district bigger than the
+   * guess comes back truncated with no indication. That failure is especially
+   * nasty for the SPE-398 reports — a short roster makes the DISTRICT's data
+   * look incomplete, when the truncation was ours.
+   *
+   * Exhausting MAX_PAGES without a short page throws rather than returning what
+   * it has, for the same reason: silently truncated results here become a wrong
+   * match rate that nobody re-checks.
+   */
+  async getAllPages<T>(
+    path: string,
+    key: string,
+    options: Omit<OneRosterRequestOptions, 'limit' | 'offset'> & { pageSize?: number } = {},
+  ): Promise<T[]> {
+    const { pageSize = ONEROSTER_DEFAULT_PAGE_SIZE, ...rest } = options;
+    const all: T[] = [];
+
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const batch = await this.namedCollection<T>(path, key, {
+        ...rest,
+        limit: pageSize,
+        offset: page * pageSize,
+      });
+      all.push(...batch);
+      if (batch.length < pageSize) return all;
+    }
+
+    throw new OneRosterApiError(
+      `OneRoster pagination exceeded ${MAX_PAGES} pages for ${path}; aborting rather than ` +
+        'returning a silently truncated collection',
+      508,
+      path,
+      'request',
+    );
   }
 
   /**
