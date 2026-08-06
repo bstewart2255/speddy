@@ -43,7 +43,11 @@
  *     script writes nothing that survives it — there is no already-escalated
  *     target that would make a negative pass for the wrong reason.
  *
- * Requires a seeded sim district (`npm run sim:reset -- --yes`).
+ * Requires a seeded sim district (`npm run sim:reset -- --yes`). Every write this
+ * script attempts is undone on the way out, pass or fail — see `cleanups`. That
+ * matters more here than in the sibling scripts: when the guard regresses these
+ * writes SUCCEED, so the run that reports the leak is exactly the run that would
+ * otherwise make it permanent.
  *
  * Usage: npm run sim:verify-provider-schools-rls
  */
@@ -61,6 +65,29 @@ let failures = 0;
 function check(ok: boolean, label: string, detail = ''): void {
   if (!ok) failures++;
   console.log(`  [${ok ? 'ok  ' : 'FAIL'}] ${label.padEnd(64)} ${detail}`);
+}
+
+/**
+ * Undo steps, run in a finally, pass or fail.
+ *
+ * This is not boilerplate: on the exact regression this script exists to catch,
+ * the writes SUCCEED. Without cleanup a single run would leave Theo, Nora and
+ * Dana permanently attached to schools they don't serve — corrupting the shared
+ * fixture and, worse, leaving three personas holding the escalated authorization
+ * the failing check just reported. The verifier must not become the thing that
+ * makes the leak durable.
+ */
+const cleanups: Array<() => Promise<void>> = [];
+
+async function runCleanups(): Promise<void> {
+  for (const undo of cleanups.reverse()) {
+    try {
+      await undo();
+    } catch (err) {
+      failures++;
+      console.log(`  [FAIL] ${'cleanup step threw'.padEnd(64)} ${String(err)}`);
+    }
+  }
 }
 
 async function signIn(personaKey: string): Promise<SupabaseClient> {
@@ -90,8 +117,16 @@ async function assertCannotSelfAttach(
   // sees their district). The escalation claim is that the count GROWS, so that
   // is what gets asserted; a fixed zero would be wrong for most roles and would
   // have to be relaxed into meaninglessness.
-  const { data: refsBefore } = await client.from('care_referrals').select('id').limit(50);
-  const baseline = refsBefore?.length ?? 0;
+  //
+  // Counted exactly, not via a capped page of rows: a `.limit(n)` on both sides
+  // reads n vs n once the fixture exceeds n, so a real escalation past the cap
+  // would pass. And an errored read must fail the check rather than coalesce to
+  // 0, which would look identical to "reads nothing".
+  const { count: baseline, error: baselineErr } = await client
+    .from('care_referrals')
+    .select('id', { count: 'exact', head: true });
+  check(!baselineErr, `${label}: baseline care_referrals read succeeded`,
+    baselineErr ? baselineErr.message : `${baseline}`);
 
   const { data, error } = await client
     .from('provider_schools')
@@ -106,6 +141,14 @@ async function assertCannotSelfAttach(
     })
     .select();
 
+  // Register the undo BEFORE asserting, so a thrown assertion cannot strand the row.
+  if (data?.length) {
+    const ids = data.map(r => r.id);
+    cleanups.push(async () => {
+      await admin.from('provider_schools').delete().in('id', ids);
+    });
+  }
+
   check(
     error?.code === '42501',
     `${label}: self-insert into ${targetSchool} refused`,
@@ -114,11 +157,13 @@ async function assertCannotSelfAttach(
 
   // Belt and braces: prove the escalation did not land even if the insert
   // somehow slipped through — this is the consequence the policy exists to stop.
-  const { data: refsAfter } = await client.from('care_referrals').select('id').limit(50);
+  const { count: after, error: afterErr } = await client
+    .from('care_referrals')
+    .select('id', { count: 'exact', head: true });
   check(
-    (refsAfter?.length ?? 0) === baseline,
+    !afterErr && after === baseline,
     `${label}: care_referrals reach did not grow`,
-    `${baseline} -> ${refsAfter?.length ?? 0}`,
+    afterErr ? `read failed: ${afterErr.message}` : `${baseline} -> ${after}`,
   );
 
   await client.auth.signOut();
@@ -159,6 +204,29 @@ async function main(): Promise<void> {
   if (!targetRow) {
     check(false, 'fixture sanity: Maria has provider_schools rows', 'none found');
   } else {
+    // Snapshot the real row and register its restore up front. If either write
+    // below is permitted — the regression this is looking for — the fixture
+    // would otherwise be left with Maria repointed at Willow or missing a
+    // school entirely.
+    const { data: original } = await admin
+      .from('provider_schools').select('*').eq('id', targetRow.id).single();
+    if (original) {
+      cleanups.push(async () => {
+        const { count } = await admin
+          .from('provider_schools')
+          .select('id', { count: 'exact', head: true })
+          .eq('id', original.id);
+        if (count === 0) {
+          await admin.from('provider_schools').insert(original);
+        } else {
+          await admin
+            .from('provider_schools')
+            .update({ school_id: original.school_id, school_site: original.school_site })
+            .eq('id', original.id);
+        }
+      });
+    }
+
     // UPDATE: repoint a real row at Willow, which she does not serve.
     await maria
       .from('provider_schools')
@@ -190,6 +258,9 @@ async function main(): Promise<void> {
   // (sim:reset already proves this at scale; re-assert it here so this script
   // fails loudly if a future tightening catches the admin path too.)
   const probeId = '00000000-0000-4000-8000-00000000e399';
+  cleanups.push(async () => {
+    await admin.from('provider_schools').delete().eq('id', probeId);
+  });
   const { error: adminInsertErr } = await admin.from('provider_schools').insert({
     id: probeId,
     provider_id: mariaUser!.id,
@@ -202,15 +273,29 @@ async function main(): Promise<void> {
   });
   check(!adminInsertErr, 'service role can still write (admin assignment path)',
     adminInsertErr ? adminInsertErr.message : 'inserted');
-  await admin.from('provider_schools').delete().eq('id', probeId);
 
   await maria.auth.signOut();
-
-  console.log(`\n${failures === 0 ? 'All checks passed.' : `${failures} check(s) FAILED.`}`);
-  process.exit(failures > 0 ? 1 : 0);
 }
 
-main().catch(err => {
-  console.error(err);
-  process.exit(1);
-});
+main()
+  .catch(err => {
+    failures++;
+    console.error(err);
+  })
+  .then(async () => {
+    // Always. A failing run is precisely the run that has rows to undo.
+    await runCleanups();
+
+    // Prove the undo worked rather than trusting it: the fixture must hold no
+    // provider_schools row for a persona that should have none, and Maria must
+    // be back to exactly her two schools.
+    const { data: leftovers } = await admin
+      .from('provider_schools')
+      .select('provider_id, school_id, school_site')
+      .eq('school_site', 'probe');
+    check((leftovers?.length ?? 0) === 0, 'fixture left clean (no probe rows remain)',
+      `${leftovers?.length ?? 0} leftover row(s)`);
+
+    console.log(`\n${failures === 0 ? 'All checks passed.' : `${failures} check(s) FAILED.`}`);
+    process.exit(failures > 0 ? 1 : 0);
+  });
