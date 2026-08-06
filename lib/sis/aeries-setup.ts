@@ -22,7 +22,7 @@
  * Server-only: reaches an external SIS with a decrypted credential.
  */
 import { AeriesApiError, AeriesClient } from '@/lib/integrations/aeries';
-import { assertPublicAeriesHost, assertPublicAeriesHostSyntax } from './ssrf-guard';
+import { assertPublicAeriesHostSyntax, assertSafeAeriesUrl } from './ssrf-guard';
 import type { SisTestResult } from './connections';
 
 export const AERIES_API_PATH = '/aeries/api/v5';
@@ -170,7 +170,7 @@ export async function runAeriesConnectionTest(params: {
   // Re-checked here, not just at write time: the stored row could predate the
   // guard, and a name's addresses can change after it was saved.
   try {
-    await assertPublicAeriesHost(new URL(params.baseUrl).hostname);
+    await assertSafeAeriesUrl(params.baseUrl);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'That address cannot be used.';
     return {

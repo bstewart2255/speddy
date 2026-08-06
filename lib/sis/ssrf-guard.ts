@@ -146,3 +146,36 @@ export async function assertPublicAeriesHost(hostname: string): Promise<void> {
     );
   }
 }
+
+/**
+ * The whole question — "is it safe to send a district's certificate here?" —
+ * answered in one place: scheme, then host syntax, then resolved addresses.
+ *
+ * The scheme belongs here rather than only at the write paths. Both of those
+ * already refuse http:// (`normalizeAeriesBaseUrl` for the district's own form,
+ * a zod refine on /api/internal/sis-connections), so nothing can store one
+ * today — the table is empty and there is no third writer. But this is the last
+ * point before the AERIES-CERT header goes on the wire, and it is the only one
+ * that sees the URL a probe will actually dial rather than the one someone
+ * typed. A future writer, a restored backup, or a hand-edited row would all
+ * arrive here and nowhere else.
+ *
+ * Callers get one function so the two halves cannot drift apart, and so a test
+ * that stubs the guard stubs all of it rather than silently keeping half.
+ */
+export async function assertSafeAeriesUrl(baseUrl: string): Promise<void> {
+  let parsed: URL;
+  try {
+    parsed = new URL(baseUrl);
+  } catch {
+    throw new Error(
+      'That does not look like a web address. It should look like https://yourdistrict.aeries.net',
+    );
+  }
+
+  if (parsed.protocol !== 'https:') {
+    throw new Error('The Aeries address must start with https:// so credentials stay encrypted.');
+  }
+
+  await assertPublicAeriesHost(parsed.hostname);
+}

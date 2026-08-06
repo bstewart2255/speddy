@@ -92,6 +92,32 @@ describe('runAeriesConnectionTest calls the resolving guard', () => {
     expect(mockGetSchools).not.toHaveBeenCalled();
   });
 
+  it('makes NO request for an http:// base, even to a perfectly public host', async () => {
+    // The host here is fine — the scheme is the whole problem. Probing it would
+    // put the district's Aeries certificate on the wire in cleartext.
+    //
+    // Nothing can store such a row today: both write paths refuse http:// and
+    // the table is empty. This is the last checkpoint before the AERIES-CERT
+    // header is sent, and the only one that sees the URL a probe will really
+    // dial rather than the one somebody typed into a form.
+    mockLookup.mockResolvedValue([{ address: '104.16.0.1', family: 4 }]);
+
+    const report = await runAeriesConnectionTest({
+      baseUrl: 'http://demo.aeries.net/aeries/api/v5',
+      certificate: CERT,
+    });
+
+    expect(report.ok).toBe(false);
+    expect(report.areas[0].message).toMatch(/https:\/\//);
+    expect(mockGetSchools).not.toHaveBeenCalled();
+  });
+
+  it('makes NO request for a baseUrl that is not a url at all', async () => {
+    const report = await runAeriesConnectionTest({ baseUrl: 'not a url', certificate: CERT });
+    expect(report.ok).toBe(false);
+    expect(mockGetSchools).not.toHaveBeenCalled();
+  });
+
   it('proceeds normally when the name resolves publicly', async () => {
     // The other half: a guard that refused everything would pass the two tests
     // above while breaking every real district.
