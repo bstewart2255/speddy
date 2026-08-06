@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/client';
 import { CurriculumsSettings } from '../../../components/settings/curriculums';
 import { ApiKeysSettings } from '../../../components/settings/api-keys';
 import { EmailNotificationsSettings } from '../../../components/settings/email-notifications';
+import { formatRoleLabel } from '@/lib/utils/role-utils';
 
 export default function SettingsPage() {
   const [userProfile, setUserProfile] = useState<any>(null);
@@ -73,7 +74,9 @@ export default function SettingsPage() {
                 </div>
                 <div>
                   <label className="text-sm font-medium text-gray-700">Role</label>
-                  <p className="mt-1 text-sm text-gray-900 capitalize">{userProfile?.role}</p>
+                  {/* `capitalize` only touches the first letter, so a snake_case
+                      role rendered raw reads "District_tech". */}
+                  <p className="mt-1 text-sm text-gray-900">{formatRoleLabel(userProfile?.role ?? null)}</p>
                 </div>
               </div>
             </CardBody>

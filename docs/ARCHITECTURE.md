@@ -108,30 +108,45 @@ Functionally the roles group like this:
 #### What actually keeps `district_tech` out of the data (SPE-393)
 
 Worth writing down, because it is **not** the role string. Nothing in RLS
-mentions `district_tech`. The role reads nothing because it holds none of the
-keys every policy is written against:
+mentions `district_tech`. As seeded, the role reads no domain data because it
+holds none of the keys the policies are written against:
 
-- `profiles.school_id` is null and it has **no `provider_schools` rows**, so
-  every "my school ∪ my provider schools" predicate resolves to the empty set.
+- `profiles.school_id` is null and it has no `provider_schools` rows, so every
+  "my school ∪ my provider schools" predicate resolves to the empty set.
 - It owns no `students`, no `schedule_sessions`, and no `teachers.account_id`
   row, so every ownership predicate misses.
 - Its `admin_permissions` grant has `role = 'district_tech'`, and **every**
   policy consulting that table constrains `ap.role` to
   `site_admin`/`district_admin`.
 
-A few policies (`care_case_status_history`, `holidays`, `exit_ticket_results`)
-do match on the caller's `profiles.district_id` with no role predicate, which
-looks alarming — but their inner `EXISTS` subqueries read `care_referrals` /
-`care_cases` / `students`, which are **themselves RLS-filtered** for the caller.
-With no school and no caseload, those subqueries return nothing. Verified with a
-real signed-in session rather than by reading the policy: a `teacher`, who *does*
-carry `district_id`, reads **0** `care_case_status_history` rows for exactly this
-reason.
+Verified with a real signed-in session (not by reading policies): the role reads
+0 rows from `students`, `children`, `schedule_sessions`, the five `care_*`
+tables, `teachers`, `staff`, `bell_schedules`, `special_activities`, and
+`attendance`.
 
-The consequence to remember: this role is protected by *absence*, so the guard
-that matters is never granting it a school, a caseload, or a
-`site_admin`/`district_admin` grant. The sim walk asserts the whole negative
-space so a future change that hands it one of those turns the fixture red.
+**Two honest caveats — this is protection by *absence*, and absence is not a
+guard:**
+
+1. **`holidays` IS readable.** Its SELECT policy matches the caller's
+   `profiles.district_id` and — unlike the CARE policies — its `EXISTS`
+   subquery reads only the caller's own `profiles` row, so nothing filters it.
+   A district-scoped role sees its district's holidays. Accepted: holidays are
+   calendar dates with no student or staff data attached. (The equivalent CARE
+   policies *are* saved by nested RLS — their subqueries read `care_referrals` /
+   `care_cases`, which are themselves filtered. A `teacher`, who also carries
+   `district_id`, reads 0 `care_case_status_history` rows for that reason.)
+2. **`provider_schools` has no INSERT guard.** Its policy is
+   `WITH CHECK (provider_id = auth.uid())` — no role predicate, no
+   school-membership check. Any authenticated user can self-attach to any
+   school and unlock every `get_my_school_ids()`-scoped policy. Confirmed
+   against live RLS for `district_tech`, **and equally for `teacher` and
+   `sea`** — this is a pre-existing, platform-wide hole, not something this
+   role introduces. Tracked separately in Linear; do not mistake the sim walk's
+   green negatives for proof that it is closed.
+
+So the guard that matters is never granting this role a school, a caseload, or a
+`site_admin`/`district_admin` grant. The sim walk asserts that negative space, so
+a change that hands it one of those turns the fixture red.
 
 ### "provider" is a delivery category, not a role
 There is **no `provider` role** in the enum, yet `schedule_sessions.delivered_by`
