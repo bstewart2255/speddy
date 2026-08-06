@@ -25,6 +25,10 @@ export function formatRoleLabel(role: string | null): string {
       return 'Site Admin';
     case 'district_admin':
       return 'District Admin';
+    case 'district_tech':
+      // Not derivable from the default title-caser, which would yield
+      // "District Tech".
+      return 'District Tech Admin';
     default:
       // Title-case each word, splitting snake_case/kebab-case so codes like
       // "site_admin" render as "Site Admin" rather than "Site_admin".

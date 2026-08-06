@@ -30,7 +30,7 @@
 
 ### Axis 1 — Role
 
-Three **buying/deciding audiences**, plus two **included portals** for people
+Three **buying/deciding audiences**, plus three **included portals** for people
 who participate but don't run the product:
 
 | Audience | Who that is | Center of gravity |
@@ -40,6 +40,7 @@ who participate but don't run the product:
 | **Provider** | Resource specialist / case manager, SLP, OT, counselor, school psychologist, intervention specialist | The day-to-day work: caseload, weekly service schedule, sessions, materials, progress, referrals, IEP meeting planning. |
 | *Teacher portal (included)* | Gen-ed classroom teacher | Sees which of their students receive services and when; contributes classroom activities so providers schedule around them. Never required to run anything. |
 | *SEA portal (included)* | Special Ed Assistant / paraprofessional | Sees the sessions assigned to them, their students, and the daily plan. View-and-deliver, not manage. |
+| *District tech portal (included)* 🗓️ | District IT / technology staff (or the county office acting for them) | Connects the district's student information system and nothing else. Deliberately sees **zero student data** — the person who plugs in the pipe is not the person who reads what flows through it. |
 
 Parents/guardians are a sixth touchpoint with **no account and no login**: the
 IEP-meeting flow (in development) reaches them by text/email link to confirm a
@@ -183,7 +184,8 @@ The front door for student concerns, before and around the IEP: a shared
 queue instead of sticky notes and hallway conversations.
 
 - Anyone on staff can submit a referral: academic, behavioral, attendance,
-  social-emotional, speech, OT, or other.
+  social-emotional, speech, OT, or other. (District tech admins are the one
+  exception — they hold no student-facing surface at all.)
 - Two intake lanes, matching how referrals actually arrive:
   - **Discussion lane** — a teacher or staff concern enters a pending queue,
     the team reviews it, and it becomes an active case (or doesn't).
@@ -267,8 +269,8 @@ entering data.
   provider there can coordinate with them.
 - Chat: built-in messaging between staff at the school — the scheduling
   conversation happens next to the schedule. Available to providers, site
-  admins, and teachers; SEAs and district admins are deliberately excluded
-  from the chat module.
+  admins, and teachers; SEAs, district admins, and district tech admins are
+  deliberately excluded from the chat module.
 - Teacher portal: teachers see when their students are pulled and add their
   own class activities (Library day, field trips) that providers'
   conflict-detection respects.
@@ -304,18 +306,23 @@ in charter networks and private-school learning-support teams.
 
 ✅ full use · 👁 view/oversight · ✏️ contributes · — not part of the role's view
 
-| Feature group | District admin | Site admin | Provider | Teacher | SEA |
-|---|---|---|---|---|---|
-| Provider schedule building | 👁 | 👁 | ✅ | 👁 (their students) | 👁 (assigned sessions) |
-| Master Schedule (bells, specials, yard duty) | 👁 | ✅ | ✏️ (can enter site data; consumes it) | ✏️ (own class activities) | — |
-| IEP meeting calendaring 🗓️ | 👁 (planned) | 🔶 rules setup shipped; dashboard planned | 🗓️ planner in review; reschedule planned | ✏️ one-time availability (shipped) | — |
-| Referral tracking (CARE) | 👁 across schools | ✅ oversight | ✅ works the queue | ✏️ submits + follows | 👁 |
-| Student & caseload management | 👁 across schools | 👁 school-wide | ✅ | 👁 (their students) | 👁 (their students) |
-| Lesson planning & materials | — | — | ✅ | — | 👁 view-only |
-| Progress monitoring & assessment | 👁 | 👁 | ✅ | — | ✏️ (curriculum progress) |
-| Team coordination & chat | — | ✅ | ✅ | ✅ | 🔶 session assignments only — no chat (excluded by design) |
-| Staff & account administration | ✅ district-wide | ✅ site | — | — | — |
-| Multi-school support | ✅ (scope is the district) | — | ✅ | — | — |
+| Feature group | District admin | Site admin | Provider | Teacher | SEA | District tech |
+|---|---|---|---|---|---|---|
+| Provider schedule building | 👁 | 👁 | ✅ | 👁 (their students) | 👁 (assigned sessions) | — |
+| Master Schedule (bells, specials, yard duty) | 👁 | ✅ | ✏️ (can enter site data; consumes it) | ✏️ (own class activities) | — | — |
+| IEP meeting calendaring 🗓️ | 👁 (planned) | 🔶 rules setup shipped; dashboard planned | 🗓️ planner in review; reschedule planned | ✏️ one-time availability (shipped) | — | — |
+| Referral tracking (CARE) | 👁 across schools | ✅ oversight | ✅ works the queue | ✏️ submits + follows | 👁 | — |
+| Student & caseload management | 👁 across schools | 👁 school-wide | ✅ | 👁 (their students) | 👁 (their students) | — |
+| Lesson planning & materials | — | — | ✅ | — | 👁 view-only | — |
+| Progress monitoring & assessment | 👁 | 👁 | ✅ | — | ✏️ (curriculum progress) | — |
+| Team coordination & chat | — | ✅ | ✅ | ✅ | 🔶 session assignments only — no chat (excluded by design) | — |
+| Staff & account administration | ✅ district-wide | ✅ site | — | — | — | — |
+| Multi-school support | ✅ (scope is the district) | — | ✅ | — | — | ✅ (scope is the district) |
+| SIS connections & credentials 🗓️ | — | — | — | — | — | ✅ sole surface |
+
+The District tech column is an unbroken row of dashes by design, not by
+omission: the role's whole point is that connecting the SIS requires no access
+to anything the SIS is connected *for*.
 
 ---
 

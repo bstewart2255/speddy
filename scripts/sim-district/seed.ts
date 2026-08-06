@@ -175,7 +175,14 @@ async function main() {
 
   // ---- Admin permissions --------------------------------------------------
   console.log('Step 4/9: admin permissions + provider school assignments...');
-  const adminPerms = PERSONAS.filter(p => p.role === 'district_admin' || p.role === 'site_admin').map(p => ({
+  // district_tech joins this set (SPE-393). The grant is a scope marker only —
+  // every policy that consults this table constrains ap.role to
+  // site_admin/district_admin, so the row confers no data access. Note it gets
+  // NO provider_schools row below and no school_id above: that absence, not the
+  // role string, is what keeps it out of the data (see ARCHITECTURE.md §1).
+  const adminPerms = PERSONAS.filter(
+    p => p.role === 'district_admin' || p.role === 'site_admin' || p.role === 'district_tech',
+  ).map(p => ({
     admin_id: userIds.get(p.key)!,
     role: p.role,
     district_id: DISTRICT.id,

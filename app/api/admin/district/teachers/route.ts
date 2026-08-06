@@ -15,15 +15,18 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
   try {
     const supabase = await createClient();
 
-    // Verify user is a district admin and get their district
-    const { data: adminPermission, error: permError } = await supabase
+    // Verify user is a district admin and get their district grants.
+    // Holding more than one admin_permissions row is legal, so this reads the
+    // full set rather than .single(), which errors outright on 2+ rows and
+    // would 403 a legitimately multi-district admin.
+    const { data: adminPermissions, error: permError } = await supabase
       .from('admin_permissions')
       .select('district_id, state_id')
       .eq('admin_id', userId)
       .eq('role', 'district_admin')
-      .single();
+      .not('district_id', 'is', null);
 
-    if (permError || !adminPermission?.district_id) {
+    if (permError || !adminPermissions?.length) {
       log.warn('Non-district-admin tried to create teacher', { userId });
       return NextResponse.json(
         { error: 'Forbidden: District admin access required' },
@@ -31,7 +34,7 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
       );
     }
 
-    const districtId = adminPermission.district_id;
+    const districtIds = adminPermissions.map((p) => p.district_id);
 
     // Parse request body
     const body = await request.json();
@@ -84,11 +87,11 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
       return NextResponse.json({ error: 'School not found' }, { status: 404 });
     }
 
-    if (school.district_id !== districtId) {
+    if (!districtIds.includes(school.district_id)) {
       log.warn('District admin tried to create teacher for school outside district', {
         userId,
         schoolId: school_id,
-        adminDistrict: districtId,
+        adminDistricts: districtIds,
         schoolDistrict: school.district_id,
       });
       return NextResponse.json(

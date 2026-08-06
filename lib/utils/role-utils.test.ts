@@ -11,6 +11,8 @@ describe('formatRoleLabel', () => {
     expect(formatRoleLabel('sea')).toBe('SEA');
     expect(formatRoleLabel('site_admin')).toBe('Site Admin');
     expect(formatRoleLabel('district_admin')).toBe('District Admin');
+    // Needs its own case: the default title-caser would render "District Tech".
+    expect(formatRoleLabel('district_tech')).toBe('District Tech Admin');
   });
 
   it('is case-insensitive for known roles', () => {

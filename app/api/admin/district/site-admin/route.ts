@@ -15,23 +15,25 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
   try {
     const supabase = await createClient();
 
-    // Verify user is a district admin and get their district
-    const { data: adminPermission, error: permError } = await supabase
+    // Verify user is a district admin and get their district grants.
+    // Holding more than one admin_permissions row is legal, so this reads the
+    // full set rather than .single(), which errors outright on 2+ rows and
+    // would 403 a legitimately multi-district admin. The grant that matches the
+    // target school is resolved below, once the school is known.
+    const { data: adminPermissions, error: permError } = await supabase
       .from('admin_permissions')
       .select('district_id, state_id')
       .eq('admin_id', userId)
       .eq('role', 'district_admin')
-      .single();
+      .not('district_id', 'is', null);
 
-    if (permError || !adminPermission?.district_id) {
+    if (permError || !adminPermissions?.length) {
       log.warn('Non-district-admin tried to create site admin', { userId });
       return NextResponse.json(
         { error: 'Forbidden: District admin access required' },
         { status: 403 }
       );
     }
-
-    const districtId = adminPermission.district_id;
 
     // Parse request body
     const body = await request.json();
@@ -82,11 +84,13 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
       return NextResponse.json({ error: 'School not found' }, { status: 404 });
     }
 
-    if (school.district_id !== districtId) {
+    const grant = adminPermissions.find((p) => p.district_id === school.district_id);
+
+    if (!grant) {
       log.warn('District admin tried to create site admin for school outside district', {
         userId,
         schoolId: school_id,
-        adminDistrict: districtId,
+        adminDistricts: adminPermissions.map((p) => p.district_id),
         schoolDistrict: school.district_id,
       });
       return NextResponse.json(
@@ -94,6 +98,10 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
         { status: 403 }
       );
     }
+
+    // The new site admin inherits the scope of the grant that authorized this
+    // call, so a multi-district admin lands them in the right district/state.
+    const districtId = grant.district_id;
 
     // Check if user already has site_admin permission for this school
     const { data: existingPermission, error: existingError } = await adminClient
@@ -191,7 +199,7 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
           role: 'site_admin',
           school_id,
           district_id: districtId,
-          state_id: adminPermission.state_id,
+          state_id: grant.state_id,
         });
 
       if (permissionError) {

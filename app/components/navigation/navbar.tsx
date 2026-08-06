@@ -101,6 +101,14 @@ export default function Navbar() {
         { name: 'Schools', href: '/dashboard/admin/schools' },
         { name: 'CARE', href: '/dashboard/admin/care' },
       ];
+    } else if (role === 'district_tech') {
+      // District Tech Admins only ever see the integrations portal (SPE-393).
+      // Listed explicitly rather than falling through to the default branch
+      // below, which hands out Students/Schedule/Chat.
+      return [
+        { name: 'Integrations', href: '/dashboard/tech' },
+        { name: 'Settings', href: '/dashboard/settings' },
+      ];
     } else if (role === 'site_admin') {
       // Site admins see their dashboard, master schedule, teacher/provider/staff directories, students, and CARE
       // Bell Schedules omitted — bell schedule items are shown within Master Schedule

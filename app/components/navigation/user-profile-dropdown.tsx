@@ -75,7 +75,8 @@ export default function UserProfileDropdown({ user }: { user: User }) {
       'ot': 'Occupational Therapist',
       'counseling': 'Counselor',
       'specialist': 'Program Specialist',
-      'sea': 'Special Education Assistant'
+      'sea': 'Special Education Assistant',
+      'district_tech': 'District Tech Admin'
     };
     return roleMap[role] || role;
   };
@@ -128,10 +129,15 @@ export default function UserProfileDropdown({ user }: { user: User }) {
                 <p className="mt-1 text-sm text-gray-900">{profile.school_district}</p>
               </div>
 
-              <div>
-                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">School Site</p>
-                <p className="mt-1 text-sm text-gray-900">{profile.school_site}</p>
-              </div>
+              {/* District-wide roles have no site, and school_site is NOT NULL
+                  so it arrives as an empty string — omit the row rather than
+                  render a labelled blank. */}
+              {profile.school_site && (
+                <div>
+                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">School Site</p>
+                  <p className="mt-1 text-sm text-gray-900">{profile.school_site}</p>
+                </div>
+              )}
             </div>
           )}
 
