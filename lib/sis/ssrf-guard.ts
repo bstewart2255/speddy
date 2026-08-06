@@ -28,11 +28,17 @@ import { lookup } from 'dns/promises';
 
 /** Reject any literal IP address, and names that cannot be public. */
 export function assertPublicAeriesHostSyntax(hostname: string): void {
-  // Strip a single trailing dot before ANY comparison. `localhost.` and
-  // `sis.internal.` are the fully-qualified forms of exactly the names below,
-  // resolve identically, and would otherwise sail past both checks — found by
-  // probing this guard rather than by reading it.
-  const host = hostname.toLowerCase().replace(/^\[|\]$/g, '').replace(/\.$/, '');
+  // Strip ALL trailing dots before ANY comparison. `localhost.` is the
+  // fully-qualified form of `localhost`, resolves identically, and would
+  // otherwise sail past every check below.
+  //
+  // `\.+$`, not `\.$`: the first version of this stripped exactly one dot, and
+  // `127.0.0.1..` then defeated the whole function — the IP-literal regex is
+  // anchored, so a leftover dot means it no longer matches, and every name
+  // check falls through the same way. The write path accepted it and stored
+  // `https://127.0.0.1../aeries/api/v5`. Fixing one spelling of a trailing dot
+  // and leaving the next is how the IPv6 branch below went wrong too.
+  const host = hostname.toLowerCase().replace(/^\[|\]$/g, '').replace(/\.+$/, '');
 
   // No district hands out a bare IP for their SIS; every real instance is a
   // hostname. Refusing literals removes the whole IPv4/IPv6 literal surface
@@ -84,16 +90,35 @@ export function isPrivateAddress(address: string, family: number): boolean {
     );
   }
 
-  const v6 = address.toLowerCase();
-  if (v6 === '::1' || v6 === '::') return true;
-  // IPv4-mapped (::ffff:10.0.0.1) — judge the embedded v4 address.
-  const mapped = v6.match(/^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/);
-  if (mapped) return isPrivateAddress(mapped[1], 4);
-  // fc00::/7 unique-local, fe80::/10 link-local, ff00::/8 multicast. The
-  // multicast arm matters because the IPv4 side already blocks 224/4 — without
-  // it the two families disagree, and a AAAA record is all it takes to pick the
-  // permissive one.
-  return /^f[cd]/.test(v6) || /^fe[89ab]/.test(v6) || /^ff/.test(v6);
+  // IPv6 is an ALLOW-list, deliberately, and this is the one place the two
+  // families are treated differently.
+  //
+  // It started as a deny-list — ::1, ::ffff:<v4>, fc00::/7, fe80::/10, ff00::/8
+  // — and that was wrong in nine ways at once, every one of them a spelling of
+  // an address the IPv4 side already refused: NAT64 (64:ff9b::a9fe:a9fe reaches
+  // 169.254.169.254 on any DNS64 network), 6to4 (2002:a9fe:a9fe::), the
+  // IPv4-compatible form (::169.254.169.254), site-local fec0::/10 — which
+  // `fe[89ab]` misses by one nibble — and even ::ffff:7f00:1, the plain hex
+  // spelling of the IPv4-mapped address the deny-list was built to catch.
+  // Enumerating the ways to write "loopback" in IPv6 is not a winnable game.
+  //
+  // So: the only globally routable IPv6 is 2000::/3. Everything outside it is
+  // special-purpose by IANA assignment and cannot be a district's Aeries host.
+  // One rule, and every encoding above is refused by construction rather than
+  // by having been thought of.
+  const v6 = address.toLowerCase().split('%')[0]; // drop any zone id (fe80::1%eth0)
+  const head = parseInt(v6.split(':')[0], 16); // NaN for '::1', '::ffff:…' — refused
+  if (!(head >= 0x2000 && head <= 0x3fff)) return true;
+
+  // The two IPv4-embedding tunnels that live INSIDE global unicast, and so are
+  // the only ways back through the rule above. Both are effectively dead
+  // (RFC 7526 withdrew the 6to4 relay); refusing them outright is simpler and
+  // safer than decoding the address they carry.
+  const second = parseInt(v6.split(':')[1] || '0', 16);
+  if (head === 0x2002) return true; // 6to4
+  if (head === 0x2001 && second === 0) return true; // Teredo, 2001::/32
+
+  return false;
 }
 
 /**

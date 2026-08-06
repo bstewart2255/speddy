@@ -32,15 +32,38 @@ export const GET = withRoute(
  * a separate, separately-audited action, and credentials never come through
  * /internal at all — the district's own tech admin enters those.
  */
+/**
+ * Exported so it can be tested as the real thing. The https constraint below is
+ * the sort of rule that is silently deleted in a refactor, and a copy of the
+ * schema in a test file would keep passing after that happened.
+ */
+export const createSisConnectionBody = z.object({
+  districtId: z.string().min(1),
+  sisType: z.enum(['aeries', 'oneroster']),
+  // https only, on both. A bare `.url()` accepts http://, and this route is the
+  // one way an http:// base can reach the table — the district-facing path goes
+  // through normalizeAeriesBaseUrl, which refuses it. A stored http:// base
+  // would put the district's SIS credential on the wire in cleartext on every
+  // probe, so it is refused at the boundary rather than re-checked wherever the
+  // row is later read.
+  baseUrl: z
+    .string()
+    .url()
+    .refine((u) => u.startsWith('https://'), {
+      message: 'baseUrl must start with https:// so credentials stay encrypted',
+    })
+    .optional(),
+  tokenUrl: z
+    .string()
+    .url()
+    .refine((u) => u.startsWith('https://'), {
+      message: 'tokenUrl must start with https:// so credentials stay encrypted',
+    })
+    .optional(),
+});
+
 export const POST = withRoute(
-  {
-    body: z.object({
-      districtId: z.string().min(1),
-      sisType: z.enum(['aeries', 'oneroster']),
-      baseUrl: z.string().url().optional(),
-      tokenUrl: z.string().url().optional(),
-    }),
-  },
+  { body: createSisConnectionBody },
   async ({ userId, body }) => {
     const denied = await speddyAdminDenialReason(userId);
     if (denied) {
