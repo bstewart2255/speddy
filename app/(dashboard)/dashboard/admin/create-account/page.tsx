@@ -807,7 +807,9 @@ export default function CreateAccountPage() {
           teacherName={
             accountType === 'specialist'
               ? `${specialistData.first_name} ${specialistData.last_name}`
-              : `${formData.first_name} ${formData.last_name}`
+              : accountType === 'tech_admin'
+                ? `${techAdminData.first_name} ${techAdminData.last_name}`
+                : `${formData.first_name} ${formData.last_name}`
           }
         />
       )}

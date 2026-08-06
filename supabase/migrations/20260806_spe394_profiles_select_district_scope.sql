@@ -80,7 +80,14 @@ USING (
         WHERE ap.admin_id = (SELECT auth.uid())
           AND ap.role = 'district_admin'
           AND ap.district_id IS NOT NULL
-          AND (ap.district_id)::text = (profiles.district_id)::text))
+          AND (ap.district_id)::text = (profiles.district_id)::text
+          -- school-less only. Staff WITH a school in this district are already
+          -- covered by the branch above, so without this the branch would also
+          -- match a profile whose district_id says one district while its
+          -- school_id points at another's school — inconsistent data nobody
+          -- should be granted sight of. Keeps the policy equal to its stated
+          -- intent rather than merely a superset of it. (CodeRabbit, PR #805.)
+          AND profiles.school_id IS NULL))
 
   -- site admin: my school, or a provider serving my school
   OR (EXISTS (

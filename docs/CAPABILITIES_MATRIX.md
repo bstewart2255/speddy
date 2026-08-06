@@ -324,12 +324,14 @@ The District tech column is an unbroken row of dashes by design, not by
 omission: the role's whole point is that connecting the SIS requires no access
 to anything the SIS is connected *for*.
 
-**Who creates the District tech account:** the district's own **district admin**,
-from the same "Create New Account" screen they already use for teachers and
-specialists — not Speddy staff, and not the tech person themselves. Site admins
-are not offered the option, because the role is district-wide and a site admin's
-authority stops at their school. The new account is handed a temporary password
-and must choose its own the first time it signs in.
+**Who creates the District tech account:** normally the district's own
+**district admin**, from the same "Create New Account" screen they already use
+for teachers and specialists — not the tech person themselves. Site admins are
+not offered the option, because the role is district-wide and a site admin's
+authority stops at their school. Speddy staff can also mint one from the
+internal onboarding tool as a fallback, which is how a district gets started
+before its own admin exists. Either way the new account is handed a temporary
+password and must choose its own the first time it signs in.
 
 ---
 

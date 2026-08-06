@@ -20,12 +20,17 @@
  *
  * Usage: npm run sim:verify-rls
  */
-import { requireEnv } from './lib';
+import { assertProjectRef, requireEnv } from './lib';
 import { DISTRICT, MAPLE, PERSONAS, derivePassword, simEmail } from './manifest';
 
 const url = requireEnv('NEXT_PUBLIC_SUPABASE_URL');
 const anon = requireEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY');
 const secret = requireEnv('SIM_DISTRICT_PASSWORD');
+// Pin the Supabase host BEFORE reading the service-role key: assertProjectRef()
+// is what stops this credential being sent at some other project if the env is
+// wrong. createAdmin() calls it internally; this script sends the key over raw
+// fetch, so it has to assert explicitly first.
+assertProjectRef();
 const service = requireEnv('SUPABASE_SERVICE_ROLE_KEY');
 
 interface Session {
@@ -226,15 +231,30 @@ async function main(): Promise<void> {
 
   // A site admin is school-scoped; the new branch is district_admin-only and
   // must not have handed them district-wide sight.
+  // status === 200 as well as the row count: readProfile returns rows: [] for
+  // ANY non-array body, so a 401 or 403 — an expired or never-established
+  // session — would satisfy a bare row-count assertion without the policy ever
+  // being consulted. Same false-pass class this file already guards for writes.
   const saSeesTech = await readProfile(siteAdmin, techId);
-  check(saSeesTech.rows.length === 0,
-    'site admin still cannot see the tech admin', `${saSeesTech.rows.length} row(s)`);
+  check(saSeesTech.status === 200 && saSeesTech.rows.length === 0,
+    'site admin still cannot see the tech admin',
+    `HTTP ${saSeesTech.status}, ${saSeesTech.rows.length} row(s)`);
 
   // The tech admin gains nothing: it holds a district grant, but with
   // role='district_tech', which no branch of the policy matches.
   const techSeesProvider = await readProfile(techAdmin, uid);
-  check(techSeesProvider.rows.length === 0,
-    'tech admin still cannot see other profiles', `${techSeesProvider.rows.length} row(s)`);
+  check(techSeesProvider.status === 200 && techSeesProvider.rows.length === 0,
+    'tech admin still cannot see a school-based profile',
+    `HTTP ${techSeesProvider.status}, ${techSeesProvider.rows.length} row(s)`);
+
+  // The provider above is school-scoped, so that check only proves the tech
+  // admin misses the SCHOOL branches. This one targets a school-less profile in
+  // its own district — the branch this PR actually added, and the one a district
+  // grant might plausibly have unlocked.
+  const techSeesDistrictAdmin = await readProfile(techAdmin, districtAdmin.user.id);
+  check(techSeesDistrictAdmin.status === 200 && techSeesDistrictAdmin.rows.length === 0,
+    'tech admin still cannot see a district-scoped profile',
+    `HTTP ${techSeesDistrictAdmin.status}, ${techSeesDistrictAdmin.rows.length} row(s)`);
 
   // Cross-district: the widening is pinned to the caller's own grant. This uses
   // a real, FK-valid foreign district — profiles.district_id is FK-constrained,
@@ -248,9 +268,9 @@ async function main(): Promise<void> {
   const foreignRows = (await foreign.json()) as Array<{ id: string }>;
   if (foreignRows?.length) {
     const crossRead = await readProfile(districtAdmin, foreignRows[0].id);
-    check(crossRead.rows.length === 0,
+    check(crossRead.status === 200 && crossRead.rows.length === 0,
       'district admin sees nothing in another district',
-      `${crossRead.rows.length} row(s) (target district=${FOREIGN_DISTRICT})`);
+      `HTTP ${crossRead.status}, ${crossRead.rows.length} row(s) (target district=${FOREIGN_DISTRICT})`);
   } else {
     check(false, 'fixture sanity: a profile exists in the foreign district',
       `none found in ${FOREIGN_DISTRICT} — check cannot run`);
