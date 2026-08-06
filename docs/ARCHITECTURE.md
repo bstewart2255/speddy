@@ -46,8 +46,10 @@
 - **Org scoping uses two parallel systems** on `profiles`/`provider_schools`:
   legacy free-text (`school_district`, `school_site`) **and** structured FK ids
   (`state_id`, `district_id`, `school_id`). Both coexist today.
-- **Audit logging is scaffolded but unwired** (`audit_logs` table is empty;
-  `logAccess()` is never called) — SPE-169.
+- **Audit logging covers SIS credentials only.** `audit_logs` is written by
+  `lib/sis/connections.ts` (SPE-395) and by nothing else; the older
+  `logAccess()` helper is still never called, and no student-data access is
+  audited — SPE-169.
 - **Elementary-first.** A school is *elementary* or *secondary* (`isSecondarySchool`,
   by `school_type` / `grade_span_low ≥ 6`); on a **secondary** site the scheduling
   surfaces (Schedule, Bell Schedules, Special Activities, Plan) are hidden for
@@ -199,6 +201,69 @@ flowchart TD
 3. **RLS** — the authoritative layer. Domain tables (students, sessions, CARE,
    etc.) carry policies scoped to the user's school(s) and/or ownership. Admin
    scope is granted via `admin_permissions` (§3).
+
+### Column-level grants — when RLS is not enough (SPE-395)
+
+**RLS is row-level and cannot hide a column.** A policy that lets someone read
+a row lets them read *every column of it*. For most tables that is fine. For
+`district_sis_connections` — which holds each district's encrypted SIS
+credentials — it is not: a district's Aeries certificate unlocks every student
+record in that district, and it would otherwise sit in a browser's memory and
+network log on every page that renders connection status.
+
+So that table layers **column-level `GRANT`s** on top of row-level RLS:
+
+```sql
+REVOKE ALL ON district_sis_connections FROM authenticated, anon;
+GRANT SELECT (id, district_id, sis_type, base_url, token_url, credential_hint,
+              status, dpa_cleared_at, last_tested_at, last_test_result,
+              created_by, created_at, updated_at)
+  ON district_sis_connections TO authenticated;
+```
+
+`authenticated` therefore cannot *name* a credential column — PostgREST refuses
+with **HTTP 403 / `42501`** rather than returning it. The service role is
+unaffected and is how the server-side encrypt/decrypt paths read them.
+
+**Consequence that will bite you:** `select('*')` on this table **fails** for a
+browser session, because `*` expands to columns the grant excludes. That is
+deliberate — a loud error beats silently shipping a certificate because someone
+reached for the usual shorthand. Callers name their columns; see
+`CONNECTION_COLUMNS` in `app/(dashboard)/dashboard/tech/page.tsx` and
+`SUMMARY_COLUMNS` in `lib/sis/connections.ts`, both of which mirror the GRANT.
+
+Browser **writes** are denied outright (`WITH CHECK (false)` on insert/update,
+`USING (false)` on delete) — every mutation involves crypto and runs
+server-side. Same reasoning as `provider_schools` after SPE-399.
+
+Verified against a real signed-in session, not assumed:
+`npm run sim:verify-sis-rls`.
+
+**Source of truth:**
+`supabase/migrations/20260806_spe395_district_sis_connections.sql`;
+`lib/sis/connections.ts`; `scripts/sim-district/verify-sis-connections-rls.ts`.
+
+### SIS credentials: encryption, the DPA gate, and egress (SPE-395/396)
+
+- **Encrypted app-side**, never in plaintext: AES-256-GCM, envelope
+  `v1.<iv>.<ct>.<tag>`, under `SIS_CREDENTIAL_ENCRYPTION_KEY` — deliberately a
+  *separate* key from `CALENDAR_TOKEN_ENCRYPTION_KEY`, because the blast radii
+  differ by orders of magnitude. Only `credential_hint` (the mask plus the last
+  four characters) is ever readable by a client.
+- **The DPA gate exists twice.** `storeCredential()` refuses a credential when
+  `dpa_cleared_at IS NULL`, and a CHECK constraint refuses it again — so the
+  rule survives a future route that forgets it. Speddy staff set the flag from
+  the `/internal` district page; districts cannot.
+- **Outbound requests are guarded** (`lib/sis/ssrf-guard.ts`). The district
+  supplies the address we then dial with their credential, so IP literals,
+  internal-only names and any host resolving into private/loopback/link-local/
+  CGNAT/multicast space are refused, and redirects are refused outright. The
+  remaining hole — DNS rebinding between the check and the connection — is
+  documented in that file and tracked as **SPE-406**.
+
+**Source of truth:** `lib/sis/credential-crypto.ts`; `lib/sis/connections.ts`;
+`lib/sis/ssrf-guard.ts`; `lib/sis/aeries-setup.ts`;
+`app/api/tech/sis/aeries/`; `app/api/internal/sis-connections/`.
 
 ### `profiles` self-updates: policy + trigger (SPE-332)
 
@@ -951,16 +1016,33 @@ All cron routes authenticate with a shared `CRON_SECRET` (header
      and deleted via `app/api/admin/care-referrals/[referralId]`, never
      auto-deleted (a name match can be ambiguous).
 
-### Audit logging — scaffolded but unwired
-> **Known gap — SPE-169 (security, High).** An `audit_logs` table exists in the
-> DB (columns `id, user_id, action, resource_type, resource_id, metadata,
-> timestamp, created_at`) but holds **0 rows**, and the helper
-> `lib/supabase/audit-log.ts` (`logAccess()`, fire-and-forget insert) is **never
-> imported or called anywhere**. So there is no functioning audit trail today.
-> The FERPA page wording was softened to the truthful interim language (RLS +
-> auth) under **SPE-134**; SPE-169 is the "build real audit logging" ticket and
-> should restore the wording once shipped. Whoever builds it should decide
-> whether to wire up / replace this existing scaffold.
+### Audit logging — wired for SIS credentials only (SPE-395)
+
+The `audit_logs` table (`id, user_id, action, resource_type, resource_id,
+metadata, timestamp, created_at`) now has exactly **one** real writer:
+`lib/sis/connections.ts`, via `logServerAuditEvent()`
+(`lib/supabase/audit-log-server.ts`). Every mutation of a district's SIS
+connection is recorded — `sis_connection_created`, `sis_credential_stored`,
+`sis_credential_rotated`, `sis_connection_tested`, `sis_dpa_cleared`,
+`sis_dpa_revoked`, `sis_connection_disconnected`. Rotation and first-time
+storage are separate actions on purpose: during an incident review they mean
+different things.
+
+Two properties worth knowing before relying on it:
+
+- **It is best-effort.** `logServerAuditEvent` catches and logs its own
+  failures rather than breaking the action being audited, so a mutation can
+  succeed with no audit row. Fine for a diagnostic trail; not sufficient if
+  the trail ever needs to be evidential.
+- **Nothing else writes it.** Student-data access is still unaudited.
+
+> **Known gap — SPE-169 (security, High).** The older helper
+> `lib/supabase/audit-log.ts` (`logAccess()`) remains **unused**, and no
+> student-data access is logged anywhere. The FERPA page wording was softened
+> to truthful interim language (RLS + auth) under **SPE-134**; SPE-169 is the
+> "build real audit logging" ticket and should restore the wording once
+> shipped. It should also decide whether to fold the unused `audit-log.ts`
+> scaffold into the `audit-log-server.ts` path SPE-395 established.
 
 **Source of truth:** `app/api/cron/cleanup-uploads/route.ts`;
 `app/api/cron/cleanup-worksheet-images/route.ts`;
@@ -1124,7 +1206,7 @@ Re-check Linear for current state.
 | Ticket | Pri | Area | Summary |
 |---|---|---|---|
 | **SPE-111** | High | Cleanup / Security | ✅ App-level self-signup removed (PR #678); production Supabase Auth `enable_signup` **disabled in the dashboard 2026-07-20** → direct `/auth/v1/signup` no longer creates an account; admin-only enforced. No real billing remnants existed. |
-| **SPE-169** | High | Security/FERPA | Build real audit logging; `audit_logs` table + `logAccess()` exist but are unwired/empty. |
+| **SPE-169** | High | Security/FERPA | Build real audit logging. `audit_logs` is now written for SIS-credential mutations only (SPE-395); student-data access is still unaudited and the older `logAccess()` helper remains unused. |
 | **SPE-187** | Medium | Security | AI generation routes have no role authz; `withRoute` has no `roles` option. Not live (AI off). |
 | **SPE-188** | Low | Security | Idle logout is client-side only; no server-side session-lifetime backstop. |
 | **SPE-190** | Low | Security | Admin-created teachers get a temp password that's never force-rotated (no `must_change_password` on creation). |
