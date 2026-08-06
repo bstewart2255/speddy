@@ -30,8 +30,10 @@ import {
 } from './config';
 import type {
   OneRosterTokenResponse,
+  RawOneRosterEnrollment,
   RawOneRosterOrg,
   RawOneRosterSchool,
+  RawOneRosterUser,
 } from './types';
 
 const DEFAULT_TIMEOUT_MS = 30_000;
@@ -198,6 +200,21 @@ export class OneRosterClient {
     return this.collection<RawOneRosterSchool>('schools', options);
   }
 
+  /** `GET /students` — the roster. Used by the SPE-398 exploration tooling. */
+  async getStudents(options?: OneRosterRequestOptions): Promise<RawOneRosterUser[]> {
+    return this.namedCollection<RawOneRosterUser>('students', 'users', options);
+  }
+
+  /** `GET /teachers` — needed to resolve a Speddy teacher to a SIS teacher. */
+  async getTeachers(options?: OneRosterRequestOptions): Promise<RawOneRosterUser[]> {
+    return this.namedCollection<RawOneRosterUser>('teachers', 'users', options);
+  }
+
+  /** `GET /enrollments` — the student↔class↔teacher edges (SPE-398 report 3). */
+  async getEnrollments(options?: OneRosterRequestOptions): Promise<RawOneRosterEnrollment[]> {
+    return this.namedCollection<RawOneRosterEnrollment>('enrollments', 'enrollments', options);
+  }
+
   /**
    * Read a OneRoster collection, refusing anything that isn't one.
    *
@@ -216,8 +233,23 @@ export class OneRosterClient {
     path: string,
     options?: OneRosterRequestOptions,
   ): Promise<T[]> {
-    const body = await this.get<{ orgs?: T[] }>(path, options);
-    if (!body || !Array.isArray(body.orgs)) {
+    return this.namedCollection<T>(path, 'orgs', options);
+  }
+
+  /**
+   * The same refusal, for collections OneRoster names something other than
+   * `orgs` — `users` for students and teachers, `enrollments` for enrollments.
+   * Kept as one function so the "a 200 is not automatically a collection" rule
+   * cannot hold for some endpoints and quietly lapse for others.
+   */
+  private async namedCollection<T>(
+    path: string,
+    key: string,
+    options?: OneRosterRequestOptions,
+  ): Promise<T[]> {
+    const body = await this.get<Record<string, unknown>>(path, options);
+    const rows = body?.[key];
+    if (!Array.isArray(rows)) {
       throw new OneRosterApiError(
         `${path} answered, but not with a OneRoster collection.`,
         502,
@@ -225,7 +257,7 @@ export class OneRosterClient {
         'request',
       );
     }
-    return body.orgs;
+    return rows as T[];
   }
 
   // -- Internal ---------------------------------------------------------------

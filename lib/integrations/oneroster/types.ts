@@ -29,6 +29,34 @@ export interface RawOneRosterSchool extends RawOneRosterOrg {
 }
 
 /**
+ * A user from `GET /students` or `GET /teachers` (SPE-398).
+ *
+ * `identifier` is the field OneRoster nominates for "the district's own number",
+ * and `sourcedId` is the SIS's internal key. Which of the two a district's
+ * providers actually copied into Speddy is not knowable in advance — that is
+ * the question SPE-398's ID-semantics probe answers, so BOTH are typed.
+ */
+export interface RawOneRosterUser {
+  sourcedId: string;
+  identifier?: string | null;
+  status?: 'active' | 'tobedeleted';
+  email?: string | null;
+  grades?: string[];
+  orgs?: { sourcedId: string }[];
+  [key: string]: unknown;
+}
+
+/** An enrollment from `GET /enrollments` — the student↔class↔role edge. */
+export interface RawOneRosterEnrollment {
+  sourcedId: string;
+  role?: 'student' | 'teacher' | 'administrator';
+  user?: { sourcedId: string };
+  class?: { sourcedId: string };
+  school?: { sourcedId: string };
+  [key: string]: unknown;
+}
+
+/**
  * The OAuth2 token response.
  *
  * `access_token` is a bearer credential: it must never be logged, persisted, or

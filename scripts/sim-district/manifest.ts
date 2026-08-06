@@ -322,6 +322,29 @@ export function childId(providerKey: string, schoolId: string, index: number): s
   return simUuid(childKey(providerKey, schoolId, index));
 }
 
+/**
+ * The district's own student number, as a provider would have typed it in
+ * (SPE-339). Keyed off `childKey`, so a co-served child carries ONE number
+ * across both caseloads — which is the whole point of the column.
+ *
+ * DELIBERATELY NOT UNIVERSAL. Roughly one child in six has none, because that
+ * is the real shape: production sits near half-filled, and a fixture where
+ * every row matches would let SPE-398's match-rate report claim 100% without
+ * ever exercising the "no ID entered" branch it exists to count. Returns null
+ * for those, and the seed writes the column as NULL.
+ */
+export function districtStudentNumber(
+  providerKey: string,
+  schoolId: string,
+  index: number,
+): string | null {
+  const key = childKey(providerKey, schoolId, index);
+  const seed = createHash('sha1').update(`dsid:${key}`).digest();
+  if (seed[0] % 6 === 0) return null;
+  // Six digits, the shape Aeries and most CA SISs hand out.
+  return String(100000 + ((seed.readUInt32BE(1) % 900000)));
+}
+
 /** Distinct children across every caseload — students minus the shared pairs. */
 export const TOTAL_CHILDREN = new Set(
   CASELOADS.flatMap(rule =>

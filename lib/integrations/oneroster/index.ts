@@ -20,5 +20,7 @@ export {
 export type {
   RawOneRosterOrg,
   RawOneRosterSchool,
+  RawOneRosterUser,
+  RawOneRosterEnrollment,
   OneRosterTokenResponse,
 } from './types';

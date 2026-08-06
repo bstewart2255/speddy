@@ -40,7 +40,8 @@
     "sim:verify-multi-school-rls": "tsx scripts/sim-district/verify-multi-school-rls.ts",
     "sim:verify-provider-schools-rls": "tsx scripts/sim-district/verify-provider-schools-rls.ts",
     "sim:verify-sis-rls": "tsx scripts/sim-district/verify-sis-connections-rls.ts",
-    "sim:verify-sis-lifecycle": "tsx scripts/sim-district/verify-sis-lifecycle.ts"
+    "sim:verify-sis-lifecycle": "tsx scripts/sim-district/verify-sis-lifecycle.ts",
+    "sis:explore": "tsx scripts/sis-explore/run.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.56.0",
