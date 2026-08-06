@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Card, CardHeader, CardTitle, CardBody } from '../ui/card';
 
 /**
@@ -66,18 +66,28 @@ const COPYABLE = [
 ].join('\n');
 
 export default function AeriesSetupGuide() {
-  const [copied, setCopied] = useState(false);
+  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
+  const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Clear any pending reset on unmount, and before scheduling a new one: two
+  // clicks inside the reset window would otherwise have the first timer wipe
+  // the second confirmation.
+  useEffect(() => () => {
+    if (resetTimer.current) clearTimeout(resetTimer.current);
+  }, []);
 
   const copy = async () => {
+    if (resetTimer.current) clearTimeout(resetTimer.current);
     try {
       await navigator.clipboard.writeText(COPYABLE);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2500);
+      setCopyState('copied');
     } catch {
-      // Clipboard can be blocked by permissions policy. The steps are all on
-      // screen anyway, so this is a convenience, not the only path.
-      setCopied(false);
+      // Clipboard access can be denied by permissions policy. Say so — the
+      // silent version leaves the button reading "Copy these steps" and the
+      // user believing it worked. The steps are all on screen either way.
+      setCopyState('failed');
     }
+    resetTimer.current = setTimeout(() => setCopyState('idle'), 2500);
   };
 
   return (
@@ -156,11 +166,14 @@ export default function AeriesSetupGuide() {
             onClick={copy}
             className="rounded-md bg-gray-100 px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-200"
           >
-            {copied ? 'Copied' : 'Copy these steps'}
+            {copyState === 'copied' ? 'Copied' : 'Copy these steps'}
           </button>
-          <span className="text-xs text-gray-500">
-            Sending this to whoever manages Aeries security? Copy the steps and paste them into
-            an email.
+          <span role="status" aria-live="polite" className="text-xs text-gray-500">
+            {copyState === 'copied'
+              ? 'Steps copied.'
+              : copyState === 'failed'
+                ? 'Copy failed — select the steps above and copy them manually.'
+                : 'Sending this to whoever manages Aeries security? Copy the steps and paste them into an email.'}
           </span>
         </div>
       </CardBody>
