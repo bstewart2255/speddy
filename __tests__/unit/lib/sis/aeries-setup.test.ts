@@ -21,7 +21,7 @@ import { AeriesApiError } from '@/lib/integrations/aeries';
 // pass here; ssrf-guard.test.ts covers the guard itself.
 jest.mock('@/lib/sis/ssrf-guard', () => ({
   ...jest.requireActual('@/lib/sis/ssrf-guard'),
-  assertSafeAeriesUrl: jest.fn().mockResolvedValue(undefined),
+  assertSafeSisUrl: jest.fn().mockResolvedValue(undefined),
 }));
 
 const mockGetSchools = jest.fn();

@@ -13,15 +13,11 @@ import type { AeriesAreaResult, AeriesTestReport } from '@/lib/sis/aeries-setup'
  * one — there is no "reveal", and there is nothing to reveal.
  */
 
-export interface ConnectionSummary {
-  id: string;
-  sis_type: string;
-  base_url: string | null;
-  credential_hint: string | null;
-  status: string;
-  dpa_cleared_at: string | null;
-  last_tested_at: string | null;
-}
+// Defined beside BROWSER_CONNECTION_COLUMNS, the column list it mirrors, so a
+// column change and the field change it implies happen in one file. Re-exported
+// here because the page and the OneRoster card already import it from this one.
+export type { ConnectionSummary } from '@/lib/sis/connection-columns';
+import type { ConnectionSummary } from '@/lib/sis/connection-columns';
 
 // 'untested' is deliberately neutral. Those areas were never probed, and
 // colouring them red would send a district off to fix checkboxes that may well
