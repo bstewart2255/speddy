@@ -480,7 +480,17 @@ export function studentTeacherLinks(rule: CaseloadRule, index: number): StudentT
 
   if (school.isSecondary) {
     const pool = secondaryTeacherPool(rule.schoolId);
-    const start = Math.max(0, pool.indexOf(homeroom));
+    const start = pool.indexOf(homeroom);
+    // The homeroom teacher MUST be in the set: the seed writes them to the
+    // legacy `students.teacher_id`, and a column naming a teacher the child
+    // has no link to is exactly the drift the SPE-334 mirror exists to repair
+    // — it would silently rewrite the fixture on first write. Fail loudly
+    // rather than start at 0 and hope.
+    if (start < 0) {
+      throw new Error(
+        `manifest: homeroom teacher ${homeroom} is not in ${rule.schoolId}'s secondary pool`,
+      );
+    }
     return SECONDARY_PERIODS.map((slot, n) => ({
       teacherRowId: pool[(start + n) % pool.length],
       subject: slot.subject,
