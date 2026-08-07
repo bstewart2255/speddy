@@ -98,6 +98,8 @@ interface StaffTestResult {
   checks: StaffCheck[];
   /** Present only when resolution had to move off the stored address. */
   usedAddress?: string;
+  /** The address on file that `usedAddress` differs from, if there was one. */
+  storedAddress?: string | null;
 }
 
 /**
@@ -223,11 +225,15 @@ export default function SisConnectionsPanel({ districtId }: { districtId: string
       return next;
     });
 
-    // Bounded: the test fans out to several requests against a district's
-    // server, and without this a hung SIS leaves the button disabled with no
-    // way to retry.
+    // Bounded, but ABOVE the server's own worst case, not below it. The Aeries
+    // test can make two resolution attempts plus three area probes at a 30s
+    // client timeout each — around 150s against a district whose server hangs.
+    // A shorter deadline here would report "nothing was tested" while the
+    // server went on to complete the report and write status/last_tested_at,
+    // and would invite a re-click that fans out more traffic at a school
+    // district's production server.
     const abort = new AbortController();
-    const timer = setTimeout(() => abort.abort(), 60_000);
+    const timer = setTimeout(() => abort.abort(), 180_000);
     try {
       const res = await fetch(`/api/internal/sis-connections/${connection.id}/test`, {
         method: 'POST',
@@ -255,11 +261,17 @@ export default function SisConnectionsPanel({ districtId }: { districtId: string
       await load();
     } catch (err) {
       const timedOut = err instanceof DOMException && err.name === 'AbortError';
-      setError(
-        timedOut
-          ? 'The test timed out waiting for the district\u2019s SIS.'
-          : 'Could not reach the test. Nothing was tested.',
-      );
+      if (timedOut) {
+        // Deliberately NOT "nothing was tested": we stopped waiting, the server
+        // did not stop working. It may yet finish and record a result, so say
+        // that and re-read the row rather than assert something we cannot know.
+        setError(
+          'Gave up waiting for the district\u2019s SIS. The test may still be running — reload in a moment before trying again.',
+        );
+        await load().catch(() => {});
+      } else {
+        setError('Could not reach the test. Nothing was tested.');
+      }
     } finally {
       clearTimeout(timer);
       setTesting(null);
@@ -319,6 +331,15 @@ export default function SisConnectionsPanel({ districtId }: { districtId: string
 
     setBusyId(connection.id);
     setError(null);
+    // Revoking wipes the credential and hides the test button, so a verdict left
+    // on screen would sit under a row reading "Disconnected / None stored" — the
+    // same stale-green hazard runTest guards against before a re-run, one
+    // control over.
+    setTestResults((prev) => {
+      const next = { ...prev };
+      delete next[connection.id];
+      return next;
+    });
     try {
       const res = await fetch(`/api/internal/sis-connections/${connection.id}/dpa`, {
         method: 'PATCH',
@@ -534,11 +555,26 @@ export default function SisConnectionsPanel({ districtId }: { districtId: string
 
                       {result.usedAddress && (
                         // The answer SPE-426 could not get without asking the
-                        // district: which address actually responded, when it is
-                        // not the one on file.
+                        // district: which address actually responded.
+                        //
+                        // Two different facts, worded differently on purpose. A
+                        // OneRoster token address is normally blank, so a single
+                        // "not the address on file" line would fire on every
+                        // healthy test and stop meaning anything.
                         <p className="mt-1 break-all text-xs text-slate-400">
-                          Answered at <span className="font-mono">{result.usedAddress}</span>, not
-                          the address on file.
+                          {result.storedAddress ? (
+                            <>
+                              Answered at{' '}
+                              <span className="font-mono">{result.usedAddress}</span> — not{' '}
+                              <span className="font-mono">{result.storedAddress}</span>, the address
+                              on file.
+                            </>
+                          ) : (
+                            <>
+                              No address was on file, so we worked one out:{' '}
+                              <span className="font-mono">{result.usedAddress}</span>.
+                            </>
+                          )}
                         </p>
                       )}
 
@@ -557,12 +593,17 @@ export default function SisConnectionsPanel({ districtId }: { districtId: string
                               </span>
                               {' — '}
                               {check.message}
-                              {/* Only the school count is a real total; the rest
-                                  are capped at one row on purpose, so printing
-                                  them would read as "1 student". */}
-                              {check.key === 'schools' && typeof check.count === 'number' && (
-                                <span className="text-slate-400"> ({check.count} schools)</span>
-                              )}
+                              {/* Aeries' school count is a real total. Every
+                                  other count in either report is capped at one
+                                  row on purpose — including OneRoster's Schools
+                                  step, which uses limit: 1 — so printing them
+                                  would render a district sharing 40 schools as
+                                  "(1 schools)". */}
+                              {result.sisType === 'aeries' &&
+                                check.key === 'schools' &&
+                                typeof check.count === 'number' && (
+                                  <span className="text-slate-400"> ({check.count} schools)</span>
+                                )}
                             </span>
                           </li>
                         ))}

@@ -214,6 +214,37 @@ describe('the report it returns', () => {
     expect(body.checks).toEqual(AERIES_REPORT.areas);
     // The answer SPE-426 could not get without asking the district.
     expect(body.usedAddress).toBe('https://district.aeries.net/api/v5');
+    // Returned alongside it so the panel can say "not THIS one" rather than
+    // guessing whether an address was ever on file.
+    expect(body.storedAddress).toBe(AERIES_CONNECTION.base_url);
+  });
+
+  it('reports a null storedAddress when the district gave us no token address', async () => {
+    // The distinction the panel words differently. A OneRoster token address is
+    // normally blank, so treating "we used an address" as "not the one on file"
+    // would fire a warning on every healthy test until it meant nothing.
+    mockGetConnection.mockResolvedValue({
+      ...AERIES_CONNECTION,
+      sis_type: 'oneroster',
+      base_url: 'https://district.aeries.net/admin',
+      token_url: null,
+    });
+    mockGetCredential.mockResolvedValue({
+      sisType: 'oneroster',
+      clientId: 'consumer-id',
+      clientSecret: 'consumer-secret',
+    });
+    mockOneRosterTest.mockResolvedValue({
+      ok: true,
+      summary: 'Ready.',
+      steps: [],
+      usedTokenUrl: 'https://district.aeries.net/admin/token',
+    });
+
+    const body = await (await call()).json();
+
+    expect(body.usedAddress).toBe('https://district.aeries.net/admin/token');
+    expect(body.storedAddress).toBeNull();
   });
 
   it('flattens OneRoster steps to the same shape', async () => {

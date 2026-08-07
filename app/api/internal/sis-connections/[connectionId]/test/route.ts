@@ -113,6 +113,13 @@ export const POST = withRoute<{ connectionId: string }>(
     let checks: StaffCheck[];
     let stored: SisTestResult;
     let usedAddress: string | undefined;
+    // The value ON FILE that `usedAddress` differs from. Returned alongside it
+    // because the two cases read completely differently to an operator: we used
+    // an address other than the one they gave us (notable), versus they gave us
+    // none and we worked one out (ordinary). Without it the panel has to guess,
+    // and for OneRoster — where the token address is normally blank — it would
+    // guess wrong on every healthy test.
+    let storedAddress: string | null;
 
     if (credential.sisType === 'aeries') {
       const report = await runAeriesConnectionTest({
@@ -123,6 +130,7 @@ export const POST = withRoute<{ connectionId: string }>(
       checks = report.areas;
       stored = toStoredTestResult(report);
       usedAddress = report.usedBaseUrl;
+      storedAddress = connection.base_url;
     } else {
       const report = await runOneRosterConnectionTest({
         baseUrl: connection.base_url,
@@ -134,6 +142,7 @@ export const POST = withRoute<{ connectionId: string }>(
       checks = report.steps;
       stored = toStoredOneRosterTestResult(report);
       usedAddress = report.usedTokenUrl;
+      storedAddress = connection.token_url;
     }
 
     try {
@@ -169,6 +178,7 @@ export const POST = withRoute<{ connectionId: string }>(
       summary,
       checks,
       usedAddress,
+      storedAddress,
     });
   },
 );
