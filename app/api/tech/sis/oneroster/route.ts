@@ -29,7 +29,13 @@ export const POST = withRoute(
   {
     body: z.object({
       baseUrl: z.string().min(1, 'Enter your OneRoster address'),
-      tokenUrl: z.string().min(1, 'Enter your OneRoster token address'),
+      // OPTIONAL on purpose. An Aeries OneRoster console shows a URL, a
+      // consumer ID and a secret — never a token endpoint — so requiring this
+      // asked districts for something they could only guess at (SPE-426).
+      // Left blank, it is derived from the base URL and settled by the
+      // connection test; supplied, it is honoured verbatim, because a district
+      // that knows its endpoint should never be second-guessed.
+      tokenUrl: z.string().trim().optional(),
       // No format regex on either credential, unlike the Aeries certificate's
       // 32-character shape. OneRoster consumer IDs and secrets have no length
       // or character set defined by the standard, and they differ per vendor —
@@ -55,10 +61,19 @@ export const POST = withRoute(
     }
 
     let baseUrl: string;
-    let tokenUrl: string;
+    let tokenUrl: string | null;
     try {
       baseUrl = normalizeOneRosterBaseUrl(body.baseUrl);
-      tokenUrl = normalizeOneRosterTokenUrl(body.tokenUrl);
+      // Stored only when the district actually gave us one. Left blank the
+      // column is CLEARED — `null`, not `undefined` — and the connection test
+      // derives the endpoint on each run.
+      //
+      // The clear is the load-bearing half. We tell districts to leave this
+      // blank, so the first thing one with a bad earlier guess will do is empty
+      // the field; if that only meant "leave the column alone", their stale
+      // value would go on being tried first by the resolver and they would be
+      // back in the dead end this ticket exists to remove.
+      tokenUrl = body.tokenUrl ? normalizeOneRosterTokenUrl(body.tokenUrl) : null;
     } catch (err) {
       // Written for the district administrator and containing nothing
       // sensitive — passing them through is the point.

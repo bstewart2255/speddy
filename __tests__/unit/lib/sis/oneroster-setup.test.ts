@@ -16,11 +16,24 @@ jest.mock('dns/promises', () => ({ lookup: (...a: unknown[]) => mockLookup(...a)
 
 const mockFetchToken = jest.fn();
 const mockGetOrgs = jest.fn();
+/**
+ * Every token endpoint a client was actually built for.
+ *
+ * The guard runs per candidate and BEFORE the client is constructed, so this
+ * list is precisely the set of addresses that passed. Asserting on it is how
+ * "the secret was never sent there" gets checked by address rather than by
+ * "no request happened at all" — which stopped being the right property once
+ * a refused token address means "try the derived ones" instead of "give up".
+ */
+const mockClientTokenUrls: string[] = [];
 jest.mock('@/lib/integrations/oneroster', () => {
   const actual = jest.requireActual('@/lib/integrations/oneroster');
   return {
     ...actual,
     OneRosterClient: class {
+      constructor(config: { tokenUrl: string }) {
+        mockClientTokenUrls.push(config.tokenUrl);
+      }
       fetchToken = (...a: unknown[]) => mockFetchToken(...a);
       getOrgs = (...a: unknown[]) => mockGetOrgs(...a);
       getSchools = jest.fn().mockResolvedValue([{ sourcedId: 'school-1' }]);
@@ -39,6 +52,7 @@ const CREDS = { clientId: 'consumer-id', clientSecret: 'consumer-secret' };
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockClientTokenUrls.length = 0;
   mockFetchToken.mockResolvedValue('token');
   mockGetOrgs.mockResolvedValue([{ sourcedId: 'org-1' }]);
 });
@@ -119,17 +133,45 @@ describe('normalizeOneRosterTokenUrl', () => {
 });
 
 describe('runOneRosterConnectionTest guards both URLs before sending a credential', () => {
-  it('makes NO request when the TOKEN url resolves to a private address', async () => {
+  it('never posts the secret to a TOKEN url that resolves privately — but keeps looking', async () => {
+    // Both halves matter. The private endpoint must never receive the consumer
+    // secret; and a refused token address must not end the run, because that is
+    // exactly the case resolution exists for — the district was asked for a
+    // field their console never shows them (SPE-426), so a bad value there has
+    // to be recoverable rather than terminal.
+    mockLookup.mockImplementation((host: string) =>
+      host === 'token.example.com'
+        ? Promise.resolve([{ address: '10.0.0.5', family: 4 }])
+        : Promise.resolve([{ address: '104.16.0.1', family: 4 }]),
+    );
+
+    const report = await runOneRosterConnectionTest({
+      baseUrl: 'https://data.example.com/admin',
+      tokenUrl: 'https://token.example.com/token',
+      ...CREDS,
+    });
+
+    // Never built for the private address, so nothing was posted to it.
+    expect(mockClientTokenUrls).not.toContain('https://token.example.com/token');
+    // And the derived candidate under the district's own base was tried.
+    expect(mockClientTokenUrls).toContain('https://data.example.com/admin/token');
+    expect(report.ok).toBe(true);
+    expect(report.usedTokenUrl).toBe('https://data.example.com/admin/token');
+  });
+
+  it('refuses outright when EVERY candidate resolves privately', async () => {
+    // The other end of the same behaviour: recovering from a bad token address
+    // must not become a way to reach a private host by another path.
     mockLookup.mockResolvedValue([{ address: '169.254.169.254', family: 4 }]);
 
     const report = await runOneRosterConnectionTest({
-      baseUrl: 'https://jsusdapi.aeries.net/admin',
+      baseUrl: 'https://data.example.com/admin',
       tokenUrl: 'https://token.example.com/token',
       ...CREDS,
     });
 
     expect(report.ok).toBe(false);
-    expect(report.steps[0].message).toMatch(/token address/i);
+    expect(mockClientTokenUrls).toHaveLength(0);
     expect(mockFetchToken).not.toHaveBeenCalled();
   });
 

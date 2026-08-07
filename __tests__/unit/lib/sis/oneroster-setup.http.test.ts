@@ -103,6 +103,198 @@ const allGood: Handler = (req) => {
   return { status: 200, body: { orgs: [{ sourcedId: 'org-1', name: 'Sim USD', type: 'district' }] } };
 };
 
+describe('resolving the token endpoint when the stored one is wrong (SPE-426)', () => {
+  const runWith = (tokenUrl: string) =>
+    runOneRosterConnectionTest({
+      baseUrl: `${origin}/admin`,
+      tokenUrl,
+      clientId: CLIENT_ID,
+      clientSecret: CLIENT_SECRET,
+    });
+
+  it('finds the working token endpoint when the stored one 404s', async () => {
+    // The district could only ever guess this field — their console does not
+    // show it — so a wrong guess must not be a dead end.
+    handler = (req) => {
+      if (req.url.startsWith('/admin/token')) return { status: 404, body: { message: 'nope' } };
+      if (req.url.includes('/oauth/token')) {
+        return { status: 200, body: { access_token: TOKEN, token_type: 'bearer', expires_in: 3600 } };
+      }
+      return { status: 200, body: { orgs: [{ sourcedId: 'org-1', name: 'Sim USD', type: 'district' }] } };
+    };
+
+    const report = await runWith(`${origin}/admin/token`);
+
+    expect(stepOf(report, 'token').status).toBe('ok');
+    expect(report.usedTokenUrl).toBe(`${origin}/admin/oauth/token`);
+  });
+
+  it('reports nothing extra when the stored endpoint already works', async () => {
+    handler = allGood;
+    const report = await runWith(`${origin}/admin/token`);
+
+    expect(stepOf(report, 'token').status).toBe('ok');
+    // Absent, not equal-to-stored — the field means "we had to look elsewhere".
+    expect(report.usedTokenUrl).toBeUndefined();
+    expect(stepOf(report, 'token').message).toBe('Working.');
+  });
+
+  it('does not treat a trailing slash on the stored endpoint as a different one', async () => {
+    handler = allGood;
+    const report = await runWith(`${origin}/admin/token/`);
+
+    expect(stepOf(report, 'token').status).toBe('ok');
+    expect(report.usedTokenUrl).toBeUndefined();
+  });
+
+  it('derives the endpoint when the district gave us none, and says which it used', async () => {
+    // The field is optional now precisely because an Aeries OneRoster console
+    // never shows it. Left blank, a district must still get a working test.
+    handler = allGood;
+    const report = await runOneRosterConnectionTest({
+      baseUrl: `${origin}/admin`,
+      clientId: CLIENT_ID,
+      clientSecret: CLIENT_SECRET,
+    });
+
+    expect(report.ok).toBe(true);
+    expect(report.usedTokenUrl).toBe(`${origin}/admin/token`);
+    expect(stepOf(report, 'token').message).toContain(`${origin}/admin/token`);
+  });
+
+  it('never guesses a token endpoint OUTSIDE the path the district gave us', async () => {
+    // A district on a shared host — `https://sis.example.org/aeries` — does not
+    // own `https://sis.example.org/`. Climbing to the origin to look for a
+    // token endpoint would hand their consumer secret to whatever application
+    // answers at the root. Every candidate stays under their own path.
+    handler = () => ({ status: 404, body: { message: 'nope' } });
+
+    await runOneRosterConnectionTest({
+      baseUrl: `${origin}/admin`,
+      clientId: CLIENT_ID,
+      clientSecret: CLIENT_SECRET,
+    });
+
+    expect(seen.length).toBeGreaterThan(0);
+    for (const r of seen) expect(r.url.startsWith('/admin/')).toBe(true);
+  });
+
+  it('keeps looking past a 405 — something is there, but it is not a token endpoint', async () => {
+    // A vendor's data path answers a POST exactly like this. A 404-only check
+    // stops here and tells the district their credentials are wrong.
+    handler = (req) => {
+      if (req.url.startsWith('/admin/token')) return { status: 405, body: { message: 'nope' } };
+      if (req.url.includes('/oauth/token')) {
+        return { status: 200, body: { access_token: TOKEN, token_type: 'bearer', expires_in: 3600 } };
+      }
+      return { status: 200, body: { orgs: [{ sourcedId: 'org-1', name: 'Sim USD', type: 'district' }] } };
+    };
+
+    const report = await runWith(`${origin}/admin/token`);
+
+    expect(stepOf(report, 'token').status).toBe('ok');
+    expect(report.usedTokenUrl).toBe(`${origin}/admin/oauth/token`);
+  });
+
+  it('keeps looking past a 200 that carries no token', async () => {
+    // The wrong endpoint wearing a success status — a landing page, a data
+    // collection, a proxy's maintenance body. Stopping here would report
+    // "the token endpoint answered but returned no access token" about an
+    // address that was never the token endpoint.
+    handler = (req) => {
+      if (req.url.startsWith('/admin/token')) return { status: 200, body: { hello: 'world' } };
+      if (req.url.includes('/oauth/token')) {
+        return { status: 200, body: { access_token: TOKEN, token_type: 'bearer', expires_in: 3600 } };
+      }
+      return { status: 200, body: { orgs: [{ sourcedId: 'org-1', name: 'Sim USD', type: 'district' }] } };
+    };
+
+    const report = await runWith(`${origin}/admin/token`);
+
+    expect(stepOf(report, 'token').status).toBe('ok');
+    expect(report.usedTokenUrl).toBe(`${origin}/admin/oauth/token`);
+  });
+
+  it('STOPS at a real upstream 502 — their endpoint exists and is broken', async () => {
+    // Raised by CodeRabbit, and it was right. `fetchToken` marks "answered but
+    // the body is not a token" with a SYNTHETIC 502, and `dial` raises a real
+    // gateway 502 with the same number. Keyed on the status alone the two were
+    // indistinguishable, so a district whose token endpoint was briefly behind
+    // a broken gateway had their consumer secret posted to two more paths for
+    // nothing. Now separated by a flag on the error, not by the number.
+    handler = () => ({ status: 502, body: { message: 'bad gateway' } });
+
+    const report = await runWith(`${origin}/admin/token`);
+
+    expect(report.ok).toBe(false);
+    // Exactly one. The whole point of the finding.
+    expect(seen.filter((r) => r.url.includes('token'))).toHaveLength(1);
+    expect(report.usedTokenUrl).toBeUndefined();
+  });
+
+  it('names the endpoint it CHOSE when sign-in fails, not just that sign-in failed', async () => {
+    // The district left the field blank, so we picked an address for them. Being
+    // told the Consumer ID and Secret are wrong, with no mention that an address
+    // was guessed, is the same dead end one field over.
+    handler = () => ({ status: 401, body: { error: 'invalid_client' } });
+
+    const report = await runOneRosterConnectionTest({
+      baseUrl: `${origin}/admin`,
+      clientId: CLIENT_ID,
+      clientSecret: CLIENT_SECRET,
+    });
+
+    expect(report.ok).toBe(false);
+    expect(stepOf(report, 'token').message).toMatch(/Consumer ID and Consumer Secret/i);
+    expect(stepOf(report, 'token').message).toContain(`${origin}/admin/token`);
+  });
+
+  it('names what it tried when NOTHING answers and the field was left blank', async () => {
+    // With no stored address there is nothing to report the failure against, so
+    // reporting against an empty string would tell them nothing at all.
+    handler = () => ({ status: 404, body: { message: 'nope' } });
+
+    const report = await runOneRosterConnectionTest({
+      baseUrl: `${origin}/admin`,
+      clientId: CLIENT_ID,
+      clientSecret: CLIENT_SECRET,
+    });
+
+    expect(report.ok).toBe(false);
+    expect(stepOf(report, 'token').message).toContain(`${origin}/admin/token`);
+  });
+
+  it('STOPS at a 401 rather than trying other endpoints with the same credentials', async () => {
+    // Two reasons this matters. A 401 means the endpoint exists and the
+    // credentials are wrong — the district's real problem, which walking on
+    // would replace with "check your address". And every extra candidate posts
+    // the consumer secret somewhere new; there is no reason to keep spraying it
+    // once an endpoint has answered.
+    handler = () => ({ status: 401, body: { message: 'bad creds' } });
+
+    const report = await runWith(`${origin}/admin/token`);
+
+    expect(report.ok).toBe(false);
+    expect(report.usedTokenUrl).toBeUndefined();
+    expect(stepOf(report, 'token').message).toMatch(/Consumer ID and Consumer Secret/i);
+
+    const tokenPosts = seen.filter((r) => r.url.includes('token'));
+    expect(tokenPosts).toHaveLength(1);
+  });
+
+  it('names nothing when no candidate serves a token endpoint', async () => {
+    handler = () => ({ status: 404, body: { message: 'nope' } });
+
+    const report = await runWith(`${origin}/admin/token`);
+
+    expect(report.ok).toBe(false);
+    expect(report.usedTokenUrl).toBeUndefined();
+    // Points at the address they DID give us. Telling them to fix the token
+    // address would send them to correct the field we tell them to leave blank.
+    expect(stepOf(report, 'token').message).toMatch(/under your OneRoster address/i);
+  });
+});
+
 describe('the OneRoster exchange over real HTTP', () => {
   it('reports every step working', async () => {
     handler = allGood;

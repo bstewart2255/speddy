@@ -38,7 +38,19 @@ import { runAeriesConnectionTest } from '@/lib/sis/aeries-setup';
 const CERT = '477abe9e7d27439681d62f4e0de1f5e1';
 
 /** Route table keyed by the path segment the probe hits. */
-type Handler = (path: string) => { status: number; body?: unknown; headers?: Record<string, string> };
+type Handler = (path: string) => {
+  status: number;
+  body?: unknown;
+  headers?: Record<string, string>;
+  /**
+   * Send `body` verbatim as text/html instead of JSON-encoding it.
+   *
+   * Needed because a wrong path on a district's own web server answers with a
+   * real HTML page, and `JSON.stringify('<html>…')` is still valid JSON — so a
+   * test written without this proves nothing about the case it claims to cover.
+   */
+  raw?: boolean;
+};
 
 let server: Server;
 let baseUrl: string;
@@ -48,9 +60,12 @@ let seenCertHeaders: (string | undefined)[] = [];
 beforeAll(async () => {
   server = createServer((req, res) => {
     seenCertHeaders.push(req.headers['aeries-cert'] as string | undefined);
-    const { status, body, headers } = handler(req.url ?? '');
-    res.writeHead(status, { 'Content-Type': 'application/json', ...(headers ?? {}) });
-    res.end(body === undefined ? '' : JSON.stringify(body));
+    const { status, body, headers, raw } = handler(req.url ?? '');
+    res.writeHead(status, {
+      'Content-Type': raw ? 'text/html' : 'application/json',
+      ...(headers ?? {}),
+    });
+    res.end(body === undefined ? '' : raw ? String(body) : JSON.stringify(body));
   });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}/aeries/api/v5`;
@@ -74,6 +89,150 @@ const allGranted: Handler = (path) => {
   if (path.includes('/students')) return { status: 200, body: [{ StudentID: 1 }] };
   return { status: 200, body: [{ SchoolCode: 1, Name: 'Sim High' }] };
 };
+
+describe('resolving the API root when the stored one is wrong (SPE-426)', () => {
+  /**
+   * The JSUSD shape: the district is on an Aeries-HOSTED api host, where the
+   * API lives at /api/v5, but we stored the self-hosted default /aeries/api/v5.
+   * Their server answered every probe with 404 and the form gave them no way to
+   * correct it, so resolution has to do it for them.
+   */
+  const hostedOnly: Handler = (path) => {
+    if (path.startsWith('/aeries/api/v5')) return { status: 404, body: { message: 'not found' } };
+    if (path.includes('/programs')) return { status: 200, body: [{ ProgramCode: '144' }] };
+    if (path.includes('/teachers')) return { status: 200, body: [{ TeacherNumber: 7 }] };
+    if (path.includes('/students')) return { status: 200, body: [{ StudentID: 1 }] };
+    if (path.startsWith('/api/v5')) return { status: 200, body: [{ SchoolCode: 1, Name: 'Sim High' }] };
+    return { status: 404, body: { message: 'not found' } };
+  };
+
+  it('finds the working root when the stored one 404s, and names it in the report', async () => {
+    handler = hostedOnly;
+    const report = await run();
+
+    expect(report.ok).toBe(true);
+    const hosted = baseUrl.replace('/aeries/api/v5', '/api/v5');
+    expect(report.usedBaseUrl).toBe(hosted);
+    // Surfaced to the district too. Being told the connection is fine about an
+    // address they cannot find in their own settings is its own confusion.
+    expect(area(report, 'connection').message).toContain(hosted);
+  });
+
+  it('reports nothing extra when the stored root already works', async () => {
+    handler = allGranted;
+    const report = await run();
+
+    expect(report.ok).toBe(true);
+    // Absent, not equal-to-stored — the field means "we had to look elsewhere",
+    // so a caller cannot mistake a normal pass for a discovery.
+    expect(report.usedBaseUrl).toBeUndefined();
+    expect(area(report, 'connection').message).toBe('Speddy can reach your Aeries instance.');
+  });
+
+  it('does not treat a trailing slash on the stored address as a different root', async () => {
+    // The stored value and the candidate differ only by punctuation. Reporting
+    // that as "we found another address" would put a meaningless correction in
+    // front of a district whose configuration is already right.
+    handler = allGranted;
+    const report = await runAeriesConnectionTest({ baseUrl: `${baseUrl}/`, certificate: CERT });
+
+    expect(report.ok).toBe(true);
+    expect(report.usedBaseUrl).toBeUndefined();
+  });
+
+  it('keeps looking when the stored root answers 200 with a real HTML page', async () => {
+    // The commonest wrong-path shape after a 404, and the one a status-code-only
+    // check misses: a district web server that serves its login page for any
+    // path its API does not handle. Indistinguishable from a working endpoint by
+    // status alone, and just as wrong.
+    //
+    // `raw` matters. Served as JSON this is a valid JSON string and the
+    // non-array branch catches it; served as real text/html the JSON parse
+    // THROWS, which is a completely different path through the client and the
+    // one a district actually hits. The first version of this test used the
+    // JSON encoding and passed against code that had the real gap.
+    handler = (path) =>
+      path.startsWith('/aeries/api/v5')
+        ? { status: 200, body: '<!doctype html><html><body>Sign in</body></html>', raw: true }
+        : allGranted(path);
+
+    const report = await run();
+
+    expect(report.ok).toBe(true);
+    expect(report.usedBaseUrl).toBe(baseUrl.replace('/aeries/api/v5', '/api/v5'));
+  });
+
+  it('keeps looking when the stored root answers 200 with JSON that is not a list', async () => {
+    handler = (path) =>
+      path.startsWith('/aeries/api/v5')
+        ? { status: 200, body: { error: 'not the API' } }
+        : allGranted(path);
+
+    const report = await run();
+
+    expect(report.ok).toBe(true);
+    expect(report.usedBaseUrl).toBe(baseUrl.replace('/aeries/api/v5', '/api/v5'));
+  });
+
+  it('says the host ANSWERED when every root serves HTML, not that it is unreachable', async () => {
+    // The two failures need opposite fixes: "we could not reach you" sends a
+    // district to their firewall, when in fact their server replied and the
+    // address is wrong. Getting this backwards is what SPE-419 is about.
+    handler = () => ({ status: 200, body: '<html>Sign in</html>', raw: true });
+
+    const report = await run();
+
+    expect(report.ok).toBe(false);
+    expect(area(report, 'connection').message).toMatch(/answered, but not with Aeries data/i);
+    expect(area(report, 'connection').message).not.toMatch(/could not reach/i);
+  });
+
+  it('STOPS at a 401 instead of walking on to another root', async () => {
+    // The load-bearing case. A 401 means the endpoint EXISTS and refused the
+    // certificate. If resolution treated that as "wrong address" it would move
+    // on, and the district would be told to fix an address that was correct
+    // while the real problem — their certificate — went unmentioned. That is
+    // the SPE-417 misdiagnosis shape, which this whole ticket exists to stop.
+    handler = (path) =>
+      path.startsWith('/aeries/api/v5')
+        ? { status: 401, body: { message: 'bad cert' } }
+        : { status: 200, body: [{ SchoolCode: 1, Name: 'Sim High' }] };
+
+    const report = await run();
+
+    expect(report.ok).toBe(false);
+    expect(report.usedBaseUrl).toBeUndefined();
+    expect(area(report, 'connection').message).toMatch(/re-copy it/i);
+    expect(area(report, 'connection').message).not.toMatch(/address/i);
+  });
+
+  it('STOPS at a 403 instead of walking on to another root', async () => {
+    // Same reasoning: 403 means the endpoint exists and a permission box is
+    // unticked. Walking past it would hide the checkbox they need to tick.
+    handler = (path) =>
+      path.startsWith('/aeries/api/v5')
+        ? { status: 403, body: { message: 'forbidden' } }
+        : { status: 200, body: [{ SchoolCode: 1, Name: 'Sim High' }] };
+
+    const report = await run();
+
+    expect(report.ok).toBe(false);
+    expect(report.usedBaseUrl).toBeUndefined();
+    expect(area(report, 'schools').status).toBe('denied');
+  });
+
+  it('reports a 404 honestly when no known layout answers', async () => {
+    // Nothing to correct: say the address did not work rather than inventing a
+    // root, and leave the stored value alone.
+    handler = () => ({ status: 404, body: { message: 'not found' } });
+
+    const report = await run();
+
+    expect(report.ok).toBe(false);
+    expect(report.usedBaseUrl).toBeUndefined();
+    expect(report.summary).toMatch(/could not connect/i);
+  });
+});
 
 describe('runAeriesConnectionTest over real HTTP', () => {
   it('reports every area granted, and sends the certificate as a header', async () => {
