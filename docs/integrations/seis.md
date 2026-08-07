@@ -4,21 +4,25 @@
 > to get IEP data out of SEIS without a provider manually downloading reports and
 > re-uploading them into Speddy?
 >
-> **Short answer:** SEIS has no public/partner API and no vendor programme. But
-> there are two real automated paths that don't need SEIS's cooperation at all,
-> and between them they cover most of what the manual upload carries today.
+> **Short answer:** no public or partner SEIS API turned up in anything we can
+> reach. But there are two real automated paths that need **no new Speddy↔SEIS
+> integration**, and between them they cover most of what the manual upload
+> carries today. (Path 2 still needs the *district* to configure SEIS↔SIS with
+> CodeStack — that's SEIS cooperation, just not with us.)
 >
 > Companion to `docs/integrations/aeries.md`. Related: SPE-276 (Chrome
 > extension, parked), the *SIS Integration* project (SPE-392 → SPE-420).
 
 ## What we upload manually today
 
-The unified Import Students flow (SPE-231) accepts four file types
-(`lib/import/detect-import-file.ts`). Three are SEIS downloads:
+The unified Import Students flow (SPE-231) recognises four vendor **export
+categories**, three of them SEIS downloads (`lib/import/detect-import-file.ts` —
+which also classifies our own roster template, not listed here since it isn't a
+vendor export):
 
 | File | Source | Fills in |
 |---|---|---|
-| Student & goals report (xlsx/csv) | **SEIS** | students + IEP goals |
+| Student & goals report (xls/xlsx/csv) | **SEIS** | students + IEP goals |
 | Deliveries (csv) | **SEIS** | service minutes / frequency → schedule requirements |
 | IEP Dates (csv) | **SEIS** | annual review & triennial dates |
 | Special Ed class list (txt) | Aeries | teacher assignment |
@@ -26,12 +30,20 @@ The unified Import Students flow (SPE-231) accepts four file types
 Every one is a human logging into SEIS, running a report, downloading it, and
 re-uploading it here. That's the cost we're trying to remove.
 
-## Path 1 — SEIS has no API for us (confirmed)
+## Path 1 — no public SEIS API found in the available sources
 
 SEIS is built and run by **CodeStack**, a department of the San Joaquin County
-Office of Education, and is used by 115 SELPAs / 1,500+ California LEAs. There is
-no developer portal, no OAuth, no REST surface, no partner/vendor programme —
-nothing a third party can register for.
+Office of Education, and is used by 115 SELPAs / 1,500+ California LEAs. Across
+everything publicly reachable we found **no developer portal, no documented OAuth
+or REST surface, and no partner/vendor programme** — nothing a third party can
+register for.
+
+State that as what it is: an absence of public evidence, not proof that no
+interface exists. CodeStack builds proprietary software for education agencies
+and manages integrations internally, so a private or negotiated interface can't
+be ruled out from the outside. **Asking CodeStack directly is the only way to
+close this**, and it's worth doing before concluding Path 1 is dead — a single
+email could make the rest of this document moot.
 
 The one thing SEIS calls "integration" is **SEIS Integration**: an automated
 **nightly sync between a district's SIS and SEIS**, arranged directly between the
@@ -56,9 +68,12 @@ out of that SIS.
 
 Why this is the strong path:
 
-- **No SEIS cooperation needed.** It's the district's own configuration, on a
-  feature SEIS already sells them. We're just reading the district's SIS, which
-  we're already authorised to do.
+- **No new Speddy↔SEIS integration needed.** We never talk to SEIS. We read the
+  district's SIS, which we're already authorised to do. Note the district *does*
+  still have to arrange the SEIS→SIS direction with CodeStack — this isn't a
+  self-serve toggle, and it's a dependency on someone else's queue. The point is
+  that it's a service SEIS already sells them, requested by the customer, not a
+  partnership we have to negotiate.
 - **It's nightly and automatic.** No human in the loop.
 - **It's the sanctioned route.** Aeries explicitly documents SpEd vendors using
   the API to keep their own systems current, with district-issued read-only
@@ -87,10 +102,15 @@ problem is solved; the pipeline is a real build. Treat SPE-412 (what happens to
 existing Speddy data when SIS data starts flowing) as the design question that
 gates it.
 
-What it can carry: student demographics, SpEd flag/eligibility, disability,
-special-ed entry/exit dates, case manager, and **IEP dates** — i.e. it should
-retire the *IEP Dates* upload and the *class list*, and cover the student half of
-the *Student & goals* report.
+What it can carry, *if* the district maps the fields: student demographics, SpEd
+flag/eligibility, disability, special-ed entry/exit dates, case manager, and
+**IEP dates** — putting the *IEP Dates* upload and the *class list* in scope to
+retire, and covering the student half of the *Student & goals* report.
+
+Treat that as a target, not a result. The class list carries teacher assignment
+and district student ID (`lib/parsers/class-list-parser.ts`); retire it only once
+a pilot shows the SIS path delivers both. Same for *IEP Dates*, which carries the
+annual-review and triennial dates (`lib/parsers/iep-dates-parser.ts`).
 
 What it cannot carry: **goal text**. Goals are free-text IEP content that lives in
 SEIS and has no SIS field to land in. `docs/integrations/aeries-sped-mapping.md`
@@ -139,8 +159,16 @@ Students hardening and carries the exact bugs that project fixed:
 - hand-rolled grade normaliser that can drift from every other path
 - not on the shared `withRoute` wrapper; no test coverage on either route
 
-Four API keys were issued and **never used** (`api_keys.last_used_at` all null),
-so nothing has been written through it in production.
+Four API keys were issued and show **no recorded use** (`api_keys.last_used_at`
+all null as of 2026-07-17). Don't read that as proof they were never called:
+`/api/extension/compare` — the only endpoint the extension actually hits — never
+touches `last_used_at` at all, and `/api/extension/import` updates it without
+checking the result. A null timestamp is silence, not evidence.
+
+The stronger statement holds for a different reason: no student data can have
+been written through this path, because `compare` computes discrepancies and
+returns them without writing, and `import` — the only route that writes — has no
+caller. That's an argument from the code, not from the timestamp.
 
 The fixes are known and bounded: reuse `matchStudents`
 (`lib/utils/student-matcher.ts`) and `normalizeGradeLevel`, route logging through
@@ -174,18 +202,24 @@ Neither is small: each has a working front half and an unbuilt back half.
    scheduled fetch, mapping, reconciliation, write path — to pull SEIS-originated
    fields out of the district's SIS. Highest leverage and the least *new* risk,
    because the credential and trust layer is already solved and proven against a
-   real district. Retires the *IEP Dates* and *class list* uploads.
+   real district. Puts the *IEP Dates* and *class list* uploads in scope to
+   retire — once a pilot confirms the SIS side actually delivers teacher
+   assignment, district student ID, and both compliance dates.
    **Cheap first step, before committing to any of it:** ask a pilot district
    (JSUSD) what their SEIS↔SIS integration already syncs and in which direction.
    That answer sets how much this path is even worth.
 2. **Path 3 second**, if goals-without-manual-upload is worth it. Build the
    import workflow, do the SPE-276 hardening in the same block, verify against a
    real signed-in session, publish unlisted. It is the *only* mechanism that gets
-   goal text out of SEIS automatically. Retires the *Student & goals* and
-   *Deliveries* uploads.
+   goal text out of SEIS automatically. Puts the *Student & goals* and
+   *Deliveries* uploads in scope to retire — once real-session testing shows it
+   covers goals, services, accommodations, IEP dates, and student matching.
 
-Even with both, keep the file upload. It's the fallback for districts on neither
-path, and for SEIS UI changes that break scraping.
+**Retire nothing on a plan.** Each upload comes out only when a pilot has shown
+the replacement carries every field that upload carries today; until then the
+automated path runs alongside it, not instead of it. And keep the file upload
+permanently regardless — it's the fallback for districts on neither path, and for
+SEIS UI changes that break scraping.
 
 ## Sources
 
