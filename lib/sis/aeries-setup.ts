@@ -30,20 +30,34 @@ export const AERIES_API_PATH = '/aeries/api/v5';
 /**
  * The API roots we know Aeries serves, in the order we try them.
  *
- * Two real deployment shapes, both ordinary:
- *   - `/aeries/api/v5` — a district running Aeries on its own web server, where
- *     `/aeries` is the application root. `demo.aeries.net` is one of these, and
- *     it is what this integration was originally built and tested against.
- *   - `/api/v5` — an Aeries-HOSTED dedicated API host (`<district>api.aeries.net`),
- *     where the API is the whole point of the host and has no app prefix.
+ * The API lives under the Aeries APPLICATION ROOT, and that root varies by
+ * deployment — which is the whole reason this is a list rather than a constant.
+ * Aeries' own documentation uses `demo.aeries.net/aeries/api/v5`, where
+ * `/aeries` is the app root.
+ *
+ *   - `/aeries/api/v5`  — the documented default, and what this integration was
+ *                         originally built and tested against.
+ *   - `/api/v5`         — no app prefix at all.
+ *   - `/admin/api/v5`   — an app root of `/admin`.
  *
  * Assuming the first cost a live district a morning (SPE-426): their server
  * answered every probe with 404, and because `normalizeAeriesBaseUrl` replaced
  * whatever they typed, there was no address they could have entered to fix it.
- * Order is deliberate — the historical default stays first, so nothing changes
- * for a district that already works.
+ *
+ * `/admin/api/v5` was added after the first two BOTH 404'd for that district
+ * (SPE-429), on evidence rather than another guess: the same district gave us
+ * `https://<host>/admin` as their OneRoster address, so `/admin` is their app
+ * root and their Aeries API should sit under it. Their OneRoster row is the
+ * only place they ever told us, because the Aeries field discards the path.
+ *
+ * Order is deliberate — the documented default stays first, so a working root
+ * is accepted on the FIRST candidate and no later one is ever dialled. (That is
+ * about resolution only: the test as a whole still probes four endpoints, one
+ * per permission area.) Only a district whose stored address is wrong pays for
+ * the extra candidates, and only on the way to an answer it could not otherwise
+ * get.
  */
-export const AERIES_API_PATHS = [AERIES_API_PATH, '/api/v5'] as const;
+export const AERIES_API_PATHS = [AERIES_API_PATH, '/api/v5', '/admin/api/v5'] as const;
 
 /**
  * Every base URL worth trying for a district, most-likely first.
