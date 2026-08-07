@@ -9,8 +9,10 @@ const log = logger.child({ module: 'district-admin-curriculums' });
 
 /**
  * Resolve the caller's district_admin grant. Multi-district admins are legal
- * (see site-admin route); like the schools page, this surface operates on the
- * first district grant.
+ * (see site-admin route); like the schools page, this surface operates on a
+ * single grant. Ordered so GET and PUT — which resolve independently — always
+ * land on the SAME district; an unordered limit(1) could load one district's
+ * list and save the edits to another (Codex, PR #817).
  */
 async function getAdminDistrictId(userId: string): Promise<string | null> {
   const supabase = await createClient();
@@ -20,6 +22,7 @@ async function getAdminDistrictId(userId: string): Promise<string | null> {
     .eq('admin_id', userId)
     .eq('role', 'district_admin')
     .not('district_id', 'is', null)
+    .order('district_id', { ascending: true })
     .limit(1);
 
   if (error) {
@@ -93,26 +96,11 @@ export const PUT = withRoute({ body: putSchema }, async ({ userId, body }) => {
   // district_admin check above.
   const serviceClient = createServiceClient();
 
-  // Two steps, not delete-all-then-insert: rows that stay enabled keep their
-  // original created_at/created_by provenance.
-  let removeQuery = serviceClient
-    .from('district_curriculums')
-    .delete()
-    .eq('district_id', districtId);
-  if (requested.length > 0) {
-    removeQuery = removeQuery.not('curriculum_id', 'in', `(${requested.join(',')})`);
-  }
-  const { error: deleteError } = await removeQuery;
-
-  if (deleteError) {
-    log.error('Failed to remove district curriculums', {
-      userId,
-      districtId,
-      error: deleteError.message,
-    });
-    return NextResponse.json({ error: 'Failed to save curriculums' }, { status: 500 });
-  }
-
+  // Two statements, so not atomic — ordered add-then-prune on purpose: if the
+  // prune fails mid-flight, the district temporarily shows extra curriculums
+  // and a retried save heals it, whereas prune-then-add could drop the admin's
+  // picks while the UI reports failure (Codex, PR #817). Upsert (not insert)
+  // so rows that stay enabled keep their created_at/created_by provenance.
   if (requested.length > 0) {
     const { error: upsertError } = await serviceClient.from('district_curriculums').upsert(
       requested.map((curriculumId) => ({
@@ -131,6 +119,24 @@ export const PUT = withRoute({ body: putSchema }, async ({ userId, body }) => {
       });
       return NextResponse.json({ error: 'Failed to save curriculums' }, { status: 500 });
     }
+  }
+
+  let pruneQuery = serviceClient
+    .from('district_curriculums')
+    .delete()
+    .eq('district_id', districtId);
+  if (requested.length > 0) {
+    pruneQuery = pruneQuery.not('curriculum_id', 'in', `(${requested.join(',')})`);
+  }
+  const { error: deleteError } = await pruneQuery;
+
+  if (deleteError) {
+    log.error('Failed to remove district curriculums', {
+      userId,
+      districtId,
+      error: deleteError.message,
+    });
+    return NextResponse.json({ error: 'Failed to save curriculums' }, { status: 500 });
   }
 
   log.info('District curriculums updated', {
