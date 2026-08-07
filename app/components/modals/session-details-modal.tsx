@@ -1084,7 +1084,9 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
       const persistedSessionId = await ensureSessionsPersistence();
 
       const hasNotes = notes.trim().length > 0;
-      const hasCurriculum = !!(curriculumType && curriculumLevel && currentLesson);
+      // Trimmed to agree with saveCurriculumTracking's gate — a whitespace-only
+      // typed level must count as "no curriculum", not fail the save.
+      const hasCurriculum = !!(curriculumType && curriculumLevel.trim() && currentLesson);
       // Check if we need to clear existing notes
       // For session mode: check if session previously had notes (session_notes)
       // For group mode: check if lesson exists with notes

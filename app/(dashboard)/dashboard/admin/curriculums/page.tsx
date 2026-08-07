@@ -24,9 +24,16 @@ export default function DistrictCurriculumsPage() {
   const { showToast } = useToast();
 
   useEffect(() => {
+    // Aborted on cleanup (same pattern as the session modal's fetches): React
+    // StrictMode mounts effects twice in dev, and without this the first
+    // run's late-resolving fetch would clobber checkbox state the admin
+    // already changed. Caught by the SPE-422 sim walk.
+    const controller = new AbortController();
     const load = async () => {
       try {
-        const response = await fetch('/api/admin/district/curriculums');
+        const response = await fetch('/api/admin/district/curriculums', {
+          signal: controller.signal,
+        });
         if (response.status === 403) {
           setError('This page is only accessible to district administrators.');
           return;
@@ -45,6 +52,7 @@ export default function DistrictCurriculumsPage() {
         setSelected(ids);
         setSavedSelection(new Set(ids));
       } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') return;
         console.error('Error loading district curriculums:', err);
         setError('Failed to load curriculums. Please try again.');
       } finally {
@@ -52,6 +60,7 @@ export default function DistrictCurriculumsPage() {
       }
     };
     load();
+    return () => controller.abort();
   }, []);
 
   const toggle = (id: string) => {
