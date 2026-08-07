@@ -38,6 +38,7 @@
     "sim:verify-child-link": "tsx scripts/sim-district/verify-child-link.ts",
     "sim:verify-student-teachers-rls": "tsx scripts/sim-district/verify-student-teachers-rls.ts",
     "sim:verify-teacher-set-reads": "tsx scripts/sim-district/verify-teacher-set-reads.ts",
+    "sim:verify-teacher-link-writes": "tsx scripts/sim-district/verify-teacher-link-writes.ts",
     "sim:verify-special-activities-rls": "tsx scripts/sim-district/verify-special-activities-rls.ts",
     "sim:verify-multi-school-rls": "tsx scripts/sim-district/verify-multi-school-rls.ts",
     "sim:verify-provider-schools-rls": "tsx scripts/sim-district/verify-provider-schools-rls.ts",

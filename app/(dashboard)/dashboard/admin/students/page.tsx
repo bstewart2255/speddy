@@ -15,6 +15,13 @@ import { formatRoleLabel } from '@/lib/utils/role-utils';
 import { StudentScheduleModal } from '@/app/components/admin/student-schedule-modal';
 import { ConfirmationModal } from '@/app/components/ui/confirmation-modal';
 import { useToast } from '@/app/contexts/toast-context';
+import { createClient } from '@/lib/supabase/client';
+import { isSecondarySchool } from '@/lib/school-helpers';
+import {
+  getTeacherSetsForStudents,
+  summarizeTeacherSet,
+  type LinkedTeacher,
+} from '@/lib/supabase/queries/student-teachers';
 
 interface CareMatch {
   id: string;
@@ -32,6 +39,12 @@ export default function AdminStudentsPage() {
   const [scheduleModalStudent, setScheduleModalStudent] = useState<GroupedStudent | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<GroupedStudent | null>(null);
   const [careMatches, setCareMatches] = useState<CareMatch[]>([]);
+  // SPE-337: every student's teacher SET, keyed by caseload-row id. Search and
+  // the roster column both read it, so a search for a co-teacher's name finds
+  // the student even though the denormalized column names someone else.
+  const [teacherSets, setTeacherSets] = useState<Map<string, LinkedTeacher[]>>(new Map());
+  const [isSecondary, setIsSecondary] = useState(false);
+  const supabase = useMemo(() => createClient(), []);
   const { showToast } = useToast();
 
   const fetchStudents = async () => {
@@ -63,6 +76,40 @@ export default function AdminStudentsPage() {
     fetchStudents();
   }, []);
 
+  // Teacher sets + school level, once the students are in.
+  useEffect(() => {
+    let cancelled = false;
+    if (students.length === 0) {
+      setTeacherSets(new Map());
+      return;
+    }
+    getTeacherSetsForStudents(supabase, students.map(s => s.id))
+      .then(sets => { if (!cancelled) setTeacherSets(sets); })
+      .catch(err => console.error('Error fetching teacher sets:', err));
+    return () => { cancelled = true; };
+  }, [students, supabase]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!schoolId) return;
+    supabase
+      .from('schools')
+      .select('school_type, grade_span_low')
+      .eq('id', schoolId)
+      .maybeSingle()
+      .then(({ data }) => { if (!cancelled) setIsSecondary(isSecondarySchool(data ?? null)); });
+    return () => { cancelled = true; };
+  }, [schoolId, supabase]);
+
+  // A group is one child, so any of its caseload rows resolves the same set.
+  const teachersForGroup = (student: GroupedStudent): LinkedTeacher[] => {
+    for (const record of student.providerRecords) {
+      const set = teacherSets.get(record.id);
+      if (set && set.length > 0) return set;
+    }
+    return [];
+  };
+
   // Group students by identity (initials + grade + teacher)
   const groupedStudents = useMemo(() => {
     return groupStudentsByIdentity(students);
@@ -76,7 +123,11 @@ export default function AdminStudentsPage() {
     return groupedStudents.filter(student => {
       const initials = student.initials?.toLowerCase() || '';
       const grade = student.grade_level?.toLowerCase() || '';
-      const teacher = student.teacher_name?.toLowerCase() || '';
+      // SPE-337: match ANY linked teacher, not just the denormalized name.
+      const linked = teachersForGroup(student)
+        .map(t => t.name?.toLowerCase() || '')
+        .join(' ');
+      const teacher = `${student.teacher_name?.toLowerCase() || ''} ${linked}`.trim();
       // Also search across all specialist names
       const specialists = student.providerRecords
         .map(r => r.specialist_name?.toLowerCase() || '')
@@ -87,7 +138,8 @@ export default function AdminStudentsPage() {
              teacher.includes(searchLower) ||
              specialists.includes(searchLower);
     });
-  }, [groupedStudents, searchTerm]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groupedStudents, searchTerm, teacherSets]);
 
   const handleDeleteGrouped = (student: GroupedStudent) => {
     setConfirmDelete(student);
@@ -282,8 +334,12 @@ export default function AdminStudentsPage() {
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-900">
-                      {student.teacher_name || (
+                    <div
+                      className="text-sm text-gray-900"
+                      title={teachersForGroup(student).map(t => t.name).filter(Boolean).join(', ') || undefined}
+                    >
+                      {summarizeTeacherSet(teachersForGroup(student), isSecondary)
+                        || student.teacher_name || (
                         <span className="text-gray-400 italic">Not set</span>
                       )}
                     </div>

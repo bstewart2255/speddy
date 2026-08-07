@@ -4,8 +4,7 @@ import { useState, useEffect } from 'react';
 import { Button } from '../ui/button';
 import { Input, Label, FormGroup } from '../ui/form';
 import { StudentTag, GradeTag } from '../ui/tag';
-import { getTeacherDetails, upsertTeacherDetails, getTeacherByStudentTeacherName, TeacherDetails } from '../../../lib/supabase/queries/teacher-details';
-import { getOrCreateTeacher } from '../../../lib/supabase/queries/teachers';
+import { getTeacherDetails, upsertTeacherDetails, TeacherDetails } from '../../../lib/supabase/queries/teacher-details';
 import type { Database } from '../../../src/types/database';
 
 type Teacher = Database['public']['Tables']['teachers']['Row'];
@@ -17,15 +16,24 @@ type TeacherUpdateData = Omit<Teacher, 'id' | 'created_at' | 'updated_at'>;
 interface TeacherDetailsModalProps {
   isOpen: boolean;
   onClose: () => void;
-  teacherName: string;
+  /**
+   * SPE-337: the `teachers` row id.
+   *
+   * This used to take the free-text `students.teacher_name` and look the
+   * teacher up by matching that string. Two problems, both now gone: a typo in
+   * the student's teacher field opened the wrong record — or, worse, fell
+   * through to a "create teacher" path that quietly minted a duplicate — and
+   * once a student has a SET of teachers there is no single name to key on.
+   */
+  teacherId: string;
   onSave?: (teacher: Teacher) => void;
   onStudentClick?: (student: Pick<Student, 'id' | 'initials' | 'grade_level' | 'teacher_name' | 'sessions_per_week' | 'minutes_per_session'>) => void;
 }
 
-export function TeacherDetailsModal({ 
-  isOpen, 
-  onClose, 
-  teacherName,
+export function TeacherDetailsModal({
+  isOpen,
+  onClose,
+  teacherId,
   onSave,
   onStudentClick
 }: TeacherDetailsModalProps) {
@@ -42,85 +50,59 @@ export function TeacherDetailsModal({
     phone_number: '',
   });
 
+  const [loadError, setLoadError] = useState<string | null>(null);
+
   useEffect(() => {
     const loadTeacherData = async () => {
       setLoading(true);
+      setLoadError(null);
       try {
-        const existingTeacher = await getTeacherByStudentTeacherName(teacherName);
-        
-        if (existingTeacher) {
-          const details = await getTeacherDetails(existingTeacher.id);
-          if (details) {
-            setTeacher(existingTeacher);
-            setAssignedStudents(details.assigned_students);
-            setFormData({
-              first_name: details.first_name || '',
-              last_name: details.last_name || '',
-              email: details.email || '',
-              classroom_number: details.classroom_number || '',
-              phone_number: details.phone_number || '',
-            });
-          }
-        } else {
-          const nameParts = teacherName.trim().split(' ');
-          const lastName = nameParts[nameParts.length - 1] || '';
-          const firstName = nameParts.slice(0, -1).join(' ') || '';
-          
-          setFormData({
-            first_name: firstName,
-            last_name: lastName || teacherName,
-            email: '',
-            classroom_number: '',
-            phone_number: '',
-          });
+        // Keyed by id, so the teacher either exists or the caller handed us a
+        // stale one — there is no "maybe create it" branch any more.
+        const details = await getTeacherDetails(teacherId);
+        if (!details) {
+          setLoadError('This teacher record could not be found.');
           setAssignedStudents([]);
+          return;
         }
+        setTeacher(details);
+        setAssignedStudents(details.assigned_students);
+        setFormData({
+          first_name: details.first_name || '',
+          last_name: details.last_name || '',
+          email: details.email || '',
+          classroom_number: details.classroom_number || '',
+          phone_number: details.phone_number || '',
+        });
       } catch (error) {
         console.error('Error loading teacher data:', error);
+        setLoadError('Could not load this teacher.');
       } finally {
         setLoading(false);
       }
     };
 
-    if (isOpen && teacherName) {
+    if (isOpen && teacherId) {
       loadTeacherData();
     }
-  }, [isOpen, teacherName]);
+  }, [isOpen, teacherId]);
 
   const handleSave = async () => {
     setSaving(true);
     try {
-      let savedTeacher: Teacher;
-      
-      if (teacher) {
-        savedTeacher = await upsertTeacherDetails(teacher.id, {
-          first_name: formData.first_name || null,
-          last_name: formData.last_name || null,
-          email: formData.email || null,
-          classroom_number: formData.classroom_number || null,
-          phone_number: formData.phone_number || null,
-          school_id: teacher.school_id,
-          school_site: teacher.school_site,
-        } as TeacherUpdateData);
-      } else {
-        savedTeacher = await getOrCreateTeacher(
-          formData.first_name || formData.last_name ? 
-          `${formData.first_name} ${formData.last_name}`.trim() : 
-          teacherName
-        );
-        
-        if (formData.email || formData.classroom_number || formData.phone_number) {
-          savedTeacher = await upsertTeacherDetails(savedTeacher.id, {
-            first_name: formData.first_name || null,
-            last_name: formData.last_name || null,
-            email: formData.email || null,
-            classroom_number: formData.classroom_number || null,
-            phone_number: formData.phone_number || null,
-            school_site: savedTeacher.school_site,
-            school_id: savedTeacher.school_id,
-          } as TeacherUpdateData);
-        }
+      if (!teacher) {
+        setLoadError('This teacher record could not be found.');
+        return;
       }
+      const savedTeacher: Teacher = await upsertTeacherDetails(teacher.id, {
+        first_name: formData.first_name || null,
+        last_name: formData.last_name || null,
+        email: formData.email || null,
+        classroom_number: formData.classroom_number || null,
+        phone_number: formData.phone_number || null,
+        school_id: teacher.school_id,
+        school_site: teacher.school_site,
+      } as TeacherUpdateData);
 
       if (onSave) {
         onSave(savedTeacher);
@@ -162,9 +144,9 @@ export function TeacherDetailsModal({
         <div className="relative bg-white rounded-lg shadow-xl max-w-2xl w-full">
           <div className="flex items-center justify-between p-6 border-b">
             <h2 className="text-xl font-semibold text-gray-900">
-              Teacher Details: {formData.first_name || formData.last_name ? 
-                `${formData.first_name || ''} ${formData.last_name || ''}`.trim() : 
-                teacherName}
+              Teacher Details{formData.first_name || formData.last_name
+                ? `: ${`${formData.first_name || ''} ${formData.last_name || ''}`.trim()}`
+                : ''}
             </h2>
             <button
               onClick={onClose}
@@ -270,7 +252,8 @@ export function TeacherDetailsModal({
                                 id: student.id,
                                 initials: student.initials,
                                 grade_level: student.grade_level,
-                                teacher_name: teacherName,
+                                teacher_name:
+                                  `${formData.first_name || ''} ${formData.last_name || ''}`.trim() || null,
                                 sessions_per_week: student.sessions_per_week,
                                 minutes_per_session: student.minutes_per_session
                               });

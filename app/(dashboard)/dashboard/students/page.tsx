@@ -13,7 +13,15 @@ import { useSchool } from '../../../components/providers/school-context';
 import { createClient } from '@/lib/supabase/client';
 import { StudentDetailsModal } from '../../../components/students/student-details-modal';
 import { TeacherDetailsModal } from '../../../components/teachers/teacher-details-modal';
-import { TeacherAutocomplete } from '../../../components/teachers/teacher-autocomplete';
+import { StudentTeachersField } from '../../../components/teachers/student-teachers-field';
+import { TeacherSetCell } from '../../../components/teachers/teacher-set-cell';
+import {
+  getTeacherSetsForStudents,
+  saveTeacherLinksForStudent,
+  summarizeTeacherSet,
+  type EditableTeacherLink,
+  type LinkedTeacher,
+} from '@/lib/supabase/queries/student-teachers';
 import { useRouter } from 'next/navigation';
 import { StudentImportModal } from '../../../components/students/student-import-modal';
 import { StudentImportReview } from '../../../components/students/review/student-import-review';
@@ -78,18 +86,21 @@ export default function StudentsPage() {
   // Synchronous guard against a double-submit (Enter pressed twice) before state
   // re-renders; the form is built for rapid keyboard entry.
   const savingStudentRef = useRef(false);
-  // Bumped after each add to remount TeacherAutocomplete — it keeps its own
-  // internal selected-teacher state, so without a fresh mount it would keep
-  // showing the previous teacher while formData.teacher_id has reset to null.
+  // Bumped after each add to remount the teacher field — the autocomplete
+  // inside keeps its own internal selected-teacher state, so without a fresh
+  // mount it would keep showing the teacher from the previous student.
   const [teacherFieldKey, setTeacherFieldKey] = useState(0);
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
   const [userRole, setUserRole] = useState<string | null>(null);
+  // SPE-337: a teacher SET. The legacy single pair is still sent to
+  // createStudent (the dual-write keeps it and the link set consistent), and
+  // it derives from the first entry — which is simply the only entry at
+  // elementary, the common case.
+  const [teacherLinks, setTeacherLinks] = useState<EditableTeacherLink[]>([]);
   const [formData, setFormData] = useState({
     initials: '',
     grade_level: '',
-    teacher_id: null as string | null,
-    teacherName: null as string | null,
     sessions_per_week: '',
     minutes_per_session: '30'
   });
@@ -101,7 +112,11 @@ export default function StudentsPage() {
   });
 
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
-  const [selectedTeacherName, setSelectedTeacherName] = useState<string | null>(null);
+  // SPE-337: the teacher modal is keyed by teacher ID. It used to open on the
+  // free-text `students.teacher_name`, which meant a typo opened the wrong
+  // record — and with a set of teachers there is no single name to key on.
+  const [selectedTeacherId, setSelectedTeacherId] = useState<string | null>(null);
+  const [teacherSets, setTeacherSets] = useState<Map<string, LinkedTeacher[]>>(new Map());
   const [unscheduledCount, setUnscheduledCount] = useState<number>(0);
   const [sortByGrade, setSortByGrade] = useState(false);
   const [showFileUploadModal, setShowFileUploadModal] = useState(false);
@@ -224,6 +239,21 @@ export default function StudentsPage() {
     checkUnscheduledSessions();
   }, [currentSchool, fetchStudents, checkUnscheduledSessions]);
 
+  // SPE-337: each student's teacher SET, for the roster column. Loaded after
+  // the students rather than folded into getStudents(), so the query's
+  // contract — shared with several other callers — stays as it is.
+  useEffect(() => {
+    let cancelled = false;
+    if (students.length === 0) {
+      setTeacherSets(new Map());
+      return;
+    }
+    getTeacherSetsForStudents(supabase, students.map(s => s.id))
+      .then(sets => { if (!cancelled) setTeacherSets(sets); })
+      .catch(err => console.error('Error fetching teacher sets:', err));
+    return () => { cancelled = true; };
+  }, [students, supabase]);
+
   // Focus Initials when the form opens so entry starts at the keyboard.
   useEffect(() => {
     if (showAddForm) initialsInputRef.current?.focus();
@@ -244,11 +274,11 @@ export default function StudentsPage() {
     savingStudentRef.current = true;
     setSavingStudent(true);
     try {
-      await createStudent({
+      const created = await createStudent({
         initials: formData.initials,
         grade_level: formData.grade_level,
-        teacher_id: formData.teacher_id,
-        teacher_name: formData.teacherName || undefined,
+        teacher_id: teacherLinks[0]?.teacherId ?? null,
+        teacher_name: teacherLinks[0]?.name || undefined,
         sessions_per_week: parseInt(formData.sessions_per_week),
         minutes_per_session: parseInt(formData.minutes_per_session),
         school_site: currentSchool?.school_site || '',
@@ -258,17 +288,23 @@ export default function StudentsPage() {
         state_id: currentSchool?.state_id,
       });
 
+      // The first teacher arrived via the legacy column (and the SPE-334
+      // trigger mirrored it into a link); any co-teachers are written here,
+      // once the student — and therefore its child record — exists.
+      if (created && teacherLinks.length > 1) {
+        await saveTeacherLinksForStudent(supabase, created.id, teacherLinks);
+      }
+
       // SPE-237: stay open for the next entry. Reset the per-student fields but
       // keep the grade preselected (caseloads cluster by grade), confirm inline,
       // and refocus Initials so the next student can be typed without the mouse.
       setFormData({
         initials: '',
         grade_level: formData.grade_level,
-        teacher_id: null,
-        teacherName: null,
         sessions_per_week: '',
         minutes_per_session: '30'
       });
+      setTeacherLinks([]);
       setTeacherFieldKey((k) => k + 1);
       setAddFormConfirmation(`${addedInitials} added`);
       fetchStudents();
@@ -292,11 +328,10 @@ export default function StudentsPage() {
     setShowAddForm(false);
     setAddFormError(null);
     setAddFormConfirmation(null);
+    setTeacherLinks([]);
     setFormData({
       initials: '',
       grade_level: '',
-      teacher_id: null,
-      teacherName: null,
       sessions_per_week: '',
       minutes_per_session: '30'
     });
@@ -573,14 +608,13 @@ export default function StudentsPage() {
 
                   <div className="md:col-span-2">
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Teacher*
+                      {isSecondary ? 'Teachers*' : 'Teacher*'}
                     </label>
-                    <TeacherAutocomplete
+                    <StudentTeachersField
                       key={teacherFieldKey}
-                      value={formData.teacher_id}
-                      teacherName={formData.teacherName || undefined}
-                      onChange={(teacherId, teacherName) => setFormData({ ...formData, teacher_id: teacherId, teacherName })}
-                      placeholder="Search for a teacher..."
+                      value={teacherLinks}
+                      onChange={setTeacherLinks}
+                      isSecondary={isSecondary}
                       required
                       schoolId={currentSchool?.school_id || undefined}
                     />
@@ -666,11 +700,11 @@ export default function StudentsPage() {
         )}
 
         {/* Teacher Details Modal */}
-        {selectedTeacherName && (
+        {selectedTeacherId && (
           <TeacherDetailsModal
-            isOpen={!!selectedTeacherName}
-            onClose={() => setSelectedTeacherName(null)}
-            teacherName={selectedTeacherName}
+            isOpen={!!selectedTeacherId}
+            onClose={() => setSelectedTeacherId(null)}
+            teacherId={selectedTeacherId}
             onSave={async (teacher) => {
               // Refresh students list to show updated teacher name if changed
               await fetchStudents();
@@ -744,16 +778,12 @@ export default function StudentsPage() {
                       <GradeTag grade={student.grade_level} />
                     </TableCell>
                     <TableCell>
-                      {student.teacher_name ? (
-                        <button
-                          onClick={() => setSelectedTeacherName(student.teacher_name)}
-                          className="text-blue-600 hover:text-blue-800 hover:underline transition-colors"
-                        >
-                          {student.teacher_name}
-                        </button>
-                      ) : (
-                        <span className="text-gray-400 italic">Not assigned</span>
-                      )}
+                      <TeacherSetCell
+                        teachers={teacherSets.get(student.id) ?? []}
+                        fallbackName={student.teacher_name}
+                        isSecondary={isSecondary}
+                        onOpenTeacher={setSelectedTeacherId}
+                      />
                     </TableCell>
                     <TableCell>
                       {!isViewOnly && editingId === student.id ? (

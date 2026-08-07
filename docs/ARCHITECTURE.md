@@ -897,6 +897,32 @@ joined set and the first link; `groupStudentsByIdentity`, rekeyed onto
 `getStudentResourceSchedule` gained caller-side scoping on top of RLS —
 defense in depth, so a policy regression alone cannot widen a teacher's reach.
 
+#### Editing the set (SPE-337)
+
+`StudentTeachersField` is the one editor, in two shapes over identical data.
+**Elementary** keeps the single "Teacher" picker the form always had, plus an
+"Add co-teacher" link that reveals a second one — a co-taught class is the
+exception, so the second picker stays out of the way until asked for.
+**Secondary** shows a list with optional subject/period labels. Nothing ranks
+the teachers: no "primary" badge, no reordering, and removing the first is as
+easy as removing the last (product decision 2026-07-26).
+
+It **composes** `TeacherAutocomplete` rather than replacing it — that component
+is single-select by contract and six other surfaces (special activities, CARE
+referrals, import review) genuinely want one teacher.
+
+Writes go through `saveTeacherLinksForStudent`, a **diff**: untouched links keep
+their `created_at`, which is the order the legacy-column mirror calls "first
+listed", so editing one label cannot silently repoint `students.teacher_id`.
+Deletes run last, because emptying the set first would make the mirror null out
+the legacy pair on every caseload row of the child mid-save.
+
+Displays follow the same split: elementary lists every name ("Davis /
+Winbery"), secondary summarises ("6 teachers") and expands on click. The
+students-page teacher modal is keyed by `teachers.id` — it used to open on the
+free-text name, so a typo opened the wrong record or minted a duplicate; the
+name-matching helper that made that possible is deleted.
+
 **IEP attendees differ by level, deliberately.** Elementary invites *every*
 linked teacher and constrains the schedule on all of them: a single-teacher
 class behaves exactly as before, a co-taught class invites both, since they
@@ -917,8 +943,11 @@ live `student_teachers` table + its four policies;
 `lib/supabase/queries/student-teachers.ts`;
 `scripts/sim-district/manifest.ts` (`studentTeacherLinkId` /
 `studentTeacherLinks` / `SECONDARY_PERIODS` / `TOTAL_STUDENT_TEACHER_LINKS`);
+`app/components/teachers/student-teachers-field.tsx`,
+`app/components/teachers/teacher-set-cell.tsx`;
 `scripts/sim-district/verify-student-teachers-rls.ts`,
-`scripts/sim-district/verify-teacher-set-reads.ts`.
+`scripts/sim-district/verify-teacher-set-reads.ts`,
+`scripts/sim-district/verify-teacher-link-writes.ts`.
 
 ### The session tables
 
@@ -1279,15 +1308,15 @@ of school (Master Schedule stays), and Internal sets the `school_type` /
 > `/dashboard/special-activities`, and `/dashboard/plan` stay reachable by direct
 > URL on a secondary site (RLS still scopes data).
 >
-> **Known gap — SPE-194 (Medium), nearly closed:** the data model holds many
-> teachers per student (`student_teachers`, SPE-334, §6) and **every read now
-> resolves through it** (SPE-336): the teacher portal roster and today view,
-> chat membership, admin directory counts, the SEA data layer, cross-provider
-> identity, and IEP-meeting attendee assembly. Every linked teacher sees their
-> student — all subject teachers at secondary, both co-teachers at elementary.
-> What remains is **writing** the links by hand: every teacher picker is still
-> single-select (**SPE-337**), and retiring `students.teacher_id` /
-> `teacher_name` is **SPE-341**. Complements the SPE-181 rostering spike.
+> **Known gap — SPE-194 (Medium): closed as of 2026-08-07**, bar the cleanup.
+> The data model holds many teachers per student (`student_teachers`, SPE-334,
+> §6), every read resolves through it (SPE-336), and the links are editable by
+> hand (SPE-337). Every linked teacher sees their student — all subject
+> teachers at secondary, both co-teachers at elementary — and a case manager
+> can add or remove one. What is left is bookkeeping, not capability: retiring
+> `students.teacher_id` / `teacher_name` (**SPE-341**) once the dual-write has
+> baked. Bulk entry at secondary scale is the SIS syncs (**SPE-342** /
+> **SPE-414**), not manual entry; complements the SPE-181 spike.
 
 **Source of truth:** `lib/school-helpers.ts` (`isSecondarySchool`,
 `classifyByType`, `parseGradeLevel`); `app/components/providers/school-context.tsx`
@@ -1310,7 +1339,7 @@ Re-check Linear for current state.
 | **SPE-188** | Low | Security | Idle logout is client-side only; no server-side session-lifetime backstop. |
 | **SPE-190** | Low | Security | Admin-created teachers get a temp password that's never force-rotated (no `must_change_password` on creation). |
 | **SPE-193** | Low | UX / robustness | Elementary/secondary feature gating is client-side only; hidden routes reachable by URL on secondary sites. |
-| **SPE-194** | Medium | Data model | Nearly closed: `student_teachers` (SPE-334) holds N teachers per child and every read resolves through it (SPE-336) — portal, chat, admin counts, SEA layer, cross-provider identity, IEP attendees. Remaining: the editing UI (SPE-337) and column retirement (SPE-341). |
+| **SPE-194** | Medium | Data model | ✅ Closed 2026-08-07 (SPE-334 + SPE-336 + SPE-337): N teachers per child, every read through the junction, and hand-editable links. Remaining bookkeeping only — column retirement (SPE-341). Bulk secondary entry comes from the SIS syncs (SPE-342/SPE-414). |
 
 **Related context tickets:** SPE-132 (middleware `getSession()` + per-nav
 profile query), SPE-134 (FERPA wording reworded to match reality), SPE-142

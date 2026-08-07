@@ -13,7 +13,13 @@ import {
   type ReviewConfirmSelection,
   type ReviewWriteResult,
 } from './review/student-import-review';
-import { TeacherAutocomplete } from '../teachers/teacher-autocomplete';
+import { StudentTeachersField } from '../teachers/student-teachers-field';
+import {
+  getTeacherLinksForStudent,
+  saveTeacherLinksForStudent,
+  type EditableTeacherLink,
+} from '@/lib/supabase/queries/student-teachers';
+import { createClient } from '@/lib/supabase/client';
 import { StudentProgressTab } from './student-progress-tab';
 import { StudentAttendanceTab } from './student-attendance-tab';
 import { SharedStudentBadge } from './shared-student-badge';
@@ -75,12 +81,17 @@ export function StudentDetailsModal({
   // hidden: the "Current Information" (service-minutes) and Attendance tabs.
   // This is purely subtractive — the underlying data is untouched.
   const { isSecondary } = useSchool();
+  const supabase = useMemo(() => createClient(), []);
+
+  // SPE-337: the student's teacher SET, loaded from student_teachers and
+  // written back on save. The legacy single pair still rides along in the
+  // students update (the SPE-334 dual-write keeps the two consistent), derived
+  // from the first entry.
+  const [teacherLinks, setTeacherLinks] = useState<EditableTeacherLink[]>([]);
 
   const [studentInfo, setStudentInfo] = useState({
     initials: student.initials,
     grade_level: student.grade_level,
-    teacher_id: student.teacher_id || null,
-    teacherName: student.teacher_name || null,
     sessions_per_week: student.sessions_per_week,
     minutes_per_session: student.minutes_per_session,
   });
@@ -92,8 +103,6 @@ export function StudentDetailsModal({
       setStudentInfo({
         initials: student.initials,
         grade_level: student.grade_level,
-        teacher_id: student.teacher_id || null,
-        teacherName: student.teacher_name || null,
         sessions_per_week: student.sessions_per_week,
         minutes_per_session: student.minutes_per_session,
       });
@@ -101,11 +110,14 @@ export function StudentDetailsModal({
       // Load existing student details and matching provider roles
       const loadData = async () => {
         try {
-          // Load student details and matching provider roles in parallel
-          const [existingDetails, roles] = await Promise.all([
+          // Load student details, matching provider roles and the teacher set
+          // in parallel.
+          const [existingDetails, roles, links] = await Promise.all([
             getStudentDetails(student.id),
-            getMatchingProviderRoles(student.id)
+            getMatchingProviderRoles(student.id),
+            getTeacherLinksForStudent(supabase, student.id),
           ]);
+          setTeacherLinks(links);
 
           if (existingDetails) {
             setDetails(existingDetails);
@@ -132,7 +144,7 @@ export function StudentDetailsModal({
 
       loadData();
     }
-  }, [isOpen, student.id, student.initials, student.grade_level, student.teacher_id, student.teacher_name, student.sessions_per_week, student.minutes_per_session]);
+  }, [isOpen, supabase, student.id, student.initials, student.grade_level, student.sessions_per_week, student.minutes_per_session]);
 
   // Secondary mode hides only the Attendance tab; if it's active, snap to a
   // visible tab. Current Information stays visible so grade/teacher/IEP dates
@@ -150,14 +162,21 @@ export function StudentDetailsModal({
       await upsertStudentDetails(student.id, details);
       console.log('Student details saved successfully');
 
+      // SPE-337: write the teacher set BEFORE the students update. The
+      // legacy-column mirror repoints any caseload row whose teacher is no
+      // longer one of the child's, so applying links first means the
+      // students update lands on an already-consistent set rather than
+      // fighting it.
+      await saveTeacherLinksForStudent(supabase, student.id, teacherLinks);
+
       // Update student info if changed
       if (onUpdateStudent) {
         // Convert teacherName to teacher_name for database compatibility
         const updates = {
           initials: studentInfo.initials,
           grade_level: studentInfo.grade_level,
-          teacher_id: studentInfo.teacher_id,
-          teacher_name: studentInfo.teacherName || undefined,
+          teacher_id: teacherLinks[0]?.teacherId ?? null,
+          teacher_name: teacherLinks[0]?.name || undefined,
           sessions_per_week: studentInfo.sessions_per_week,
           minutes_per_session: studentInfo.minutes_per_session,
         };
@@ -416,12 +435,11 @@ export function StudentDetailsModal({
                 </FormGroup>
 
                 <FormGroup>
-                  <Label htmlFor="teacher">Teacher</Label>
-                  <TeacherAutocomplete
-                    value={studentInfo.teacher_id}
-                    teacherName={studentInfo.teacherName || undefined}
-                    onChange={(teacherId, teacherName) => setStudentInfo({...studentInfo, teacher_id: teacherId, teacherName})}
-                    placeholder="Search for a teacher..."
+                  <Label htmlFor="teacher">{isSecondary ? 'Teachers' : 'Teacher'}</Label>
+                  <StudentTeachersField
+                    value={teacherLinks}
+                    onChange={setTeacherLinks}
+                    isSecondary={isSecondary}
                     disabled={readOnly}
                     schoolId={student.school_id || undefined}
                   />

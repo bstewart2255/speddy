@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/client';
 import { safeQuery } from '@/lib/supabase/safe-query';
+import { addTeacherLinkForStudent } from './student-teachers';
 
 /**
  * Interface for unmatched student records
@@ -101,13 +102,15 @@ export async function assignTeacherToStudent(studentId: string, teacherId: strin
     throw new Error('You must be logged in to assign teachers');
   }
 
+  // SPE-337: ADD a teacher, don't replace one. Overwriting `teacher_id` used to
+  // be the only option because a student had exactly one teacher; now that a
+  // student can have several, "assign this teacher" must not silently unassign
+  // whoever else already teaches them. The insert is idempotent — the
+  // (child_id, teacher_id) unique constraint makes a re-assign a no-op rather
+  // than an error — and the SPE-334 dual-write keeps the legacy column in step.
   const updateResult = await safeQuery(
     async () => {
-      const { error } = await supabase
-        .from('students')
-        .update({ teacher_id: teacherId })
-        .eq('id', studentId);
-      if (error) throw error;
+      await addTeacherLinkForStudent(supabase, studentId, teacherId);
       return null;
     },
     {

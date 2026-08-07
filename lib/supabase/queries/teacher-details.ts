@@ -237,63 +237,13 @@ export async function getStudentsByTeacher(teacherId: string): Promise<Student[]
   return fetchResult.data || [];
 }
 
-export async function getTeacherByStudentTeacherName(teacherName: string): Promise<Teacher | null> {
-  const supabase = createClient<Database>();
-
-  const authResult = await safeQuery(
-    () => supabase.auth.getUser(),
-    { operation: 'get_user_for_fetch_teacher_by_name' }
-  );
-  
-  if (authResult.error || !authResult.data?.data.user) {
-    throw new Error('No user found');
-  }
-  
-  const user = authResult.data.data.user;
-
-  const nameParts = teacherName.trim().split(' ');
-  const lastName = nameParts[nameParts.length - 1];
-  const firstName = nameParts.slice(0, -1).join(' ');
-
-  const fetchPerf = measurePerformanceWithAlerts('fetch_teacher_by_student_name', 'database');
-  const fetchResult = await safeQuery(
-    async () => {
-      let query = supabase
-        .from('teachers')
-        .select('*');
-
-      if (firstName && lastName) {
-        query = query
-          .ilike('first_name', firstName)
-          .ilike('last_name', lastName);
-      } else {
-        query = query.or(`last_name.ilike.%${teacherName}%,first_name.ilike.%${teacherName}%`);
-      }
-
-      // Order by preference: admin-created records with complete info first
-      // This handles duplicate teacher records gracefully
-      query = query
-        .order('created_by_admin', { ascending: false })
-        .order('first_name', { ascending: true, nullsFirst: false })
-        .order('email', { ascending: true, nullsFirst: false })
-        .limit(1);
-
-      const { data, error } = await query.maybeSingle();
-      if (error) throw error;
-      return data;
-    },
-    {
-      operation: 'fetch_teacher_by_student_name',
-      userId: user.id,
-      teacherName
-    }
-  );
-  fetchPerf.end({ success: !fetchResult.error });
-
-  if (fetchResult.error) {
-    console.error('Error fetching teacher by name:', fetchResult.error);
-    return null;
-  }
-
-  return fetchResult.data;
-}
+/*
+ * SPE-337 removed `getTeacherByStudentTeacherName`.
+ *
+ * It resolved a teacher by fuzzy-matching the free-text `students.teacher_name`
+ * — how the teacher modal used to open. That contract is gone: the modal is
+ * keyed by `teachers.id`, so a typo can no longer open the wrong record, and
+ * its `.limit(1)` over "duplicate teacher records" can no longer silently pick
+ * one of several. A student with a SET of teachers has no single name to match
+ * on in any case.
+ */
