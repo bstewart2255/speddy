@@ -3,17 +3,20 @@ import {
   type CaseloadStudent,
   type PlanningData,
 } from '@/lib/supabase/queries/iep-meetings';
+import type { LinkedTeacher } from '@/lib/supabase/queries/student-teachers';
 import type { BusyBlock } from '@/lib/iep-meetings/availability';
+
+function linkedTeacher(overrides: Partial<LinkedTeacher> = {}): LinkedTeacher {
+  return { id: 't1', name: 'T One', profileId: null, email: null, ...overrides };
+}
 
 function student(overrides: Partial<CaseloadStudent>): CaseloadStudent {
   return {
     id: 's1',
     initials: 'A.B.',
     grade_level: '3',
-    teacher_id: null,
+    teachers: [],
     teacherName: null,
-    teacherProfileId: null,
-    teacherEmail: null,
     dueDate: '2026-10-01',
     meetingType: 'annual',
     hasUpcomingMeeting: false,
@@ -80,7 +83,7 @@ describe('buildPlanRequests', () => {
       ['teacher@d.org', [googleBlock('teacher')]],
     ]);
     const [request] = buildPlanRequests(
-      [student({ teacherProfileId: 't-profile', teacherEmail: 'teacher@d.org' })],
+      [student({ teachers: [linkedTeacher({ profileId: 't-profile', email: 'teacher@d.org' })] })],
       planning,
       googleBusy
     );
@@ -98,7 +101,7 @@ describe('buildPlanRequests', () => {
       ['noacct@d.org', [googleBlock('teacher')]],
     ]);
     const [request] = buildPlanRequests(
-      [student({ teacherEmail: 'noacct@d.org' })],
+      [student({ teachers: [linkedTeacher({ email: 'noacct@d.org' })] })],
       planningData(),
       googleBusy
     );
@@ -111,8 +114,8 @@ describe('buildPlanRequests', () => {
     ]);
     const requests = buildPlanRequests(
       [
-        student({ id: 's1', teacherEmail: 'teacher@d.org' }),
-        student({ id: 's2', teacherEmail: 'teacher@d.org' }),
+        student({ id: 's1', teachers: [linkedTeacher({ email: 'teacher@d.org' })] }),
+        student({ id: 's2', teachers: [linkedTeacher({ id: 't2', email: 'teacher@d.org' })] }),
       ],
       planningData(),
       googleBusy
@@ -120,9 +123,58 @@ describe('buildPlanRequests', () => {
     expect(requests[0].attendees[1]).toBe(requests[1].attendees[1]);
   });
 
+  // SPE-336: co-teachers are equals and share the class, so a co-taught
+  // student's meeting has to fit BOTH of them — one constraint each, not the
+  // first one silently winning.
+  it('constrains on every invited teacher, not just the first', () => {
+    const googleBusy = new Map<string, BusyBlock[]>([
+      ['davis@d.org', [googleBlock('davis')]],
+      ['winbery@d.org', [googleBlock('winbery')]],
+    ]);
+    const [request] = buildPlanRequests(
+      [
+        student({
+          teachers: [
+            linkedTeacher({ id: 't-davis', email: 'davis@d.org' }),
+            linkedTeacher({ id: 't-winbery', email: 'winbery@d.org' }),
+          ],
+        }),
+      ],
+      planningData(),
+      googleBusy
+    );
+    expect(request.attendees).toHaveLength(3); // organizer + both teachers
+    expect(request.attendees.slice(1).map(a => a.key).sort()).toEqual([
+      'email:davis@d.org',
+      'email:winbery@d.org',
+    ]);
+  });
+
+  // A teacher with nothing to constrain must not push the OTHER co-teacher out
+  // of the attendee list.
+  it('keeps a constrained co-teacher when the other has no constraints', () => {
+    const googleBusy = new Map<string, BusyBlock[]>([
+      ['winbery@d.org', [googleBlock('winbery')]],
+    ]);
+    const [request] = buildPlanRequests(
+      [
+        student({
+          teachers: [
+            linkedTeacher({ id: 't-davis', email: 'quiet@d.org' }),
+            linkedTeacher({ id: 't-winbery', email: 'winbery@d.org' }),
+          ],
+        }),
+      ],
+      planningData(),
+      googleBusy
+    );
+    expect(request.attendees).toHaveLength(2);
+    expect(request.attendees[1].key).toBe('email:winbery@d.org');
+  });
+
   it('omits the teacher constraint when there is nothing to constrain', () => {
     const [request] = buildPlanRequests(
-      [student({ teacherEmail: 'quiet@d.org' })],
+      [student({ teachers: [linkedTeacher({ email: 'quiet@d.org' })] })],
       planningData(),
       null
     );

@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/client';
 import { safeQuery } from '@/lib/supabase/safe-query';
 import { measurePerformanceWithAlerts } from '@/lib/monitoring/performance-alerts';
+import { getLinkedStudentIds } from './student-teachers';
 import type { Database } from '../../../src/types/database';
 import type { PostgrestError } from '@supabase/supabase-js';
 
@@ -46,8 +47,12 @@ export async function getTeacherDetails(teacherId: string): Promise<TeacherDetai
   
   const user = authResult.data.data.user;
 
+  // SPE-336: the caller's own caseload rows for this teacher, resolved through
+  // the link set rather than the single legacy column.
+  const linkedStudentIds = await getLinkedStudentIds(supabase, teacherId);
+
   const fetchPerf = measurePerformanceWithAlerts('fetch_teacher_details', 'database');
-  
+
   const [teacherResult, studentsResult] = await Promise.all([
     safeQuery(
       async () => {
@@ -70,7 +75,7 @@ export async function getTeacherDetails(teacherId: string): Promise<TeacherDetai
         const { data, error } = await supabase
           .from('students')
           .select('id, initials, grade_level, sessions_per_week, minutes_per_session')
-          .eq('teacher_id', teacherId)
+          .in('id', linkedStudentIds)
           .eq('provider_id', user.id)
           .order('grade_level', { ascending: true })
           .order('initials', { ascending: true });
@@ -200,13 +205,17 @@ export async function getStudentsByTeacher(teacherId: string): Promise<Student[]
   
   const user = authResult.data.data.user;
 
+  // SPE-336: through the link set (see getTeacherDetails above).
+  const linkedStudentIds = await getLinkedStudentIds(supabase, teacherId);
+  if (linkedStudentIds.length === 0) return [];
+
   const fetchPerf = measurePerformanceWithAlerts('fetch_students_by_teacher', 'database');
   const fetchResult = await safeQuery(
     async () => {
       const { data, error } = await supabase
         .from('students')
         .select('*')
-        .eq('teacher_id', teacherId)
+        .in('id', linkedStudentIds)
         .eq('provider_id', user.id)
         .order('grade_level', { ascending: true })
         .order('initials', { ascending: true });

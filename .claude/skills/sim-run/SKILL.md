@@ -79,10 +79,14 @@ the usual walk leads (email-local → who):
 | `sea.willow` | Leah — SEA (excluded from Chat/CARE/Schedule/Meetings nav; delegated sessions) |
 | `teacher.willow.1` | Nora — login teacher, Willow (availability prompt) |
 | `teacher.willow.2` | David — login teacher with ZERO students (empty state) |
+| `teacher.willow.3` | Imani — Nora's CO-TEACHER on the same grade-3 class (SPE-336) |
 | `teacher.cedar` | Fatima — login teacher, Cedar (secondary) |
+| `teacher.cedar.2` | Sanjay — a second Cedar subject teacher, shares Fatima's students |
 
 Cedar/Redwood are secondary sites: scheduling surfaces hidden, no session
-instances seeded — useful negative space.
+instances seeded — useful negative space. Since SPE-336 their students carry a
+teacher per period (six links each, from a faculty of eight), so they are also
+where multi-teacher reads get exercised.
 
 ## The run, step by step
 

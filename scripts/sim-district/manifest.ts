@@ -192,7 +192,17 @@ export const PERSONAS: SimPersona[] = [
   },
   { key: 'nora', fullName: 'Nora Ellison-Sim', role: 'teacher', emailLocal: 'teacher.willow.1', schoolIds: [WILLOW], gradeLevel: '3' },
   { key: 'david', fullName: 'David Osei-Sim', role: 'teacher', emailLocal: 'teacher.willow.2', schoolIds: [WILLOW], gradeLevel: '5' },
+  // SPE-336: Nora's CO-TEACHER. Both hold the same grade-3 class as equals, so
+  // both must see those students — the elementary half of the multi-teacher
+  // payoff. Deliberately a NEW persona rather than reusing David: his
+  // zero-students empty state is load-bearing fixture (§6) and giving him a
+  // caseload would delete the only teacher with nothing to show.
+  { key: 'imani', fullName: 'Imani Brooks-Sim', role: 'teacher', emailLocal: 'teacher.willow.3', schoolIds: [WILLOW], gradeLevel: '3' },
   { key: 'fatima', fullName: 'Fatima Haddad-Sim', role: 'teacher', emailLocal: 'teacher.cedar', schoolIds: [CEDAR], gradeLevel: '7' },
+  // SPE-336: a SECOND Cedar teacher with a login. Without one, "another
+  // subject teacher sees the same student independently" — the secondary half
+  // of the payoff — has nobody to sign in as.
+  { key: 'sanjay', fullName: 'Sanjay Rao-Sim', role: 'teacher', emailLocal: 'teacher.cedar.2', schoolIds: [CEDAR], gradeLevel: '7' },
 ];
 
 export function persona(key: string): SimPersona {
@@ -238,6 +248,21 @@ export const RECORD_TEACHERS: RecordTeacher[] = [
   { key: 'diane', firstName: 'Diane', lastName: 'Kowalski-Sim', schoolId: REDWOOD, gradeLevel: '9' },
   { key: 'robert', firstName: 'Robert', lastName: 'Ngata-Sim', schoolId: REDWOOD, gradeLevel: '10' },
   { key: 'lucia', firstName: 'Lucia', lastName: 'Moretti-Sim', schoolId: REDWOOD, gradeLevel: '11' },
+  // SPE-336 — secondary faculty. A middle/high student has a teacher per
+  // period, so each secondary school needs a faculty deeper than the number of
+  // periods; otherwise every student would carry an identical teacher set and
+  // "which of my teachers" would never be a real question. Eight per school
+  // against SECONDARY_PERIODS' six gives every student a distinct-but-
+  // overlapping set (see secondaryTeacherPool / studentTeacherLinks).
+  { key: 'nadia', firstName: 'Nadia', lastName: 'Farouk-Sim', schoolId: CEDAR, gradeLevel: '7' },
+  { key: 'tobias', firstName: 'Tobias', lastName: 'Lindgren-Sim', schoolId: CEDAR, gradeLevel: '8' },
+  { key: 'priscilla', firstName: 'Priscilla', lastName: 'Okonkwo-Sim', schoolId: CEDAR, gradeLevel: '6' },
+  { key: 'kenji', firstName: 'Kenji', lastName: 'Watanabe-Sim', schoolId: CEDAR, gradeLevel: '7' },
+  { key: 'martine', firstName: 'Martine', lastName: 'Dubois-Sim', schoolId: REDWOOD, gradeLevel: '9' },
+  { key: 'ahmed', firstName: 'Ahmed', lastName: 'Rahimi-Sim', schoolId: REDWOOD, gradeLevel: '12' },
+  { key: 'gwen', firstName: 'Gwen', lastName: 'Prichard-Sim', schoolId: REDWOOD, gradeLevel: '10' },
+  { key: 'esteban', firstName: 'Esteban', lastName: 'Ferrer-Sim', schoolId: REDWOOD, gradeLevel: '11' },
+  { key: 'ingrid', firstName: 'Ingrid', lastName: 'Solberg-Sim', schoolId: REDWOOD, gradeLevel: '12' },
 ];
 
 export function teacherRecordId(key: string): string {
@@ -400,16 +425,99 @@ export function studentTeacherLinkId(childUuid: string, teacherRowId: string): s
 }
 
 /**
- * Distinct (child, teacher) links the seed plants — students minus the links
- * the shared pairs collapse. Derived from the same functions the seed uses, so
- * it cannot drift from what actually lands.
+ * SPE-336 — the secondary class day. `subject` / `period` are DISPLAY LABELS
+ * ONLY (SPE-334): Speddy does not schedule at secondary, and no seeded session
+ * is derived from them.
+ */
+export const SECONDARY_PERIODS = [
+  { period: '1', subject: 'English' },
+  { period: '2', subject: 'Math' },
+  { period: '3', subject: 'Science' },
+  { period: '4', subject: 'World History' },
+  { period: '5', subject: 'PE' },
+  { period: '6', subject: 'Elective' },
+] as const;
+
+/**
+ * Every teacher at a secondary school, in a stable order: login teachers first
+ * (persona order), then record-only teachers (list order). Eight per school
+ * against six periods, so students get overlapping-but-different sets.
+ */
+export function secondaryTeacherPool(schoolId: string): string[] {
+  return [
+    ...PERSONAS.filter(p => p.role === 'teacher' && p.schoolIds.includes(schoolId))
+      .map(p => teacherRecordId(`login:${p.key}`)),
+    ...RECORD_TEACHERS.filter(t => t.schoolId === schoolId).map(t => teacherRecordId(t.key)),
+  ];
+}
+
+export interface StudentTeacherLink {
+  teacherRowId: string;
+  subject: string | null;
+  period: string | null;
+}
+
+/**
+ * SPE-336 — the full teacher set for one caseload row, replacing the single
+ * `studentTeacher()` assignment as what the fixture actually seeds.
+ *
+ * **Secondary (Cedar / Redwood):** one teacher per period. The homeroom
+ * teacher `studentTeacher()` picks takes period 1 and the rest of the pool
+ * follows, wrapping — so the homeroom teacher is always in the set (which is
+ * what keeps the legacy `students.teacher_id` column naming a teacher the
+ * child really has) while different students still get different sets.
+ *
+ * **Elementary:** the homeroom teacher, plus Imani as Nora's CO-TEACHER on the
+ * grade-3 class they share. Every other elementary student keeps exactly one
+ * teacher, so the single-teacher path stays the fixture's common case.
+ *
+ * Labels are null at elementary: there are no periods there, and inventing
+ * some would imply scheduling semantics the columns explicitly do not carry.
+ */
+export function studentTeacherLinks(rule: CaseloadRule, index: number): StudentTeacherLink[] {
+  const homeroom = studentTeacher(rule, index).teacherRowId;
+  const school = schoolById(rule.schoolId);
+
+  if (school.isSecondary) {
+    const pool = secondaryTeacherPool(rule.schoolId);
+    const start = pool.indexOf(homeroom);
+    // The homeroom teacher MUST be in the set: the seed writes them to the
+    // legacy `students.teacher_id`, and a column naming a teacher the child
+    // has no link to is exactly the drift the SPE-334 mirror exists to repair
+    // — it would silently rewrite the fixture on first write. Fail loudly
+    // rather than start at 0 and hope.
+    if (start < 0) {
+      throw new Error(
+        `manifest: homeroom teacher ${homeroom} is not in ${rule.schoolId}'s secondary pool`,
+      );
+    }
+    return SECONDARY_PERIODS.map((slot, n) => ({
+      teacherRowId: pool[(start + n) % pool.length],
+      subject: slot.subject,
+      period: slot.period,
+    }));
+  }
+
+  const links: StudentTeacherLink[] = [{ teacherRowId: homeroom, subject: null, period: null }];
+  if (homeroom === teacherRecordId('login:nora')) {
+    links.push({ teacherRowId: teacherRecordId('login:imani'), subject: null, period: null });
+  }
+  return links;
+}
+
+/**
+ * Distinct (child, teacher) links the seed plants. Fewer than the sum of every
+ * student's set, because the shared pairs (spec §6) resolve to one child and
+ * their sets collapse. Derived from the same function the seed uses, so it
+ * cannot drift from what actually lands.
  */
 export const TOTAL_STUDENT_TEACHER_LINKS = new Set(
   CASELOADS.flatMap(rule =>
-    Array.from(
-      { length: rule.count },
-      (_, i) => `${childKey(rule.providerKey, rule.schoolId, i)}|${studentTeacher(rule, i).teacherRowId}`,
-    ),
+    Array.from({ length: rule.count }, (_, i) =>
+      studentTeacherLinks(rule, i).map(
+        link => `${childKey(rule.providerKey, rule.schoolId, i)}|${link.teacherRowId}`,
+      ),
+    ).flat(),
   ),
 ).size;
 

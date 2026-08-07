@@ -160,6 +160,10 @@ async function main(): Promise<void> {
   const { data: targetRow } = await admin
     .from('students').select('child_id, school_id').eq('id', targetStudentId).single();
   const targetChildId = targetRow!.child_id as string;
+  // Derived, not hardcoded: the fixture seeds co-teachers at elementary
+  // (SPE-336), so "how many links does this child have" is a property of the
+  // seed, not a constant this guard gets to assume.
+  const baselineLinks = (await linkTeacherIds(targetChildId)).length;
   {
     check((await linkTeacherIds(targetChildId)).includes(davidTeacherId) === false,
       'David starts with NO link to the probe child', targetChildId);
@@ -205,8 +209,9 @@ async function main(): Promise<void> {
 
     const { data: bothLinks } = await david.from('student_teachers')
       .select('teacher_id').eq('child_id', targetChildId);
-    check((bothLinks?.length ?? 0) === 2, 'both links are visible to a linked teacher',
-      `${bothLinks?.length ?? 0} links`);
+    check((bothLinks?.length ?? 0) === baselineLinks + 1,
+      'the added link is visible to a linked teacher',
+      `${bothLinks?.length ?? 0} links (baseline ${baselineLinks})`);
 
     // Chat membership flips at the DB layer with this ticket (SPE-336 verifies
     // the UI): both teacher accounts must now be participants.
@@ -241,8 +246,8 @@ async function main(): Promise<void> {
       const client = await signIn(key);
       const { count, error } = await client.from('student_teachers')
         .select('*', { count: 'exact', head: true }).eq('child_id', targetChildId);
-      check(!error && (count ?? 0) === 1, `${label} reads the child's links`,
-        error ? error.message : `count=${count}`);
+      check(!error && (count ?? 0) === baselineLinks, `${label} reads the child's links`,
+        error ? error.message : `count=${count} (expected ${baselineLinks})`);
     }
 
     const alicia = await signIn('alicia');
@@ -257,7 +262,7 @@ async function main(): Promise<void> {
 
     const { data: delRows, error: delErr } = await alicia.from('student_teachers')
       .delete().eq('child_id', targetChildId).select('id');
-    check((delRows?.length ?? 0) === 0 && (await linkTeacherIds(targetChildId)).length === 1,
+    check((delRows?.length ?? 0) === 0 && (await linkTeacherIds(targetChildId)).length === baselineLinks,
       'unlinked provider DELETE affects 0 rows',
       `code=${delErr?.code ?? 'none'} rows=${delRows?.length ?? 0}`);
   }

@@ -15,6 +15,12 @@ import {
   removeHoldEvent,
   syncHoldEvents,
 } from '@/lib/calendar/hold-events-client';
+import { isSecondarySchool } from '@/lib/school-helpers';
+import {
+  formatTeacherSet,
+  getTeachersByChildId,
+  type LinkedTeacher,
+} from './student-teachers';
 import type { SiteMeetingRules } from '@/src/types';
 
 export interface MeetingListItem extends IepMeeting {
@@ -32,11 +38,25 @@ export interface CaseloadStudent {
   id: string;
   initials: string;
   grade_level: string;
-  teacher_id: string | null;
+  /**
+   * SPE-336: the teachers this student's meeting is assembled around.
+   *
+   * **Elementary — every linked teacher.** A single-teacher class behaves
+   * exactly as before; a co-taught class invites both co-teachers, because
+   * they share the class and are equals (product decision 2026-07-26).
+   *
+   * **Secondary — the first linked teacher only.** A secondary student has one
+   * teacher per period, and the legal minimum is *at least one* gen-ed teacher
+   * of the student, not all of them (IEP spec §8). Auto-inviting six teachers
+   * would be wrong, and auto-constraining a meeting on six calendars would
+   * make it unschedulable. Picking the one is a human's job — SPE-322's
+   * attendee picker, which consumes this same set as its options list. Until
+   * then this is exactly what secondary did before: one teacher, chosen for
+   * you.
+   */
+  teachers: LinkedTeacher[];
+  /** How the set reads on screen, e.g. "Davis / Winbery". */
   teacherName: string | null;
-  teacherProfileId: string | null;
-  /** For Google free/busy lookups via calendars shared with the organizer. */
-  teacherEmail: string | null;
   dueDate: string | null; // earlier of upcoming IEP / triennial
   meetingType: 'annual' | 'triennial';
   hasUpcomingMeeting: boolean;
@@ -102,17 +122,19 @@ export async function getPlanningData(schoolId: string): Promise<PlanningData> {
   } = await supabase.auth.getUser();
   if (!user) throw new Error('Not authenticated');
 
-  const [rulesRes, studentsRes, sessionsRes, meetingsRes, adminsRes] =
+  const [rulesRes, studentsRes, sessionsRes, meetingsRes, adminsRes, schoolRes] =
     await Promise.all([
       supabase
         .from('site_meeting_rules')
         .select('*')
         .eq('school_id', schoolId)
         .maybeSingle(),
+      // SPE-336: the teacher embed on students.teacher_id is gone — the
+      // teacher set is resolved per child from student_teachers below.
       supabase
         .from('students')
         .select(
-          'id, initials, grade_level, teacher_id, teachers(id, account_id, first_name, last_name, email), student_details(upcoming_iep_date, upcoming_triennial_date)'
+          'id, child_id, initials, grade_level, student_details(upcoming_iep_date, upcoming_triennial_date)'
         )
         .eq('provider_id', user.id)
         .eq('school_id', schoolId),
@@ -130,6 +152,12 @@ export async function getPlanningData(schoolId: string): Promise<PlanningData> {
         .is('deleted_at', null)
         .not('scheduled_start', 'is', null),
       supabase.rpc('get_school_site_admins', { p_school_id: schoolId }),
+      // SPE-336: attendee assembly differs by level (see CaseloadStudent.teachers).
+      supabase
+        .from('schools')
+        .select('school_type, grade_span_low')
+        .eq('id', schoolId)
+        .maybeSingle(),
     ]);
 
   // Every source feeds planning constraints — a silently-failed fetch would
@@ -140,6 +168,7 @@ export async function getPlanningData(schoolId: string): Promise<PlanningData> {
     ['sessions', sessionsRes.error],
     ['meetings', meetingsRes.error],
     ['site admins', adminsRes.error],
+    ['school', schoolRes.error],
   ];
   for (const [what, err] of failures) {
     if (err) {
@@ -188,21 +217,23 @@ export async function getPlanningData(schoolId: string): Promise<PlanningData> {
     id: string;
     initials: string;
     grade_level: string;
-    teacher_id: string | null;
-    teachers: {
-      id: string;
-      account_id: string | null;
-      first_name: string | null;
-      last_name: string | null;
-      email: string | null;
-    } | null;
+    child_id: string | null;
     student_details: {
       upcoming_iep_date: string | null;
       upcoming_triennial_date: string | null;
     } | null;
   };
 
-  const caseload: CaseloadStudent[] = ((studentsRes.data ?? []) as unknown as StudentRow[]).map(s => {
+  const studentRows = (studentsRes.data ?? []) as unknown as StudentRow[];
+
+  // SPE-336: one round trip for the whole caseload's teacher sets.
+  const teachersByChild = await getTeachersByChildId(
+    supabase,
+    studentRows.map(s => s.child_id).filter((id): id is string => !!id),
+  );
+  const secondary = isSecondarySchool(schoolRes.data ?? null);
+
+  const caseload: CaseloadStudent[] = studentRows.map(s => {
     const details = Array.isArray(s.student_details)
       ? s.student_details[0]
       : s.student_details;
@@ -216,26 +247,26 @@ export async function getPlanningData(schoolId: string): Promise<PlanningData> {
       dueDate = triDue;
       meetingType = 'triennial';
     }
-    const teacher = Array.isArray(s.teachers) ? s.teachers[0] : s.teachers;
+    // Elementary invites the whole set; secondary takes the first only until
+    // SPE-322's picker lets a human choose (see CaseloadStudent.teachers).
+    const linked = s.child_id ? (teachersByChild.get(s.child_id) ?? []) : [];
+    const teachers = secondary ? linked.slice(0, 1) : linked;
     return {
       id: s.id,
       initials: s.initials,
       grade_level: s.grade_level,
-      teacher_id: s.teacher_id,
-      teacherName: teacher
-        ? [teacher.first_name, teacher.last_name].filter(Boolean).join(' ') || null
-        : null,
-      teacherProfileId: teacher?.account_id ?? null,
-      teacherEmail: teacher?.email ?? null,
+      teachers,
+      teacherName: formatTeacherSet(teachers),
       dueDate,
       meetingType,
       hasUpcomingMeeting: studentsWithMeetings.has(s.id),
     };
   });
 
-  // Teacher availability prefs → engine constraints, by teacher profile id
+  // Teacher availability prefs → engine constraints, by teacher profile id.
+  // SPE-336: every invited teacher on every student, not one per student.
   const teacherProfileIds = Array.from(
-    new Set(caseload.map(s => s.teacherProfileId).filter(Boolean))
+    new Set(caseload.flatMap(s => s.teachers.map(t => t.profileId)).filter(Boolean))
   ) as string[];
   const teacherConstraints = new Map<string, AttendeeConstraints>();
   if (teacherProfileIds.length > 0) {
@@ -308,16 +339,20 @@ export function buildPlanRequests(
   const teacherCache = new Map<string, AttendeeConstraints | null>();
   return students.map(student => {
     const attendees: AttendeeConstraints[] = [organizer];
-    const teacherKey =
-      student.teacherProfileId ??
-      (student.teacherEmail ? `email:${student.teacherEmail}` : null);
-    if (teacherKey) {
+    // SPE-336: constrain on EVERY invited teacher. At elementary that is the
+    // co-teacher pair, who must both be free; at secondary the set is already
+    // narrowed to one upstream, so this stays a single constraint there.
+    for (const teacherRecord of student.teachers) {
+      const teacherKey =
+        teacherRecord.profileId ??
+        (teacherRecord.email ? `email:${teacherRecord.email}` : null);
+      if (!teacherKey) continue;
       if (!teacherCache.has(teacherKey)) {
-        const prefs = student.teacherProfileId
-          ? planning.teacherConstraints.get(student.teacherProfileId)
+        const prefs = teacherRecord.profileId
+          ? planning.teacherConstraints.get(teacherRecord.profileId)
           : undefined;
-        const googleTeacherBusy = student.teacherEmail
-          ? (googleBusy?.get(student.teacherEmail) ?? [])
+        const googleTeacherBusy = teacherRecord.email
+          ? (googleBusy?.get(teacherRecord.email) ?? [])
           : [];
         teacherCache.set(
           teacherKey,
@@ -429,20 +464,26 @@ export async function reserveMeetings(
         rsvp_status: 'pending',
       });
     }
-    if (draft?.student.teacherProfileId) {
-      rows.push({
-        meeting_id: meeting.id,
-        profile_id: draft.student.teacherProfileId,
-        attendee_role: 'teacher',
-        rsvp_status: 'pending',
-      });
-    } else if (draft?.student.teacherName) {
-      rows.push({
-        meeting_id: meeting.id,
-        display_name: draft.student.teacherName,
-        attendee_role: 'teacher',
-        rsvp_status: 'pending',
-      });
+    // SPE-336: one attendee row per invited teacher. A single-teacher class is
+    // byte-identical to before; a co-taught class invites both, since they
+    // share the class. Teachers without a Speddy account are still recorded by
+    // display name so the meeting shows who is expected.
+    for (const teacherRecord of draft?.student.teachers ?? []) {
+      if (teacherRecord.profileId) {
+        rows.push({
+          meeting_id: meeting.id,
+          profile_id: teacherRecord.profileId,
+          attendee_role: 'teacher',
+          rsvp_status: 'pending',
+        });
+      } else if (teacherRecord.name) {
+        rows.push({
+          meeting_id: meeting.id,
+          display_name: teacherRecord.name,
+          attendee_role: 'teacher',
+          rsvp_status: 'pending',
+        });
+      }
     }
     return rows;
   });

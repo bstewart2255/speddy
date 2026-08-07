@@ -63,6 +63,7 @@ import {
   studentInitials,
   studentTeacher,
   studentTeacherLinkId,
+  studentTeacherLinks,
   teacherRecordId,
   userSiteScheduleId,
   detailsCount,
@@ -317,17 +318,21 @@ async function main() {
             : [],
         });
       }
-      const linkId = studentTeacherLinkId(childUuid, teacher.teacherRowId);
-      if (!linkRows.has(linkId)) {
-        linkRows.set(linkId, {
-          id: linkId,
-          child_id: childUuid,
-          teacher_id: teacher.teacherRowId,
-          // subject/period stay null: 1:1 elementary-shaped seeding in this
-          // ticket. SPE-336 is where Cedar/Redwood gain per-period sets.
-          subject: null,
-          period: null,
-        });
+      // SPE-336: the child's whole teacher set — one per period at Cedar and
+      // Redwood, the homeroom teacher plus a co-teacher on Nora's shared
+      // grade-3 class, one teacher everywhere else. Deduped by link id, so a
+      // co-served child carries one set, not one per caseload copy.
+      for (const link of studentTeacherLinks(rule, i)) {
+        const linkId = studentTeacherLinkId(childUuid, link.teacherRowId);
+        if (!linkRows.has(linkId)) {
+          linkRows.set(linkId, {
+            id: linkId,
+            child_id: childUuid,
+            teacher_id: link.teacherRowId,
+            subject: link.subject,
+            period: link.period,
+          });
+        }
       }
       studentRows.push({
         id,

@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/client';
 import { safeQuery } from '@/lib/supabase/safe-query';
 import { measurePerformanceWithAlerts } from '@/lib/monitoring/performance-alerts';
+import { getLinkedStudentIds } from './student-teachers';
 import type { Database } from '../../../src/types/database';
 
 type Teacher = Database['public']['Tables']['teachers']['Row'];
@@ -270,7 +271,7 @@ export async function getTeachersWithStudentCount(schoolId?: string) {
           created_by_admin,
           created_at,
           updated_at,
-          students:students(count)
+          student_teachers:student_teachers(count)
         `)
         .eq('school_id', targetSchoolId)
         .order('last_name', { ascending: true })
@@ -278,11 +279,15 @@ export async function getTeachersWithStudentCount(schoolId?: string) {
 
       if (error) throw error;
 
-      // Transform the data to include student_count as a number
-      // Handle case where students array might be empty or undefined
-      return data.map(({ students, ...teacher }) => ({
+      // SPE-336: count LINKS, not caseload rows. The old embed rode the
+      // implicit FK on students.teacher_id, which sees one teacher per student
+      // and breaks outright when SPE-341 drops the column. Links also count a
+      // co-served child ONCE, where the caseload-row count double-counted a
+      // child served by two providers — the number a site admin actually means
+      // by "students".
+      return data.map(({ student_teachers, ...teacher }) => ({
         ...teacher,
-        student_count: (students && students.length > 0 && students[0].count !== undefined) ? students[0].count : 0
+        student_count: (student_teachers && student_teachers.length > 0 && student_teachers[0].count !== undefined) ? student_teachers[0].count : 0
       }));
     },
     {
@@ -307,6 +312,10 @@ export async function getTeachersWithStudentCount(schoolId?: string) {
 export async function getTeacherStudents(teacherId: string) {
   const supabase = createClient<Database>();
 
+  // SPE-336: through the link set, so a co-teacher's students show up here too.
+  const studentIds = await getLinkedStudentIds(supabase, teacherId);
+  if (studentIds.length === 0) return [];
+
   const fetchPerf = measurePerformanceWithAlerts('fetch_teacher_students', 'database');
   const fetchResult = await safeQuery(
     async () => {
@@ -323,7 +332,7 @@ export async function getTeacherStudents(teacherId: string) {
             role
           )
         `)
-        .eq('teacher_id', teacherId)
+        .in('id', studentIds)
         .order('grade_level', { ascending: true });
 
       if (error) throw error;

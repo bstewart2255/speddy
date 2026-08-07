@@ -163,10 +163,11 @@ export default function MeetingsPage() {
             (max, s) => (s.dueDate! > max ? s.dueDate! : max),
             todayStr()
           );
+          // SPE-336: free/busy for every invited teacher, not just one.
           const emails = Array.from(
             new Set(
               inHorizon
-                .map(s => s.teacherEmail)
+                .flatMap(s => s.teachers.map(t => t.email))
                 .filter((e): e is string => !!e)
             )
           );

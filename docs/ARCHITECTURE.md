@@ -875,16 +875,50 @@ schedules, not Speddy caseloads.
   and **no** child had copies naming different teachers — so every read set was
   unchanged. Where copies ever do disagree the link set is their union.
 
-**Source of truth:** `supabase/migrations/20260807_spe334_student_teachers.sql`;
+#### Who reads the link set (SPE-336)
+
+Every teacher-facing read resolves through the junction rather than the legacy
+column. Two shapes, both in `lib/supabase/queries/student-teachers.ts`:
+
+- **"my students"** (teacher portal roster + today view) → `getMyLinkedStudentIds`,
+  which calls the `get_teacher_student_ids` seam. Keyed on the **account**, so
+  it returns exactly what RLS allows and covers an account holding teacher rows
+  at more than one school — which `getCurrentTeacher()`'s `.single()` cannot.
+- **"this teacher's students"** (admin directory, teacher details) →
+  `getLinkedStudentIds`, keyed on a `teachers` row.
+
+Also switched: the site-admin directory's per-teacher count and the
+**district teacher-delete guard** (both now count links — a teacher who is only
+ever a *co*-teacher has no `students.teacher_id` pointing at them, so the old
+check would have reported zero and let the cascade destroy their links); the
+SEA RPC `get_sea_students`, whose unchanged two teacher columns now carry the
+joined set and the first link; `groupStudentsByIdentity`, rekeyed onto
+`child_id`; and IEP-meeting attendee assembly. `getStudentDetails` /
+`getStudentResourceSchedule` gained caller-side scoping on top of RLS —
+defense in depth, so a policy regression alone cannot widen a teacher's reach.
+
+**IEP attendees differ by level, deliberately.** Elementary invites *every*
+linked teacher and constrains the schedule on all of them: a single-teacher
+class behaves exactly as before, a co-taught class invites both, since they
+share the class. Secondary takes the **first** linked teacher only — the legal
+minimum is at least one gen-ed teacher of the student, not all of them
+(`docs/IEP_MEETING_SCHEDULING_SPEC.md` §8), and auto-constraining on six
+calendars would make a meeting unschedulable. Choosing which one is a human's
+job: **SPE-322**'s attendee picker consumes this same set as its options.
+
+**Source of truth:** `supabase/migrations/20260807_spe334_student_teachers.sql`,
+`20260807_spe336_get_sea_students_teacher_set.sql`;
 live `student_teachers` table + its four policies;
 `get_teacher_student_ids()`, `chat_is_student_participant()`,
 `get_student_chat_participants()`, `get_my_chat_students()`,
 `matching_provider_student_ids()`,
 `verify_student_teacher_school_consistency()`,
 `students_mirror_teacher_link()`, `student_teachers_mirror_legacy()`;
+`lib/supabase/queries/student-teachers.ts`;
 `scripts/sim-district/manifest.ts` (`studentTeacherLinkId` /
-`TOTAL_STUDENT_TEACHER_LINKS`);
-`scripts/sim-district/verify-student-teachers-rls.ts`.
+`studentTeacherLinks` / `SECONDARY_PERIODS` / `TOTAL_STUDENT_TEACHER_LINKS`);
+`scripts/sim-district/verify-student-teachers-rls.ts`,
+`scripts/sim-district/verify-teacher-set-reads.ts`.
 
 ### The session tables
 
@@ -1245,14 +1279,15 @@ of school (Master Schedule stays), and Internal sets the `school_type` /
 > `/dashboard/special-activities`, and `/dashboard/plan` stay reachable by direct
 > URL on a secondary site (RLS still scopes data).
 >
-> **Known gap — SPE-194 (Medium), half closed:** the *data model* can now hold
-> many teachers per student — `student_teachers` (SPE-334, §6) — and RLS,
-> chat membership and cross-provider matching already resolve teachers through
-> it. What has **not** moved yet is the application layer: the Teacher roster
-> query is still `students … eq('teacher_id', …)`, and every teacher picker is
-> still single-select. Switching the reads is **SPE-336**, the editing UI is
-> **SPE-337**, and retiring `students.teacher_id` / `teacher_name` is
-> **SPE-341**. Complements the SPE-181 rostering spike.
+> **Known gap — SPE-194 (Medium), nearly closed:** the data model holds many
+> teachers per student (`student_teachers`, SPE-334, §6) and **every read now
+> resolves through it** (SPE-336): the teacher portal roster and today view,
+> chat membership, admin directory counts, the SEA data layer, cross-provider
+> identity, and IEP-meeting attendee assembly. Every linked teacher sees their
+> student — all subject teachers at secondary, both co-teachers at elementary.
+> What remains is **writing** the links by hand: every teacher picker is still
+> single-select (**SPE-337**), and retiring `students.teacher_id` /
+> `teacher_name` is **SPE-341**. Complements the SPE-181 rostering spike.
 
 **Source of truth:** `lib/school-helpers.ts` (`isSecondarySchool`,
 `classifyByType`, `parseGradeLevel`); `app/components/providers/school-context.tsx`
@@ -1275,7 +1310,7 @@ Re-check Linear for current state.
 | **SPE-188** | Low | Security | Idle logout is client-side only; no server-side session-lifetime backstop. |
 | **SPE-190** | Low | Security | Admin-created teachers get a temp password that's never force-rotated (no `must_change_password` on creation). |
 | **SPE-193** | Low | UX / robustness | Elementary/secondary feature gating is client-side only; hidden routes reachable by URL on secondary sites. |
-| **SPE-194** | Medium | Data model | Half closed: `student_teachers` (SPE-334) now holds N teachers per child and RLS/chat/matching resolve through it, but the app still reads and edits the single `students.teacher_id`. Reads switch in SPE-336, editing UI in SPE-337, column retirement in SPE-341. |
+| **SPE-194** | Medium | Data model | Nearly closed: `student_teachers` (SPE-334) holds N teachers per child and every read resolves through it (SPE-336) — portal, chat, admin counts, SEA layer, cross-provider identity, IEP attendees. Remaining: the editing UI (SPE-337) and column retirement (SPE-341). |
 
 **Related context tickets:** SPE-132 (middleware `getSession()` + per-nav
 profile query), SPE-134 (FERPA wording reworded to match reality), SPE-142
