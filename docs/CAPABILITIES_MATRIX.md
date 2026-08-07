@@ -229,9 +229,12 @@ it.
 - **Plan** — a lesson-planning calendar tied to the session schedule: what's
   being taught, to whom, on which day. (Elementary sites; hidden at secondary
   today.)
-- Curriculum tracking (SPIRE, Reveal Math): record where each student is in
-  the sequence, so instruction continues where it left off no matter which
-  adult runs the session.
+- Curriculum tracking: record where each student is in the sequence, so
+  instruction continues where it left off no matter which adult runs the
+  session. The curriculums on offer are curated per district by its district
+  admin (SPE-422) from a master catalog; S.P.I.R.E. and Reveal Math carry
+  structured level dropdowns, other programs take a typed level. Until a
+  district admin saves a list, the picker is empty.
 - Session documents: attach PDFs, links, and notes to a session or group.
 - **AI-generated materials** 🔶: worksheets, lesson plans, exit tickets, and
   progress checks generated from a student's grade level and IEP goals, with

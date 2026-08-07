@@ -1,7 +1,13 @@
 'use client';
 
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useToast } from '@/app/contexts/toast-context';
+import {
+  resolveCurriculumIds,
+  getCurriculumByTrackingValue,
+  formatCurriculumTitle,
+  type CurriculumCatalogEntry,
+} from '@/lib/curriculums/catalog';
 import {
   validateDocumentFile,
   getDocumentIcon,
@@ -81,14 +87,9 @@ interface GroupModeProps extends BaseModalProps {
 // Unified modal props using discriminated union
 type SessionDetailsModalProps = SessionModeProps | GroupModeProps;
 
-// Curriculum options
-const CURRICULUM_OPTIONS = [
-  { value: 'SPIRE', label: 'S.P.I.R.E.' },
-  { value: 'Reveal Math', label: 'Reveal Math' }
-];
-
-const SPIRE_LEVELS = ['Foundations', '1', '2', '3', '4', '5', '6', '7', '8'];
-const REVEAL_MATH_GRADES = ['K', '1', '2', '3', '4', '5'];
+// Curriculum options come from the district's admin-curated list (SPE-422) —
+// fetched per open from /api/district-curriculums and resolved against
+// lib/curriculums/catalog.ts. Nothing is hardcoded here anymore.
 
 export function SessionDetailsModal(props: SessionDetailsModalProps) {
   const { isOpen, onClose, initialCurriculum, onUpdate } = props;
@@ -884,6 +885,56 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
     return () => controller.abort();
   }, [isOpen, fetchLesson, fetchDocuments, fetchCurriculumTracking, fetchPreviousCurriculum, fetchAttendance]);
 
+  // District-enabled curriculums (SPE-422): the picker offers exactly what the
+  // district admin curated. Fetched once per mount — the list changes rarely.
+  const [districtCurriculums, setDistrictCurriculums] = useState<CurriculumCatalogEntry[]>([]);
+  const [districtCurriculumsLoaded, setDistrictCurriculumsLoaded] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen || districtCurriculumsLoaded) return;
+
+    const controller = new AbortController();
+    (async () => {
+      try {
+        const response = await fetch('/api/district-curriculums', { signal: controller.signal });
+        if (!response.ok) throw new Error('Failed to fetch district curriculums');
+        const data = await response.json();
+        setDistrictCurriculums(resolveCurriculumIds(data.curriculumIds ?? []));
+        setDistrictCurriculumsLoaded(true);
+      } catch (error) {
+        if (error instanceof Error && error.name === 'AbortError') return;
+        // Treat as "nothing configured": existing tracking still displays via
+        // the legacy option below; only picking something new is unavailable.
+        console.error('Error fetching district curriculums:', error);
+        setDistrictCurriculumsLoaded(true);
+      }
+    })();
+
+    return () => controller.abort();
+  }, [isOpen, districtCurriculumsLoaded]);
+
+  /**
+   * Dropdown options: the district list, plus whatever this session already
+   * tracks (pre-SPE-422 rows, or a curriculum the district later disabled) so
+   * historical tracking stays visible and editable.
+   */
+  const curriculumOptions = useMemo(() => {
+    const options = districtCurriculums.map((entry) => ({
+      value: entry.trackingValue,
+      label: entry.name,
+    }));
+    if (curriculumType && !options.some((option) => option.value === curriculumType)) {
+      const legacy = getCurriculumByTrackingValue(curriculumType);
+      options.unshift({ value: curriculumType, label: legacy?.name ?? curriculumType });
+    }
+    return options;
+  }, [districtCurriculums, curriculumType]);
+
+  /** Catalog entry for the selected curriculum — drives the level control. */
+  const selectedCurriculumEntry = curriculumType
+    ? getCurriculumByTrackingValue(curriculumType)
+    : undefined;
+
   /**
    * Saves curriculum tracking for the session(s).
    * @param persistedSessionId - Optional session ID to use. If not provided, will try to get one.
@@ -1560,10 +1611,7 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
                 <div className="flex items-center gap-2">
                   <span className="text-xl">📚</span>
                   <span className="font-medium text-gray-900 text-sm">
-                    {previousCurriculum.curriculum_type === 'SPIRE' ? 'S.P.I.R.E.' : 'Reveal Math'}{' '}
-                    {previousCurriculum.curriculum_type === 'SPIRE'
-                      ? (previousCurriculum.curriculum_level === 'Foundations' ? '' : 'Level ')
-                      : 'Grade '}{previousCurriculum.curriculum_level} • Lesson {previousCurriculum.current_lesson}
+                    {formatCurriculumTitle(previousCurriculum.curriculum_type, previousCurriculum.curriculum_level)} • Lesson {previousCurriculum.current_lesson}
                   </span>
                   <span className="text-gray-600 text-sm ml-2">Completed?</span>
                 </div>
@@ -1595,10 +1643,7 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
                   <span className="text-xl">📚</span>
                   <div>
                     <h5 className="font-medium text-gray-900 text-sm">
-                      {curriculumTracking.curriculum_type === 'SPIRE' ? 'S.P.I.R.E.' : 'Reveal Math'}{' '}
-                      {curriculumTracking.curriculum_type === 'SPIRE'
-                        ? (curriculumTracking.curriculum_level === 'Foundations' ? '' : 'Level ')
-                        : 'Grade '}{curriculumTracking.curriculum_level}
+                      {formatCurriculumTitle(curriculumTracking.curriculum_type, curriculumTracking.curriculum_level)}
                     </h5>
                   </div>
                 </div>
@@ -1699,47 +1744,70 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
             {/* Column 2: Curriculum Tracking */}
             <div className="bg-gray-50 rounded-lg p-3">
               <h3 className="text-sm font-medium text-gray-700 mb-2">Curriculum</h3>
-              <div className="space-y-2">
-                <select
-                  value={curriculumType}
-                  onChange={(e) => {
-                    setCurriculumType(e.target.value);
-                    setCurriculumLevel('');
-                  }}
-                  disabled={derivedGroup}
-                  className="w-full p-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-400"
-                >
-                  <option value="">Select curriculum...</option>
-                  {CURRICULUM_OPTIONS.map(opt => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                  ))}
-                </select>
+              {districtCurriculumsLoaded && curriculumOptions.length === 0 ? (
+                // Nothing configured and nothing tracked: the picker stays
+                // empty until a district admin curates the list (SPE-422).
+                <p className="text-sm text-gray-500">
+                  Your district hasn&rsquo;t set up its curriculum list yet. District
+                  administrators manage it from their admin dashboard.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  <select
+                    value={curriculumType}
+                    onChange={(e) => {
+                      setCurriculumType(e.target.value);
+                      setCurriculumLevel('');
+                    }}
+                    disabled={derivedGroup}
+                    className="w-full p-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-400"
+                  >
+                    <option value="">Select curriculum...</option>
+                    {curriculumOptions.map(opt => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
 
-                {curriculumType && !derivedGroup && (
-                  <div className="flex gap-2">
-                    <select
-                      value={curriculumLevel}
-                      onChange={(e) => setCurriculumLevel(e.target.value)}
-                      className="flex-1 p-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value="">{curriculumType === 'SPIRE' ? 'Level' : 'Grade'}...</option>
-                      {(curriculumType === 'SPIRE' ? SPIRE_LEVELS : REVEAL_MATH_GRADES).map(level => (
-                        <option key={level} value={level}>
-                          {curriculumType === 'SPIRE' && level !== 'Foundations' ? `Lvl ${level}` : level}
-                        </option>
-                      ))}
-                    </select>
-                    <input
-                      type="number"
-                      min="1"
-                      value={currentLesson}
-                      onChange={(e) => setCurrentLesson(parseInt(e.target.value) || 1)}
-                      placeholder="Lesson"
-                      className="w-20 p-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                )}
-              </div>
+                  {curriculumType && !derivedGroup && (
+                    <div className="flex gap-2">
+                      {selectedCurriculumEntry?.levels ? (
+                        <select
+                          value={curriculumLevel}
+                          onChange={(e) => setCurriculumLevel(e.target.value)}
+                          className="flex-1 p-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                          <option value="">{selectedCurriculumEntry.levels.unitLabel}...</option>
+                          {selectedCurriculumEntry.levels.options.map(level => (
+                            <option key={level} value={level}>
+                              {selectedCurriculumEntry.levels?.optionPrefix && /^\d+$/.test(level)
+                                ? `${selectedCurriculumEntry.levels.optionPrefix}${level}`
+                                : level}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        // No built-in level structure for this program — the
+                        // provider types it (e.g. "Step 4").
+                        <input
+                          type="text"
+                          value={curriculumLevel}
+                          onChange={(e) => setCurriculumLevel(e.target.value)}
+                          placeholder="Level (e.g., Step 4)"
+                          className="flex-1 p-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      )}
+                      <input
+                        type="number"
+                        min="1"
+                        value={currentLesson}
+                        onChange={(e) => setCurrentLesson(parseInt(e.target.value) || 1)}
+                        placeholder="Lesson"
+                        className="w-20 p-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
