@@ -27,6 +27,7 @@ interface QueryRecord {
   select?: string;
   values?: Record<string, unknown>;
   eq?: [string, unknown];
+  not?: [string, string, unknown];
 }
 
 const results: Array<{ data: unknown; error: unknown }> = [];
@@ -56,6 +57,14 @@ function builder(record: QueryRecord): any {
     },
     eq: (col: string, val: unknown) => {
       record.eq = [col, val];
+      return chain;
+    },
+    // PostgREST's IS NOT NULL. Recorded rather than swallowed, so a test can
+    // assert that recordTestResult's write is CONDITIONAL — a mock that merely
+    // tolerated `.not()` would stay green if the condition were deleted, and
+    // that condition is what makes a DPA revocation beat an in-flight test.
+    not: (col: string, op: string, val: unknown) => {
+      record.not = [col, op, val];
       return chain;
     },
     order: () => nextResult(),
@@ -518,7 +527,7 @@ describe('lib/sis/connections', () => {
 
   describe('recordTestResult', () => {
     it('marks a failing test as error and audits the outcome', async () => {
-      results.push({ data: null, error: null });
+      results.push({ data: { id: CONNECTION_ID }, error: null });
 
       await recordTestResult({
         connectionId: CONNECTION_ID,
@@ -533,6 +542,60 @@ describe('lib/sis/connections', () => {
       expect(mockAudit).toHaveBeenCalledWith(
         expect.objectContaining({ action: 'sis_connection_tested', metadata: { ok: false } })
       );
+    });
+
+    it('writes only while the DPA is still on file', async () => {
+      // The condition travels WITH the update, which is the whole point: a
+      // connection test can run for minutes, and a revocation landing mid-test
+      // has to win. A read-then-write check would not close that window.
+      results.push({ data: { id: CONNECTION_ID }, error: null });
+
+      await recordTestResult({
+        connectionId: CONNECTION_ID,
+        actorId: ACTOR_ID,
+        ok: true,
+        result: { message: 'ok' },
+      });
+
+      const write = calls.find((c) => c.op === 'update')!;
+      expect(write.not).toEqual(['dpa_cleared_at', 'is', null]);
+    });
+
+    it('records NOTHING when the DPA was revoked while the test ran', async () => {
+      // The row still exists, so this is not "not found" — the revocation
+      // simply won. Recording over it would leave a row claiming a working
+      // integration for a district with no DPA and no credentials.
+      results.push({ data: null, error: null }); // the conditional update matched nothing
+      results.push({ data: { id: CONNECTION_ID }, error: null }); // ...but the row is there
+
+      await expect(
+        recordTestResult({
+          connectionId: CONNECTION_ID,
+          actorId: ACTOR_ID,
+          ok: true,
+          result: { message: 'ok' },
+        })
+      ).resolves.toBeUndefined();
+
+      // Not audited: no test result was stored, so a record saying one was
+      // would be the false entry this guard exists to prevent.
+      expect(mockAudit).not.toHaveBeenCalled();
+    });
+
+    it('refuses an unknown id instead of auditing a no-op', async () => {
+      results.push({ data: null, error: null }); // update matched nothing
+      results.push({ data: null, error: null }); // and the row does not exist
+
+      await expect(
+        recordTestResult({
+          connectionId: CONNECTION_ID,
+          actorId: ACTOR_ID,
+          ok: true,
+          result: { message: 'ok' },
+        })
+      ).rejects.toThrow('SIS connection not found');
+
+      expect(mockAudit).not.toHaveBeenCalled();
     });
 
     it('surfaces a write failure rather than reporting success', async () => {
