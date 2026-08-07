@@ -817,7 +817,7 @@ return (
                     {studentInitials}
                   </div>
                   {groupCurriculum && (
-                    <span className="absolute bottom-0.5 right-0.5 px-1 py-0.5 text-[10px] font-medium rounded bg-indigo-100 text-indigo-700">
+                    <span className="absolute bottom-0.5 right-0.5 max-w-[calc(100%-4px)] truncate px-1 py-0.5 text-[10px] font-medium rounded bg-indigo-100 text-indigo-700">
                       {formatCurriculumBadge(groupCurriculum)}
                     </span>
                   )}
@@ -869,7 +869,7 @@ return (
                   )}
                 </div>
                 {sessionCurriculum && (
-                  <span className="absolute bottom-0.5 right-0.5 px-1 py-0.5 text-[10px] font-medium rounded bg-indigo-100 text-indigo-700">
+                  <span className="absolute bottom-0.5 right-0.5 max-w-[calc(100%-4px)] truncate px-1 py-0.5 text-[10px] font-medium rounded bg-indigo-100 text-indigo-700">
                     {formatCurriculumBadge(sessionCurriculum)}
                   </span>
                 )}

@@ -883,10 +883,10 @@ export const DECLARED_UNSEEDED_TABLES: string[] = [
   // district_id — SWEPT_TABLES only keys on user/student/school identities,
   // and this table is district-scoped.
   'district_sis_connections',
-  // District curriculum picks (district-admin surface): created live by a
-  // feature under test; ON DELETE CASCADE from districts cleans any sim rows
-  // when teardown removes the sim district. (Table exists in prod without a
-  // checked-in migration.)
+  // District curriculum list (SPE-422). Not seeded: the verification walk has
+  // the sim district admin curate it live through the app. District-scoped, so
+  // swept bespoke in teardown by district_id (same reasoning as
+  // district_sis_connections above).
   'district_curriculums',
   // Personal / auxiliary:
   'documents', 'curriculum_tracking', 'calendar_connections', 'calendar_events',

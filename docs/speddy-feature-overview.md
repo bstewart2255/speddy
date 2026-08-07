@@ -114,10 +114,15 @@ Comprehensive assessments for deeper progress monitoring.
 
 Track where each student is in their instructional sequence.
 
-**Supported Curriculums:**
+**Available Curriculums:**
 
-- **SPIRE Reading Program** (Foundations through Level 8)
-- **Reveal Math** (Grades K-5)
+- Curated per district: the district admin selects which programs the district
+  uses from a master catalog (~30 reading, math, writing, social-skills, and
+  general programs), and providers see exactly that list in their session
+  curriculum pickers
+- **SPIRE Reading Program** (Foundations through Level 8) and **Reveal Math**
+  (Grades K–5) offer structured level dropdowns; other programs take a typed
+  level (e.g., "Step 4")
 
 **What you can do:**
 
