@@ -199,7 +199,7 @@ describe('lib/sis/connections', () => {
       expect(calls.filter((c) => c.op === 'update')).toHaveLength(0);
     });
 
-    it('refuses before touching the database when the key is unconfigured', async () => {
+    it('refuses before touching the database when the key is absent', async () => {
       delete process.env.SIS_CREDENTIAL_ENCRYPTION_KEY;
 
       await expect(
@@ -208,10 +208,28 @@ describe('lib/sis/connections', () => {
           actorId: ACTOR_ID,
           certificate: 'aeries-cert-value-1234',
         })
-      ).rejects.toThrow(/SIS_CREDENTIAL_ENCRYPTION_KEY is not configured/);
+      ).rejects.toThrow(/SIS_CREDENTIAL_ENCRYPTION_KEY is not set/);
 
       // Not one query: a misconfigured environment must not leave a row in a
       // half-written state.
+      expect(calls).toHaveLength(0);
+    });
+
+    it('says the key is malformed rather than missing when one is set badly', async () => {
+      // The distinction is the point: an operator who HAS set the variable is
+      // told to go looking at its value (here, a paste that kept its trailing
+      // newline) instead of being told it is absent, which reads as false and
+      // sends them hunting in the wrong place.
+      process.env.SIS_CREDENTIAL_ENCRYPTION_KEY = `${randomBytes(32).toString('base64')}\n`;
+
+      await expect(
+        storeCredential({
+          connectionId: CONNECTION_ID,
+          actorId: ACTOR_ID,
+          certificate: 'aeries-cert-value-1234',
+        })
+      ).rejects.toThrow(/must be canonical base64/);
+
       expect(calls).toHaveLength(0);
     });
   });

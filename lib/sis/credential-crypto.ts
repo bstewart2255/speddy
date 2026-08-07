@@ -46,16 +46,27 @@ function getKey(): Buffer {
 }
 
 /**
- * Whether the key is present and well-formed. Callers use this to fail a
- * credential-intake request up front with a clear operator error, rather than
+ * Why the key is unusable, or null when it is fine.
+ *
+ * Callers use this to fail a credential-intake request up front, rather than
  * throwing mid-write and leaving a half-built connection row behind.
+ *
+ * Returns the reason rather than a bare boolean so an operator can tell a key
+ * that was never set apart from one that was set and is malformed. Those are
+ * the same symptom and completely different fixes — add the variable, versus
+ * find the stray newline in the one you already added — and collapsing them
+ * into "not configured" cost a live district half a morning (SPE-417): the key
+ * had been set in Vercel, so the message read as a lie and the real cause
+ * (a build that predated it) went unexamined.
+ *
+ * Safe to log: every message names the variable and never its value.
  */
-export function sisCredentialEncryptionConfigured(): boolean {
+export function sisCredentialEncryptionProblem(): string | null {
   try {
     getKey();
-    return true;
-  } catch {
-    return false;
+    return null;
+  } catch (err) {
+    return err instanceof Error ? err.message : 'SIS_CREDENTIAL_ENCRYPTION_KEY is unusable';
   }
 }
 

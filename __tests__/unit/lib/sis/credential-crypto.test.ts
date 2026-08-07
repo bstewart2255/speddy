@@ -3,7 +3,7 @@ import {
   credentialHint,
   decryptSisCredential,
   encryptSisCredential,
-  sisCredentialEncryptionConfigured,
+  sisCredentialEncryptionProblem,
 } from '@/lib/sis/credential-crypto';
 
 describe('SIS credential crypto', () => {
@@ -147,29 +147,31 @@ describe('SIS credential crypto', () => {
   });
 
   describe('configuration guard', () => {
-    it('reports configured with a valid key', () => {
-      expect(sisCredentialEncryptionConfigured()).toBe(true);
+    it('reports no problem with a valid key', () => {
+      expect(sisCredentialEncryptionProblem()).toBeNull();
     });
 
-    it('reports unconfigured when the key is absent', () => {
+    it('says the key is absent when it is not set', () => {
       delete process.env.SIS_CREDENTIAL_ENCRYPTION_KEY;
-      expect(sisCredentialEncryptionConfigured()).toBe(false);
+      expect(sisCredentialEncryptionProblem()).toMatch(/is not set/);
     });
 
     it('rejects a valid key with trailing junk', () => {
       // Buffer.from ignores unrecognised base64 characters, so this decodes to
       // a plausible 32 bytes. Only a canonical-format check catches it.
       process.env.SIS_CREDENTIAL_ENCRYPTION_KEY = `${key}!!!`;
-      expect(sisCredentialEncryptionConfigured()).toBe(false);
+      expect(sisCredentialEncryptionProblem()).toMatch(/canonical base64/);
       expect(() => encryptSisCredential('secret')).toThrow('canonical base64');
     });
 
     it('rejects a key with embedded whitespace or newlines', () => {
+      // The paste artefact that actually happens: `openssl rand -base64 32`
+      // emits a trailing newline, and a dashboard field keeps it.
       process.env.SIS_CREDENTIAL_ENCRYPTION_KEY = `${key}\n`;
-      expect(sisCredentialEncryptionConfigured()).toBe(false);
+      expect(sisCredentialEncryptionProblem()).toMatch(/canonical base64/);
     });
 
-    it('reports unconfigured when the key is the wrong length', () => {
+    it('rejects a key of the wrong length', () => {
       // Rejected by the canonical-format regex (43 chars + '='), not by the
       // byte-length check below it — a 16-byte key is 24 base64 characters, so
       // it never reaches that branch. Named accurately because a test that
@@ -177,7 +179,7 @@ describe('SIS credential crypto', () => {
       // length check looking tested when it is not.
       process.env.SIS_CREDENTIAL_ENCRYPTION_KEY =
         randomBytes(16).toString('base64');
-      expect(sisCredentialEncryptionConfigured()).toBe(false);
+      expect(sisCredentialEncryptionProblem()).toMatch(/canonical base64/);
     });
 
     it('encrypting without a key throws rather than storing plaintext', () => {
@@ -185,6 +187,29 @@ describe('SIS credential crypto', () => {
       expect(() => encryptSisCredential('secret')).toThrow(
         'SIS_CREDENTIAL_ENCRYPTION_KEY is not set'
       );
+    });
+
+    it('distinguishes an absent key from a malformed one', () => {
+      // The two cases are one symptom with two different fixes. Asserting they
+      // produce DIFFERENT messages is the whole point — a shared "unusable"
+      // string would satisfy a laxer test while leaving an operator no better
+      // off than the "not configured" message this replaced.
+      delete process.env.SIS_CREDENTIAL_ENCRYPTION_KEY;
+      const absent = sisCredentialEncryptionProblem();
+
+      process.env.SIS_CREDENTIAL_ENCRYPTION_KEY = `${key}\n`;
+      const malformed = sisCredentialEncryptionProblem();
+
+      expect(absent).toMatch(/is not set/);
+      expect(malformed).toMatch(/must be canonical base64/);
+      expect(absent).not.toEqual(malformed);
+    });
+
+    it('never puts the key value in the reported problem', () => {
+      // These strings are logged and read by operators. A malformed key is
+      // still key material.
+      process.env.SIS_CREDENTIAL_ENCRYPTION_KEY = `${key}\n`;
+      expect(sisCredentialEncryptionProblem()).not.toContain(key);
     });
   });
 

@@ -75,10 +75,7 @@ export const POST = withRoute(
     try {
       connections = await listConnections(caller.districtId);
     } catch (err) {
-      log.error('Failed to load SIS connections', {
-        districtId: caller.districtId,
-        error: err instanceof Error ? err.message : String(err),
-      });
+      log.error('Failed to load SIS connections', err, { districtId: caller.districtId });
       return NextResponse.json({ error: 'Could not load your connection.' }, { status: 500 });
     }
     const connection = connections.find((c) => c.sis_type === 'aeries');
@@ -116,10 +113,12 @@ export const POST = withRoute(
       });
       return NextResponse.json({ connection: updated });
     } catch (err) {
-      log.error('Failed to store Aeries credential', {
-        districtId: caller.districtId,
-        error: err instanceof Error ? err.message : String(err),
-      });
+      // `err` in the second position, not folded into the meta object: the
+      // logger sends an Error's message and stack to Sentry but deliberately
+      // withholds meta (it can carry student PII, SPE-167). Passing the cause
+      // as meta made this alert arrive with no cause at all — the OneRoster
+      // twin of this route has always had it right (SPE-417).
+      log.error('Failed to store Aeries credential', err, { districtId: caller.districtId });
       // Fixed message: the underlying error can name constraints and columns.
       return NextResponse.json({ error: 'Could not save the credential.' }, { status: 500 });
     }
