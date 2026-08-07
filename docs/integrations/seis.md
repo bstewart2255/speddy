@@ -52,9 +52,7 @@ foundation of Path 2.
 
 If a district enables the **SEIS → SIS** direction of that nightly sync, SEIS
 writes its student-record fields into the district's SIS. Speddy then reads them
-through the **SIS connection we already ship** — the Aeries REST v5 client
-(`lib/integrations/aeries/`), the encrypted per-district credential store
-(SPE-395), and the tech-portal connection flow (SPE-396/397).
+out of that SIS.
 
 Why this is the strong path:
 
@@ -62,11 +60,32 @@ Why this is the strong path:
   feature SEIS already sells them. We're just reading the district's SIS, which
   we're already authorised to do.
 - **It's nightly and automatic.** No human in the loop.
-- **The plumbing exists.** This is a mapping-and-config problem, not a new
-  integration.
 - **It's the sanctioned route.** Aeries explicitly documents SpEd vendors using
   the API to keep their own systems current, with district-issued read-only
   certificates scoped per API.
+
+### What's built vs. what isn't
+
+Be honest about the gap here — the connection is built, the **sync is not**.
+
+**Built and in production:** the Aeries REST v5 client
+(`lib/integrations/aeries/`), the encrypted per-district credential store
+(SPE-395), the tech-portal guided setup and credential intake (SPE-396/397), and
+`runAeriesConnectionTest` (`lib/sis/aeries-setup.ts`), which probes each API area
+and returns aggregate counts.
+
+**Not built:** everything that moves a record. There is no scheduled fetch (no
+SIS entry in `vercel.json` crons), no mapping of SIS records into `students`, no
+reconciliation against data already in Speddy, and no write path for students,
+IEP dates, or teacher links. The only code that fetches and maps full SpEd
+students today lives in throwaway scripts (`scripts/aeries-sped-spike.ts`,
+`scripts/sis-explore/`), not in any production route.
+
+So Path 2 is *"we can already authenticate to the district and prove the data is
+reachable"* — not *"we can already pull it in."* The credential and trust
+problem is solved; the pipeline is a real build. Treat SPE-412 (what happens to
+existing Speddy data when SIS data starts flowing) as the design question that
+gates it.
 
 What it can carry: student demographics, SpEd flag/eligibility, disability,
 special-ed entry/exit dates, case manager, and **IEP dates** — i.e. it should
@@ -85,15 +104,30 @@ SEIS → SIS direction be extended to the fields we want?
 
 ## Path 3 — the Chrome extension we already have (the only path that gets goals)
 
-`speddy-chrome-extension/` is a built, working Manifest V3 extension that reads
-SEIS pages **in the provider's own already-authenticated browser session** and
-posts to `/api/extension/import` and `/api/extension/compare` under an API key.
-It extracts goals, services, accommodations, IEP dates and student info from the
-SEIS Goals and Services pages, and has a passive mode that flags SEIS↔Speddy
-discrepancies in the background.
+`speddy-chrome-extension/` is a Manifest V3 extension that reads SEIS pages **in
+the provider's own already-authenticated browser session**. It extracts goals,
+services, accommodations, IEP dates and student info from the SEIS Goals and
+Services pages, and runs a passive mode that flags SEIS↔Speddy discrepancies in
+the background.
 
 It uses no credential we aren't given, and no access the user doesn't already
 have — it reads what's on screen for the user who is already looking at it.
+
+### It reads; it does not yet write
+
+The shipped extension is **discrepancy detection only**. Its single network call
+is to `/api/extension/compare` (`service-worker.js:95`); nothing in the popup,
+the service worker, or the content script ever calls `/api/extension/import`. The
+import route exists server-side with no caller.
+
+The extension's own `README.md` still describes an "Extract & Import to Speddy"
+button and a `POST /api/extension/import` flow — that documentation is **stale**,
+left over from before the v3 pivot to the "SEIS Discrepancy Detector" named in
+`manifest.json`. Worth fixing whenever the extension is next touched.
+
+So Path 3 needs an import workflow **built and validated**, on top of the SPE-276
+hardening below — not just the hardening. Today it can tell a provider that SEIS
+and Speddy disagree; it cannot pull the goals across.
 
 **It is parked (SPE-276) and must not ship as-is.** It predates the Import
 Students hardening and carries the exact bugs that project fixed:
@@ -134,15 +168,21 @@ Ruled out anyway:
 ## Recommendation
 
 The two viable paths are complementary, not competing — take both, in order.
+Neither is small: each has a working front half and an unbuilt back half.
 
-1. **Path 2 first.** Extend the existing SIS work to pull SEIS-originated fields
-   out of the district's SIS. Highest leverage, lowest new risk, mostly built.
-   Start by asking a pilot district what their SEIS↔SIS integration already
-   syncs. Retires the *IEP Dates* and *class list* uploads.
-2. **Path 3 second**, if goals-without-manual-upload is worth it. Unpark the
-   extension, do the SPE-276 hardening as a block, verify against a real session,
-   publish unlisted. It is the *only* mechanism that gets goal text out of SEIS
-   automatically. Retires the *Student & goals* and *Deliveries* uploads.
+1. **Path 2 first.** Build the sync on top of the connection that already works —
+   scheduled fetch, mapping, reconciliation, write path — to pull SEIS-originated
+   fields out of the district's SIS. Highest leverage and the least *new* risk,
+   because the credential and trust layer is already solved and proven against a
+   real district. Retires the *IEP Dates* and *class list* uploads.
+   **Cheap first step, before committing to any of it:** ask a pilot district
+   (JSUSD) what their SEIS↔SIS integration already syncs and in which direction.
+   That answer sets how much this path is even worth.
+2. **Path 3 second**, if goals-without-manual-upload is worth it. Build the
+   import workflow, do the SPE-276 hardening in the same block, verify against a
+   real signed-in session, publish unlisted. It is the *only* mechanism that gets
+   goal text out of SEIS automatically. Retires the *Student & goals* and
+   *Deliveries* uploads.
 
 Even with both, keep the file upload. It's the fallback for districts on neither
 path, and for SEIS UI changes that break scraping.
@@ -158,6 +198,8 @@ path, and for SEIS UI changes that break scraping.
   [CALPADS SELPA Quick Start](https://documentation.calpads.org/SPEDTransition/WelcomeSELPA/)
 
 **Source of truth:** `lib/import/detect-import-file.ts` (current manual file
-types); `lib/integrations/aeries/` (SIS client); `speddy-chrome-extension/` +
-`app/api/extension/` (extension path); SPE-276 (extension gaps);
+types); `lib/integrations/aeries/` + `lib/sis/aeries-setup.ts` (SIS client and
+connection test — the extent of what's built); `vercel.json` (no SIS cron);
+`speddy-chrome-extension/service-worker.js` + `app/api/extension/` (extension
+path, compare-only); SPE-276 (extension gaps); SPE-412 (reconciliation design);
 `docs/integrations/aeries-sped-mapping.md` (SIS field gaps).
