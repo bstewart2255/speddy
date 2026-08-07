@@ -54,6 +54,7 @@ export function TeacherSetCell({
   if (collapsed) {
     return (
       <button
+        type="button"
         onClick={() => setExpanded(true)}
         className="text-blue-600 hover:text-blue-800 hover:underline transition-colors"
         title={teachers.map(t => t.name).filter(Boolean).join(', ')}
@@ -65,20 +66,36 @@ export function TeacherSetCell({
 
   return (
     <span className="inline-flex flex-wrap items-center gap-x-1">
-      {teachers.map((teacher, i) => (
-        <span key={teacher.id} className="inline-flex items-center">
-          {i > 0 && <span className="text-gray-400 mr-1">/</span>}
-          <button
-            onClick={() => onOpenTeacher?.(teacher.id)}
-            className="text-blue-600 hover:text-blue-800 hover:underline transition-colors"
-            title={[teacher.subject, teacher.period ? `Period ${teacher.period}` : null].filter(Boolean).join(" · ") || undefined}
-          >
-            {teacher.name || 'Unnamed teacher'}
-          </button>
-        </span>
-      ))}
+      {teachers.map((teacher, i) => {
+        const labels =
+          [teacher.subject, teacher.period ? `Period ${teacher.period}` : null]
+            .filter(Boolean).join(' · ') || undefined;
+        return (
+          <span key={teacher.id} className="inline-flex items-center">
+            {i > 0 && <span className="text-gray-400 mr-1">/</span>}
+            {/* Without a handler there is nothing to open — a blue underlined
+                control that does nothing (and takes keyboard focus) is worse
+                than plain text. */}
+            {onOpenTeacher ? (
+              <button
+                type="button"
+                onClick={() => onOpenTeacher(teacher.id)}
+                className="text-blue-600 hover:text-blue-800 hover:underline transition-colors"
+                title={labels}
+              >
+                {teacher.name || 'Unnamed teacher'}
+              </button>
+            ) : (
+              <span className="text-gray-900" title={labels}>
+                {teacher.name || 'Unnamed teacher'}
+              </span>
+            )}
+          </span>
+        );
+      })}
       {isSecondary && teachers.length > 1 && (
         <button
+          type="button"
           onClick={() => setExpanded(false)}
           className="text-xs text-gray-400 hover:text-gray-600 ml-1"
           aria-label="Collapse teacher list"

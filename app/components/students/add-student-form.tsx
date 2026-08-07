@@ -51,12 +51,27 @@
           throw new Error('Failed to create student');
         }
 
+        // Second round trip, and the student already exists. If it fails, the
+        // add itself still succeeded — reporting it as a failure would send the
+        // user to retry initials that now collide. Say what is missing instead.
+        let coTeachersFailed = false;
         if (teacherLinks.length > 1) {
-          await saveTeacherLinksForStudent(createClient(), student.id, teacherLinks);
+          try {
+            await saveTeacherLinksForStudent(createClient(), student.id, teacherLinks);
+          } catch (linkError) {
+            console.error('Error saving co-teacher links:', linkError);
+            coTeachersFailed = true;
+          }
         }
 
         // Show success message - sessions are auto-created
-        alert(`Student "${student.initials}" has been added successfully!\n\nSessions created in Unscheduled Sessions! You can now drag them to the schedule grid or click "Schedule Sessions" to auto-place them.`);
+        alert(
+          `Student "${student.initials}" has been added successfully!` +
+          (coTeachersFailed
+            ? `\n\nThe co-teachers could not be saved — open the student and add them again.`
+            : '') +
+          `\n\nSessions created in Unscheduled Sessions! You can now drag them to the schedule grid or click "Schedule Sessions" to auto-place them.`
+        );
 
         onSuccess();
         onClose();

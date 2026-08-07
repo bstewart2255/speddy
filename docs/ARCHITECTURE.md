@@ -944,7 +944,9 @@ live `student_teachers` table + its four policies;
 `scripts/sim-district/manifest.ts` (`studentTeacherLinkId` /
 `studentTeacherLinks` / `SECONDARY_PERIODS` / `TOTAL_STUDENT_TEACHER_LINKS`);
 `app/components/teachers/student-teachers-field.tsx`,
-`app/components/teachers/teacher-set-cell.tsx`;
+`app/components/teachers/teacher-set-cell.tsx`,
+`app/components/teachers/teacher-details-modal.tsx`,
+`lib/supabase/queries/teacher-details.ts`;
 `scripts/sim-district/verify-student-teachers-rls.ts`,
 `scripts/sim-district/verify-teacher-set-reads.ts`,
 `scripts/sim-district/verify-teacher-link-writes.ts`.

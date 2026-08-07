@@ -42,11 +42,14 @@ interface StudentDetailsModalProps {
   };
   readOnly?: boolean;
   onSave?: (studentId: string, details: StudentDetails) => void;
+  /**
+   * SPE-337: no teacher fields here. The teacher set is written directly to
+   * `student_teachers`, and the legacy `students.teacher_id`/`teacher_name`
+   * pair is maintained by the SPE-334 mirror — not by this form.
+   */
   onUpdateStudent?: (studentId: string, updates: {
     initials?: string;
     grade_level: string;
-    teacher_id?: string | null;
-    teacher_name?: string;
     sessions_per_week: number;
     minutes_per_session: number;
   }) => void;
@@ -84,10 +87,14 @@ export function StudentDetailsModal({
   const supabase = useMemo(() => createClient(), []);
 
   // SPE-337: the student's teacher SET, loaded from student_teachers and
-  // written back on save. The legacy single pair still rides along in the
-  // students update (the SPE-334 dual-write keeps the two consistent), derived
-  // from the first entry.
+  // written back on save. The legacy single pair is NOT written from here —
+  // the SPE-334 mirror owns that column and repoints it only when the row's
+  // current teacher has actually left the set.
   const [teacherLinks, setTeacherLinks] = useState<EditableTeacherLink[]>([]);
+  // Until the set has actually loaded, `teacherLinks` is [] — which as a
+  // *requested* set means "remove every teacher". Saving during that window
+  // would delete the student's real links, so Save waits for the load.
+  const [linksLoaded, setLinksLoaded] = useState(false);
 
   const [studentInfo, setStudentInfo] = useState({
     initials: student.initials,
@@ -98,6 +105,8 @@ export function StudentDetailsModal({
 
   // Reset form when modal opens with a different student
   useEffect(() => {
+    let stale = false;
+
     if (isOpen && student.id) {
       // Reset student info to current values
       setStudentInfo({
@@ -106,6 +115,11 @@ export function StudentDetailsModal({
         sessions_per_week: student.sessions_per_week,
         minutes_per_session: student.minutes_per_session,
       });
+      // Clear the previous student's set immediately — showing their teachers
+      // under this student's name for the length of a fetch is worse than
+      // showing none, and saving it would apply them to the wrong child.
+      setTeacherLinks([]);
+      setLinksLoaded(false);
 
       // Load existing student details and matching provider roles
       const loadData = async () => {
@@ -117,7 +131,10 @@ export function StudentDetailsModal({
             getMatchingProviderRoles(student.id),
             getTeacherLinksForStudent(supabase, student.id),
           ]);
+          // A slower earlier request must not overwrite a newer student's data.
+          if (stale) return;
           setTeacherLinks(links);
+          setLinksLoaded(true);
 
           if (existingDetails) {
             setDetails(existingDetails);
@@ -138,12 +155,15 @@ export function StudentDetailsModal({
 
           setMatchingRoles(roles);
         } catch (error) {
+          if (stale) return;
           console.error('Error loading student data:', error);
         }
       };
 
       loadData();
     }
+
+    return () => { stale = true; };
   }, [isOpen, supabase, student.id, student.initials, student.grade_level, student.sessions_per_week, student.minutes_per_session]);
 
   // Secondary mode hides only the Attendance tab; if it's active, snap to a
@@ -156,31 +176,37 @@ export function StudentDetailsModal({
   }, [isSecondary, activeTab]);
 
   const handleSave = async () => {
+    // The set is the source of truth for what gets written; an unloaded [] is
+    // not an instruction to unassign everyone.
+    if (!linksLoaded) return;
     setLoading(true);
     try {
       // Save student details
       await upsertStudentDetails(student.id, details);
       console.log('Student details saved successfully');
 
-      // SPE-337: write the teacher set BEFORE the students update. The
-      // legacy-column mirror repoints any caseload row whose teacher is no
-      // longer one of the child's, so applying links first means the
-      // students update lands on an already-consistent set rather than
-      // fighting it.
+      // SPE-337: the link set is the whole teacher edit. The legacy
+      // students.teacher_id/teacher_name pair is NOT written from here — the
+      // SPE-334 mirror maintains it, repointing a caseload row only when that
+      // row's current teacher has genuinely left the child's set.
+      //
+      // Deriving it from teacherLinks[0] instead would read meaning into the
+      // row order that the editor deliberately does not carry: removing and
+      // re-adding a co-teacher reorders the array without changing the set,
+      // and the mirror would then read the new first entry as a replacement
+      // and revoke the other teacher's access.
       await saveTeacherLinksForStudent(supabase, student.id, teacherLinks);
 
-      // Update student info if changed
+      // Update student info if changed. Passed as a literal on purpose: that
+      // is what makes excess-property checking apply, so re-adding a teacher
+      // field here is a compile error rather than a silent regression.
       if (onUpdateStudent) {
-        // Convert teacherName to teacher_name for database compatibility
-        const updates = {
+        await onUpdateStudent(student.id, {
           initials: studentInfo.initials,
           grade_level: studentInfo.grade_level,
-          teacher_id: teacherLinks[0]?.teacherId ?? null,
-          teacher_name: teacherLinks[0]?.name || undefined,
           sessions_per_week: studentInfo.sessions_per_week,
           minutes_per_session: studentInfo.minutes_per_session,
-        };
-        await onUpdateStudent(student.id, updates);
+        });
         console.log('Student info updated successfully');
       }
 
@@ -788,7 +814,7 @@ export function StudentDetailsModal({
               <Button
                 variant="primary"
                 onClick={handleSave}
-                disabled={loading}
+                disabled={loading || !linksLoaded}
               >
                 {loading ? 'Saving...' : 'Save Details'}
               </Button>

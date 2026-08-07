@@ -291,8 +291,19 @@ export default function StudentsPage() {
       // The first teacher arrived via the legacy column (and the SPE-334
       // trigger mirrored it into a link); any co-teachers are written here,
       // once the student — and therefore its child record — exists.
+      //
+      // This is a second round trip, so it can fail on its own. The student is
+      // already created at this point: reporting the whole add as failed would
+      // send the user to retry an entry that now trips the uniqueness
+      // constraint. Treat the add as succeeded and name what is missing.
+      let coTeachersFailed = false;
       if (created && teacherLinks.length > 1) {
-        await saveTeacherLinksForStudent(supabase, created.id, teacherLinks);
+        try {
+          await saveTeacherLinksForStudent(supabase, created.id, teacherLinks);
+        } catch (linkError) {
+          console.error('Error saving co-teacher links:', linkError);
+          coTeachersFailed = true;
+        }
       }
 
       // SPE-237: stay open for the next entry. Reset the per-student fields but
@@ -306,7 +317,14 @@ export default function StudentsPage() {
       });
       setTeacherLinks([]);
       setTeacherFieldKey((k) => k + 1);
-      setAddFormConfirmation(`${addedInitials} added`);
+      if (coTeachersFailed) {
+        setAddFormError(
+          `${addedInitials} was added, but the co-teachers could not be saved. ` +
+          `Open the student and add them again.`,
+        );
+      } else {
+        setAddFormConfirmation(`${addedInitials} added`);
+      }
       fetchStudents();
       checkUnscheduledSessions();
       initialsInputRef.current?.focus();

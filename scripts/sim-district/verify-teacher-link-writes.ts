@@ -15,10 +15,17 @@
  *   * the diff leaves untouched links ALONE — editing one row must not churn
  *     the others' created_at, because that is the order the legacy-column
  *     mirror calls "first listed";
+ *   * REORDERING the set is a no-op: co-teachers are equals, so removing one
+ *     and adding them back is the same set and must not revoke anybody;
  *   * a provider at another school is refused, on a FRESH target, with the
  *     refusal reason asserted;
  *   * `addTeacherLinkForStudent` is idempotent — re-assigning is a no-op, not
  *     an error, and does not disturb the rest of the set.
+ *
+ * Checks about POLICY go through the raw table, because that is the surface a
+ * policy acts on. Checks about BEHAVIOUR call the real query helpers, so their
+ * student -> child resolution and diffing are exercised too, not just the
+ * statements they end in.
  *
  * Requires a seeded sim district (`npm run sim:reset -- --yes`). It creates and
  * removes its own links; re-seed afterwards to restore a pristine fixture.
@@ -28,6 +35,12 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { createAdmin, requireEnv } from './lib';
 import { WILLOW, derivePassword, personaEmail, teacherRecordId } from './manifest';
+import {
+  addTeacherLinkForStudent,
+  getTeacherLinksForStudent,
+  saveTeacherLinksForStudent,
+} from '../../lib/supabase/queries/student-teachers';
+import type { Database } from '../../src/types/database';
 
 const url = requireEnv('NEXT_PUBLIC_SUPABASE_URL');
 const anon = requireEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY');
@@ -41,9 +54,9 @@ function check(ok: boolean, label: string, detail = ''): void {
   console.log(`  [${ok ? 'ok  ' : 'FAIL'}] ${label.padEnd(60)} ${detail}`);
 }
 
-async function signIn(personaKey: string): Promise<SupabaseClient> {
+async function signIn(personaKey: string): Promise<SupabaseClient<Database>> {
   const email = personaEmail(personaKey);
-  const client = createClient(url, anon, {
+  const client = createClient<Database>(url, anon, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
   const { error } = await client.auth.signInWithPassword({
@@ -70,10 +83,20 @@ async function main(): Promise<void> {
 
   // A Willow student on Rachel's caseload that David does NOT teach — the
   // fresh fixture every negative check needs.
-  const rachelId = (await admin.from('profiles').select('id')
-    .eq('email', personaEmail('rachel')).single()).data!.id as string;
-  const { data: caseload } = await admin
+  //
+  // Setup reads assert their own failures for the same reason the checks below
+  // do: an unseeded district would otherwise surface as a TypeError on `.id`,
+  // or as the "no student without a David link" message — a query failure
+  // reported as a fixture problem.
+  const { data: rachelRow, error: rachelErr } = await admin.from('profiles')
+    .select('id').eq('email', personaEmail('rachel')).single();
+  if (rachelErr || !rachelRow) {
+    throw new Error(`rachel's profile is missing — is the district seeded? (${rachelErr?.message ?? 'no row'})`);
+  }
+  const rachelId = rachelRow.id as string;
+  const { data: caseload, error: caseloadErr } = await admin
     .from('students').select('id, child_id').eq('provider_id', rachelId).eq('school_id', WILLOW);
+  if (caseloadErr) throw new Error(`caseload read failed: ${caseloadErr.message}`);
 
   let target: { id: string; child_id: string } | null = null;
   for (const row of caseload ?? []) {
@@ -161,17 +184,60 @@ async function main(): Promise<void> {
   console.log('\nre-assigning the same teacher is a no-op, not an error:');
   {
     const countBefore = (await links(target.child_id)).length;
-    const { error } = await rachel.from('student_teachers')
-      .upsert({ child_id: target.child_id, teacher_id: davidTeacherId },
-        { onConflict: 'child_id,teacher_id', ignoreDuplicates: true });
+    // Through the real helper, so its student -> child resolution is exercised
+    // too, not just the upsert it ends in.
+    let helperError: string | null = null;
+    try {
+      await addTeacherLinkForStudent(rachel, target.id, davidTeacherId);
+    } catch (err) {
+      helperError = err instanceof Error ? err.message : String(err);
+    }
     const after = await links(target.child_id);
-    check(!error && after.length === countBefore,
+    check(!helperError && after.length === countBefore,
       'idempotent add leaves the set unchanged',
-      error ? `${error.code} ${error.message}` : `${countBefore} -> ${after.length}`);
+      helperError ?? `${countBefore} -> ${after.length}`);
     // ignoreDuplicates must not have blanked the labels we set earlier.
     const davidLink = after.find(l => l.teacher_id === davidTeacherId);
     check(davidLink?.subject === 'Algebra I',
       'and does not wipe the existing link\'s labels', `${davidLink?.subject}`);
+  }
+
+  console.log('\nreordering the set is not a change (co-teachers are equals):');
+  {
+    // The editor's rows carry no rank, so "remove Ms A, then add her back"
+    // leaves the same set in a different order. That must be a no-op.
+    //
+    // It is not cosmetic. `created_at` order is what the SPE-334 legacy mirror
+    // calls the "first listed" link, so churn here silently repoints
+    // students.teacher_id — and a caller that derived that column from the
+    // first row would make the mirror read the reorder as a REPLACEMENT and
+    // revoke the demoted teacher's access. (The editing modal is now typed so
+    // it cannot send that column at all; this pins the layer underneath.)
+    const snapshot = await links(target.child_id);
+    const asEdited = await getTeacherLinksForStudent(rachel, target.id);
+    check(asEdited.length >= 2, 'the probe child has a set to reorder',
+      `${asEdited.length} links`);
+
+    const reordered = [...asEdited.slice(1), asEdited[0]];
+    let saveError: string | null = null;
+    try {
+      await saveTeacherLinksForStudent(rachel, target.id, reordered);
+    } catch (err) {
+      saveError = err instanceof Error ? err.message : String(err);
+    }
+    const after = await links(target.child_id);
+    check(
+      !saveError &&
+        after.length === snapshot.length &&
+        after.every((l, i) => l.id === snapshot[i].id && l.created_at === snapshot[i].created_at),
+      'every link survives with its id and created_at intact',
+      saveError ?? `${snapshot.length} -> ${after.length}`,
+    );
+
+    // The teacher moved to the front of the array keeps their access.
+    const demoted = asEdited[0].teacherId;
+    check(after.some(l => l.teacher_id === demoted),
+      'the teacher the user re-added is still linked', `${demoted.slice(0, 8)}…`);
   }
 
   console.log('\nremoving the link removes the visibility:');

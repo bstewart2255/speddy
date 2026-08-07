@@ -53,6 +53,23 @@ export function TeacherDetailsModal({
   const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
+    // Opening a second teacher while the first is still loading must not let
+    // the older response win: every setter below runs after an await, and
+    // `teacher` is what Save writes to.
+    let stale = false;
+
+    const clearRecord = () => {
+      setTeacher(null);
+      setAssignedStudents([]);
+      setFormData({
+        first_name: '',
+        last_name: '',
+        email: '',
+        classroom_number: '',
+        phone_number: '',
+      });
+    };
+
     const loadTeacherData = async () => {
       setLoading(true);
       setLoadError(null);
@@ -60,9 +77,12 @@ export function TeacherDetailsModal({
         // Keyed by id, so the teacher either exists or the caller handed us a
         // stale one — there is no "maybe create it" branch any more.
         const details = await getTeacherDetails(teacherId);
+        if (stale) return;
         if (!details) {
+          // Leave nothing of the previously-opened teacher behind, or Save
+          // would write this form to them.
+          clearRecord();
           setLoadError('This teacher record could not be found.');
-          setAssignedStudents([]);
           return;
         }
         setTeacher(details);
@@ -75,16 +95,20 @@ export function TeacherDetailsModal({
           phone_number: details.phone_number || '',
         });
       } catch (error) {
+        if (stale) return;
         console.error('Error loading teacher data:', error);
+        clearRecord();
         setLoadError('Could not load this teacher.');
       } finally {
-        setLoading(false);
+        if (!stale) setLoading(false);
       }
     };
 
     if (isOpen && teacherId) {
       loadTeacherData();
     }
+
+    return () => { stale = true; };
   }, [isOpen, teacherId]);
 
   const handleSave = async () => {
@@ -160,6 +184,13 @@ export function TeacherDetailsModal({
             {loading ? (
               <div className="flex justify-center py-8">
                 <p>Loading teacher details...</p>
+              </div>
+            ) : loadError ? (
+              <div
+                role="alert"
+                className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700"
+              >
+                {loadError}
               </div>
             ) : (
               <>
@@ -281,7 +312,7 @@ export function TeacherDetailsModal({
             <Button 
               variant="primary" 
               onClick={handleSave}
-              disabled={saving || loading || !formData.last_name}
+              disabled={saving || loading || !!loadError || !formData.last_name}
             >
               {saving ? 'Saving...' : 'Save Details'}
             </Button>
