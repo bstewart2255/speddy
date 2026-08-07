@@ -70,6 +70,65 @@ export function sisCredentialEncryptionProblem(): string | null {
   }
 }
 
+/**
+ * A fixed, non-secret probe. Never a real credential and never stored — it
+ * exists only to be encrypted and decrypted back inside a single function call.
+ */
+const SELF_TEST_PROBE = 'speddy-sis-key-self-test';
+
+export type SisKeySelfTest =
+  | { ok: true }
+  | { ok: false; problem: string };
+
+/**
+ * Prove the configured key can actually encrypt AND decrypt, right now.
+ *
+ * `sisCredentialEncryptionProblem()` answers "is the key well-formed"; this
+ * answers "does it work" — it catches a key that parses but blows up in the
+ * cipher, which a format check cannot see.
+ *
+ * What it deliberately does NOT prove: that this is the SAME key that encrypted
+ * credentials already in the database. The round trip uses the current key for
+ * both halves, so any well-formed key passes. Only real stored ciphertext could
+ * answer that, and this function touches none. After a key ROTATION a green
+ * result therefore means "new credentials can be saved", never "existing ones
+ * can still be read" — those come apart exactly when a rotation went wrong,
+ * which is when someone is most likely to be looking at this.
+ *
+ * Touches nothing: no database, no district, no stored credential. The probe is
+ * a constant, and the round trip lives entirely in memory. That is what makes
+ * this safe to expose behind the /internal staff gate — it reports on the
+ * environment, never on anyone's data.
+ *
+ * Safe to return to a caller: `problem` is either a message from getKey() (which
+ * names the variable, never its value) or a fixed string from here.
+ */
+export function sisCredentialEncryptionSelfTest(): SisKeySelfTest {
+  const problem = sisCredentialEncryptionProblem();
+  if (problem) return { ok: false, problem };
+
+  try {
+    const roundTripped = decryptSisCredential(encryptSisCredential(SELF_TEST_PROBE));
+    if (roundTripped !== SELF_TEST_PROBE) {
+      // Belt and braces: GCM's auth tag should make a silent mismatch
+      // impossible, so reaching here means an assumption broke rather than a
+      // key being wrong. Report it instead of returning a false ok.
+      return { ok: false, problem: 'The encryption key round trip returned different data.' };
+    }
+    return { ok: true };
+  } catch (err) {
+    // A well-formed key that cannot decrypt its own ciphertext. Report the
+    // shape of the failure, never the underlying value.
+    return {
+      ok: false,
+      problem:
+        err instanceof Error
+          ? `The encryption key failed a round trip: ${err.message}`
+          : 'The encryption key failed a round trip.',
+    };
+  }
+}
+
 /** Returns `v1.<iv>.<ciphertext>.<tag>`, each part base64. */
 export function encryptSisCredential(plaintext: string): string {
   const iv = randomBytes(12);

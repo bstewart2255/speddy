@@ -4,6 +4,7 @@ import {
   decryptSisCredential,
   encryptSisCredential,
   sisCredentialEncryptionProblem,
+  sisCredentialEncryptionSelfTest,
 } from '@/lib/sis/credential-crypto';
 
 describe('SIS credential crypto', () => {
@@ -203,6 +204,50 @@ describe('SIS credential crypto', () => {
       expect(absent).toMatch(/is not set/);
       expect(malformed).toMatch(/must be canonical base64/);
       expect(absent).not.toEqual(malformed);
+    });
+
+    it('self-test passes with a working key', () => {
+      expect(sisCredentialEncryptionSelfTest()).toEqual({ ok: true });
+    });
+
+    it('self-test reports WHY, distinguishing absent from malformed', () => {
+      // Same reasoning as the problem-string test above: the two faults have
+      // opposite fixes, so a self-test that collapsed them would leave an
+      // operator exactly where the "not configured" message left us.
+      delete process.env.SIS_CREDENTIAL_ENCRYPTION_KEY;
+      const absent = sisCredentialEncryptionSelfTest();
+
+      process.env.SIS_CREDENTIAL_ENCRYPTION_KEY = `${key}\n`;
+      const malformed = sisCredentialEncryptionSelfTest();
+
+      expect(absent).toEqual({ ok: false, problem: expect.stringMatching(/is not set/) });
+      expect(malformed).toEqual({
+        ok: false,
+        problem: expect.stringMatching(/must be canonical base64/),
+      });
+    });
+
+    it('self-test passes on a DIFFERENT key — it cannot detect a wrong-but-valid key', () => {
+      // Pinning the limit, not a feature. The self-test encrypts and decrypts
+      // with whatever key is currently set, so any well-formed key round-trips.
+      // It answers "can this deployment encrypt", NOT "is this the key that
+      // encrypted the credentials already stored" — nothing without real
+      // ciphertext can answer that, and a green check must not be read as if it
+      // had. Asserted so the day someone widens the claim, this fails and sends
+      // them here.
+      const ciphertext = encryptSisCredential('spe417-stored-under-the-old-key');
+      process.env.SIS_CREDENTIAL_ENCRYPTION_KEY = randomBytes(32).toString('base64');
+
+      expect(sisCredentialEncryptionSelfTest()).toEqual({ ok: true });
+      // Meanwhile the credential encrypted under the previous key is gone.
+      expect(() => decryptSisCredential(ciphertext)).toThrow();
+    });
+
+    it('never puts the key value in the self-test problem', () => {
+      process.env.SIS_CREDENTIAL_ENCRYPTION_KEY = `${key}\n`;
+      const result = sisCredentialEncryptionSelfTest();
+      expect(result.ok).toBe(false);
+      expect(result.ok === false && result.problem).not.toContain(key);
     });
 
     it('never puts the key value in the reported problem', () => {

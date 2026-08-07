@@ -49,6 +49,9 @@ const SIS_LABELS: Record<SisType, string> = {
   oneroster: 'OneRoster',
 };
 
+/** Whether THIS deployment can encrypt a credential. Not about any district. */
+type KeyHealth = { ok: true } | { ok: false; problem: string };
+
 function formatDate(value: string | null): string {
   if (!value) return '—';
   return new Date(value).toLocaleDateString(undefined, {
@@ -64,6 +67,29 @@ export default function SisConnectionsPanel({ districtId }: { districtId: string
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [creating, setCreating] = useState<SisType | null>(null);
+  // Deliberately not loaded on mount: this reports on the deployment, not on
+  // the district being viewed, and a green badge nobody asked for is the kind
+  // of thing that goes stale on screen and gets believed anyway.
+  const [keyHealth, setKeyHealth] = useState<KeyHealth | null>(null);
+  const [checkingKey, setCheckingKey] = useState(false);
+
+  const checkKey = async () => {
+    setCheckingKey(true);
+    setKeyHealth(null);
+    try {
+      const res = await fetch('/api/internal/sis-key-health');
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Could not run the check');
+      setKeyHealth(json as KeyHealth);
+    } catch (err) {
+      setKeyHealth({
+        ok: false,
+        problem: err instanceof Error ? err.message : 'Could not run the check',
+      });
+    } finally {
+      setCheckingKey(false);
+    }
+  };
 
   const load = useCallback(async () => {
     setError(null);
@@ -174,6 +200,51 @@ export default function SisConnectionsPanel({ districtId }: { districtId: string
           {error}
         </div>
       )}
+
+      {/* Encryption-key check. Sits apart from the connection list on purpose:
+          it says nothing about this district, only about whether the running
+          deployment can encrypt at all. */}
+      <div className="mt-4 rounded-md border border-slate-700 bg-slate-900/40 px-4 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-medium text-white">Credential encryption</p>
+            <p className="mt-0.5 text-xs text-slate-400">
+              Checks whether this deployment can encrypt SIS credentials. No district
+              data is read and nothing is saved.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={checkKey}
+            disabled={checkingKey}
+            className="px-3 py-2 text-sm bg-slate-600 hover:bg-slate-500 disabled:opacity-50 text-white rounded-md transition-colors"
+          >
+            {checkingKey ? 'Checking…' : 'Check encryption key'}
+          </button>
+        </div>
+
+        {keyHealth && (
+          <div
+            role="status"
+            className={`mt-3 rounded-md border px-3 py-2 text-sm ${
+              keyHealth.ok
+                ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                : 'border-red-500/30 bg-red-500/10 text-red-300'
+            }`}
+          >
+            {keyHealth.ok ? (
+              'Working — districts can save SIS credentials.'
+            ) : (
+              <>
+                <span className="font-medium">
+                  Not working — districts cannot save SIS credentials.
+                </span>
+                <span className="mt-1 block text-red-200/80">{keyHealth.problem}</span>
+              </>
+            )}
+          </div>
+        )}
+      </div>
 
       {loading ? (
         <p className="mt-6 text-sm text-slate-400">Loading…</p>
