@@ -215,8 +215,12 @@ async function main(): Promise<void> {
     // it cannot send that column at all; this pins the layer underneath.)
     const snapshot = await links(target.child_id);
     const asEdited = await getTeacherLinksForStudent(rachel, target.id);
-    check(asEdited.length >= 2, 'the probe child has a set to reorder',
-      `${asEdited.length} links`);
+    const haveSet = asEdited.length >= 2;
+    check(haveSet, 'the probe child has a set to reorder', `${asEdited.length} links`);
+    // Without this the next line dereferences asEdited[0] anyway, and a real
+    // assertion failure would surface as a TypeError that skips the remaining
+    // checks and leaves the fixture dirty.
+    if (!haveSet) throw new Error('cannot exercise the reorder case — re-seed the fixture');
 
     const reordered = [...asEdited.slice(1), asEdited[0]];
     let saveError: string | null = null;

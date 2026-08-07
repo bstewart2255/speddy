@@ -18,7 +18,6 @@ import { TeacherSetCell } from '../../../components/teachers/teacher-set-cell';
 import {
   getTeacherSetsForStudents,
   saveTeacherLinksForStudent,
-  summarizeTeacherSet,
   type EditableTeacherLink,
   type LinkedTeacher,
 } from '@/lib/supabase/queries/student-teachers';
@@ -289,15 +288,18 @@ export default function StudentsPage() {
       });
 
       // The first teacher arrived via the legacy column (and the SPE-334
-      // trigger mirrored it into a link); any co-teachers are written here,
-      // once the student — and therefore its child record — exists.
+      // trigger mirrored it into a bare link); everything the mirror cannot
+      // carry — co-teachers, and the subject/period labels on ANY link — is
+      // written here, once the student and its child record exist. Running
+      // this for a single teacher too is what keeps a secondary student's
+      // labels from being silently dropped whenever they have exactly one.
       //
       // This is a second round trip, so it can fail on its own. The student is
       // already created at this point: reporting the whole add as failed would
       // send the user to retry an entry that now trips the uniqueness
       // constraint. Treat the add as succeeded and name what is missing.
       let coTeachersFailed = false;
-      if (created && teacherLinks.length > 1) {
+      if (created && teacherLinks.length > 0) {
         try {
           await saveTeacherLinksForStudent(supabase, created.id, teacherLinks);
         } catch (linkError) {
@@ -319,8 +321,8 @@ export default function StudentsPage() {
       setTeacherFieldKey((k) => k + 1);
       if (coTeachersFailed) {
         setAddFormError(
-          `${addedInitials} was added, but the co-teachers could not be saved. ` +
-          `Open the student and add them again.`,
+          `${addedInitials} was added, but the teacher details could not be saved. ` +
+          `Open the student to set them again.`,
         );
       } else {
         setAddFormConfirmation(`${addedInitials} added`);

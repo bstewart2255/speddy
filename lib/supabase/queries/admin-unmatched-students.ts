@@ -111,6 +111,23 @@ export async function assignTeacherToStudent(studentId: string, teacherId: strin
   const updateResult = await safeQuery(
     async () => {
       await addTeacherLinkForStudent(supabase, studentId, teacherId);
+
+      // The link alone does not clear the unmatched state. An unmatched row is
+      // by definition `teacher_id IS NULL` with a hand-typed `teacher_name`,
+      // and that is the one shape `student_teachers_mirror_legacy` refuses to
+      // touch (SPE-334 protects the typed name because no link exists to
+      // replace it with). So the row would keep its NULL and reappear in this
+      // very list after a successful-looking assign.
+      //
+      // Guarded on `teacher_id IS NULL`: it resolves an unmatched row and does
+      // nothing at all to a student who already has a teacher, which is what
+      // keeps this an ADD rather than the replacement it used to be.
+      const { error } = await supabase
+        .from('students')
+        .update({ teacher_id: teacherId })
+        .eq('id', studentId)
+        .is('teacher_id', null);
+      if (error) throw error;
       return null;
     },
     {

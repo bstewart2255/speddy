@@ -51,11 +51,16 @@
           throw new Error('Failed to create student');
         }
 
+        // Everything the SPE-334 mirror cannot carry from the legacy column:
+        // co-teachers, and the subject/period labels on ANY link — so this runs
+        // for a single teacher too, or a secondary student with exactly one
+        // teacher would silently lose their labels.
+        //
         // Second round trip, and the student already exists. If it fails, the
         // add itself still succeeded — reporting it as a failure would send the
         // user to retry initials that now collide. Say what is missing instead.
         let coTeachersFailed = false;
-        if (teacherLinks.length > 1) {
+        if (teacherLinks.length > 0) {
           try {
             await saveTeacherLinksForStudent(createClient(), student.id, teacherLinks);
           } catch (linkError) {
@@ -68,7 +73,7 @@
         alert(
           `Student "${student.initials}" has been added successfully!` +
           (coTeachersFailed
-            ? `\n\nThe co-teachers could not be saved — open the student and add them again.`
+            ? `\n\nThe teacher details could not be saved — open the student to set them again.`
             : '') +
           `\n\nSessions created in Unscheduled Sessions! You can now drag them to the schedule grid or click "Schedule Sessions" to auto-place them.`
         );

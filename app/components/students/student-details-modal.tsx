@@ -95,6 +95,12 @@ export function StudentDetailsModal({
   // *requested* set means "remove every teacher". Saving during that window
   // would delete the student's real links, so Save waits for the load.
   const [linksLoaded, setLinksLoaded] = useState(false);
+  const [linksLoadFailed, setLinksLoadFailed] = useState(false);
+  // What the set looked like on open. A student's teachers are anchored on the
+  // CHILD, so a co-provider can add one while this modal sits open; writing an
+  // untouched snapshot back would delete their addition. Compare before
+  // writing, and a user who never touched the teacher field never disturbs it.
+  const [loadedLinks, setLoadedLinks] = useState<EditableTeacherLink[]>([]);
 
   const [studentInfo, setStudentInfo] = useState({
     initials: student.initials,
@@ -119,7 +125,9 @@ export function StudentDetailsModal({
       // under this student's name for the length of a fetch is worse than
       // showing none, and saving it would apply them to the wrong child.
       setTeacherLinks([]);
+      setLoadedLinks([]);
       setLinksLoaded(false);
+      setLinksLoadFailed(false);
 
       // Load existing student details and matching provider roles
       const loadData = async () => {
@@ -134,6 +142,7 @@ export function StudentDetailsModal({
           // A slower earlier request must not overwrite a newer student's data.
           if (stale) return;
           setTeacherLinks(links);
+          setLoadedLinks(links);
           setLinksLoaded(true);
 
           if (existingDetails) {
@@ -157,6 +166,9 @@ export function StudentDetailsModal({
         } catch (error) {
           if (stale) return;
           console.error('Error loading student data:', error);
+          // Save stays disabled without this — the user would face a dead
+          // button and no reason for it.
+          setLinksLoadFailed(true);
         }
       };
 
@@ -174,6 +186,17 @@ export function StudentDetailsModal({
       setActiveTab('iep');
     }
   }, [isSecondary, activeTab]);
+
+  // Set equality, not array equality: order carries no meaning (co-teachers
+  // are equals), so only membership and the labels count as an edit.
+  const teacherLinksChanged = (() => {
+    if (teacherLinks.length !== loadedLinks.length) return true;
+    const before = new Map(loadedLinks.map(l => [l.teacherId, l]));
+    return teacherLinks.some(l => {
+      const prev = before.get(l.teacherId);
+      return !prev || prev.subject !== l.subject || prev.period !== l.period;
+    });
+  })();
 
   const handleSave = async () => {
     // The set is the source of truth for what gets written; an unloaded [] is
@@ -195,7 +218,24 @@ export function StudentDetailsModal({
       // re-adding a co-teacher reorders the array without changing the set,
       // and the mirror would then read the new first entry as a replacement
       // and revoke the other teacher's access.
-      await saveTeacherLinksForStudent(supabase, student.id, teacherLinks);
+      //
+      // Only written when actually edited: the set belongs to the child, so a
+      // co-provider may have changed it since this modal opened, and someone
+      // saving an IEP date should not silently undo that.
+      //
+      // The details above are already committed by the time this runs, so a
+      // throw here must not abandon the rest of the save — the grade and
+      // service minutes would be dropped for a reason that has nothing to do
+      // with them. Report just the part that failed.
+      let teacherSaveError: Error | null = null;
+      if (teacherLinksChanged) {
+        try {
+          await saveTeacherLinksForStudent(supabase, student.id, teacherLinks);
+        } catch (err) {
+          console.error('Error saving teacher links:', err);
+          teacherSaveError = err instanceof Error ? err : new Error(String(err));
+        }
+      }
 
       // Update student info if changed. Passed as a literal on purpose: that
       // is what makes excess-property checking apply, so re-adding a teacher
@@ -212,6 +252,13 @@ export function StudentDetailsModal({
 
       if (onSave) {
         onSave(student.id, details);
+      }
+
+      if (teacherSaveError) {
+        // Stay open on the teachers the user asked for, so a retry is one
+        // click rather than re-entering the whole set.
+        alert(`Everything else was saved, but the teachers were not: ${teacherSaveError.message}`);
+        return;
       }
       onClose();
     } catch (error) {
@@ -806,7 +853,12 @@ export function StudentDetailsModal({
           </div>
           
           {/* Footer */}
-          <div className="flex justify-end gap-3 px-6 py-4 border-t bg-gray-50">
+          <div className="flex items-center justify-end gap-3 px-6 py-4 border-t bg-gray-50">
+            {!readOnly && linksLoadFailed && (
+              <span role="alert" className="mr-auto text-sm text-red-700">
+                This student&apos;s details could not be loaded. Close and reopen to try again.
+              </span>
+            )}
             <Button variant="secondary" onClick={onClose}>
               {readOnly ? 'Close' : 'Cancel'}
             </Button>
