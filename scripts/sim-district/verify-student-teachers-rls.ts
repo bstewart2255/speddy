@@ -150,6 +150,12 @@ async function main(): Promise<void> {
 
   console.log('a teacher with no links (fresh fixture, nothing to lose):');
   const david = await signIn('david');
+  // check() records and continues, so an unseeded fixture would otherwise fail
+  // several probes later inside .single() — a readback error that says nothing
+  // about the actual cause. Everything below needs a probe student.
+  if (noraViaLinks.size === 0) {
+    throw new Error('no linked students for Nora — re-seed the fixture (npm run sim:reset -- --yes)');
+  }
   const targetStudentId = [...noraViaLinks][0]!;
   const { data: targetRow } = await admin
     .from('students').select('child_id, school_id').eq('id', targetStudentId).single();

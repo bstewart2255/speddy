@@ -399,7 +399,7 @@ Env requirements are scoped per command. Every command needs
 |---|---|---|
 | `sim:reset` | `SIM_DISTRICT_PASSWORD` | it sets the persona passwords |
 | `sim:verify`, `sim:teardown` | — | read-only / delete-only, so they never receive the credential secret |
-| the three `sim:verify-*` guards | `SIM_DISTRICT_PASSWORD` + `NEXT_PUBLIC_SUPABASE_ANON_KEY` | they sign IN as personas, which needs the same derived password and a client-side key |
+| the four `sim:verify-*` guards | `SIM_DISTRICT_PASSWORD` + `NEXT_PUBLIC_SUPABASE_ANON_KEY` | they sign IN as personas, which needs the same derived password and a client-side key |
 
 **Preflight, before any write.** Scripts hard-fail unless: **(a)** the host in
 `NEXT_PUBLIC_SUPABASE_URL` is a front for the project pinned in `manifest.ts` —
