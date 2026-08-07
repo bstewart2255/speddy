@@ -56,10 +56,13 @@ let server: Server;
 let baseUrl: string;
 let handler: Handler;
 let seenCertHeaders: (string | undefined)[] = [];
+/** Every path dialled, in order — so candidate ORDER can be asserted. */
+let seenPaths: string[] = [];
 
 beforeAll(async () => {
   server = createServer((req, res) => {
     seenCertHeaders.push(req.headers['aeries-cert'] as string | undefined);
+    seenPaths.push(req.url ?? '');
     const { status, body, headers, raw } = handler(req.url ?? '');
     res.writeHead(status, {
       'Content-Type': raw ? 'text/html' : 'application/json',
@@ -77,6 +80,7 @@ afterAll(async () => {
 
 beforeEach(() => {
   seenCertHeaders = [];
+  seenPaths = [];
 });
 
 const run = () => runAeriesConnectionTest({ baseUrl, certificate: CERT });
@@ -240,9 +244,24 @@ describe('resolving the API root when the stored one is wrong (SPE-426)', () => 
 
     expect(report.ok).toBe(true);
     expect(report.usedBaseUrl).toBe(baseUrl.replace('/aeries/api/v5', '/admin/api/v5'));
+
+    // ORDER, not just the outcome. Without this a regression that moved
+    // /admin/api/v5 to the front of the list would still pass — and that
+    // ordering is the whole reason a healthy district pays nothing for the
+    // candidates added for an unhealthy one.
+    //
+    // Distinct roots in order of first use: once resolution settles, the three
+    // area probes run against the SAME root, and folding those in would assert
+    // the shape of the probe list rather than the shape of the search.
+    const roots: string[] = [];
+    for (const path of seenPaths) {
+      const root = path.match(/^(.*\/api\/v\d+)/)?.[1] ?? path;
+      if (roots[roots.length - 1] !== root) roots.push(root);
+    }
+    expect(roots).toEqual(['/aeries/api/v5', '/api/v5', '/admin/api/v5']);
   });
 
-  it('still makes exactly ONE request for a district already on the default root', async () => {
+  it('accepts the FIRST candidate when the stored root works, dialling no other', async () => {
     // The cost of every added candidate falls only on districts whose stored
     // address is wrong. A district that already works must not start paying for
     // our search — that would be a regression for everyone to fix one district.
@@ -250,8 +269,12 @@ describe('resolving the API root when the stored one is wrong (SPE-426)', () => 
 
     await run();
 
-    const schoolsProbes = seenCertHeaders.length;
-    expect(schoolsProbes).toBe(4); // schools + students + teachers + programs
+    // Four probes, one per area — and every one of them on the stored root.
+    // Asserting the ROOTS rather than a count is what makes this specific: a
+    // count of four would also hold if resolution had wandered and the areas
+    // happened to be four.
+    expect(seenPaths).toHaveLength(4);
+    for (const path of seenPaths) expect(path.startsWith('/aeries/api/v5')).toBe(true);
   });
 
   it('reports a 404 honestly when no known layout answers', async () => {

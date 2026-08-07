@@ -50,10 +50,12 @@ export const AERIES_API_PATH = '/aeries/api/v5';
  * root and their Aeries API should sit under it. Their OneRoster row is the
  * only place they ever told us, because the Aeries field discards the path.
  *
- * Order is deliberate — the documented default stays first, so a district that
- * already works still makes exactly one request. Only a district whose stored
- * address is wrong pays for the extra candidates, and only on the way to an
- * answer it could not otherwise get.
+ * Order is deliberate — the documented default stays first, so a working root
+ * is accepted on the FIRST candidate and no later one is ever dialled. (That is
+ * about resolution only: the test as a whole still probes four endpoints, one
+ * per permission area.) Only a district whose stored address is wrong pays for
+ * the extra candidates, and only on the way to an answer it could not otherwise
+ * get.
  */
 export const AERIES_API_PATHS = [AERIES_API_PATH, '/api/v5', '/admin/api/v5'] as const;
 
