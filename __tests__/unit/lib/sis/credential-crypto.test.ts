@@ -5,6 +5,7 @@ import {
   encryptSisCredential,
   sisCredentialEncryptionProblem,
   sisCredentialEncryptionSelfTest,
+  SELF_TEST_ROUND_TRIP_FAILED,
 } from '@/lib/sis/credential-crypto';
 
 describe('SIS credential crypto', () => {
@@ -239,15 +240,41 @@ describe('SIS credential crypto', () => {
       process.env.SIS_CREDENTIAL_ENCRYPTION_KEY = randomBytes(32).toString('base64');
 
       expect(sisCredentialEncryptionSelfTest()).toEqual({ ok: true });
-      // Meanwhile the credential encrypted under the previous key is gone.
-      expect(() => decryptSisCredential(ciphertext)).toThrow();
+      // Matched on the AUTH-TAG failure specifically, not a bare .toThrow():
+      // decryptSisCredential also throws for a missing key, a non-canonical
+      // key, and a malformed envelope. Any of those would keep this green while
+      // proving nothing about key isolation — the false-negative shape CLAUDE.md
+      // records from SPE-332.
+      expect(() => decryptSisCredential(ciphertext)).toThrow(
+        /unable to authenticate|bad decrypt/i,
+      );
     });
 
-    it('never puts the key value in the self-test problem', () => {
-      process.env.SIS_CREDENTIAL_ENCRYPTION_KEY = `${key}\n`;
-      const result = sisCredentialEncryptionSelfTest();
-      expect(result.ok).toBe(false);
-      expect(result.ok === false && result.problem).not.toContain(key);
+    it('reports a cipher that cannot run WITHOUT blaming the key, and without upstream text', () => {
+      // The one problem string this function ORIGINATES rather than forwards —
+      // and previously the only path that interpolated a message this module
+      // does not author into a value served to a browser. Reached by making the
+      // cipher itself fail on a key that is already known good.
+      //
+      // Landmine for anyone editing this: under Jest's VM realm a thrown crypto
+      // Error can fail `err instanceof Error`, so a test aimed at the message
+      // branch can silently land on a fallback instead. The assertion below is
+      // on the fixed string, which both paths now produce — that is the point.
+      const crypto = jest.requireActual('crypto') as typeof import('crypto');
+      const spy = jest
+        .spyOn(crypto, 'createCipheriv')
+        .mockImplementation(() => {
+          throw new Error('error:0308010C:digital envelope routines::unsupported');
+        });
+      try {
+        const result = sisCredentialEncryptionSelfTest();
+        expect(result).toEqual({ ok: false, problem: SELF_TEST_ROUND_TRIP_FAILED });
+        expect(result.ok === false && result.problem).not.toMatch(/digital envelope|0308010C/);
+        // Names the deployment, not the key — the key passed getKey() to get here.
+        expect(SELF_TEST_ROUND_TRIP_FAILED).toMatch(/could not run the cipher/i);
+      } finally {
+        spy.mockRestore();
+      }
     });
 
     it('never puts the key value in the reported problem', () => {

@@ -3,6 +3,23 @@
 import { useCallback, useEffect, useState } from 'react';
 
 /**
+ * The key-health payload is imported, never re-declared: a hand-copy of the
+ * union would let the two sides drift with nothing failing the build, and the
+ * drift renders as a red verdict on a healthy key. `import type` is erased at
+ * compile time, so no server-only crypto reaches the bundle — the same thing
+ * app/components/tech/aeries-connection-card.tsx does with AeriesTestReport.
+ */
+import type { SisKeySelfTest } from '@/lib/sis/credential-crypto';
+
+/**
+ * The verdict plus which build produced it. Extends the shared union rather
+ * than restating it, so the ok/problem contract still has exactly one owner.
+ */
+type KeyHealthResponse = SisKeySelfTest & {
+  deployment?: { commit: string; environment: string; checkedAt: string };
+};
+
+/**
  * Speddy-staff control for a district's SIS connections (SPE-395).
  *
  * Its one job is the DPA switch. Credentials are never entered, shown, or
@@ -49,8 +66,6 @@ const SIS_LABELS: Record<SisType, string> = {
   oneroster: 'OneRoster',
 };
 
-/** Whether THIS deployment can encrypt a credential. Not about any district. */
-type KeyHealth = { ok: true } | { ok: false; problem: string };
 
 function formatDate(value: string | null): string {
   if (!value) return '—';
@@ -70,23 +85,57 @@ export default function SisConnectionsPanel({ districtId }: { districtId: string
   // Deliberately not loaded on mount: this reports on the deployment, not on
   // the district being viewed, and a green badge nobody asked for is the kind
   // of thing that goes stale on screen and gets believed anyway.
-  const [keyHealth, setKeyHealth] = useState<KeyHealth | null>(null);
+  const [keyHealth, setKeyHealth] = useState<KeyHealthResponse | null>(null);
   const [checkingKey, setCheckingKey] = useState(false);
 
   const checkKey = async () => {
     setCheckingKey(true);
     setKeyHealth(null);
+    setError(null);
+    // Bounded: without this a wedged deployment leaves the button disabled with
+    // no way to retry — at exactly the moment an operator needs to re-run the
+    // check after changing an env var.
+    const abort = new AbortController();
+    const timer = setTimeout(() => abort.abort(), 15_000);
     try {
-      const res = await fetch('/api/internal/sis-key-health');
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'Could not run the check');
-      setKeyHealth(json as KeyHealth);
-    } catch (err) {
-      setKeyHealth({
-        ok: false,
-        problem: err instanceof Error ? err.message : 'Could not run the check',
+      const res = await fetch('/api/internal/sis-key-health', {
+        cache: 'no-store',
+        signal: abort.signal,
       });
+
+      // Status BEFORE parsing, and a failure to reach the check goes to the
+      // page's `error` banner — never to `keyHealth`. A 401, a 5xx or an HTML
+      // gateway page means the self-test never ran, and rendering that as
+      // "districts cannot save SIS credentials" would state the strongest
+      // possible claim about a key nobody asked about. The route returns 200
+      // even when the key IS broken precisely so these stay distinguishable;
+      // collapsing them here would undo that at the one moment it matters.
+      if (!res.ok) {
+        setError(`Could not run the encryption check (HTTP ${res.status}). The key was not tested.`);
+        return;
+      }
+
+      const json: unknown = await res.json().catch(() => null);
+      // The body is the whole answer, so it is validated rather than asserted:
+      // an off-shape 200 would otherwise render the red verdict with a blank
+      // reason, which reads as a diagnosis and is not one.
+      if (
+        typeof json !== 'object' || json === null ||
+        typeof (json as { ok?: unknown }).ok !== 'boolean'
+      ) {
+        setError('The encryption check returned an unreadable response. The key was not tested.');
+        return;
+      }
+      setKeyHealth(json as KeyHealthResponse);
+    } catch (err) {
+      const timedOut = err instanceof DOMException && err.name === 'AbortError';
+      setError(
+        timedOut
+          ? 'The encryption check timed out. The key was not tested.'
+          : 'Could not reach the encryption check. The key was not tested.',
+      );
     } finally {
+      clearTimeout(timer);
       setCheckingKey(false);
     }
   };
@@ -223,27 +272,41 @@ export default function SisConnectionsPanel({ districtId }: { districtId: string
           </button>
         </div>
 
-        {keyHealth && (
-          <div
-            role="status"
-            className={`mt-3 rounded-md border px-3 py-2 text-sm ${
-              keyHealth.ok
-                ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
-                : 'border-red-500/30 bg-red-500/10 text-red-300'
-            }`}
-          >
-            {keyHealth.ok ? (
-              'Working — districts can save SIS credentials.'
-            ) : (
-              <>
-                <span className="font-medium">
-                  Not working — districts cannot save SIS credentials.
+        {/* The live region is mounted unconditionally and only its CONTENT is
+            conditional: a region inserted in the same commit as its text is the
+            classic aria-live pitfall where nothing is announced at all. */}
+        <div role="status" aria-live="polite" className="contents">
+          {keyHealth && (
+            <div
+              className={`mt-3 rounded-md border px-3 py-2 text-sm ${
+                keyHealth.ok
+                  ? STATUS_STYLES.connected
+                  : STATUS_STYLES.error
+              }`}
+            >
+              {keyHealth.ok ? (
+                'Working — this deployment can encrypt SIS credentials, so a district with a recorded DPA can save them.'
+              ) : (
+                <>
+                  <span className="font-medium">
+                    Not working — districts cannot save SIS credentials.
+                  </span>
+                  <span className="mt-1 block text-red-200/80">{keyHealth.problem}</span>
+                </>
+              )}
+              {keyHealth.deployment && (
+                // Which build answered. Without it a green from a preview URL
+                // is indistinguishable from a green from the build serving
+                // districts — the same "which deployment?" ambiguity one level
+                // down from the one this check exists to settle.
+                <span className="mt-2 block text-xs opacity-70">
+                  {keyHealth.deployment.environment} · {keyHealth.deployment.commit} ·{' '}
+                  {new Date(keyHealth.deployment.checkedAt).toLocaleTimeString()}
                 </span>
-                <span className="mt-1 block text-red-200/80">{keyHealth.problem}</span>
-              </>
-            )}
-          </div>
-        )}
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {loading ? (

@@ -76,6 +76,14 @@ export function sisCredentialEncryptionProblem(): string | null {
  */
 const SELF_TEST_PROBE = 'speddy-sis-key-self-test';
 
+/**
+ * The one failure this function originates. Names the cipher rather than the
+ * key: by the time it can be reached the key has already passed getKey(), so
+ * blaming the key would send an operator to rotate a healthy one.
+ */
+export const SELF_TEST_ROUND_TRIP_FAILED =
+  'The encryption key is present and well-formed, but this deployment could not run the cipher.';
+
 export type SisKeySelfTest =
   | { ok: true }
   | { ok: false; problem: string };
@@ -84,8 +92,15 @@ export type SisKeySelfTest =
  * Prove the configured key can actually encrypt AND decrypt, right now.
  *
  * `sisCredentialEncryptionProblem()` answers "is the key well-formed"; this
- * answers "does it work" — it catches a key that parses but blows up in the
- * cipher, which a format check cannot see.
+ * additionally runs the cipher.
+ *
+ * Be precise about what that buys, because it is less than it sounds. getKey()
+ * admits only canonical base64 decoding to exactly 32 bytes, and every 32-byte
+ * value is a valid AES-256 key — so NO accepted key can fail the round trip.
+ * What the round trip actually catches is the crypto provider being unusable
+ * (a FIPS-mode build where aes-256-gcm is unavailable makes createCipheriv
+ * throw), which a format check cannot see and which would otherwise surface as
+ * a district's failed save. Real, but narrower than "the key is wrong".
  *
  * What it deliberately does NOT prove: that this is the SAME key that encrypted
  * credentials already in the database. The round trip uses the current key for
@@ -101,31 +116,30 @@ export type SisKeySelfTest =
  * environment, never on anyone's data.
  *
  * Safe to return to a caller: `problem` is either a message from getKey() (which
- * names the variable, never its value) or a fixed string from here.
+ * names the variable, never its value) or one of the fixed strings below. No
+ * upstream error text is interpolated — the same rule the sibling /internal
+ * routes state as "Fixed message, not `message`: the detail belongs in the log
+ * line". The detail is not lost; the route logs the thrown error.
  */
 export function sisCredentialEncryptionSelfTest(): SisKeySelfTest {
   const problem = sisCredentialEncryptionProblem();
   if (problem) return { ok: false, problem };
 
   try {
-    const roundTripped = decryptSisCredential(encryptSisCredential(SELF_TEST_PROBE));
-    if (roundTripped !== SELF_TEST_PROBE) {
-      // Belt and braces: GCM's auth tag should make a silent mismatch
-      // impossible, so reaching here means an assumption broke rather than a
-      // key being wrong. Report it instead of returning a false ok.
-      return { ok: false, problem: 'The encryption key round trip returned different data.' };
+    if (decryptSisCredential(encryptSisCredential(SELF_TEST_PROBE)) !== SELF_TEST_PROBE) {
+      // GCM's auth tag makes a silent mismatch impossible, so this is a
+      // belt-and-braces guard against an assumption breaking — not a state any
+      // key can produce. Kept because returning a false `ok` is the one outcome
+      // this function must never have.
+      return { ok: false, problem: SELF_TEST_ROUND_TRIP_FAILED };
     }
     return { ok: true };
-  } catch (err) {
-    // A well-formed key that cannot decrypt its own ciphertext. Report the
-    // shape of the failure, never the underlying value.
-    return {
-      ok: false,
-      problem:
-        err instanceof Error
-          ? `The encryption key failed a round trip: ${err.message}`
-          : 'The encryption key failed a round trip.',
-    };
+  } catch {
+    // Deliberately does NOT carry `err.message`. Reaching here means the cipher
+    // itself is unusable, so the message is a Node/OpenSSL string this module
+    // does not author and cannot audit — and it is returned to a browser and
+    // written to logs. The route logs the real error alongside this.
+    return { ok: false, problem: SELF_TEST_ROUND_TRIP_FAILED };
   }
 }
 

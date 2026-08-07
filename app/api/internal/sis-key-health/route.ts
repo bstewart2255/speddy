@@ -41,16 +41,38 @@ export const GET = withRoute({}, async ({ userId }) => {
 
   const result = sisCredentialEncryptionSelfTest();
 
-  // Logged either way: a staff member checking this during an incident wants the
-  // check itself in the record, not just its answer.
+  // Logged either way, with the actor: during an incident with several staff in
+  // the panel, a verdict nobody can be matched to is half a record.
   if (result.ok) {
-    log.info('SIS encryption key self-test passed');
+    log.info('SIS encryption key self-test passed', { userId });
   } else {
-    log.warn('SIS encryption key self-test failed', { problem: result.problem });
+    // error, not warn: lib/logger.ts only forwards to Sentry from error, so a
+    // warn here would make the purpose-built detector quieter than the accident
+    // it replaced — a broken key would produce 200s and no alert anywhere.
+    log.error('SIS encryption key self-test failed', new Error(result.problem), { userId });
   }
 
   // 200 on a failed self-test on purpose: the request succeeded and its answer
   // is "the key is broken". A 500 here would be indistinguishable from the
   // route itself failing, which is the exact ambiguity this route exists to end.
-  return NextResponse.json(result);
+  //
+  // The build is named in the answer because "which deployment said this?" is
+  // the same question one level down: a staff member who clicks this on a
+  // preview URL while verifying an env-var fix would otherwise get a green that
+  // says nothing about the build serving districts.
+  return NextResponse.json(
+    {
+      ...result,
+      deployment: {
+        commit: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? 'unknown',
+        environment: process.env.VERCEL_ENV ?? process.env.NODE_ENV ?? 'unknown',
+        checkedAt: new Date().toISOString(),
+      },
+    },
+    // A point-in-time diagnostic must never be answered from a cache: a replayed
+    // verdict from before an env-var fix is precisely the false reassurance this
+    // route exists to end. Next adds no cache header of its own here, and the
+    // response is per-user authorized (403 vs 200 on one URL).
+    { headers: { 'Cache-Control': 'no-store' } },
+  );
 });
