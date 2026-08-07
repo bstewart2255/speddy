@@ -28,7 +28,7 @@ import {
   credentialHint,
   decryptSisCredential,
   encryptSisCredential,
-  sisCredentialEncryptionConfigured,
+  sisCredentialEncryptionProblem,
 } from './credential-crypto';
 
 const log = logger.child({ module: 'sis-connections' });
@@ -241,10 +241,11 @@ export interface StoreCredentialInput {
 export async function storeCredential(
   input: StoreCredentialInput
 ): Promise<SisConnectionSummary> {
-  if (!sisCredentialEncryptionConfigured()) {
-    throw new Error(
-      'SIS_CREDENTIAL_ENCRYPTION_KEY is not configured — refusing to store a credential'
-    );
+  // The specific reason, not just "unconfigured": a missing key and a malformed
+  // one need different fixes, and this message is what an operator reads first.
+  const keyProblem = sisCredentialEncryptionProblem();
+  if (keyProblem) {
+    throw new Error(`${keyProblem} — refusing to store a credential`);
   }
 
   const supabase = createServiceClient();

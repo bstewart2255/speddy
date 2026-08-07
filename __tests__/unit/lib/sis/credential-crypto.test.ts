@@ -4,6 +4,7 @@ import {
   decryptSisCredential,
   encryptSisCredential,
   sisCredentialEncryptionConfigured,
+  sisCredentialEncryptionProblem,
 } from '@/lib/sis/credential-crypto';
 
 describe('SIS credential crypto', () => {
@@ -185,6 +186,33 @@ describe('SIS credential crypto', () => {
       expect(() => encryptSisCredential('secret')).toThrow(
         'SIS_CREDENTIAL_ENCRYPTION_KEY is not set'
       );
+    });
+
+    it('reports no problem for a valid key', () => {
+      expect(sisCredentialEncryptionProblem()).toBeNull();
+    });
+
+    it('distinguishes an absent key from a malformed one', () => {
+      // The two cases are one symptom with two different fixes. Asserting they
+      // produce DIFFERENT messages is the whole point — a shared "unusable"
+      // string would satisfy a laxer test while leaving an operator no better
+      // off than the "not configured" message this replaced.
+      delete process.env.SIS_CREDENTIAL_ENCRYPTION_KEY;
+      const absent = sisCredentialEncryptionProblem();
+
+      process.env.SIS_CREDENTIAL_ENCRYPTION_KEY = `${key}\n`;
+      const malformed = sisCredentialEncryptionProblem();
+
+      expect(absent).toMatch(/is not set/);
+      expect(malformed).toMatch(/must be canonical base64/);
+      expect(absent).not.toEqual(malformed);
+    });
+
+    it('never puts the key value in the reported problem', () => {
+      // These strings are logged and read by operators. A malformed key is
+      // still key material.
+      process.env.SIS_CREDENTIAL_ENCRYPTION_KEY = `${key}\n`;
+      expect(sisCredentialEncryptionProblem()).not.toContain(key);
     });
   });
 
