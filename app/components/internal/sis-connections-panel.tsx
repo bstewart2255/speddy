@@ -77,6 +77,57 @@ const SIS_LABELS: Record<SisType, string> = {
   oneroster: 'OneRoster',
 };
 
+/**
+ * One probed area or step, as the internal test route flattens them (SPE-427).
+ *
+ * Aeries reports `areas` and OneRoster reports `steps`; the route normalizes
+ * both to this, so there is one renderer here rather than two that could drift.
+ */
+interface StaffCheck {
+  key: string;
+  label: string;
+  status: 'ok' | 'denied' | 'error' | 'untested';
+  message: string;
+  count?: number;
+}
+
+interface StaffTestResult {
+  sisType: SisType;
+  ok: boolean;
+  summary: string;
+  checks: StaffCheck[];
+  /** Present only when resolution had to move off the stored address. */
+  usedAddress?: string;
+}
+
+/**
+ * Validated rather than asserted, for the same reason the key-health payload is:
+ * an off-shape 200 would otherwise render a verdict with nothing behind it.
+ */
+function isStaffTestResult(value: unknown): value is StaffTestResult {
+  if (typeof value !== 'object' || value === null) return false;
+  const body = value as { ok?: unknown; summary?: unknown; checks?: unknown };
+  return (
+    typeof body.ok === 'boolean' &&
+    typeof body.summary === 'string' &&
+    Array.isArray(body.checks)
+  );
+}
+
+const CHECK_STYLES: Record<StaffCheck['status'], string> = {
+  ok: 'text-emerald-300',
+  denied: 'text-amber-300',
+  error: 'text-red-300',
+  untested: 'text-slate-400',
+};
+
+const CHECK_MARKS: Record<StaffCheck['status'], string> = {
+  ok: '✓',
+  denied: '!',
+  error: '✕',
+  untested: '·',
+};
+
 
 function formatDate(value: string | null): string {
   if (!value) return '—';
@@ -98,6 +149,10 @@ export default function SisConnectionsPanel({ districtId }: { districtId: string
   // of thing that goes stale on screen and gets believed anyway.
   const [keyHealth, setKeyHealth] = useState<KeyHealthResponse | null>(null);
   const [checkingKey, setCheckingKey] = useState(false);
+  // Keyed by connection id so two connections' results cannot be confused for
+  // one another — the whole point is telling Aeries and OneRoster apart.
+  const [testing, setTesting] = useState<string | null>(null);
+  const [testResults, setTestResults] = useState<Record<string, StaffTestResult>>({});
 
   const checkKey = async () => {
     setCheckingKey(true);
@@ -145,6 +200,69 @@ export default function SisConnectionsPanel({ districtId }: { districtId: string
     } finally {
       clearTimeout(timer);
       setCheckingKey(false);
+    }
+  };
+
+  /**
+   * Run the district's own connection test from here (SPE-427).
+   *
+   * Reaches the district's SIS with their stored credential, which is why it is
+   * a deliberate click rather than something that happens on load. It is the
+   * same test their tech admin runs, so a green result here means what a green
+   * result means to them.
+   */
+  const runTest = async (connection: SisConnection) => {
+    setTesting(connection.id);
+    setError(null);
+    setTestResults((prev) => {
+      // Drop the previous verdict before running. Leaving it on screen while a
+      // new run is in flight shows a stale answer next to a spinner, and a
+      // stale green is the one nobody re-reads.
+      const next = { ...prev };
+      delete next[connection.id];
+      return next;
+    });
+
+    // Bounded: the test fans out to several requests against a district's
+    // server, and without this a hung SIS leaves the button disabled with no
+    // way to retry.
+    const abort = new AbortController();
+    const timer = setTimeout(() => abort.abort(), 60_000);
+    try {
+      const res = await fetch(`/api/internal/sis-connections/${connection.id}/test`, {
+        method: 'POST',
+        cache: 'no-store',
+        signal: abort.signal,
+      });
+      const json: unknown = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        const message =
+          typeof (json as { error?: unknown })?.error === 'string'
+            ? (json as { error: string }).error
+            : `The test could not be run (HTTP ${res.status}).`;
+        setError(message);
+        return;
+      }
+      if (!isStaffTestResult(json)) {
+        setError('The test returned an unreadable response. Nothing was tested.');
+        return;
+      }
+      setTestResults((prev) => ({ ...prev, [connection.id]: json }));
+      // The run writes last_tested_at and status, so the row above it is now
+      // stale — refresh rather than leave the chip disagreeing with the result
+      // printed directly beneath it.
+      await load();
+    } catch (err) {
+      const timedOut = err instanceof DOMException && err.name === 'AbortError';
+      setError(
+        timedOut
+          ? 'The test timed out waiting for the district\u2019s SIS.'
+          : 'Could not reach the test. Nothing was tested.',
+      );
+    } finally {
+      clearTimeout(timer);
+      setTesting(null);
     }
   };
 
@@ -328,6 +446,7 @@ export default function SisConnectionsPanel({ districtId }: { districtId: string
           {connections.map((connection) => {
             const dpaCleared = Boolean(connection.dpa_cleared_at);
             const busy = busyId === connection.id;
+            const result = testResults[connection.id];
             return (
               <li
                 key={connection.id}
@@ -370,18 +489,86 @@ export default function SisConnectionsPanel({ districtId }: { districtId: string
                     </dl>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => setDpa(connection, !dpaCleared)}
-                    disabled={busy}
-                    className={`px-4 py-2 text-sm rounded-md transition-colors disabled:opacity-50 ${
-                      dpaCleared
-                        ? 'bg-slate-700 hover:bg-slate-600 text-slate-200'
-                        : 'bg-purple-600 hover:bg-purple-700 text-white'
-                    }`}
-                  >
-                    {busy ? 'Saving…' : dpaCleared ? 'Revoke DPA' : 'Record signed DPA'}
-                  </button>
+                  <div className="flex gap-2">
+                    {/* Only offered when there is something to test. Without a
+                        credential the route returns 409, and a button whose only
+                        outcome is an error message is worse than no button. */}
+                    {connection.credential_hint && (
+                      <button
+                        type="button"
+                        onClick={() => runTest(connection)}
+                        disabled={testing !== null}
+                        className="px-4 py-2 text-sm bg-slate-600 hover:bg-slate-500 disabled:opacity-50 text-white rounded-md transition-colors"
+                      >
+                        {testing === connection.id ? 'Testing…' : 'Run connection test'}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setDpa(connection, !dpaCleared)}
+                      disabled={busy}
+                      className={`px-4 py-2 text-sm rounded-md transition-colors disabled:opacity-50 ${
+                        dpaCleared
+                          ? 'bg-slate-700 hover:bg-slate-600 text-slate-200'
+                          : 'bg-purple-600 hover:bg-purple-700 text-white'
+                      }`}
+                    >
+                      {busy ? 'Saving…' : dpaCleared ? 'Revoke DPA' : 'Record signed DPA'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Mounted unconditionally with only its CONTENT conditional —
+                    a live region inserted in the same commit as its text is the
+                    classic aria-live pitfall where nothing is announced. */}
+                <div role="status" aria-live="polite" className="contents">
+                  {result && (
+                    <div className="mt-4 rounded-md border border-slate-700 bg-slate-900/40 px-4 py-3">
+                      <p
+                        className={`text-sm font-medium ${
+                          result.ok ? 'text-emerald-300' : 'text-amber-200'
+                        }`}
+                      >
+                        {result.summary}
+                      </p>
+
+                      {result.usedAddress && (
+                        // The answer SPE-426 could not get without asking the
+                        // district: which address actually responded, when it is
+                        // not the one on file.
+                        <p className="mt-1 break-all text-xs text-slate-400">
+                          Answered at <span className="font-mono">{result.usedAddress}</span>, not
+                          the address on file.
+                        </p>
+                      )}
+
+                      <ul className="mt-3 space-y-1">
+                        {result.checks.map((check) => (
+                          <li key={check.key} className="flex gap-2 text-sm">
+                            <span
+                              aria-hidden="true"
+                              className={`w-3 shrink-0 ${CHECK_STYLES[check.status]}`}
+                            >
+                              {CHECK_MARKS[check.status]}
+                            </span>
+                            <span className="text-slate-300">
+                              <span className={`font-medium ${CHECK_STYLES[check.status]}`}>
+                                {check.label}
+                              </span>
+                              {' — '}
+                              {check.message}
+                              {/* Only the school count is a real total; the rest
+                                  are capped at one row on purpose, so printing
+                                  them would read as "1 student". */}
+                              {check.key === 'schools' && typeof check.count === 'number' && (
+                                <span className="text-slate-400"> ({check.count} schools)</span>
+                              )}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                 </div>
               </li>
             );
