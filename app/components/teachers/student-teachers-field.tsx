@@ -49,10 +49,19 @@ export function StudentTeachersField({
 }: StudentTeachersFieldProps) {
   // Elementary shows the extra picker only once asked; secondary always offers it.
   const [addingAnother, setAddingAnother] = useState(false);
+  // TeacherAutocomplete keeps its OWN selected-teacher state and renders a
+  // "selected" chip for it. Where the picker stays mounted after a pick — i.e.
+  // secondary, which always offers the next slot — that chip would sit under
+  // our list showing the teacher a second time, and the picker would arrive at
+  // the next entry already occupied. Bumping this key remounts it clean after
+  // every attempt, including a rejected duplicate. (Elementary unmounts the
+  // picker on its own, so this is belt-and-braces there.)
+  const [pickerNonce, setPickerNonce] = useState(0);
 
   const alreadyLinked = new Set(value.map(l => l.teacherId));
 
   function addLink(teacherId: string | null, teacherName: string | null) {
+    setPickerNonce(n => n + 1);
     if (!teacherId || alreadyLinked.has(teacherId)) return;
     onChange([...value, { teacherId, name: teacherName, subject: null, period: null }]);
     setAddingAnother(false);
@@ -127,6 +136,7 @@ export function StudentTeachersField({
 
       {showInlinePicker && !disabled && (
         <TeacherAutocomplete
+          key={pickerNonce}
           value={null}
           onChange={addLink}
           placeholder={value.length === 0 ? 'Search for a teacher...' : 'Search for another teacher...'}
