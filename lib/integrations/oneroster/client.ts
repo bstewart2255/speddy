@@ -13,8 +13,16 @@
  *
  * SECRETS. Three things here must never leave the server or reach a log: the
  * client secret, the bearer token, and any response body (OneRoster error
- * bodies can echo the request). Every log call in this file is status + path +
- * phase, and there is no branch that widens that.
+ * bodies can echo the request).
+ *
+ * There is exactly ONE thing read out of a response body, and it is worth
+ * stating precisely because it is the only hole in the rule above: on a failed
+ * TOKEN request, the RFC 6749 `error` code — and only when its value is one of
+ * the six constants in `OAUTH_ERROR_CODES`. An allow-list of six known strings
+ * cannot carry a secret, however hostile or malformed the body. Nothing else
+ * from any body is read, logged or surfaced; `error_description`, which is free
+ * text from the district's server, deliberately is not. Every log call is
+ * status + path + phase, plus that one allow-listed code.
  *
  * Auth layering note (SPE-397 asks for this explicitly): the token request is
  * isolated in `fetchToken` so that OneRoster 1.2's scoped client-credentials

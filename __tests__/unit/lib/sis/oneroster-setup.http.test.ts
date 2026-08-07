@@ -438,6 +438,41 @@ describe('the OneRoster exchange over real HTTP', () => {
     expect(stepOf(report, 'token').message).not.toMatch(/Consumer ID/i);
   });
 
+  it('also blames ourselves on invalid_request — the likeliest our-fault code', async () => {
+    // Raised by Codex, and it is the one that mattered most: a token endpoint
+    // that does not implement the `scope` parameter we always send commonly
+    // answers `invalid_request` rather than `invalid_scope`. Omitting it left
+    // the single most probable our-fault case still blaming the district — in
+    // a change whose entire purpose was to stop doing that.
+    handler = (req) =>
+      req.url.includes('/token')
+        ? { status: 400, body: { error: 'invalid_request' } }
+        : allGood(req);
+
+    const report = await run();
+
+    expect(stepOf(report, 'token').message).toMatch(/not your credentials/i);
+    expect(stepOf(report, 'token').message).not.toMatch(/Consumer ID/i);
+  });
+
+  it('does NOT let an OAuth body override the address advice on a 404', async () => {
+    // The code is only meaningful on the statuses a token endpoint uses to
+    // report one. Checked at the top level it also caught 404/405/5xx, so a
+    // candidate that 404'd with an OAuth-shaped body would claim "nothing for
+    // you to change" and bury the true problem: nothing answered at all.
+    handler = () => ({ status: 404, body: { error: 'invalid_scope' } });
+
+    const report = await runOneRosterConnectionTest({
+      baseUrl: `${origin}/admin`,
+      clientId: CLIENT_ID,
+      clientSecret: CLIENT_SECRET,
+    });
+
+    expect(report.ok).toBe(false);
+    expect(stepOf(report, 'token').message).toMatch(/under your OneRoster address/i);
+    expect(stepOf(report, 'token').message).not.toMatch(/ours to fix/i);
+  });
+
   it('still blames the credentials on invalid_client', async () => {
     // The other half. A change that reported everything as our fault would pass
     // the test above while hiding every genuine credential problem.
