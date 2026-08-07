@@ -3,6 +3,15 @@ import * as Sentry from '@sentry/nextjs';
 export async function register() {
   if (process.env.NEXT_RUNTIME === 'nodejs') {
     await import('./sentry.server.config');
+
+    // After Sentry is initialised, so a failure here can actually raise an
+    // event. Imported dynamically and only on the nodejs runtime: the check
+    // reaches Node crypto, which the edge bundle has no business pulling in.
+    // Says once per cold start whether this build can encrypt SIS credentials —
+    // the deploy-time signal whose absence let SPE-417 run until a district
+    // hit it. Never throws; see lib/sis/key-boot-check.ts.
+    const { reportSisKeyStatusOnBoot } = await import('./lib/sis/key-boot-check');
+    reportSisKeyStatusOnBoot();
   }
 
   if (process.env.NEXT_RUNTIME === 'edge') {

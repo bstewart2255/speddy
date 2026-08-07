@@ -70,6 +70,79 @@ export function sisCredentialEncryptionProblem(): string | null {
   }
 }
 
+/**
+ * A fixed, non-secret probe. Never a real credential and never stored — it
+ * exists only to be encrypted and decrypted back inside a single function call.
+ */
+const SELF_TEST_PROBE = 'speddy-sis-key-self-test';
+
+/**
+ * The one failure this function originates. Names the cipher rather than the
+ * key: by the time it can be reached the key has already passed getKey(), so
+ * blaming the key would send an operator to rotate a healthy one.
+ */
+export const SELF_TEST_ROUND_TRIP_FAILED =
+  'The encryption key is present and well-formed, but this deployment could not run the cipher.';
+
+export type SisKeySelfTest =
+  | { ok: true }
+  | { ok: false; problem: string };
+
+/**
+ * Prove the configured key can actually encrypt AND decrypt, right now.
+ *
+ * `sisCredentialEncryptionProblem()` answers "is the key well-formed"; this
+ * additionally runs the cipher.
+ *
+ * Be precise about what that buys, because it is less than it sounds. getKey()
+ * admits only canonical base64 decoding to exactly 32 bytes, and every 32-byte
+ * value is a valid AES-256 key — so NO accepted key can fail the round trip.
+ * What the round trip actually catches is the crypto provider being unusable
+ * (a FIPS-mode build where aes-256-gcm is unavailable makes createCipheriv
+ * throw), which a format check cannot see and which would otherwise surface as
+ * a district's failed save. Real, but narrower than "the key is wrong".
+ *
+ * What it deliberately does NOT prove: that this is the SAME key that encrypted
+ * credentials already in the database. The round trip uses the current key for
+ * both halves, so any well-formed key passes. Only real stored ciphertext could
+ * answer that, and this function touches none. After a key ROTATION a green
+ * result therefore means "new credentials can be saved", never "existing ones
+ * can still be read" — those come apart exactly when a rotation went wrong,
+ * which is when someone is most likely to be looking at this.
+ *
+ * Touches nothing: no database, no district, no stored credential. The probe is
+ * a constant, and the round trip lives entirely in memory. That is what makes
+ * this safe to expose behind the /internal staff gate — it reports on the
+ * environment, never on anyone's data.
+ *
+ * Safe to return to a caller: `problem` is either a message from getKey() (which
+ * names the variable, never its value) or one of the fixed strings below. No
+ * upstream error text is interpolated — the same rule the sibling /internal
+ * routes state as "Fixed message, not `message`: the detail belongs in the log
+ * line". The detail is not lost; the route logs the thrown error.
+ */
+export function sisCredentialEncryptionSelfTest(): SisKeySelfTest {
+  const problem = sisCredentialEncryptionProblem();
+  if (problem) return { ok: false, problem };
+
+  try {
+    if (decryptSisCredential(encryptSisCredential(SELF_TEST_PROBE)) !== SELF_TEST_PROBE) {
+      // GCM's auth tag makes a silent mismatch impossible, so this is a
+      // belt-and-braces guard against an assumption breaking — not a state any
+      // key can produce. Kept because returning a false `ok` is the one outcome
+      // this function must never have.
+      return { ok: false, problem: SELF_TEST_ROUND_TRIP_FAILED };
+    }
+    return { ok: true };
+  } catch {
+    // Deliberately does NOT carry `err.message`. Reaching here means the cipher
+    // itself is unusable, so the message is a Node/OpenSSL string this module
+    // does not author and cannot audit — and it is returned to a browser and
+    // written to logs. The route logs the real error alongside this.
+    return { ok: false, problem: SELF_TEST_ROUND_TRIP_FAILED };
+  }
+}
+
 /** Returns `v1.<iv>.<ciphertext>.<tag>`, each part base64. */
 export function encryptSisCredential(plaintext: string): string {
   const iv = randomBytes(12);

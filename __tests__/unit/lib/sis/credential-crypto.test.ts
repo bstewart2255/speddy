@@ -4,6 +4,8 @@ import {
   decryptSisCredential,
   encryptSisCredential,
   sisCredentialEncryptionProblem,
+  sisCredentialEncryptionSelfTest,
+  SELF_TEST_ROUND_TRIP_FAILED,
 } from '@/lib/sis/credential-crypto';
 
 describe('SIS credential crypto', () => {
@@ -203,6 +205,76 @@ describe('SIS credential crypto', () => {
       expect(absent).toMatch(/is not set/);
       expect(malformed).toMatch(/must be canonical base64/);
       expect(absent).not.toEqual(malformed);
+    });
+
+    it('self-test passes with a working key', () => {
+      expect(sisCredentialEncryptionSelfTest()).toEqual({ ok: true });
+    });
+
+    it('self-test reports WHY, distinguishing absent from malformed', () => {
+      // Same reasoning as the problem-string test above: the two faults have
+      // opposite fixes, so a self-test that collapsed them would leave an
+      // operator exactly where the "not configured" message left us.
+      delete process.env.SIS_CREDENTIAL_ENCRYPTION_KEY;
+      const absent = sisCredentialEncryptionSelfTest();
+
+      process.env.SIS_CREDENTIAL_ENCRYPTION_KEY = `${key}\n`;
+      const malformed = sisCredentialEncryptionSelfTest();
+
+      expect(absent).toEqual({ ok: false, problem: expect.stringMatching(/is not set/) });
+      expect(malformed).toEqual({
+        ok: false,
+        problem: expect.stringMatching(/must be canonical base64/),
+      });
+    });
+
+    it('self-test passes on a DIFFERENT key — it cannot detect a wrong-but-valid key', () => {
+      // Pinning the limit, not a feature. The self-test encrypts and decrypts
+      // with whatever key is currently set, so any well-formed key round-trips.
+      // It answers "can this deployment encrypt", NOT "is this the key that
+      // encrypted the credentials already stored" — nothing without real
+      // ciphertext can answer that, and a green check must not be read as if it
+      // had. Asserted so the day someone widens the claim, this fails and sends
+      // them here.
+      const ciphertext = encryptSisCredential('spe417-stored-under-the-old-key');
+      process.env.SIS_CREDENTIAL_ENCRYPTION_KEY = randomBytes(32).toString('base64');
+
+      expect(sisCredentialEncryptionSelfTest()).toEqual({ ok: true });
+      // Matched on the AUTH-TAG failure specifically, not a bare .toThrow():
+      // decryptSisCredential also throws for a missing key, a non-canonical
+      // key, and a malformed envelope. Any of those would keep this green while
+      // proving nothing about key isolation — the false-negative shape CLAUDE.md
+      // records from SPE-332.
+      expect(() => decryptSisCredential(ciphertext)).toThrow(
+        /unable to authenticate|bad decrypt/i,
+      );
+    });
+
+    it('reports a cipher that cannot run WITHOUT blaming the key, and without upstream text', () => {
+      // The one problem string this function ORIGINATES rather than forwards —
+      // and previously the only path that interpolated a message this module
+      // does not author into a value served to a browser. Reached by making the
+      // cipher itself fail on a key that is already known good.
+      //
+      // Landmine for anyone editing this: under Jest's VM realm a thrown crypto
+      // Error can fail `err instanceof Error`, so a test aimed at the message
+      // branch can silently land on a fallback instead. The assertion below is
+      // on the fixed string, which both paths now produce — that is the point.
+      const crypto = jest.requireActual('crypto') as typeof import('crypto');
+      const spy = jest
+        .spyOn(crypto, 'createCipheriv')
+        .mockImplementation(() => {
+          throw new Error('error:0308010C:digital envelope routines::unsupported');
+        });
+      try {
+        const result = sisCredentialEncryptionSelfTest();
+        expect(result).toEqual({ ok: false, problem: SELF_TEST_ROUND_TRIP_FAILED });
+        expect(result.ok === false && result.problem).not.toMatch(/digital envelope|0308010C/);
+        // Names the deployment, not the key — the key passed getKey() to get here.
+        expect(SELF_TEST_ROUND_TRIP_FAILED).toMatch(/could not run the cipher/i);
+      } finally {
+        spy.mockRestore();
+      }
     });
 
     it('never puts the key value in the reported problem', () => {

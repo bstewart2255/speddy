@@ -1,7 +1,12 @@
 /**
  * Server-side access to `district_sis_connections` (SPE-395).
  *
- * This is the ONLY place credentials are encrypted, decrypted, or written. The
+ * This is the ONLY place a real credential is encrypted, decrypted, or written.
+ * (One other caller touches the cipher: `sisCredentialEncryptionSelfTest()`,
+ * behind the /internal staff gate, which round-trips a fixed non-secret probe
+ * in memory — it reads and writes no credential and no row, so the audit-trail
+ * guarantee below is unaffected. Stated here because "grep the encrypt/decrypt
+ * call sites" is how a rotation runbook or a security review starts.) The
  * tech-portal flows (SPE-396 Aeries, SPE-397 OneRoster) and the exploration
  * tooling (SPE-398) call in here rather than touching the table, so there is a
  * single audited path and a single place holding the key.

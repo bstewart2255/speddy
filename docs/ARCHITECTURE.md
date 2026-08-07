@@ -261,9 +261,22 @@ Verified against a real signed-in session, not assumed:
   remaining hole — DNS rebinding between the check and the connection — is
   documented in that file and tracked as **SPE-406**.
 
+- **Staff can ask whether the key is live** (SPE-420). `GET
+  /api/internal/sis-key-health`, behind the `is_speddy_admin` gate, round-trips
+  a fixed non-secret probe in memory and reports *working* / *key missing* /
+  *key malformed*, naming the build that answered. It exists because the failure
+  is invisible elsewhere: the Vercel dashboard shows a variable is set but not
+  whether the **running build** has it, and a value damaged by a trailing
+  newline on paste looks identical to a missing one — which is what refused a
+  live district's certificate in SPE-417. It reads no district data and writes
+  nothing. Note the limit: it round-trips the *current* key, so after a
+  **rotation** a green result means new credentials can be saved, never that
+  ones already stored are still readable.
+
 **Source of truth:** `lib/sis/credential-crypto.ts`; `lib/sis/connections.ts`;
 `lib/sis/ssrf-guard.ts`; `lib/sis/aeries-setup.ts`;
-`app/api/tech/sis/aeries/`; `app/api/internal/sis-connections/`.
+`app/api/tech/sis/aeries/`; `app/api/internal/sis-connections/`;
+`app/api/internal/sis-key-health/`.
 
 ### `profiles` self-updates: policy + trigger (SPE-332)
 
