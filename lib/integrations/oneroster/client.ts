@@ -70,6 +70,17 @@ export class OneRosterApiError extends Error {
     readonly status: number,
     readonly path: string,
     readonly phase: OneRosterPhase,
+    /**
+     * The endpoint answered, but its response could not be used as a token —
+     * not JSON, or JSON with no `access_token`.
+     *
+     * Distinct from `status`, deliberately. Both of those are raised with a
+     * synthetic 502, and a real upstream 502 from a gateway is a completely
+     * different situation: the token endpoint EXISTS and is broken, so
+     * resolution must stop rather than post the district's consumer secret to
+     * another candidate. Without this flag the two are indistinguishable.
+     */
+    readonly unusableTokenResponse = false,
   ) {
     super(message);
     this.name = 'OneRosterApiError';
@@ -147,6 +158,7 @@ export class OneRosterClient {
         502,
         'token endpoint',
         'token',
+        true,
       );
     }
 
@@ -158,6 +170,7 @@ export class OneRosterClient {
         502,
         'token endpoint',
         'token',
+        true,
       );
     }
 

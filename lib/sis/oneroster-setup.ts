@@ -283,22 +283,27 @@ const NOT_REACHED = 'Not checked — the previous step has to work first.';
  *   404 — nothing served at that path.
  *   405 — something is there, but it does not take a POST. Not a token
  *         endpoint; a vendor's data path answers exactly like this.
- *   502 — OUR OWN marker, raised by `fetchToken` when the response is not JSON
- *         or carries no `access_token`. A login page or a data collection
+ *   `unusableTokenResponse` — the endpoint answered 2xx but the body was not
+ *         JSON, or carried no `access_token`. A login page or a data collection
  *         returning 200 is a wrong endpoint wearing a success status.
  *
- * What must NOT continue: 400, 401 and 403. Those are the endpoint telling us
- * the CREDENTIALS are wrong, which is the district's real problem — walking on
- * would replace it with "check your address" and hide it. Nor 5xx other than
- * our own marker: their token endpoint exists and is broken, and trying two
- * more paths would neither find it nor say anything useful.
+ * That last one is a FLAG, not a status, and the distinction is the point.
+ * `fetchToken` raises those two cases with a synthetic 502, and `dial` raises a
+ * real upstream 502 with the same number — but they mean opposite things. A
+ * gateway 502 says the token endpoint exists and is broken; posting the
+ * district's consumer secret to two more paths would neither find it nor say
+ * anything useful. Keying on the status alone conflated them (caught in review).
  *
- * Every extra candidate also posts the consumer secret somewhere new, so the
- * set stays as small as the failure modes allow.
+ * What must NOT continue: 400, 401 and 403 — the endpoint telling us the
+ * CREDENTIALS are wrong, which is the district's real problem, and walking on
+ * would replace it with "check your address" and hide it. Nor any real 5xx.
+ *
+ * Every extra candidate posts the consumer secret somewhere new, so the set
+ * stays as small as the failure modes allow.
  */
 function isNotATokenEndpoint(err: unknown): boolean {
   if (!(err instanceof OneRosterApiError) || err.phase !== 'token') return false;
-  return err.status === 404 || err.status === 405 || err.status === 502;
+  return err.unusableTokenResponse || err.status === 404 || err.status === 405;
 }
 
 /**

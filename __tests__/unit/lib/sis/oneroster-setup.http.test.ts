@@ -215,6 +215,23 @@ describe('resolving the token endpoint when the stored one is wrong (SPE-426)', 
     expect(report.usedTokenUrl).toBe(`${origin}/admin/oauth/token`);
   });
 
+  it('STOPS at a real upstream 502 — their endpoint exists and is broken', async () => {
+    // Raised by CodeRabbit, and it was right. `fetchToken` marks "answered but
+    // the body is not a token" with a SYNTHETIC 502, and `dial` raises a real
+    // gateway 502 with the same number. Keyed on the status alone the two were
+    // indistinguishable, so a district whose token endpoint was briefly behind
+    // a broken gateway had their consumer secret posted to two more paths for
+    // nothing. Now separated by a flag on the error, not by the number.
+    handler = () => ({ status: 502, body: { message: 'bad gateway' } });
+
+    const report = await runWith(`${origin}/admin/token`);
+
+    expect(report.ok).toBe(false);
+    // Exactly one. The whole point of the finding.
+    expect(seen.filter((r) => r.url.includes('token'))).toHaveLength(1);
+    expect(report.usedTokenUrl).toBeUndefined();
+  });
+
   it('names the endpoint it CHOSE when sign-in fails, not just that sign-in failed', async () => {
     // The district left the field blank, so we picked an address for them. Being
     // told the Consumer ID and Secret are wrong, with no mention that an address
