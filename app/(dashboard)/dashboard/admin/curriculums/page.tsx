@@ -6,6 +6,7 @@ import { Button } from '@/app/components/ui/button';
 import { useToast } from '@/app/contexts/toast-context';
 import {
   CURRICULUM_CATALOG,
+  isKnownCurriculumId,
   type CurriculumCatalogEntry,
 } from '@/lib/curriculums/catalog';
 
@@ -34,7 +35,13 @@ export default function DistrictCurriculumsPage() {
           throw new Error('Failed to load curriculums');
         }
         const data = await response.json();
-        const ids = new Set<string>(data.curriculumIds ?? []);
+        // Drop ids the catalog no longer knows: they'd render no checkbox yet
+        // be resubmitted on save, which the API rejects — bricking the page
+        // until the row was hand-purged. Filtered here, the next save simply
+        // prunes them.
+        const ids = new Set<string>(
+          (data.curriculumIds ?? []).filter((id: string) => isKnownCurriculumId(id))
+        );
         setSelected(ids);
         setSavedSelection(new Set(ids));
       } catch (err) {

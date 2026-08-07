@@ -11,8 +11,10 @@ const answerPromptSchema = z
     sessionId: z.string().min(1),
     answer: z.enum(['yes', 'no']),
     previousLesson: z.number().int().min(1),
-    curriculumType: z.string().min(1),
-    curriculumLevel: z.string().min(1),
+    // Max lengths mirror the curriculum_tracking columns (see the sibling
+    // save route) — the typed level input (SPE-422) makes these free text.
+    curriculumType: z.string().trim().min(1).max(100),
+    curriculumLevel: z.string().trim().min(1).max(50),
   })
   .passthrough();
 

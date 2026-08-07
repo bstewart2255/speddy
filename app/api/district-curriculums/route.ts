@@ -27,7 +27,11 @@ export const GET = withRoute({}, async ({ userId }) => {
   }
 
   if (!profile?.district_id) {
-    return NextResponse.json({ curriculumIds: [] });
+    // Legacy accounts predating the profiles.district_id backfill (the
+    // "migration-in-progress" in ARCHITECTURE §3) can't be scoped to a
+    // district list. Say so explicitly — the modal shows an account-linkage
+    // note instead of wrongly claiming the district hasn't configured one.
+    return NextResponse.json({ curriculumIds: [], districtLinked: false });
   }
 
   const { data, error } = await supabase
@@ -46,5 +50,6 @@ export const GET = withRoute({}, async ({ userId }) => {
 
   return NextResponse.json({
     curriculumIds: ((data ?? []) as { curriculum_id: string }[]).map((r) => r.curriculum_id),
+    districtLinked: true,
   });
 });

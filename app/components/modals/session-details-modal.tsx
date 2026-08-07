@@ -889,6 +889,12 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
   // district admin curated. Fetched once per mount — the list changes rarely.
   const [districtCurriculums, setDistrictCurriculums] = useState<CurriculumCatalogEntry[]>([]);
   const [districtCurriculumsLoaded, setDistrictCurriculumsLoaded] = useState(false);
+  // False for legacy accounts with no profiles.district_id — a different
+  // empty-state message than "your district hasn't configured a list".
+  const [districtLinked, setDistrictLinked] = useState(true);
+  // A failed fetch must not masquerade as "nothing configured" — the picker
+  // shows a neutral couldn't-load line instead of asserting a config state.
+  const [districtCurriculumsError, setDistrictCurriculumsError] = useState(false);
 
   useEffect(() => {
     if (!isOpen || districtCurriculumsLoaded) return;
@@ -900,12 +906,12 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
         if (!response.ok) throw new Error('Failed to fetch district curriculums');
         const data = await response.json();
         setDistrictCurriculums(resolveCurriculumIds(data.curriculumIds ?? []));
+        setDistrictLinked(data.districtLinked !== false);
         setDistrictCurriculumsLoaded(true);
       } catch (error) {
         if (error instanceof Error && error.name === 'AbortError') return;
-        // Treat as "nothing configured": existing tracking still displays via
-        // the legacy option below; only picking something new is unavailable.
         console.error('Error fetching district curriculums:', error);
+        setDistrictCurriculumsError(true);
         setDistrictCurriculumsLoaded(true);
       }
     })();
@@ -914,21 +920,31 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
   }, [isOpen, districtCurriculumsLoaded]);
 
   /**
-   * Dropdown options: the district list, plus whatever this session already
-   * tracks (pre-SPE-422 rows, or a curriculum the district later disabled) so
-   * historical tracking stays visible and editable.
+   * Dropdown options: the district list, plus anything this session tracks or
+   * tracked when the modal opened (pre-SPE-422 rows, or a curriculum the
+   * district later disabled). Persisted values stay PINNED for the whole
+   * modal open — not just while selected — so switching away from a legacy
+   * curriculum to look at another option doesn't strand the user with no way
+   * to switch back.
    */
   const curriculumOptions = useMemo(() => {
     const options = districtCurriculums.map((entry) => ({
       value: entry.trackingValue,
       label: entry.name,
     }));
-    if (curriculumType && !options.some((option) => option.value === curriculumType)) {
-      const legacy = getCurriculumByTrackingValue(curriculumType);
-      options.unshift({ value: curriculumType, label: legacy?.name ?? curriculumType });
+    const pinned = [
+      curriculumTracking?.curriculum_type,
+      initialCurriculum?.curriculum_type,
+      curriculumType,
+    ];
+    for (const value of pinned) {
+      if (value && !options.some((option) => option.value === value)) {
+        const known = getCurriculumByTrackingValue(value);
+        options.unshift({ value, label: known?.name ?? value });
+      }
     }
     return options;
-  }, [districtCurriculums, curriculumType]);
+  }, [districtCurriculums, curriculumType, curriculumTracking, initialCurriculum]);
 
   /** Catalog entry for the selected curriculum — drives the level control. */
   const selectedCurriculumEntry = curriculumType
@@ -942,8 +958,10 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
    * @throws Error if API call fails
    */
   const saveCurriculumTracking = async (persistedSessionId?: string): Promise<boolean> => {
-    // Only save if all curriculum fields are provided
-    if (!curriculumType || !curriculumLevel || !currentLesson) {
+    // Only save if all curriculum fields are provided. Trimmed: the typed
+    // level input (unstructured programs) could otherwise save "  " as a level.
+    const trimmedLevel = curriculumLevel.trim();
+    if (!curriculumType || !trimmedLevel || !currentLesson) {
       return false;
     }
 
@@ -962,7 +980,7 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
       const payload = {
         sessionId,
         curriculumType,
-        curriculumLevel,
+        curriculumLevel: trimmedLevel,
         currentLesson
       };
 
@@ -1745,11 +1763,15 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
             <div className="bg-gray-50 rounded-lg p-3">
               <h3 className="text-sm font-medium text-gray-700 mb-2">Curriculum</h3>
               {districtCurriculumsLoaded && curriculumOptions.length === 0 ? (
-                // Nothing configured and nothing tracked: the picker stays
-                // empty until a district admin curates the list (SPE-422).
+                // Empty picker (SPE-422): say WHY it's empty, honestly —
+                // a fetch failure and an account with no district linkage are
+                // not "your district hasn't configured this".
                 <p className="text-sm text-gray-500">
-                  Your district hasn&rsquo;t set up its curriculum list yet. District
-                  administrators manage it from their admin dashboard.
+                  {districtCurriculumsError
+                    ? 'Couldn’t load your district’s curriculum list. Close and reopen this session to retry.'
+                    : !districtLinked
+                      ? 'Your account isn’t linked to a district yet, so curriculum options can’t be shown. Contact support to get it linked.'
+                      : 'Your district hasn’t set up its curriculum list yet. District administrators manage it from their admin dashboard.'}
                 </p>
               ) : (
                 <div className="space-y-2">
@@ -1787,12 +1809,14 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
                         </select>
                       ) : (
                         // No built-in level structure for this program — the
-                        // provider types it (e.g. "Step 4").
+                        // provider types it (e.g. "Step 4"). maxLength matches
+                        // curriculum_tracking.curriculum_level VARCHAR(50).
                         <input
                           type="text"
                           value={curriculumLevel}
                           onChange={(e) => setCurriculumLevel(e.target.value)}
                           placeholder="Level (e.g., Step 4)"
+                          maxLength={50}
                           className="flex-1 p-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
                       )}
