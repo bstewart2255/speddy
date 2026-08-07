@@ -221,6 +221,39 @@ describe('resolving the API root when the stored one is wrong (SPE-426)', () => 
     expect(area(report, 'schools').status).toBe('denied');
   });
 
+  it('finds an API under an /admin application root (SPE-429)', async () => {
+    // JSUSD's real shape, learned the hard way: /aeries/api/v5 AND /api/v5 both
+    // 404'd on their host. Their OneRoster address is https://<host>/admin, so
+    // /admin is their Aeries application root and the API sits under it — the
+    // one place they ever told us, because the Aeries field discards the path.
+    handler = (path) => {
+      if (path.startsWith('/admin/api/v5')) {
+        if (path.includes('/programs')) return { status: 200, body: [{ ProgramCode: '144' }] };
+        if (path.includes('/teachers')) return { status: 200, body: [{ TeacherNumber: 7 }] };
+        if (path.includes('/students')) return { status: 200, body: [{ StudentID: 1 }] };
+        return { status: 200, body: [{ SchoolCode: 1, Name: 'Sim High' }] };
+      }
+      return { status: 404, body: { message: 'not found' } };
+    };
+
+    const report = await run();
+
+    expect(report.ok).toBe(true);
+    expect(report.usedBaseUrl).toBe(baseUrl.replace('/aeries/api/v5', '/admin/api/v5'));
+  });
+
+  it('still makes exactly ONE request for a district already on the default root', async () => {
+    // The cost of every added candidate falls only on districts whose stored
+    // address is wrong. A district that already works must not start paying for
+    // our search — that would be a regression for everyone to fix one district.
+    handler = allGranted;
+
+    await run();
+
+    const schoolsProbes = seenCertHeaders.length;
+    expect(schoolsProbes).toBe(4); // schools + students + teachers + programs
+  });
+
   it('reports a 404 honestly when no known layout answers', async () => {
     // Nothing to correct: say the address did not work rather than inventing a
     // root, and leave the stored value alone.
