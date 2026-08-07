@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
 import bcrypt from 'bcryptjs';
+import { updateExistingSessionsForStudent } from '@/lib/scheduling/session-requirement-sync';
 import {
   toWeeklyMinutes,
   calculateSessions,
@@ -206,7 +207,7 @@ export async function POST(request: NextRequest) {
     // Get user's existing students for matching
     const { data: dbStudents, error: studentsError } = await supabase
       .from('students')
-      .select('id, initials, grade_level, school_site, school_id')
+      .select('id, initials, grade_level, school_site, school_id, sessions_per_week, minutes_per_session')
       .eq('provider_id', userId);
 
     if (studentsError) {
@@ -343,13 +344,45 @@ export async function POST(request: NextRequest) {
             const split = serviceToSplit(primaryService, weeklyBucket);
 
             if (split && fitsScheduleConstraints(split)) {
-              await supabase
+              const oldRequirements = {
+                sessions_per_week: studentRow?.sessions_per_week ?? null,
+                minutes_per_session: studentRow?.minutes_per_session ?? null,
+              };
+              const { error: serviceUpdateError } = await supabase
                 .from('students')
                 .update({
                   sessions_per_week: split.sessionsPerWeek,
                   minutes_per_session: split.minutesPerSession,
                 })
                 .eq('id', matchedStudent.id);
+
+              if (serviceUpdateError) {
+                results.errors.push(
+                  `${seisStudent.name}: failed to update service minutes: ${serviceUpdateError.message}`
+                );
+              } else if (
+                oldRequirements.sessions_per_week !== split.sessionsPerWeek ||
+                oldRequirements.minutes_per_session !== split.minutesPerSession
+              ) {
+                // Keep schedule_sessions templates in step with the new
+                // requirement — the same sync the edit and bulk-confirm paths
+                // run. Without it a re-imported legacy 19×30 student keeps 19
+                // phantom unscheduled rows next to the new 1×N bucket.
+                const syncResult = await updateExistingSessionsForStudent(
+                  matchedStudent.id,
+                  oldRequirements,
+                  {
+                    sessions_per_week: split.sessionsPerWeek,
+                    minutes_per_session: split.minutesPerSession,
+                  },
+                  supabase
+                );
+                if (!syncResult.success) {
+                  results.errors.push(
+                    `${seisStudent.name}: service minutes saved, but session cleanup failed: ${syncResult.error}`
+                  );
+                }
+              }
             } else if (split) {
               results.errors.push(
                 `${seisStudent.name}: service amount (${split.sessionsPerWeek} × ${split.minutesPerSession} min) is outside what Speddy can store — set the weekly minutes manually`

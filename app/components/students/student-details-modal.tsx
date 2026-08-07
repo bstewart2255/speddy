@@ -212,6 +212,23 @@ export function StudentDetailsModal({
     // The set is the source of truth for what gets written; an unloaded [] is
     // not an instruction to unassign everyone.
     if (!linksLoaded) return;
+    // The weekly-minutes input's min/max don't gate a button-driven save, and
+    // a cleared field is stored as 0 — validate before any write so a bad
+    // value can't half-save the modal and close it (the students-page caller
+    // swallows the DB rejection).
+    if (
+      isSecondary &&
+      providerRole?.trim() === 'resource' &&
+      !readOnly &&
+      studentInfo.sessions_per_week === 1 &&
+      (studentInfo.minutes_per_session < 1 ||
+        studentInfo.minutes_per_session > MAX_MINUTES_PER_SESSION)
+    ) {
+      alert(
+        `Service Minutes per Week must be between 1 and ${MAX_MINUTES_PER_SESSION.toLocaleString()}.`
+      );
+      return;
+    }
     setLoading(true);
     try {
       // Save student details
