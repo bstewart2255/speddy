@@ -32,6 +32,25 @@ export function resolveClassListTeacher(teacher: TeacherInfo, dbTeachers: DbTeac
   };
 }
 
+/**
+ * Fetch the level-relevant fields of the school an import is scoped to, for
+ * the secondary-resource weekly-bucket decision (shouldUseWeeklyBucket). A
+ * missing/empty id or an unknown school resolves to null — callers treat that
+ * as elementary, the app-wide default.
+ */
+export async function loadSchoolLevel(
+  supabase: ImportSupabaseClient,
+  schoolId: string | null | undefined
+): Promise<{ school_type: string | null; grade_span_low: string | null } | null> {
+  if (!schoolId) return null;
+  const { data } = await supabase
+    .from('schools')
+    .select('school_type, grade_span_low')
+    .eq('id', schoolId)
+    .maybeSingle();
+  return data ?? null;
+}
+
 /** Fetch the user's profile (multi-school flag + role). */
 export async function loadProfile(
   supabase: ImportSupabaseClient,

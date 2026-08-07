@@ -108,10 +108,13 @@ export interface ParsedDeliveries {
 /** Parse a Deliveries CSV. Throws on parse failure. */
 export async function parseDeliveriesFile(
   file: File,
-  opts: { providerRole?: string }
+  opts: { providerRole?: string; weeklyBucket?: boolean }
 ): Promise<ParsedDeliveries> {
   const buffer = Buffer.from(await file.arrayBuffer());
-  const result = await parseDeliveriesCSV(buffer, { providerRole: opts.providerRole });
+  const result = await parseDeliveriesCSV(buffer, {
+    providerRole: opts.providerRole,
+    weeklyBucket: opts.weeklyBucket,
+  });
   return {
     deliveries: result.deliveries,
     read: result.metadata.uniqueStudents,

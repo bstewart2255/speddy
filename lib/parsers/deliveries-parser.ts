@@ -7,6 +7,16 @@
 import { parse } from 'csv-parse/sync';
 import { normalizeStudentName } from './name-utils';
 import { isServiceCodeForRole, getServiceTypeCode } from './service-type-mapping';
+import {
+  toWeeklyMinutes,
+  calculateSessions,
+  fitsScheduleConstraints,
+} from '@/lib/services/weekly-minutes';
+
+// Conversion arithmetic lives in lib/services/weekly-minutes (shared with the
+// extension import and the students-page forms). Re-exported so existing
+// consumers and tests keep one import site for parser + math.
+export { calculateSessions, toWeeklyMinutes };
 
 export interface DeliveryRecord {
   normalizedName: string;
@@ -35,30 +45,12 @@ export interface DeliveriesParseResult {
 
 export interface DeliveriesParseOptions {
   providerRole?: string; // Provider's role for service type filtering (resource, speech, ot, counseling)
-}
-
-/**
- * Convert a total-minutes amount for a given period into weekly minutes.
- *
- * `monthly` deliberately returns 0: a monthly total has no unambiguous weekly
- * conversion (a school month is ~4 weeks by some rules, ~4.33 by others), and
- * these drive compliance-relevant service minutes — so the caller flags the row
- * for manual review instead of guessing a confident-looking wrong number
- * (SPE-246, Option C). The recognized `period` is still returned so the caller
- * can distinguish a Monthly row from truly unparseable junk.
- */
-function toWeeklyMinutes(totalMinutes: number, period: string): number {
-  switch (period) {
-    case 'daily':
-      return totalMinutes * 5; // 5 school days
-    case 'yearly':
-      return Math.ceil(totalMinutes / 36); // ~36 instructional weeks in school year
-    case 'weekly':
-      return totalMinutes;
-    case 'monthly':
-    default:
-      return 0; // needs review — don't guess a compliance number
-  }
+  /**
+   * Secondary-resource mode: keep each student's weekly minutes as one bucket
+   * (1 × total) instead of chopping into 30-minute sessions. The caller
+   * decides via shouldUseWeeklyBucket(role, school).
+   */
+  weeklyBucket?: boolean;
 }
 
 // "minutes" is spelled several ways in real SEIS exports: "min", "mins",
@@ -83,9 +75,9 @@ const FREQ_SIMPLE = new RegExp(`^(\\d+)\\s*${MIN_UNIT}\\s*${PERIOD}$`, 'i');
  * - "45 min Weekly" / "30 minutes Weekly" (spelled-out unit)
  * - "60 min x 2 Times = 120 min Weekly"
  * - "60 min x 2 Times = 120 min Daily" (multiply by 5 for weekly)
- * - "300 min Yearly" (divide by ~36 instructional weeks)
+ * - "300 min Yearly" (divide by 36 instructional weeks)
+ * - "120 min Monthly" (divide by 4 weeks per school month)
  * - "2 x 30 min Weekly" (reversed "count x length" order)
- * - "120 min Monthly" (recognized but returned as weekly 0 → flagged for review)
  */
 export function parseFrequency(frequency: string): { weeklyMinutes: number; rawMinutes: number; period: string } {
   if (!frequency || typeof frequency !== 'string') {
@@ -122,35 +114,6 @@ export function parseFrequency(frequency: string): { weeklyMinutes: number; rawM
 
   // If we can't parse, return 0
   return { weeklyMinutes: 0, rawMinutes: 0, period: '' };
-}
-
-/**
- * Calculate sessions per week and minutes per session from weekly minutes
- * Rules:
- * - If 45 min weekly and only 1 session, keep as 45 min session
- * - Otherwise, break into 30 min sessions
- */
-export function calculateSessions(weeklyMinutes: number): { sessionsPerWeek: number; minutesPerSession: number } {
-  if (weeklyMinutes <= 0) {
-    return { sessionsPerWeek: 0, minutesPerSession: 0 };
-  }
-
-  // Special case: exactly 45 minutes per week = 1 session of 45 min
-  if (weeklyMinutes === 45) {
-    return { sessionsPerWeek: 1, minutesPerSession: 45 };
-  }
-
-  // Sub-30-minute mandates are a single session of exactly that length. The
-  // default `ceil(n / 30)` path would round these up to a full 30-minute
-  // session (e.g. a 15 min/week mandate scheduled as 30 min/week), booking
-  // more service time than the IEP requires.
-  if (weeklyMinutes < 30) {
-    return { sessionsPerWeek: 1, minutesPerSession: weeklyMinutes };
-  }
-
-  // Default: 30-minute sessions
-  const sessionsPerWeek = Math.ceil(weeklyMinutes / 30);
-  return { sessionsPerWeek, minutesPerSession: 30 };
 }
 
 /**
@@ -264,36 +227,44 @@ export async function parseDeliveriesCSV(
         continue;
       }
 
-      // Parse frequency
-      const { weeklyMinutes, period, rawMinutes } = parseFrequency(sessionsFrequency);
+      // Parse frequency. Every recognized period (weekly/daily/monthly/yearly)
+      // converts to weekly minutes; only genuinely unparseable cells flag for
+      // review — a confident-looking wrong number is worse than an explicit
+      // "please verify", but a conventional conversion is neither (SPE-246
+      // Option C, narrowed 2026-08: Monthly now converts at 4 weeks/month).
+      const { weeklyMinutes } = parseFrequency(sessionsFrequency);
       if (weeklyMinutes === 0) {
-        // Option C (SPE-246): parse the unambiguous formats, but flag the ones
-        // whose weekly conversion we'd have to guess. A confident-looking wrong
-        // service-minutes number is worse than an explicit "please verify".
-        if (period === 'monthly') {
+        // Unrecognized frequency. If the row still carries a yearly total,
+        // surface that number for review instead of importing zero silently.
+        const yearlyTotal =
+          fields.length > 8 ? parseInt(fields[8].replace(/[^\d]/g, ''), 10) : NaN;
+        if (Number.isFinite(yearlyTotal) && yearlyTotal > 0) {
           warnings.push({
             row: rowNum,
-            message: `Monthly service (${rawMinutes} min/month) needs review — enter the weekly minutes manually: ${sessionsFrequency}`,
+            message: `Frequency "${sessionsFrequency}" not recognized; yearly total is ${yearlyTotal} min — needs review, enter the weekly minutes manually.`,
           });
         } else {
-          // Unrecognized frequency. If the row still carries a yearly total,
-          // surface that number for review instead of importing zero silently.
-          const yearlyTotal =
-            fields.length > 8 ? parseInt(fields[8].replace(/[^\d]/g, ''), 10) : NaN;
-          if (Number.isFinite(yearlyTotal) && yearlyTotal > 0) {
-            warnings.push({
-              row: rowNum,
-              message: `Frequency "${sessionsFrequency}" not recognized; yearly total is ${yearlyTotal} min — needs review, enter the weekly minutes manually.`,
-            });
-          } else {
-            warnings.push({ row: rowNum, message: `Could not parse frequency: ${sessionsFrequency}` });
-          }
+          warnings.push({ row: rowNum, message: `Could not parse frequency: ${sessionsFrequency}` });
         }
         continue;
       }
 
-      // Calculate sessions
-      const { sessionsPerWeek, minutesPerSession } = calculateSessions(weeklyMinutes);
+      // Calculate sessions — one weekly bucket for secondary resource, the
+      // 30-minute chop otherwise.
+      const { sessionsPerWeek, minutesPerSession } = calculateSessions(weeklyMinutes, {
+        weeklyBucket: options.weeklyBucket,
+      });
+
+      // A split past the storage bounds (garbage totals, or an elementary chop
+      // past 20 sessions) would be refused by the database mid-import — flag
+      // the row for review instead.
+      if (!fitsScheduleConstraints({ sessionsPerWeek, minutesPerSession })) {
+        warnings.push({
+          row: rowNum,
+          message: `Service amount (${weeklyMinutes} min/week) is outside what Speddy can store — needs review, enter the weekly minutes manually: ${sessionsFrequency}`,
+        });
+        continue;
+      }
 
       // Normalize student name for matching
       const normalizedName = normalizeStudentName(name);

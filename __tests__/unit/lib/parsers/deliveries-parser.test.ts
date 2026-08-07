@@ -70,11 +70,12 @@ describe('parseFrequency', () => {
     expect(parseFrequency('3 x 20 minutes Weekly')).toEqual({ weeklyMinutes: 60, rawMinutes: 60, period: 'weekly' });
   });
 
-  it('recognizes Monthly but returns weekly 0 so the caller flags it for review', () => {
-    // Option C (SPE-246): don't guess the monthly->weekly conversion. The period
-    // is reported as 'monthly' (with the raw amount) so the caller can tell a
-    // Monthly row apart from unparseable junk and surface a review warning.
-    expect(parseFrequency('120 min Monthly')).toEqual({ weeklyMinutes: 0, rawMinutes: 120, period: 'monthly' });
+  it('converts Monthly at 4 weeks per school month, rounding up', () => {
+    // Narrows SPE-246 Option C (2026-08): ÷4 is internally consistent with the
+    // 36-week school year (9 school months × 4 weeks), so Monthly converts
+    // like every other recognized period instead of flagging for review.
+    expect(parseFrequency('120 min Monthly')).toEqual({ weeklyMinutes: 30, rawMinutes: 120, period: 'monthly' });
+    expect(parseFrequency('90 min Monthly')).toEqual({ weeklyMinutes: 23, rawMinutes: 90, period: 'monthly' });
   });
 
   it('returns zero with an empty period for junk input', () => {
@@ -221,7 +222,7 @@ describe('parseDeliveriesCSV — frequency review flags (SPE-246)', () => {
     expect(result.warnings).toHaveLength(0);
   });
 
-  it('flags a Monthly row for review instead of importing zero minutes', async () => {
+  it('imports a Monthly row at 4 weeks per school month', async () => {
     const csv = Buffer.from(
       [
         header,
@@ -231,12 +232,41 @@ describe('parseDeliveriesCSV — frequency review flags (SPE-246)', () => {
     );
     const result = await parseDeliveriesCSV(csv, { providerRole: 'resource' });
 
-    // Not scheduled (no guessed number)...
-    expect(result.deliveries.has('ito_ken')).toBe(false);
-    // ...but explicitly surfaced for the user to set manually.
+    const record = result.deliveries.get('ito_ken');
+    expect(record?.weeklyMinutes).toBe(30);
+    expect(record?.sessionsPerWeek).toBe(1);
+    expect(record?.minutesPerSession).toBe(30);
+    expect(result.warnings).toHaveLength(0);
+  });
+
+  it('flags a row whose converted amount is outside storage bounds', async () => {
+    // 700 min/week chops to 24 thirty-minute sessions — past the 20-session
+    // cap the database enforces. The row must flag for review, not crash the
+    // confirm write mid-import.
+    const csv = Buffer.from(
+      [
+        header,
+        '"Ochoa, Omar",2000011,330 - Specialized Academic Instruction,Direct,08/15/2025,06/10/2026,140 min Daily,Room 11,25200,0,No',
+      ].join('\r\n'),
+      'utf-8',
+    );
+    const result = await parseDeliveriesCSV(csv, { providerRole: 'resource' });
+
+    expect(result.deliveries.has('ochoa_omar')).toBe(false);
     expect(result.warnings).toHaveLength(1);
-    expect(result.warnings[0].message).toMatch(/monthly/i);
-    expect(result.warnings[0].message).toMatch(/review/i);
+    expect(result.warnings[0].message).toMatch(/outside what Speddy can store/i);
+
+    // The same amount fits fine as a secondary-resource weekly bucket.
+    const bucketResult = await parseDeliveriesCSV(csv, {
+      providerRole: 'resource',
+      weeklyBucket: true,
+    });
+    expect(bucketResult.deliveries.get('ochoa_omar')).toMatchObject({
+      weeklyMinutes: 700,
+      sessionsPerWeek: 1,
+      minutesPerSession: 700,
+    });
+    expect(bucketResult.warnings).toHaveLength(0);
   });
 
   it('flags an unrecognized frequency that has a yearly total for review', async () => {

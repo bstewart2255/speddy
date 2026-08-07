@@ -7,12 +7,55 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
 import bcrypt from 'bcryptjs';
+import { updateExistingSessionsForStudent } from '@/lib/scheduling/session-requirement-sync';
+import {
+  toWeeklyMinutes,
+  calculateSessions,
+  fitsScheduleConstraints,
+  shouldUseWeeklyBucket,
+  SCHOOL_DAYS_PER_WEEK,
+  type SessionSplit,
+} from '@/lib/services/weekly-minutes';
 
 export const runtime = 'nodejs';
 
 // Verify an API key against its bcrypt hash
 async function verifyApiKey(key: string, hash: string): Promise<boolean> {
   return bcrypt.compare(key, hash);
+}
+
+/**
+ * Convert a scraped SEIS service into a sessions × minutes split. Weekly and
+ * Daily statements keep their stated session structure; Monthly and Yearly
+ * totals convert through the shared 36-week system and chop into standard
+ * sessions. Secondary-resource callers get the whole weekly amount as one
+ * bucket. Returns null when the service can't be read confidently — the
+ * caller then leaves the student's existing schedule untouched.
+ */
+function serviceToSplit(
+  service: { minutesPerSession: number; sessionsPerPeriod: number; frequency: string },
+  weeklyBucket: boolean
+): SessionSplit | null {
+  const minutes = Number(service.minutesPerSession);
+  const count = Number(service.sessionsPerPeriod);
+  if (!Number.isFinite(minutes) || minutes <= 0 || !Number.isFinite(count) || count <= 0) {
+    return null;
+  }
+
+  const period = (service.frequency || '').trim().toLowerCase();
+  const weeklyMinutes = toWeeklyMinutes(minutes * count, period);
+  if (weeklyMinutes <= 0) return null; // unrecognized frequency
+
+  if (weeklyBucket) {
+    return calculateSessions(weeklyMinutes, { weeklyBucket: true });
+  }
+  if (period === 'weekly') {
+    return { sessionsPerWeek: count, minutesPerSession: minutes };
+  }
+  if (period === 'daily') {
+    return { sessionsPerWeek: count * SCHOOL_DAYS_PER_WEEK, minutesPerSession: minutes };
+  }
+  return calculateSessions(weeklyMinutes);
 }
 
 // Types for incoming SEIS data
@@ -153,10 +196,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Provider role drives the secondary-resource weekly-bucket decision below.
+    const { data: providerProfile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', userId)
+      .single();
+    const providerRole = providerProfile?.role ?? null;
+
     // Get user's existing students for matching
     const { data: dbStudents, error: studentsError } = await supabase
       .from('students')
-      .select('id, initials, grade_level, school_site')
+      .select('id, initials, grade_level, school_site, school_id, sessions_per_week, minutes_per_session')
       .eq('provider_id', userId);
 
     if (studentsError) {
@@ -165,6 +216,24 @@ export async function POST(request: NextRequest) {
         { error: 'Failed to fetch existing students' },
         { status: 500 }
       );
+    }
+
+    // School level (elementary vs secondary) per school the caseload touches.
+    // Students without a structured school_id fall back to elementary — the
+    // app-wide default.
+    const schoolIds = [...new Set((dbStudents ?? []).map(s => s.school_id).filter(Boolean))] as string[];
+    const schoolLevelById = new Map<string, { school_type: string | null; grade_span_low: string | null }>();
+    if (schoolIds.length > 0) {
+      const { data: schoolRows } = await supabase
+        .from('schools')
+        .select('id, school_type, grade_span_low')
+        .in('id', schoolIds);
+      for (const row of schoolRows ?? []) {
+        schoolLevelById.set(row.id, {
+          school_type: row.school_type,
+          grade_span_low: row.grade_span_low,
+        });
+      }
     }
 
     // Get student details for name matching
@@ -263,15 +332,62 @@ export async function POST(request: NextRequest) {
             s => s.code === '330' || s.name.toLowerCase().includes('academic')
           ) || seisStudent.services[0];
 
-          if (primaryService && primaryService.frequency === 'Weekly') {
-            // Update the student record with service info
-            await supabase
-              .from('students')
-              .update({
-                sessions_per_week: primaryService.sessionsPerPeriod,
-                minutes_per_session: primaryService.minutesPerSession,
-              })
-              .eq('id', matchedStudent.id);
+          if (primaryService) {
+            // Convert whatever period the IEP states (Weekly/Daily/Monthly/
+            // Yearly) to a weekly schedule; secondary-resource students keep
+            // the whole amount as one weekly bucket instead of a session chop.
+            const studentRow = dbStudents?.find(s => s.id === matchedStudent.id);
+            const weeklyBucket = shouldUseWeeklyBucket(
+              providerRole,
+              studentRow?.school_id ? schoolLevelById.get(studentRow.school_id) ?? null : null
+            );
+            const split = serviceToSplit(primaryService, weeklyBucket);
+
+            if (split && fitsScheduleConstraints(split)) {
+              const oldRequirements = {
+                sessions_per_week: studentRow?.sessions_per_week ?? null,
+                minutes_per_session: studentRow?.minutes_per_session ?? null,
+              };
+              const { error: serviceUpdateError } = await supabase
+                .from('students')
+                .update({
+                  sessions_per_week: split.sessionsPerWeek,
+                  minutes_per_session: split.minutesPerSession,
+                })
+                .eq('id', matchedStudent.id);
+
+              if (serviceUpdateError) {
+                results.errors.push(
+                  `${seisStudent.name}: failed to update service minutes: ${serviceUpdateError.message}`
+                );
+              } else if (
+                oldRequirements.sessions_per_week !== split.sessionsPerWeek ||
+                oldRequirements.minutes_per_session !== split.minutesPerSession
+              ) {
+                // Keep schedule_sessions templates in step with the new
+                // requirement — the same sync the edit and bulk-confirm paths
+                // run. Without it a re-imported legacy 19×30 student keeps 19
+                // phantom unscheduled rows next to the new 1×N bucket.
+                const syncResult = await updateExistingSessionsForStudent(
+                  matchedStudent.id,
+                  oldRequirements,
+                  {
+                    sessions_per_week: split.sessionsPerWeek,
+                    minutes_per_session: split.minutesPerSession,
+                  },
+                  supabase
+                );
+                if (!syncResult.success) {
+                  results.errors.push(
+                    `${seisStudent.name}: service minutes saved, but session cleanup failed: ${syncResult.error}`
+                  );
+                }
+              }
+            } else if (split) {
+              results.errors.push(
+                `${seisStudent.name}: service amount (${split.sessionsPerWeek} × ${split.minutesPerSession} min) is outside what Speddy can store — set the weekly minutes manually`
+              );
+            }
           }
         }
 
