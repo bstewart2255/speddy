@@ -27,6 +27,7 @@ jest.mock('@/lib/sis/ssrf-guard', () => ({
 }));
 
 import { runOneRosterConnectionTest } from '@/lib/sis/oneroster-setup';
+import { logger } from '@/lib/logger';
 
 const CLIENT_ID = 'speddy-consumer-id';
 const CLIENT_SECRET = 'sup3r-s3cret-consumer-key';
@@ -415,6 +416,106 @@ describe('the OneRoster exchange over real HTTP', () => {
     handler = allGood;
     await run();
     expect(seen.filter((r) => r.url.includes('/token'))).toHaveLength(1);
+  });
+
+  it('blames OURSELVES, not the district, when the endpoint rejects the SCOPE', async () => {
+    // The distinction the error code exists for (SPE-430). `invalid_scope` means
+    // the endpoint understood the request and objected to how WE built it — the
+    // credentials were never evaluated. A 400 alone cannot tell that apart from
+    // a real credential failure, and we were about to ask a live district to
+    // re-enter credentials that may have been correct all along.
+    handler = (req) =>
+      req.url.includes('/token')
+        ? { status: 400, body: { error: 'invalid_scope', error_description: 'no such scope' } }
+        : allGood(req);
+
+    const report = await run();
+
+    expect(report.ok).toBe(false);
+    expect(stepOf(report, 'token').message).toMatch(/not your credentials/i);
+    expect(stepOf(report, 'token').message).toMatch(/ours to fix/i);
+    // And emphatically NOT the "re-copy your Consumer ID" advice.
+    expect(stepOf(report, 'token').message).not.toMatch(/Consumer ID/i);
+  });
+
+  it('still blames the credentials on invalid_client', async () => {
+    // The other half. A change that reported everything as our fault would pass
+    // the test above while hiding every genuine credential problem.
+    handler = (req) =>
+      req.url.includes('/token')
+        ? { status: 400, body: { error: 'invalid_client' } }
+        : allGood(req);
+
+    const report = await run();
+
+    expect(stepOf(report, 'token').message).toMatch(/Consumer ID and Consumer Secret/i);
+  });
+
+  it('IGNORES an error code outside the RFC allow-list — checked at the LOG', async () => {
+    // The safety property, asserted where the value actually travels. A token
+    // endpoint's error body can echo the submitted credentials, so only the six
+    // RFC 6749 codes are ever read out of it.
+    //
+    // The first version of this test asserted over the returned report and was
+    // VACUOUS: an unrecognised code never reaches the report either way,
+    // because `explain` only branches on two known values. Deleting the
+    // allow-list left it green. The log line is the real path — it is where the
+    // code goes, and it is written to Vercel's logs.
+    const spy = jest.spyOn(logger, 'error').mockImplementation(() => {});
+    try {
+      handler = (req) =>
+        req.url.includes('/token')
+          ? { status: 400, body: { error: `leaked-${CLIENT_SECRET}` } }
+          : allGood(req);
+
+      const report = await run();
+
+      const logged = JSON.stringify(spy.mock.calls);
+      expect(logged).toContain('OneRoster API request failed');
+      expect(logged).not.toContain(CLIENT_SECRET);
+      expect(logged).not.toContain('leaked-');
+      // And the district still gets the ordinary credential advice.
+      expect(stepOf(report, 'token').message).toMatch(/Consumer ID and Consumer Secret/i);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('DOES log a recognised code, so the allow-list is not just "log nothing"', async () => {
+    // The other half of the property above. A readOAuthErrorCode that always
+    // returned undefined would pass every safety assertion while making the
+    // whole feature useless — this is the diagnostic we built it for.
+    const spy = jest.spyOn(logger, 'error').mockImplementation(() => {});
+    try {
+      handler = (req) =>
+        req.url.includes('/token')
+          ? { status: 400, body: { error: 'invalid_scope' } }
+          : allGood(req);
+
+      await run();
+
+      expect(JSON.stringify(spy.mock.calls)).toContain('invalid_scope');
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('never surfaces the error_description, only the code', async () => {
+    // `error_description` is free text straight from the district's server. It
+    // is the obvious next thing to reach for and the one that could carry
+    // anything, so it is asserted absent rather than merely not used.
+    handler = (req) =>
+      req.url.includes('/token')
+        ? {
+            status: 400,
+            body: { error: 'invalid_client', error_description: `secret=${CLIENT_SECRET}` },
+          }
+        : allGood(req);
+
+    const report = await run();
+
+    expect(JSON.stringify(report)).not.toContain(CLIENT_SECRET);
+    expect(JSON.stringify(report)).not.toContain('error_description');
   });
 
   it('a 401 at the token step blames the credential MIX-UP, not the network', async () => {

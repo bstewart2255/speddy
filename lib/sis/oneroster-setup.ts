@@ -188,6 +188,19 @@ export interface OneRosterTestReport {
 function explain(err: unknown, step: string): { status: 'denied' | 'error'; message: string } {
   if (err instanceof OneRosterApiError) {
     if (err.phase === 'token') {
+      // OUR fault, not theirs. `invalid_scope` and `unsupported_grant_type`
+      // mean the endpoint understood the request and objected to how WE built
+      // it — the credentials were never even evaluated. Telling a district to
+      // re-enter correct credentials because of our own malformed request is
+      // the exact misdiagnosis this whole area keeps producing (SPE-419), and
+      // a 400 alone cannot tell it apart from a real credential failure.
+      if (err.oauthError === 'invalid_scope' || err.oauthError === 'unsupported_grant_type') {
+        return {
+          status: 'error',
+          message:
+            'Your OneRoster refused the way Speddy asked for access, not your credentials. Nothing for you to change — this is ours to fix, and we can see it.',
+        };
+      }
       if (err.status === 401 || err.status === 400) {
         return {
           status: 'error',
