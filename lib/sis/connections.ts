@@ -353,16 +353,44 @@ export async function recordTestResult(params: {
   result: SisTestResult;
 }): Promise<void> {
   const supabase = createServiceClient();
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('district_sis_connections')
     .update({
       status: params.ok ? 'connected' : 'error',
       last_tested_at: new Date().toISOString(),
       last_test_result: params.result,
     })
-    .eq('id', params.connectionId);
+    .eq('id', params.connectionId)
+    // Conditional on the DPA still being on file, and enforced HERE rather than
+    // by reading first: a connection test can take minutes, and a revocation
+    // that lands while one is in flight must win. Without this, the late write
+    // would set `connected` and a fresh `last_tested_at` on a row whose DPA had
+    // just been revoked and whose credentials had just been deleted — a record
+    // claiming a working integration for a district that has neither. A
+    // read-then-write check would not close it; only the condition travelling
+    // with the UPDATE does.
+    .not('dpa_cleared_at', 'is', null)
+    // `.select().maybeSingle()` for the same reason disconnect() does it: an
+    // UPDATE matching no row reports no error, so without this every miss —
+    // revoked, or a connection id that does not exist at all — would still
+    // write an `sis_connection_tested` audit record for something that was
+    // never recorded.
+    .select('id')
+    .maybeSingle();
 
   if (error) throw new Error(`Failed to record test result: ${error.message}`);
+
+  if (!data) {
+    // Nothing matched, and the two reasons are completely different. One extra
+    // read, on a path that is already rare, to avoid reporting them as the same
+    // thing.
+    const existing = await getConnection(params.connectionId);
+    if (!existing) throw new Error(SIS_CONNECTION_NOT_FOUND);
+    // The DPA was revoked while the test ran. Not an error: the revocation is
+    // the newer truth and it is meant to win. Nothing is recorded and nothing
+    // is audited, because no test result was stored.
+    return;
+  }
 
   await logServerAuditEvent({
     user_id: params.actorId,

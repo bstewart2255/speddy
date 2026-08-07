@@ -527,7 +527,12 @@ export default function SisConnectionsPanel({ districtId }: { districtId: string
                     <button
                       type="button"
                       onClick={() => setDpa(connection, !dpaCleared)}
-                      disabled={busy}
+                      // Also disabled while THIS connection is being tested.
+                      // The server refuses to record a result over a revocation
+                      // either way, but a test can run for minutes, and letting
+                      // someone revoke mid-run means watching a spinner resolve
+                      // into a report about a connection they just cut.
+                      disabled={busy || testing === connection.id}
                       className={`px-4 py-2 text-sm rounded-md transition-colors disabled:opacity-50 ${
                         dpaCleared
                           ? 'bg-slate-700 hover:bg-slate-600 text-slate-200'
