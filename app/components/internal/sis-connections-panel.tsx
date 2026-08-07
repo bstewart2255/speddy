@@ -20,6 +20,17 @@ type KeyHealthResponse = SisKeySelfTest & {
 };
 
 /**
+ * Validates the whole discriminated union, not just `ok`. A body of
+ * `{ ok: false }` with no reason would otherwise pass and render the strongest
+ * claim on the page above an empty line — a verdict with nothing behind it.
+ */
+function isKeyHealthResponse(value: unknown): value is KeyHealthResponse {
+  if (typeof value !== 'object' || value === null) return false;
+  const body = value as { ok?: unknown; problem?: unknown };
+  return body.ok === true || (body.ok === false && typeof body.problem === 'string');
+}
+
+/**
  * Speddy-staff control for a district's SIS connections (SPE-395).
  *
  * Its one job is the DPA switch. Credentials are never entered, shown, or
@@ -119,14 +130,11 @@ export default function SisConnectionsPanel({ districtId }: { districtId: string
       // The body is the whole answer, so it is validated rather than asserted:
       // an off-shape 200 would otherwise render the red verdict with a blank
       // reason, which reads as a diagnosis and is not one.
-      if (
-        typeof json !== 'object' || json === null ||
-        typeof (json as { ok?: unknown }).ok !== 'boolean'
-      ) {
+      if (!isKeyHealthResponse(json)) {
         setError('The encryption check returned an unreadable response. The key was not tested.');
         return;
       }
-      setKeyHealth(json as KeyHealthResponse);
+      setKeyHealth(json);
     } catch (err) {
       const timedOut = err instanceof DOMException && err.name === 'AbortError';
       setError(
