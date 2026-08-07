@@ -90,6 +90,9 @@ interface TableData {
   students?: { data: unknown; error: unknown };
   student_details?: { data: unknown; error: unknown };
   teachers?: { data: unknown; error: unknown };
+  /** School-level lookup for the secondary-resource weekly bucket; the default
+   *  (null) reads as "no school row" → elementary, pinning the pre-bucket shape. */
+  schools?: { data: unknown; error: unknown };
 }
 
 /**
@@ -106,6 +109,7 @@ function makeSupabase(tables: TableData) {
     b.eq = () => b;
     b.in = () => b;
     b.single = async () => resp;
+    b.maybeSingle = async () => resp;
     b.then = (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) =>
       Promise.resolve(resp).then(resolve, reject);
     return b;

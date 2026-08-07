@@ -28,11 +28,13 @@ import {
 import type { IepDatesRecord } from '@/lib/parsers/iep-dates-parser';
 import {
   loadProfile,
+  loadSchoolLevel,
   loadExistingStudents,
   loadStudentDetails,
   loadJoinedStudents,
   fetchTeachers,
 } from '@/lib/import/enrich';
+import { shouldUseWeeklyBucket } from '@/lib/services/weekly-minutes';
 import {
   buildStudentPreviews,
   buildUpdatePreviews,
@@ -82,6 +84,13 @@ export async function runUpdateOnlyPreview(ctx: PipelineContext): Promise<NextRe
   const profile = await loadProfile(supabase, userId);
   const providerRole = profile?.role || 'resource';
 
+  // Secondary-resource caseloads keep weekly minutes as one bucket instead of
+  // a 30-minute chop (John Swett pilot: "19x/week" phantom sessions).
+  const weeklyBucket = shouldUseWeeklyBucket(
+    providerRole,
+    await loadSchoolLevel(supabase, currentSchoolId)
+  );
+
   const { data: dbStudents, error: dbError } = await loadJoinedStudents(supabase, userId);
   if (dbError) {
     log.error('Failed to fetch students', dbError instanceof Error ? dbError : null, { userId });
@@ -111,7 +120,7 @@ export async function runUpdateOnlyPreview(ctx: PipelineContext): Promise<NextRe
   let deliveries: Awaited<ReturnType<typeof parseDeliveriesFile>> | null = null;
   if (deliveriesFile) {
     try {
-      deliveries = await parseDeliveriesFile(deliveriesFile, { providerRole });
+      deliveries = await parseDeliveriesFile(deliveriesFile, { providerRole, weeklyBucket });
     } catch (error) {
       log.error('Failed to parse deliveries file', error instanceof Error ? error : null, { userId });
       perf.end({ success: false });
@@ -208,6 +217,13 @@ export async function runStudentsPreview(ctx: PipelineContext, file: File): Prom
 
   const profile = await loadProfile(supabase, userId);
 
+  // Secondary-resource caseloads keep weekly minutes as one bucket instead of
+  // a 30-minute chop (John Swett pilot: "19x/week" phantom sessions).
+  const weeklyBucket = shouldUseWeeklyBucket(
+    profile?.role,
+    await loadSchoolLevel(supabase, currentSchoolId)
+  );
+
   const dbPerf = measurePerformanceWithAlerts('fetch_students', 'database');
   const { data: dbStudents, error: dbError } = await loadExistingStudents(supabase, userId);
   dbPerf.end({ success: !dbError });
@@ -286,7 +302,10 @@ export async function runStudentsPreview(ctx: PipelineContext, file: File): Prom
   const deliveriesWarnings: Note[] = [];
   if (deliveriesFile) {
     try {
-      deliveries = await parseDeliveriesFile(deliveriesFile, { providerRole: profile?.role ?? undefined });
+      deliveries = await parseDeliveriesFile(deliveriesFile, {
+        providerRole: profile?.role ?? undefined,
+        weeklyBucket,
+      });
       deliveriesWarnings.push(...deliveries.warnings);
     } catch (error) {
       log.error('Failed to parse deliveries file', error instanceof Error ? error : null, { userId });

@@ -883,6 +883,11 @@ export const DECLARED_UNSEEDED_TABLES: string[] = [
   // district_id — SWEPT_TABLES only keys on user/student/school identities,
   // and this table is district-scoped.
   'district_sis_connections',
+  // District curriculum picks (district-admin surface): created live by a
+  // feature under test; ON DELETE CASCADE from districts cleans any sim rows
+  // when teardown removes the sim district. (Table exists in prod without a
+  // checked-in migration.)
+  'district_curriculums',
   // Personal / auxiliary:
   'documents', 'curriculum_tracking', 'calendar_connections', 'calendar_events',
   'api_keys', 'teams', 'team_members', 'material_constraints',

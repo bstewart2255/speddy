@@ -21,15 +21,15 @@ exports[`POST /api/import-students — preview characterization (SPE-230) all-th
         {
           "fileKey": "deliveriesFile",
           "fileName": "deliveries.csv",
-          "filtered": 5,
+          "filtered": 6,
           "matched": 2,
           "notes": [
             {
-              "message": "Monthly service (120 min/month) needs review — enter the weekly minutes manually: 120 min Monthly",
-              "row": 10,
+              "message": "Service amount (720 min/week) is outside what Speddy can store — needs review, enter the weekly minutes manually: 120 min x 6 Times = 720 min Weekly",
+              "row": 11,
             },
           ],
-          "read": 7,
+          "read": 8,
         },
         {
           "fileKey": "classListFile",
@@ -47,8 +47,8 @@ exports[`POST /api/import-students — preview characterization (SPE-230) all-th
           "row": 8,
         },
         {
-          "message": "Monthly service (120 min/month) needs review — enter the weekly minutes manually: 120 min Monthly",
-          "row": 10,
+          "message": "Service amount (720 min/week) is outside what Speddy can store — needs review, enter the weekly minutes manually: 120 min x 6 Times = 720 min Weekly",
+          "row": 11,
           "source": "deliveries",
         },
       ],
@@ -214,6 +214,10 @@ exports[`POST /api/import-students — preview characterization (SPE-230) all-th
           "source": "deliveries",
         },
         {
+          "name": "Ito, Ken",
+          "source": "deliveries",
+        },
+        {
           "name": "Ng-Patel, Nadia",
           "source": "deliveries",
         },
@@ -345,14 +349,14 @@ exports[`POST /api/import-students — preview characterization (SPE-230) delive
           "fileKey": "deliveriesFile",
           "fileName": "deliveries.csv",
           "filtered": 5,
-          "matched": 2,
+          "matched": 3,
           "notes": [
             {
-              "message": "Monthly service (120 min/month) needs review — enter the weekly minutes manually: 120 min Monthly",
-              "row": 10,
+              "message": "Service amount (720 min/week) is outside what Speddy can store — needs review, enter the weekly minutes manually: 120 min x 6 Times = 720 min Weekly",
+              "row": 11,
             },
           ],
-          "read": 7,
+          "read": 8,
         },
         {
           "fileKey": "classListFile",
@@ -367,8 +371,8 @@ exports[`POST /api/import-students — preview characterization (SPE-230) delive
       "parseErrors": [],
       "parseWarnings": [
         {
-          "message": "Monthly service (120 min/month) needs review — enter the weekly minutes manually: 120 min Monthly",
-          "row": 10,
+          "message": "Service amount (720 min/week) is outside what Speddy can store — needs review, enter the weekly minutes manually: 120 min x 6 Times = 720 min Weekly",
+          "row": 11,
           "source": "deliveries",
         },
       ],
@@ -396,6 +400,20 @@ exports[`POST /api/import-students — preview characterization (SPE-230) delive
         },
         {
           "action": "update",
+          "firstName": "Ken",
+          "gradeLevel": "3",
+          "initials": "IK",
+          "lastName": "Ito",
+          "schedule": {
+            "frequency": "120 min Monthly",
+            "minutesPerSession": 30,
+            "sessionsPerWeek": 1,
+            "weeklyMinutes": 30,
+          },
+          "studentId": "stu-ito",
+        },
+        {
+          "action": "update",
           "districtStudentId": "100007",
           "firstName": "Vera",
           "gradeLevel": "4",
@@ -419,9 +437,9 @@ exports[`POST /api/import-students — preview characterization (SPE-230) delive
       "summary": {
         "inserts": 0,
         "skips": 0,
-        "total": 2,
-        "updates": 2,
-        "withSchedule": 2,
+        "total": 3,
+        "updates": 3,
+        "withSchedule": 3,
         "withTeacher": 2,
       },
       "unmatchedStudents": [
@@ -483,22 +501,22 @@ exports[`POST /api/import-students — preview characterization (SPE-230) delive
           "fileKey": "deliveriesFile",
           "fileName": "deliveries.csv",
           "filtered": 5,
-          "matched": 2,
+          "matched": 3,
           "notes": [
             {
-              "message": "Monthly service (120 min/month) needs review — enter the weekly minutes manually: 120 min Monthly",
-              "row": 10,
+              "message": "Service amount (720 min/week) is outside what Speddy can store — needs review, enter the weekly minutes manually: 120 min x 6 Times = 720 min Weekly",
+              "row": 11,
             },
           ],
-          "read": 7,
+          "read": 8,
         },
       ],
       "mode": "update",
       "parseErrors": [],
       "parseWarnings": [
         {
-          "message": "Monthly service (120 min/month) needs review — enter the weekly minutes manually: 120 min Monthly",
-          "row": 10,
+          "message": "Service amount (720 min/week) is outside what Speddy can store — needs review, enter the weekly minutes manually: 120 min x 6 Times = 720 min Weekly",
+          "row": 11,
           "source": "deliveries",
         },
       ],
@@ -519,6 +537,20 @@ exports[`POST /api/import-students — preview characterization (SPE-230) delive
         },
         {
           "action": "update",
+          "firstName": "Ken",
+          "gradeLevel": "3",
+          "initials": "IK",
+          "lastName": "Ito",
+          "schedule": {
+            "frequency": "120 min Monthly",
+            "minutesPerSession": 30,
+            "sessionsPerWeek": 1,
+            "weeklyMinutes": 30,
+          },
+          "studentId": "stu-ito",
+        },
+        {
+          "action": "update",
           "firstName": "Vera",
           "gradeLevel": "4",
           "initials": "VV",
@@ -535,9 +567,9 @@ exports[`POST /api/import-students — preview characterization (SPE-230) delive
       "summary": {
         "inserts": 0,
         "skips": 0,
-        "total": 2,
-        "updates": 2,
-        "withSchedule": 2,
+        "total": 3,
+        "updates": 3,
+        "withSchedule": 3,
         "withTeacher": 0,
       },
       "unmatchedStudents": [
@@ -1159,15 +1191,15 @@ exports[`POST /api/import-students — preview characterization (SPE-230) studen
         {
           "fileKey": "deliveriesFile",
           "fileName": "deliveries.csv",
-          "filtered": 5,
+          "filtered": 6,
           "matched": 2,
           "notes": [
             {
-              "message": "Monthly service (120 min/month) needs review — enter the weekly minutes manually: 120 min Monthly",
-              "row": 10,
+              "message": "Service amount (720 min/week) is outside what Speddy can store — needs review, enter the weekly minutes manually: 120 min x 6 Times = 720 min Weekly",
+              "row": 11,
             },
           ],
-          "read": 7,
+          "read": 8,
         },
       ],
       "parseErrors": [],
@@ -1177,8 +1209,8 @@ exports[`POST /api/import-students — preview characterization (SPE-230) studen
           "row": 8,
         },
         {
-          "message": "Monthly service (120 min/month) needs review — enter the weekly minutes manually: 120 min Monthly",
-          "row": 10,
+          "message": "Service amount (720 min/week) is outside what Speddy can store — needs review, enter the weekly minutes manually: 120 min x 6 Times = 720 min Weekly",
+          "row": 11,
           "source": "deliveries",
         },
       ],
@@ -1315,6 +1347,10 @@ exports[`POST /api/import-students — preview characterization (SPE-230) studen
         },
         {
           "name": "Hunt, Hana",
+          "source": "deliveries",
+        },
+        {
+          "name": "Ito, Ken",
           "source": "deliveries",
         },
         {

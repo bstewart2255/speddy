@@ -1307,9 +1307,24 @@ K-8 and K-12 combined sites are treated as **elementary** by product decision
 |---|---|---|
 | Nav (`SECONDARY_HIDDEN_HREFS`) | Hides Schedule, Bell Schedules, Special Activities, Plan, teacher Special Activities | `app/components/navigation/navbar.tsx` |
 | Dashboard | Hides the provider Weekly-view + Attendance widget | `app/(dashboard)/dashboard/page.tsx` |
-| Students list | Hides the "unscheduled sessions" alert | `app/(dashboard)/dashboard/students/page.tsx` |
-| Student modal | Hides the Attendance tab + Sessions/Minutes fields | `app/components/students/student-details-modal.tsx` |
+| Students list | Hides the "unscheduled sessions" alert; for a **resource** provider, service minutes display/edit as a weekly total ("570 min/week") instead of sessions × minutes | `app/(dashboard)/dashboard/students/page.tsx` |
+| Student modal | Hides the Attendance tab; Sessions/Minutes fields hidden — except a **resource** provider gets a single "Service Minutes per Week" field | `app/components/students/student-details-modal.tsx` |
 | Teacher student view | "Resource Specialist" → "Case Manager"; accommodations surfaced first | `app/(dashboard)/dashboard/teacher/my-students/[studentId]/page.tsx` |
+
+**Secondary-resource weekly bucket (2026-08, John Swett pilot).** Secondary
+resource service is embedded in class periods, not pull-out sessions, so for a
+`resource` provider at a secondary school service minutes are stored as ONE
+weekly bucket — `sessions_per_week = 1`, `minutes_per_session` = the full
+weekly amount (the `check_minutes_per_session` cap was widened 120 → 1800 for
+this) — never chopped into 30-minute sessions. The decision point is
+`shouldUseWeeklyBucket(role, school)` in `lib/services/weekly-minutes.ts`,
+which also owns the one conversion table for IEP-stated periods
+(daily ×5, monthly ÷4, yearly ÷36, round up — 36-week school year). Applied by
+the Deliveries import (`lib/parsers/deliveries-parser.ts` via
+`lib/import/pipeline.ts`), the extension import
+(`app/api/extension/import/route.ts`), and the students-page forms. Other
+roles (speech/OT/counseling) keep discrete sessions everywhere; elementary
+resource keeps the 30-minute chop.
 
 **Unchanged across both:** students/caseload, AI lessons/worksheets/exit tickets
 (grade-driven, not school-type-driven), IEP goals/accommodations, sign-up.
@@ -1336,7 +1351,9 @@ of school (Master Schedule stays), and Internal sets the `school_type` /
 **Source of truth:** `lib/school-helpers.ts` (`isSecondarySchool`,
 `classifyByType`, `parseGradeLevel`); `app/components/providers/school-context.tsx`
 (`useSchool().isSecondary`); `app/components/navigation/navbar.tsx`;
-`schools.school_type` / `grade_span_low`.
+`schools.school_type` / `grade_span_low`; `lib/services/weekly-minutes.ts`
+(`shouldUseWeeklyBucket`, conversion table);
+`supabase/migrations/20260807_widen_minutes_per_session_weekly_bucket.sql`.
 
 ---
 

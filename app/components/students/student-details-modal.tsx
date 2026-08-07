@@ -26,6 +26,8 @@ import { SharedStudentBadge } from './shared-student-badge';
 import { getIepDateWarning } from '@/lib/utils/iep-date-utils';
 import { useSchool } from '../providers/school-context';
 import { TeamChatButton } from '../chat/team-chat-button';
+import { IepMinutesConverter } from './iep-minutes-converter';
+import { MAX_MINUTES_PER_SESSION } from '@/lib/services/weekly-minutes';
 
 interface StudentDetailsModalProps {
   isOpen: boolean;
@@ -41,6 +43,13 @@ interface StudentDetailsModalProps {
     school_id?: string | null;
   };
   readOnly?: boolean;
+  /**
+   * The signed-in provider's role (profiles.role). With a secondary school
+   * active, a 'resource' provider edits service minutes as one weekly bucket
+   * (service is embedded in class periods, not pull-out sessions); other
+   * roles keep the fields hidden on secondary as before.
+   */
+  providerRole?: string | null;
   onSave?: (studentId: string, details: StudentDetails) => void;
   /**
    * SPE-337: no teacher fields here. The teacher set is written directly to
@@ -60,6 +69,7 @@ export function StudentDetailsModal({
   onClose,
   student,
   readOnly = false,
+  providerRole,
   onSave,
   onUpdateStudent
 }: StudentDetailsModalProps) {
@@ -523,7 +533,52 @@ export function StudentDetailsModal({
                 </FormGroup>
               </div>
 
-              {/* Service minutes are elementary scheduling — hidden on secondary sites */}
+              {/* Service minutes: elementary schedules discrete pull-out
+                  sessions; a secondary resource caseload plans in minutes per
+                  week (service embedded in class periods), stored as one
+                  weekly bucket (1 × total). Other roles stay hidden on
+                  secondary as before. */}
+              {isSecondary && providerRole?.trim() === 'resource' && (
+                <div className="space-y-3">
+                  <FormGroup>
+                    <Label htmlFor="weekly_minutes">Service Minutes per Week</Label>
+                    <Input
+                      id="weekly_minutes"
+                      type="number"
+                      min={1}
+                      max={MAX_MINUTES_PER_SESSION}
+                      value={
+                        (studentInfo.sessions_per_week || 0) * (studentInfo.minutes_per_session || 0) || ''
+                      }
+                      onChange={(e) => {
+                        const weekly = parseInt(e.target.value, 10);
+                        setStudentInfo({
+                          ...studentInfo,
+                          sessions_per_week: 1,
+                          minutes_per_session: Number.isFinite(weekly) && weekly > 0 ? weekly : 0,
+                        });
+                      }}
+                      placeholder="e.g. 570"
+                      disabled={readOnly}
+                    />
+                    <p className="mt-1 text-xs text-gray-500">
+                      Secondary resource service is planned as a weekly total, not individual
+                      pull-out sessions.
+                    </p>
+                  </FormGroup>
+                  {!readOnly && (
+                    <IepMinutesConverter
+                      onApply={(weekly) =>
+                        setStudentInfo({
+                          ...studentInfo,
+                          sessions_per_week: 1,
+                          minutes_per_session: weekly,
+                        })
+                      }
+                    />
+                  )}
+                </div>
+              )}
               {!isSecondary && (
               <div className="grid grid-cols-2 gap-4">
                 <FormGroup>

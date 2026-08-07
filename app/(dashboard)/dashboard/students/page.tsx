@@ -24,6 +24,8 @@ import {
 import { useRouter } from 'next/navigation';
 import { StudentImportModal } from '../../../components/students/student-import-modal';
 import { StudentImportReview } from '../../../components/students/review/student-import-review';
+import { IepMinutesConverter } from '../../../components/students/iep-minutes-converter';
+import { calculateSessions, MAX_MINUTES_PER_SESSION } from '@/lib/services/weekly-minutes';
 import { adaptBulkPreview } from '@/lib/import/review-model';
 import type { BulkPreviewData } from '@/lib/types/student-import';
 
@@ -101,7 +103,10 @@ export default function StudentsPage() {
     initials: '',
     grade_level: '',
     sessions_per_week: '',
-    minutes_per_session: '30'
+    minutes_per_session: '30',
+    // Secondary-resource (weekly bucket) mode only: the whole weekly amount,
+    // saved as sessions_per_week = 1 × this many minutes.
+    weekly_minutes: ''
   });
 
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -135,6 +140,12 @@ export default function StudentsPage() {
   // Default to view-only until role is resolved to prevent privilege escalation
   const roleResolved = userRole !== null;
   const isViewOnly = !roleResolved || userRole === 'sea';
+
+  // Secondary-resource caseloads plan service as minutes per week (embedded in
+  // class periods), stored as one weekly bucket — 1 "session" × the weekly
+  // total — instead of discrete pull-out sessions. Mirrors
+  // shouldUseWeeklyBucket(); the school half comes from useSchool().
+  const weeklyBucketMode = isSecondary && userRole === 'resource';
 
   // Check if user works at multiple schools
   useEffect(() => {
@@ -278,8 +289,10 @@ export default function StudentsPage() {
         grade_level: formData.grade_level,
         teacher_id: teacherLinks[0]?.teacherId ?? null,
         teacher_name: teacherLinks[0]?.name || undefined,
-        sessions_per_week: parseInt(formData.sessions_per_week),
-        minutes_per_session: parseInt(formData.minutes_per_session),
+        sessions_per_week: weeklyBucketMode ? 1 : parseInt(formData.sessions_per_week),
+        minutes_per_session: weeklyBucketMode
+          ? parseInt(formData.weekly_minutes)
+          : parseInt(formData.minutes_per_session),
         school_site: currentSchool?.school_site || '',
         school_district: currentSchool?.school_district || '',
         school_id: currentSchool?.school_id,
@@ -315,7 +328,8 @@ export default function StudentsPage() {
         initials: '',
         grade_level: formData.grade_level,
         sessions_per_week: '',
-        minutes_per_session: '30'
+        minutes_per_session: '30',
+        weekly_minutes: ''
       });
       setTeacherLinks([]);
       setTeacherFieldKey((k) => k + 1);
@@ -353,7 +367,8 @@ export default function StudentsPage() {
       initials: '',
       grade_level: '',
       sessions_per_week: '',
-      minutes_per_session: '30'
+      minutes_per_session: '30',
+      weekly_minutes: ''
     });
   };
 
@@ -372,6 +387,17 @@ export default function StudentsPage() {
 
   const handleEdit = (student: Student) => {
     setEditingId(student.id);
+    if (weeklyBucketMode) {
+      // Edit the weekly total. Saving normalizes to the bucket shape (1 × N) —
+      // including a student imported before the bucket rule as e.g. 19 × 30,
+      // whose product is the same weekly amount.
+      const weekly = (student.sessions_per_week || 0) * (student.minutes_per_session || 0);
+      setEditFormData({
+        sessions_per_week: '1',
+        minutes_per_session: weekly ? weekly.toString() : ''
+      });
+      return;
+    }
     setEditFormData({
       sessions_per_week: student.sessions_per_week?.toString() || '',
       minutes_per_session: student.minutes_per_session?.toString() || ''
@@ -381,7 +407,7 @@ export default function StudentsPage() {
   const handleUpdate = async (studentId: string) => {
     try {
       await updateStudent(studentId, {
-        sessions_per_week: parseInt(editFormData.sessions_per_week),
+        sessions_per_week: weeklyBucketMode ? 1 : parseInt(editFormData.sessions_per_week),
         minutes_per_session: parseInt(editFormData.minutes_per_session)
       });
 
@@ -640,36 +666,84 @@ export default function StudentsPage() {
                     />
                   </div>
 
-                  <div className="md:col-span-1">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Sessions/Week*
-                    </label>
-                    <input
-                      type="number"
-                      required
-                      min="1"
-                      max="20"
-                      value={formData.sessions_per_week}
-                      onChange={(e) => setFormData({...formData, sessions_per_week: e.target.value})}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="2"
-                    />
-                  </div>
+                  {weeklyBucketMode ? (
+                    <div className="md:col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Minutes/Week*
+                      </label>
+                      <input
+                        type="number"
+                        required
+                        min="1"
+                        max={MAX_MINUTES_PER_SESSION}
+                        value={formData.weekly_minutes}
+                        onChange={(e) => setFormData({...formData, weekly_minutes: e.target.value})}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="e.g. 570"
+                      />
+                    </div>
+                  ) : (
+                    <>
+                      <div className="md:col-span-1">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Sessions/Week*
+                        </label>
+                        <input
+                          type="number"
+                          required
+                          min="1"
+                          max="20"
+                          value={formData.sessions_per_week}
+                          onChange={(e) => setFormData({...formData, sessions_per_week: e.target.value})}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          placeholder="2"
+                        />
+                      </div>
 
-                  <div className="md:col-span-1">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Min/Session*
-                    </label>
-                    <select 
-                      required
-                      value={formData.minutes_per_session}
-                      onChange={(e) => setFormData({...formData, minutes_per_session: e.target.value})}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    >
-                      <option value="30">30</option>
-                      <option value="45">45</option>
-                      <option value="60">60</option>
-                    </select>
+                      <div className="md:col-span-1">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Min/Session*
+                        </label>
+                        <select
+                          required
+                          value={formData.minutes_per_session}
+                          onChange={(e) => setFormData({...formData, minutes_per_session: e.target.value})}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        >
+                          {/* The IEP converter can suggest a non-standard length
+                              (e.g. a 23-min/week mandate); keep the exact value
+                              selectable rather than forcing a rounding. */}
+                          {formData.minutes_per_session &&
+                            !['30', '45', '60'].includes(formData.minutes_per_session) && (
+                              <option value={formData.minutes_per_session}>
+                                {formData.minutes_per_session}
+                              </option>
+                            )}
+                          <option value="30">30</option>
+                          <option value="45">45</option>
+                          <option value="60">60</option>
+                        </select>
+                      </div>
+                    </>
+                  )}
+
+                  <div className="md:col-span-6">
+                    <IepMinutesConverter
+                      onApply={(weekly) => {
+                        if (weeklyBucketMode) {
+                          setFormData((f) => ({ ...f, weekly_minutes: weekly.toString() }));
+                          return;
+                        }
+                        // Elementary: apply the standard session split as an
+                        // editable suggestion.
+                        const split = calculateSessions(weekly);
+                        setFormData((f) => ({
+                          ...f,
+                          sessions_per_week: split.sessionsPerWeek.toString(),
+                          minutes_per_session: split.minutesPerSession.toString(),
+                        }));
+                      }}
+                    />
                   </div>
 
                   <div className="md:col-span-6 flex items-center justify-end gap-3 pt-4">
@@ -703,6 +777,7 @@ export default function StudentsPage() {
               minutes_per_session: selectedStudent.minutes_per_session || 0
             }}
             readOnly={isViewOnly}
+            providerRole={userRole}
             onSave={(studentId, details) => {
             }}
             onUpdateStudent={async (studentId, updates) => {
@@ -807,6 +882,19 @@ export default function StudentsPage() {
                     </TableCell>
                     <TableCell>
                       {!isViewOnly && editingId === student.id ? (
+                        weeklyBucketMode ? (
+                          <div className="flex gap-2 items-center">
+                            <input
+                              type="number"
+                              min="1"
+                              max={MAX_MINUTES_PER_SESSION}
+                              value={editFormData.minutes_per_session}
+                              onChange={(e) => setEditFormData({...editFormData, minutes_per_session: e.target.value})}
+                              className="w-24 px-2 py-1 border border-gray-300 rounded"
+                            />
+                            <span>min/week</span>
+                          </div>
+                        ) : (
                         <div className="flex gap-2 items-center">
                           <input
                             type="number"
@@ -828,8 +916,14 @@ export default function StudentsPage() {
                           </select>
                           <span>min</span>
                         </div>
+                        )
                       ) : student.sessions_per_week && student.minutes_per_session ? (
-                        `${student.sessions_per_week}x/week, ${student.minutes_per_session} min`
+                        // Bucket mode reads as a weekly total. The product is
+                        // identical for bucket-shaped rows (1 × N) and heals the
+                        // display of legacy chopped rows (19 × 30 → 570 min/week).
+                        weeklyBucketMode
+                          ? `${(student.sessions_per_week * student.minutes_per_session).toLocaleString()} min/week`
+                          : `${student.sessions_per_week}x/week, ${student.minutes_per_session} min`
                       ) : (
                         <span className="text-gray-400 italic">Not configured</span>
                       )}
@@ -864,7 +958,9 @@ export default function StudentsPage() {
                             </>
                           ) : (
                             <>
-                              <LongHoverTooltip content="Edit this student's service minutes — sessions per week and minutes per session.">
+                              <LongHoverTooltip content={weeklyBucketMode
+                                ? "Edit this student's total service minutes per week."
+                                : "Edit this student's service minutes — sessions per week and minutes per session."}>
                                 <Button
                                   variant="secondary"
                                   size="sm"
@@ -897,7 +993,9 @@ export default function StudentsPage() {
                       Total Caseload:
                     </td>
                     <td className="px-4 py-3 text-gray-900">
-                      {totals.totalSessions} sessions/week, {totals.totalMinutes.toLocaleString()} min/week
+                      {weeklyBucketMode
+                        ? `${totals.totalMinutes.toLocaleString()} min/week`
+                        : `${totals.totalSessions} sessions/week, ${totals.totalMinutes.toLocaleString()} min/week`}
                     </td>
                     <td className="px-4 py-3"></td>
                   </tr>
