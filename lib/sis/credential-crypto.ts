@@ -48,6 +48,9 @@ function getKey(): Buffer {
 /**
  * Why the key is unusable, or null when it is fine.
  *
+ * Callers use this to fail a credential-intake request up front, rather than
+ * throwing mid-write and leaving a half-built connection row behind.
+ *
  * Returns the reason rather than a bare boolean so an operator can tell a key
  * that was never set apart from one that was set and is malformed. Those are
  * the same symptom and completely different fixes — add the variable, versus
@@ -65,15 +68,6 @@ export function sisCredentialEncryptionProblem(): string | null {
   } catch (err) {
     return err instanceof Error ? err.message : 'SIS_CREDENTIAL_ENCRYPTION_KEY is unusable';
   }
-}
-
-/**
- * Whether the key is present and well-formed. Callers use this to fail a
- * credential-intake request up front with a clear operator error, rather than
- * throwing mid-write and leaving a half-built connection row behind.
- */
-export function sisCredentialEncryptionConfigured(): boolean {
-  return sisCredentialEncryptionProblem() === null;
 }
 
 /** Returns `v1.<iv>.<ciphertext>.<tag>`, each part base64. */
