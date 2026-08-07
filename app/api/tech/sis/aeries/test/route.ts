@@ -2,12 +2,7 @@ import { NextResponse } from 'next/server';
 import { withRoute } from '@/lib/api/with-route';
 import { resolveDistrictSisCaller } from '@/lib/api/district-sis-caller';
 import { logger } from '@/lib/logger';
-import {
-  getDecryptedCredential,
-  listConnections,
-  recordTestResult,
-  updateConnectionUrls,
-} from '@/lib/sis/connections';
+import { getDecryptedCredential, listConnections, recordTestResult } from '@/lib/sis/connections';
 import { runAeriesConnectionTest, toStoredTestResult } from '@/lib/sis/aeries-setup';
 
 const log = logger.child({ module: 'tech-sis-aeries-test' });
@@ -80,29 +75,26 @@ export const POST = withRoute(
       certificate: credential.certificate,
     });
 
-    // Persist a corrected address before the verdict. Resolution only moves off
-    // the stored value when that value produced a 404 and another layout
-    // answered, so this makes the fix once rather than re-deriving it on every
-    // test — and points a later sync at the address that actually works.
-    // Non-fatal: the report is already complete and is worth returning even if
-    // the correction cannot be written.
-    if (report.resolvedBaseUrl) {
-      try {
-        await updateConnectionUrls({
-          connectionId: connection.id,
-          actorId: userId,
-          baseUrl: report.resolvedBaseUrl,
-        });
-        log.info('Corrected the stored Aeries base URL', {
-          connectionId: connection.id,
-          from: connection.base_url,
-          to: report.resolvedBaseUrl,
-        });
-      } catch (err) {
-        log.error('Could not persist the corrected Aeries base URL', err, {
-          connectionId: connection.id,
-        });
-      }
+    // Resolution is REPORTED, never written back. The stored address stays
+    // exactly as the district entered it, and each test re-derives which layout
+    // answers — one extra request on a connection whose stored value is wrong,
+    // and none at all once it is right.
+    //
+    // The earlier cut of this persisted the resolved address, and the trap is
+    // worth recording so it does not get re-added: resolution runs on failing
+    // tests too, so a district whose correct address had a bad minute could
+    // have had it overwritten with one that never worked — and because the
+    // search only continues past a 404, the replacement answering 401 or 403
+    // would then stop resolution from ever moving off it. Logged instead, so we
+    // can see which districts are on a non-default layout without touching
+    // their configuration.
+    if (report.usedBaseUrl) {
+      log.info('Aeries answered at a different API root than the one stored', {
+        connectionId: connection.id,
+        stored: connection.base_url,
+        answered: report.usedBaseUrl,
+        ok: report.ok,
+      });
     }
 
     try {

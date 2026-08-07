@@ -327,56 +327,6 @@ export async function storeCredential(
 }
 
 /**
- * Correct a connection's addresses after resolution found which one answers.
- *
- * Exists because until now `storeCredential()` was the ONLY writer of
- * `base_url`, and it requires a credential — so a district could not fix a
- * wrong address without re-pasting their certificate. That is not a
- * hypothetical: SPE-426 left a live district with an address they could not
- * correct and a certificate they had already entered twice that day.
- *
- * Deliberately cannot touch a credential. It accepts only URLs and writes only
- * URL columns, so the one path that exists to repair a connection can never
- * become a second way to write a secret. Callers pass what actually answered.
- */
-export async function updateConnectionUrls(params: {
-  connectionId: string;
-  actorId: string;
-  baseUrl?: string;
-  tokenUrl?: string;
-}): Promise<void> {
-  const patch: Record<string, string> = {};
-  if (params.baseUrl !== undefined) patch.base_url = params.baseUrl;
-  if (params.tokenUrl !== undefined) patch.token_url = params.tokenUrl;
-  if (Object.keys(patch).length === 0) return;
-
-  const supabase = createServiceClient();
-  // `.select().maybeSingle()` for the same reason disconnect() does it: an
-  // UPDATE matching no row reports no error, so without this a correction
-  // against a bogus id would report success and write an audit record for a
-  // change that never happened.
-  const { data, error } = await supabase
-    .from('district_sis_connections')
-    .update(patch)
-    .eq('id', params.connectionId)
-    .select('id')
-    .maybeSingle();
-
-  if (error) throw new Error(`Failed to update SIS connection URLs: ${error.message}`);
-  if (!data) throw new Error(SIS_CONNECTION_NOT_FOUND);
-
-  // Audited: this silently changes where a district's credential gets sent, so
-  // it belongs in the same log as the credential events themselves.
-  await logServerAuditEvent({
-    user_id: params.actorId,
-    action: 'sis_connection_url_corrected',
-    resource_type: 'district_sis_connection',
-    resource_id: params.connectionId,
-    metadata: patch,
-  });
-}
-
-/**
  * Record the outcome of a connection test. Never stores anything sensitive.
  *
  * NOTE for SPE-396/397, which will be the first real callers: `last_test_result`

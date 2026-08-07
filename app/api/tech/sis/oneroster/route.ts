@@ -7,7 +7,6 @@ import { listConnections, storeCredential } from '@/lib/sis/connections';
 import {
   normalizeOneRosterBaseUrl,
   normalizeOneRosterTokenUrl,
-  oneRosterTokenUrlCandidates,
 } from '@/lib/sis/oneroster-setup';
 
 const log = logger.child({ module: 'tech-sis-oneroster' });
@@ -62,15 +61,14 @@ export const POST = withRoute(
     }
 
     let baseUrl: string;
-    let tokenUrl: string;
+    let tokenUrl: string | undefined;
     try {
       baseUrl = normalizeOneRosterBaseUrl(body.baseUrl);
-      // Falls back to the most common shape so the row is never left without a
-      // token URL; the connection test resolves it properly against the
-      // candidates and corrects the row with whichever answered.
-      tokenUrl = body.tokenUrl
-        ? normalizeOneRosterTokenUrl(body.tokenUrl)
-        : (oneRosterTokenUrlCandidates(baseUrl)[0] ?? `${baseUrl}/token`);
+      // Stored only when the district actually gave us one. Left blank the
+      // column stays empty and the connection test derives the endpoint on each
+      // run, which is more honest than recording our own guess in the field
+      // that is supposed to hold what they told us.
+      tokenUrl = body.tokenUrl ? normalizeOneRosterTokenUrl(body.tokenUrl) : undefined;
     } catch (err) {
       // Written for the district administrator and containing nothing
       // sensitive — passing them through is the point.

@@ -2,12 +2,7 @@ import { NextResponse } from 'next/server';
 import { withRoute } from '@/lib/api/with-route';
 import { resolveDistrictSisCaller } from '@/lib/api/district-sis-caller';
 import { logger } from '@/lib/logger';
-import {
-  getDecryptedCredential,
-  listConnections,
-  recordTestResult,
-  updateConnectionUrls,
-} from '@/lib/sis/connections';
+import { getDecryptedCredential, listConnections, recordTestResult } from '@/lib/sis/connections';
 import {
   runOneRosterConnectionTest,
   toStoredOneRosterTestResult,
@@ -82,45 +77,35 @@ export const POST = withRoute(
         { status: 409 },
       );
     }
-    if (!connection.base_url || !connection.token_url) {
-      // Both are required, and which one is missing changes nothing the district
-      // would do differently — they re-enter the pair either way.
+    if (!connection.base_url) {
       return NextResponse.json(
         {
-          error:
-            'This connection is missing its OneRoster or token address. Re-enter them and save again.',
+          error: 'This connection has no OneRoster address saved. Re-enter it and save again.',
         },
         { status: 409 },
       );
     }
+    // A missing token address is NOT an error any more. It is a field the
+    // district's own console never shows them (SPE-426), so it is optional on
+    // the form and derived from the base URL here.
 
     const report = await runOneRosterConnectionTest({
       baseUrl: connection.base_url,
-      tokenUrl: connection.token_url,
+      tokenUrl: connection.token_url ?? undefined,
       clientId: credential.clientId,
       clientSecret: credential.clientSecret,
     });
 
-    // Persist a corrected token endpoint before the verdict, for the same
-    // reason as the Aeries base URL: make the fix once instead of re-deriving
-    // it on every test. Non-fatal — the report is already complete.
-    if (report.resolvedTokenUrl) {
-      try {
-        await updateConnectionUrls({
-          connectionId: connection.id,
-          actorId: userId,
-          tokenUrl: report.resolvedTokenUrl,
-        });
-        log.info('Corrected the stored OneRoster token URL', {
-          connectionId: connection.id,
-          from: connection.token_url,
-          to: report.resolvedTokenUrl,
-        });
-      } catch (err) {
-        log.error('Could not persist the corrected OneRoster token URL', err, {
-          connectionId: connection.id,
-        });
-      }
+    // Reported, never written back — see the note in the Aeries test route for
+    // why persisting a resolved address is a trap. Logged so we can see which
+    // districts are on a non-default token endpoint without touching their row.
+    if (report.usedTokenUrl) {
+      log.info('OneRoster signed in at a different token endpoint than the one stored', {
+        connectionId: connection.id,
+        stored: connection.token_url,
+        answered: report.usedTokenUrl,
+        ok: report.ok,
+      });
     }
 
     try {

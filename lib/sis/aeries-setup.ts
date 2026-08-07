@@ -82,6 +82,9 @@ export function aeriesBaseUrlCandidates(storedBaseUrl: string): string[] {
  * correct address and then report a credential problem as an address problem —
  * the same class of misdiagnosis as SPE-417, which is what this ticket exists
  * to stop repeating.
+ *
+ * The caller adds one more case the status code cannot express: a 200 whose
+ * body is not a list. See the probe below.
  */
 function isWrongAddress(err: unknown): boolean {
   return err instanceof AeriesApiError && err.status === 404;
@@ -167,12 +170,17 @@ export interface AeriesTestReport {
   /**
    * The base URL that actually answered, when it differs from the one stored.
    *
-   * Present only when resolution had to move off the stored value. The caller
-   * persists it so the correction is made once rather than re-derived on every
-   * test — and so a later sync uses the address that works. Never contains a
-   * credential; it is a URL on the host the district already gave us.
+   * REPORTING ONLY — deliberately not written back to the connection row.
+   * An earlier cut of SPE-426 persisted this, and the review found the trap it
+   * sets: resolution runs on failures too, so a district whose correct address
+   * had a bad minute could have had it overwritten with one that never worked,
+   * and the replacement's 401/403 would then stop resolution from ever moving
+   * off it again. One extra request per test is a trivial price next to
+   * silently rewriting a working district's configuration.
+   *
+   * Never contains a credential; it is a URL on the host the district gave us.
    */
-  resolvedBaseUrl?: string;
+  usedBaseUrl?: string;
 }
 
 /**
@@ -268,14 +276,18 @@ export async function runAeriesConnectionTest(params: {
   // On the happy path this is exactly one request, as before: the stored base
   // is tried first and anything other than a 404 ends the search.
   let schoolCodes: number[] = [];
-  let client = new AeriesClient({ baseUrl: params.baseUrl, certificate: params.certificate });
-  let resolvedBaseUrl = params.baseUrl;
+  let client!: AeriesClient;
   let schools!: AeriesAreaResult;
 
+  // Compared against the TRIMMED stored value, so a trailing slash alone never
+  // reads as "we found a different address".
+  const storedBaseUrl = params.baseUrl.trim().replace(/\/+$/, '');
+  let resolvedBaseUrl = storedBaseUrl;
+
   // The stored value's own verdict, kept in case nothing answers. Without it,
-  // exhausting every candidate would report against — and correct the row to —
-  // whichever layout happened to be tried last, inventing an address that is
-  // just as wrong as the one we started with.
+  // exhausting every candidate would report against whichever layout happened
+  // to be tried last, blaming an address that is just as wrong as the one we
+  // started with.
   let exhaustedFallback: { client: AeriesClient; schools: AeriesAreaResult } | null = null;
 
   const candidates = aeriesBaseUrlCandidates(params.baseUrl);
@@ -297,10 +309,15 @@ export async function runAeriesConnectionTest(params: {
     const attempt = await probe('schools', 'Schools', async () => {
       try {
         const list = await attemptClient.getSchools({ fields: ['SchoolCode', 'Name'] });
-        // Without this, a non-array body makes `.map` throw a TypeError, which
-        // `explain` reads as a network failure — telling a district their
-        // reachable instance is unreachable.
         if (!Array.isArray(list)) {
+          // Two things at once. Without the throw, `.map` raises a TypeError
+          // that `explain` reads as a network failure — telling a district
+          // their reachable instance is unreachable. And a 200 carrying
+          // something that is not a list of schools is what a district's *web*
+          // server returns for a path its API does not serve: a login page, an
+          // error page, the landing page a redirect ended on. That is the same
+          // "wrong address" as a 404, wearing a 200, so keep looking.
+          wrongAddress = true;
           throw new AeriesApiError(
             'Aeries returned an unexpected response for Schools.',
             502,
@@ -310,7 +327,7 @@ export async function runAeriesConnectionTest(params: {
         schoolCodes = list.map((s) => s.SchoolCode).filter((c) => Number.isFinite(c));
         return list.length;
       } catch (err) {
-        wrongAddress = isWrongAddress(err);
+        wrongAddress ||= isWrongAddress(err);
         throw err;
       }
     });
@@ -330,13 +347,13 @@ export async function runAeriesConnectionTest(params: {
     break;
   }
 
-  // Nothing answered. Report the stored address's own 404 and correct nothing:
-  // "we could not find your API at any layout we know" is the truth, and
-  // rewriting the row to a guess would bury it.
+  // Nothing answered. Report the stored address's own 404: "we could not find
+  // your API at any layout we know" is the truth, and naming a guess we also
+  // failed to reach would bury it.
   if (!schools && exhaustedFallback) {
     client = exhaustedFallback.client;
     schools = exhaustedFallback.schools;
-    resolvedBaseUrl = params.baseUrl;
+    resolvedBaseUrl = storedBaseUrl;
   }
 
   // Every candidate was refused by the guard: nothing was dialled at all.
@@ -355,10 +372,20 @@ export async function runAeriesConnectionTest(params: {
     };
   }
 
-  const corrected = resolvedBaseUrl !== params.baseUrl ? resolvedBaseUrl : undefined;
+  const usedBaseUrl = resolvedBaseUrl !== storedBaseUrl ? resolvedBaseUrl : undefined;
   areas.push(
     schools.status === 'ok'
-      ? { key: 'connection', label: 'Connection', status: 'ok', message: 'Speddy can reach your Aeries instance.' }
+      ? {
+          key: 'connection',
+          label: 'Connection',
+          status: 'ok',
+          // Named when it is not the address they typed, so a district can see
+          // what worked instead of being told everything is fine about a value
+          // they cannot find anywhere in their own settings.
+          message: usedBaseUrl
+            ? `Speddy can reach your Aeries instance at ${usedBaseUrl}.`
+            : 'Speddy can reach your Aeries instance.',
+        }
       : { key: 'connection', label: 'Connection', status: schools.status, message: schools.message },
     schools,
   );
@@ -382,7 +409,7 @@ export async function runAeriesConnectionTest(params: {
     return {
       ok: false,
       areas,
-      resolvedBaseUrl: corrected,
+      usedBaseUrl,
       summary:
         schools.status === 'ok'
           ? 'Connected, but Aeries returned no schools.'
@@ -449,7 +476,7 @@ export async function runAeriesConnectionTest(params: {
     summary = `${failed.length} of ${permissionAreas.length} areas need attention in Aeries.`;
   }
 
-  return { ok: failed.length === 0, areas, summary, resolvedBaseUrl: corrected };
+  return { ok: failed.length === 0, areas, summary, usedBaseUrl };
 }
 
 /**

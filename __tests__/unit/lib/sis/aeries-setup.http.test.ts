@@ -91,24 +91,54 @@ describe('resolving the API root when the stored one is wrong (SPE-426)', () => 
     return { status: 404, body: { message: 'not found' } };
   };
 
-  it('finds the working root when the stored one 404s, and reports it for persisting', async () => {
+  it('finds the working root when the stored one 404s, and names it in the report', async () => {
     handler = hostedOnly;
     const report = await run();
 
     expect(report.ok).toBe(true);
-    // Reported so the caller can correct the stored row once, rather than
-    // re-deriving it on every test and leaving a later sync pointed at a 404.
-    expect(report.resolvedBaseUrl).toBe(baseUrl.replace('/aeries/api/v5', '/api/v5'));
+    const hosted = baseUrl.replace('/aeries/api/v5', '/api/v5');
+    expect(report.usedBaseUrl).toBe(hosted);
+    // Surfaced to the district too. Being told the connection is fine about an
+    // address they cannot find in their own settings is its own confusion.
+    expect(area(report, 'connection').message).toContain(hosted);
   });
 
-  it('does not report a correction when the stored root already works', async () => {
+  it('reports nothing extra when the stored root already works', async () => {
     handler = allGranted;
     const report = await run();
 
     expect(report.ok).toBe(true);
-    // Absent, not equal-to-stored: a caller that persisted on every pass would
-    // write an audit record for a change that did not happen.
-    expect(report.resolvedBaseUrl).toBeUndefined();
+    // Absent, not equal-to-stored — the field means "we had to look elsewhere",
+    // so a caller cannot mistake a normal pass for a discovery.
+    expect(report.usedBaseUrl).toBeUndefined();
+    expect(area(report, 'connection').message).toBe('Speddy can reach your Aeries instance.');
+  });
+
+  it('does not treat a trailing slash on the stored address as a different root', async () => {
+    // The stored value and the candidate differ only by punctuation. Reporting
+    // that as "we found another address" would put a meaningless correction in
+    // front of a district whose configuration is already right.
+    handler = allGranted;
+    const report = await runAeriesConnectionTest({ baseUrl: `${baseUrl}/`, certificate: CERT });
+
+    expect(report.ok).toBe(true);
+    expect(report.usedBaseUrl).toBeUndefined();
+  });
+
+  it('keeps looking when the stored root answers 200 with something that is not a list', async () => {
+    // The commonest wrong-path shape after a 404, and the one a status-code-only
+    // check misses: a district web server that serves its login page, or an
+    // error page, for any path its API does not handle. Indistinguishable from
+    // a working endpoint by status alone, and just as wrong.
+    handler = (path) =>
+      path.startsWith('/aeries/api/v5')
+        ? { status: 200, body: '<html>Sign in</html>' }
+        : allGranted(path);
+
+    const report = await run();
+
+    expect(report.ok).toBe(true);
+    expect(report.usedBaseUrl).toBe(baseUrl.replace('/aeries/api/v5', '/api/v5'));
   });
 
   it('STOPS at a 401 instead of walking on to another root', async () => {
@@ -125,7 +155,7 @@ describe('resolving the API root when the stored one is wrong (SPE-426)', () => 
     const report = await run();
 
     expect(report.ok).toBe(false);
-    expect(report.resolvedBaseUrl).toBeUndefined();
+    expect(report.usedBaseUrl).toBeUndefined();
     expect(area(report, 'connection').message).toMatch(/re-copy it/i);
     expect(area(report, 'connection').message).not.toMatch(/address/i);
   });
@@ -141,7 +171,7 @@ describe('resolving the API root when the stored one is wrong (SPE-426)', () => 
     const report = await run();
 
     expect(report.ok).toBe(false);
-    expect(report.resolvedBaseUrl).toBeUndefined();
+    expect(report.usedBaseUrl).toBeUndefined();
     expect(area(report, 'schools').status).toBe('denied');
   });
 
@@ -153,7 +183,7 @@ describe('resolving the API root when the stored one is wrong (SPE-426)', () => 
     const report = await run();
 
     expect(report.ok).toBe(false);
-    expect(report.resolvedBaseUrl).toBeUndefined();
+    expect(report.usedBaseUrl).toBeUndefined();
     expect(report.summary).toMatch(/could not connect/i);
   });
 });

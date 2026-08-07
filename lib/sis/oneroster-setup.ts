@@ -71,7 +71,13 @@ export function normalizeOneRosterBaseUrl(input: string): string {
  * ones vendors actually serve, and the connection test settles which is right
  * rather than asking someone to know.
  *
- * Always on the host the district already supplied — these vary the PATH only.
+ * Always UNDER the base URL the district supplied — these append to their path,
+ * they never climb out of it. An earlier cut also tried `<origin>/token`, and
+ * that is a different thing entirely: a district whose OneRoster lives at
+ * `https://sis.example.org/aeries` shares that host with other applications,
+ * and posting their consumer secret to `https://sis.example.org/token` would
+ * hand it to whatever answers at the root. Staying under the path they gave us
+ * keeps every guess inside the application they pointed us at.
  */
 export function oneRosterTokenUrlCandidates(baseUrl: string): string[] {
   const trimmed = baseUrl.trim().replace(/\/+$/, '');
@@ -81,10 +87,10 @@ export function oneRosterTokenUrlCandidates(baseUrl: string): string[] {
   };
 
   try {
-    const { origin } = new URL(trimmed);
+    // Parsed for validation only — an unparseable base has no safe guesses.
+    new URL(trimmed);
     add(`${trimmed}/token`);
     add(`${trimmed}/oauth/token`);
-    add(`${origin}/token`);
   } catch {
     // Unparseable base: the caller's guard reports it properly.
   }
@@ -159,11 +165,16 @@ export interface OneRosterTestReport {
   summary: string;
   /**
    * The token endpoint that actually answered, when it differs from the stored
-   * one. Present only when resolution had to move off the stored value; the
-   * caller persists it so the correction is made once. Never a credential —
-   * a URL on the host the district already gave us.
+   * one.
+   *
+   * REPORTING ONLY — deliberately not written back to the connection row, for
+   * the same reason as `AeriesTestReport.usedBaseUrl`: resolution runs on
+   * failures too, so persisting it would let a bad minute overwrite a working
+   * district's configuration with an endpoint that never worked.
+   *
+   * Never a credential — a URL under the base the district already gave us.
    */
-  resolvedTokenUrl?: string;
+  usedTokenUrl?: string;
 }
 
 /**
@@ -185,10 +196,14 @@ function explain(err: unknown, step: string): { status: 'denied' | 'error'; mess
         };
       }
       if (err.status === 404) {
+        // Reached only after every candidate under the district's OneRoster
+        // address has 404'd too, so "check the token address" is the wrong
+        // advice — it is the field we now tell them to leave blank. The address
+        // still worth checking is the one they DID give us.
         return {
           status: 'error',
           message:
-            'Nothing answered at that token address. It usually ends in /token/ — check it against your Aeries OneRoster settings.',
+            'No sign-in endpoint answered under your OneRoster address. Check that address first; if your OneRoster settings do show a separate token address, enter it above.',
         };
       }
       if (err.status === 408) {
@@ -267,29 +282,35 @@ const NOT_REACHED = 'Not checked — the previous step has to work first.';
  */
 export async function runOneRosterConnectionTest(params: {
   baseUrl: string;
-  tokenUrl: string;
+  /** Optional: blank means "we were never told one", and it gets derived. */
+  tokenUrl?: string;
   clientId: string;
   clientSecret: string;
 }): Promise<OneRosterTestReport> {
-  // Both URLs are re-checked here, not just at write time: a stored row could
-  // predate the guard, and a name's addresses can change after it was saved.
-  // Checked BEFORE the client is constructed, so no credential is ever sent to
-  // an address that has not passed.
-  for (const [url, what] of [
-    [params.tokenUrl, 'token address'],
-    [params.baseUrl, 'OneRoster address'],
-  ] as const) {
-    try {
-      await assertSafeSisUrl(url, ONEROSTER_URL_LABELS);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'That address cannot be used.';
-      return {
-        ok: false,
-        steps: [{ key: 'token', label: 'Connection', status: 'error', message: `${what}: ${message}` }],
-        summary: 'Could not connect to OneRoster.',
-      };
-    }
+  // The BASE URL is checked up front, before any client exists: every token
+  // candidate is derived from it, so if it cannot be used there is nothing safe
+  // to try. Re-checked here rather than trusted from write time, because a
+  // stored row can predate the guard and a name's addresses can change.
+  try {
+    await assertSafeSisUrl(params.baseUrl, ONEROSTER_URL_LABELS);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'That address cannot be used.';
+    return {
+      ok: false,
+      steps: [
+        { key: 'token', label: 'Connection', status: 'error', message: `OneRoster address: ${message}` },
+      ],
+      summary: 'Could not connect to OneRoster.',
+    };
   }
+
+  // The TOKEN address is deliberately NOT checked here. It is guarded per
+  // candidate inside the loop below, which is the only place it can be: a
+  // stored token address the guard refuses is exactly the case resolution
+  // exists for, and failing here would return before the derived candidates
+  // were ever tried — leaving the district stuck on a guess they were asked to
+  // make and cannot correct. Nothing is sent to any candidate that has not
+  // passed; the guard simply runs later, per address.
 
   const steps: OneRosterStepResult[] = [];
 
@@ -300,21 +321,29 @@ export async function runOneRosterConnectionTest(params: {
   // credentials — the district's real problem — so stop, or we would report a
   // credential error as an address error. On the happy path this is exactly one
   // request, because the stored value is tried first.
+  //
+  // Trimmed, so a stored value that differs only by a trailing slash is not
+  // tried twice and does not later read as "we found a different endpoint".
+  const storedTokenUrl = (params.tokenUrl ?? '').trim().replace(/\/+$/, '');
   const tokenCandidates = [
-    params.tokenUrl,
-    ...oneRosterTokenUrlCandidates(params.baseUrl).filter((u) => u !== params.tokenUrl),
+    ...(storedTokenUrl ? [storedTokenUrl] : []),
+    ...oneRosterTokenUrlCandidates(params.baseUrl).filter((u) => u !== storedTokenUrl),
   ];
 
-  let client = new OneRosterClient(params);
-  let resolvedTokenUrl = params.tokenUrl;
+  let client!: OneRosterClient;
+  let resolvedTokenUrl = storedTokenUrl;
   let token!: OneRosterStepResult;
   let tokenFallback: { client: OneRosterClient; step: OneRosterStepResult } | null = null;
+  // Kept so a candidate list the guard refused outright reports WHY, rather
+  // than a generic "cannot be used" the district can do nothing with.
+  let guardRefusal: string | null = null;
 
   for (const candidate of tokenCandidates) {
     // Re-guarded per candidate: a credential is about to be posted to it.
     try {
       await assertSafeSisUrl(candidate, ONEROSTER_URL_LABELS);
-    } catch {
+    } catch (err) {
+      guardRefusal ??= err instanceof Error ? err.message : null;
       continue;
     }
 
@@ -342,22 +371,34 @@ export async function runOneRosterConnectionTest(params: {
     break;
   }
 
-  // Nothing served a token endpoint. Report the stored address's own failure
-  // and correct nothing — rewriting the row to a guess would bury the truth.
+  // Nothing served a token endpoint. Report the stored address's own failure —
+  // naming a guess we also could not reach would bury the truth.
   if (!token && tokenFallback) {
     client = tokenFallback.client;
     token = tokenFallback.step;
-    resolvedTokenUrl = params.tokenUrl;
+    resolvedTokenUrl = storedTokenUrl;
   }
   if (!token) {
     return {
       ok: false,
-      steps: [{ key: 'token', label: 'Connection', status: 'error', message: 'That address cannot be used.' }],
+      steps: [
+        {
+          key: 'token',
+          label: 'Connection',
+          status: 'error',
+          message: guardRefusal ?? 'That address cannot be used.',
+        },
+      ],
       summary: 'Could not connect to OneRoster.',
     };
   }
 
-  const correctedTokenUrl = resolvedTokenUrl !== params.tokenUrl ? resolvedTokenUrl : undefined;
+  const usedTokenUrl = resolvedTokenUrl !== storedTokenUrl ? resolvedTokenUrl : undefined;
+  if (token.status === 'ok' && usedTokenUrl) {
+    // Named when it is not the address they gave us — most often because they
+    // gave us none at all. A district should be able to see what we used.
+    token = { ...token, message: `Working — signed in at ${usedTokenUrl}.` };
+  }
   steps.push(token);
 
   if (token.status !== 'ok') {
@@ -365,7 +406,7 @@ export async function runOneRosterConnectionTest(params: {
       { key: 'orgs', label: 'Districts and schools', status: 'untested', message: NOT_REACHED },
       { key: 'schools', label: 'Schools', status: 'untested', message: NOT_REACHED },
     );
-    return { ok: false, steps, summary: 'Could not connect to OneRoster.', resolvedTokenUrl: correctedTokenUrl };
+    return { ok: false, steps, summary: 'Could not connect to OneRoster.', usedTokenUrl };
   }
 
   // One record is enough to prove the collection is readable. Walking it would
@@ -399,7 +440,7 @@ export async function runOneRosterConnectionTest(params: {
       ? 'Could not connect to OneRoster.'
       : `Connected, but ${failed.length} of ${steps.length} checks need attention.`;
 
-  return { ok: failed.length === 0, steps, summary, resolvedTokenUrl: correctedTokenUrl };
+  return { ok: failed.length === 0, steps, summary, usedTokenUrl };
 }
 
 /**

@@ -126,15 +126,57 @@ describe('resolving the token endpoint when the stored one is wrong (SPE-426)', 
     const report = await runWith(`${origin}/admin/token`);
 
     expect(stepOf(report, 'token').status).toBe('ok');
-    expect(report.resolvedTokenUrl).toBe(`${origin}/admin/oauth/token`);
+    expect(report.usedTokenUrl).toBe(`${origin}/admin/oauth/token`);
   });
 
-  it('does not report a correction when the stored endpoint already works', async () => {
+  it('reports nothing extra when the stored endpoint already works', async () => {
     handler = allGood;
     const report = await runWith(`${origin}/admin/token`);
 
     expect(stepOf(report, 'token').status).toBe('ok');
-    expect(report.resolvedTokenUrl).toBeUndefined();
+    // Absent, not equal-to-stored — the field means "we had to look elsewhere".
+    expect(report.usedTokenUrl).toBeUndefined();
+    expect(stepOf(report, 'token').message).toBe('Working.');
+  });
+
+  it('does not treat a trailing slash on the stored endpoint as a different one', async () => {
+    handler = allGood;
+    const report = await runWith(`${origin}/admin/token/`);
+
+    expect(stepOf(report, 'token').status).toBe('ok');
+    expect(report.usedTokenUrl).toBeUndefined();
+  });
+
+  it('derives the endpoint when the district gave us none, and says which it used', async () => {
+    // The field is optional now precisely because an Aeries OneRoster console
+    // never shows it. Left blank, a district must still get a working test.
+    handler = allGood;
+    const report = await runOneRosterConnectionTest({
+      baseUrl: `${origin}/admin`,
+      clientId: CLIENT_ID,
+      clientSecret: CLIENT_SECRET,
+    });
+
+    expect(report.ok).toBe(true);
+    expect(report.usedTokenUrl).toBe(`${origin}/admin/token`);
+    expect(stepOf(report, 'token').message).toContain(`${origin}/admin/token`);
+  });
+
+  it('never guesses a token endpoint OUTSIDE the path the district gave us', async () => {
+    // A district on a shared host — `https://sis.example.org/aeries` — does not
+    // own `https://sis.example.org/`. Climbing to the origin to look for a
+    // token endpoint would hand their consumer secret to whatever application
+    // answers at the root. Every candidate stays under their own path.
+    handler = () => ({ status: 404, body: { message: 'nope' } });
+
+    await runOneRosterConnectionTest({
+      baseUrl: `${origin}/admin`,
+      clientId: CLIENT_ID,
+      clientSecret: CLIENT_SECRET,
+    });
+
+    expect(seen.length).toBeGreaterThan(0);
+    for (const r of seen) expect(r.url.startsWith('/admin/')).toBe(true);
   });
 
   it('STOPS at a 401 rather than trying other endpoints with the same credentials', async () => {
@@ -148,21 +190,23 @@ describe('resolving the token endpoint when the stored one is wrong (SPE-426)', 
     const report = await runWith(`${origin}/admin/token`);
 
     expect(report.ok).toBe(false);
-    expect(report.resolvedTokenUrl).toBeUndefined();
+    expect(report.usedTokenUrl).toBeUndefined();
     expect(stepOf(report, 'token').message).toMatch(/Consumer ID and Consumer Secret/i);
 
     const tokenPosts = seen.filter((r) => r.url.includes('token'));
     expect(tokenPosts).toHaveLength(1);
   });
 
-  it('corrects nothing when no candidate serves a token endpoint', async () => {
+  it('names nothing when no candidate serves a token endpoint', async () => {
     handler = () => ({ status: 404, body: { message: 'nope' } });
 
     const report = await runWith(`${origin}/admin/token`);
 
     expect(report.ok).toBe(false);
-    expect(report.resolvedTokenUrl).toBeUndefined();
-    expect(stepOf(report, 'token').message).toMatch(/Nothing answered at that token address/i);
+    expect(report.usedTokenUrl).toBeUndefined();
+    // Points at the address they DID give us. Telling them to fix the token
+    // address would send them to correct the field we tell them to leave blank.
+    expect(stepOf(report, 'token').message).toMatch(/under your OneRoster address/i);
   });
 });
 
