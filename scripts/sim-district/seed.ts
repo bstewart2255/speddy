@@ -62,6 +62,7 @@ import {
   studentId,
   studentInitials,
   studentTeacher,
+  studentTeacherLinkId,
   teacherRecordId,
   userSiteScheduleId,
   detailsCount,
@@ -272,6 +273,7 @@ async function main() {
   // way: it only fires when child_id arrives NULL.
   console.log('Step 6/9: children + students + student_details...');
   const childRows = new Map<string, Record<string, unknown>>();
+  const linkRows = new Map<string, Record<string, unknown>>();
   const studentRows: Record<string, unknown>[] = [];
   const detailRows: Record<string, unknown>[] = [];
   for (const rule of CASELOADS) {
@@ -315,6 +317,18 @@ async function main() {
             : [],
         });
       }
+      const linkId = studentTeacherLinkId(childUuid, teacher.teacherRowId);
+      if (!linkRows.has(linkId)) {
+        linkRows.set(linkId, {
+          id: linkId,
+          child_id: childUuid,
+          teacher_id: teacher.teacherRowId,
+          // subject/period stay null: 1:1 elementary-shaped seeding in this
+          // ticket. SPE-336 is where Cedar/Redwood gain per-period sets.
+          subject: null,
+          period: null,
+        });
+      }
       studentRows.push({
         id,
         child_id: childUuid,
@@ -355,6 +369,12 @@ async function main() {
     }
   }
   counts['children'] = await bulkInsert(admin, 'children', [...childRows.values()]);
+  // SPE-334: the child's teacher set, planted BEFORE the caseload rows. The
+  // dual-write trigger on students would otherwise create these links itself,
+  // with ids this manifest does not own (invariant 1); inserting them first
+  // turns that trigger's ON CONFLICT DO NOTHING into a no-op. Deduped by
+  // (child, teacher), so a co-served child carries one link, not one per copy.
+  counts['student_teachers'] = await bulkInsert(admin, 'student_teachers', [...linkRows.values()]);
   counts['students'] = await bulkInsert(admin, 'students', studentRows);
   counts['student_details'] = await bulkInsert(admin, 'student_details', detailRows);
 

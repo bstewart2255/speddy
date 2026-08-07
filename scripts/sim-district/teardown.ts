@@ -113,9 +113,15 @@ export async function teardown(admin: Admin): Promise<Record<string, number>> {
     admin, 'care_referrals', 'school_id', SIM_SCHOOL_IDS,
   );
 
-  // 5. Students and their detail rows, then the children they pointed at.
+  // 5. Students and their detail rows, then the teacher links, then the children
+  //    they all pointed at. The links go AFTER students on purpose (SPE-334):
+  //    deleting a link fires the legacy-column mirror, and with the caseload
+  //    rows already gone that mirror has nothing to repoint. Deleting children
+  //    would cascade the links away anyway; doing it explicitly keeps the
+  //    teardown symmetric with the seed and countable.
   deleted['student_details'] = await deleteWhereIn(admin, 'student_details', 'student_id', simStudentIds);
   deleted['students'] = await deleteWhereIn(admin, 'students', 'id', simStudentIds);
+  deleted['student_teachers'] = await deleteWhereIn(admin, 'student_teachers', 'child_id', simChildIds);
   deleted['children'] = await deleteWhereIn(admin, 'children', 'id', simChildIds);
 
   // 6. Teachers, permissions, school assignments.

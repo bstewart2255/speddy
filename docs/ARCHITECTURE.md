@@ -825,6 +825,67 @@ live `children` table + `children_select` / `children_update` policies;
 `lib/import/child-match.ts`; `scripts/sim-district/manifest.ts`
 (`childKey` / `childId` / `TOTAL_CHILDREN`).
 
+### Teacher links — `student_teachers` (SPE-334)
+
+**A child has a *set* of teachers, and the set lives on the child.**
+`student_teachers` is `(child_id, teacher_id)` + optional `subject` / `period`,
+unique per pair. It anchors on `children.id`, not `students.id`: "who teaches
+this kid" is a fact about the kid, so a child served by an RSP and an SLP has
+two caseload rows but **one** teacher set.
+
+Elementary students have one teacher (or two co-teachers); secondary students
+have one per subject/period. The table is what makes the second case
+representable — and it is the shape the SIS syncs (**SPE-342** Aeries,
+**SPE-414** OneRoster) will write into, since a SIS knows children and class
+schedules, not Speddy caseloads.
+
+- **Co-teachers are equals.** There is deliberately **no primary/secondary
+  flag** — the set is unordered (product decision 2026-07-26). `subject` and
+  `period` are **display labels only**: Speddy does not schedule at secondary
+  (§9, SPE-149/193), and nothing may read them as scheduling semantics.
+- **One school per link.** `trg_student_teachers_school_consistency` refuses a
+  link whose teacher is at a different school than the child (precedent:
+  `staff_teacher_assignments`). It **abstains when either side has no school** —
+  20 legacy accountless `teachers` rows carry none, and one of them is named by
+  a live caseload row, so a hard NOT NULL rule would silently drop a real link.
+- **Reads go through one seam.** `get_teacher_student_ids()` (SECURITY DEFINER)
+  resolves teacher account → links → every caseload row of the linked children,
+  and the teacher branch of `students_select`, `children_select`,
+  `student_details` and `schedule_sessions_select` all call it. That is
+  load-bearing, not stylistic: reading the junction inline would put its
+  policies (which read `students`) inside `students`' own policy — the exact
+  cycle the 2025-11 recursion fixes undid (§2, SPE-332).
+- **Dual-write, in both directions, until SPE-341 retires the old columns.**
+  A write to `students.teacher_id` mirrors into the link set (and withdraws the
+  previous teacher, unless another caseload row of the same child still names
+  them). A link change points the legacy `teacher_id` / `teacher_name` pair at
+  the child's first listed link — but **only** on caseload rows whose current
+  teacher is not, or is no longer, one of the child's teachers, so it can never
+  fight the edit that triggered it. Deleting a `students` row withdraws
+  **nothing**: links carry no provenance, so guessing would destroy links added
+  by hand or by the SIS.
+- **Access mirrors the student.** `student_teachers_select` reproduces every
+  branch of `children_select` (provider, teacher, assigned specialist,
+  delivering SEA, site admin). Writes are coarser — a provider with a caseload
+  row for the child, or a site admin at its school — matching `children_update`'s
+  posture; case-manager-only narrowing is **SPE-201**.
+- **Behaviour-identical at the switch.** Verified against production
+  2026-08-07: 284 teacher-bearing caseload rows collapsed to 282 links (the
+  2-row gap is the one real shared child whose copies name the same teacher),
+  and **no** child had copies naming different teachers — so every read set was
+  unchanged. Where copies ever do disagree the link set is their union.
+
+**Source of truth:** `supabase/migrations/20260807_spe334_student_teachers.sql`;
+live `student_teachers` table + its four policies;
+`get_teacher_student_ids()`, `chat_is_student_participant()`,
+`get_student_chat_participants()`, `get_my_chat_students()`,
+`matching_provider_student_ids()`,
+`verify_student_teacher_school_consistency()`,
+`students_mirror_teacher_link()`, `student_teachers_mirror_legacy()`;
+`scripts/sim-district/manifest.ts` (`studentTeacherLinkId` /
+`TOTAL_STUDENT_TEACHER_LINKS`);
+`scripts/sim-district/verify-student-teachers-rls.ts`.
+
 ### The session tables
 
 `schedule_sessions` is the core table. It uses a **template → instance** pattern:
@@ -1184,11 +1245,14 @@ of school (Master Schedule stays), and Internal sets the `school_type` /
 > `/dashboard/special-activities`, and `/dashboard/plan` stay reachable by direct
 > URL on a secondary site (RLS still scopes data).
 >
-> **Known gap — SPE-194 (Medium):** the model is **one teacher per student**
-> (`students.teacher_id`, a single FK; the Teacher roster query is
-> `students … eq('teacher_id', …)`). Secondary students have **many** teachers
-> (one per subject/period), which the current model can't represent —
-> foundational for real secondary support; complements the SPE-181 rostering spike.
+> **Known gap — SPE-194 (Medium), half closed:** the *data model* can now hold
+> many teachers per student — `student_teachers` (SPE-334, §6) — and RLS,
+> chat membership and cross-provider matching already resolve teachers through
+> it. What has **not** moved yet is the application layer: the Teacher roster
+> query is still `students … eq('teacher_id', …)`, and every teacher picker is
+> still single-select. Switching the reads is **SPE-336**, the editing UI is
+> **SPE-337**, and retiring `students.teacher_id` / `teacher_name` is
+> **SPE-341**. Complements the SPE-181 rostering spike.
 
 **Source of truth:** `lib/school-helpers.ts` (`isSecondarySchool`,
 `classifyByType`, `parseGradeLevel`); `app/components/providers/school-context.tsx`
@@ -1211,7 +1275,7 @@ Re-check Linear for current state.
 | **SPE-188** | Low | Security | Idle logout is client-side only; no server-side session-lifetime backstop. |
 | **SPE-190** | Low | Security | Admin-created teachers get a temp password that's never force-rotated (no `must_change_password` on creation). |
 | **SPE-193** | Low | UX / robustness | Elementary/secondary feature gating is client-side only; hidden routes reachable by URL on secondary sites. |
-| **SPE-194** | Medium | Data model | One-teacher-per-student (`students.teacher_id` single FK) can't represent secondary's many-teachers-per-student; foundational for secondary rollout. |
+| **SPE-194** | Medium | Data model | Half closed: `student_teachers` (SPE-334) now holds N teachers per child and RLS/chat/matching resolve through it, but the app still reads and edits the single `students.teacher_id`. Reads switch in SPE-336, editing UI in SPE-337, column retirement in SPE-341. |
 
 **Related context tickets:** SPE-132 (middleware `getSession()` + per-nav
 profile query), SPE-134 (FERPA wording reworded to match reality), SPE-142

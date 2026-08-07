@@ -22,6 +22,7 @@ import {
   SESSION_GROUPS,
   SWEPT_TABLES,
   TOTAL_CHILDREN,
+  TOTAL_STUDENT_TEACHER_LINKS,
   TOTAL_STUDENTS,
   careCaseId,
 } from './manifest';
@@ -101,6 +102,7 @@ async function collectCounts(admin: Admin) {
     user_site_schedules: simUserIds.length > 0 ? await countWhereIn(admin, 'user_site_schedules', 'user_id', simUserIds) : 0,
     teachers: await countWhereIn(admin, 'teachers', 'school_id', SIM_SCHOOL_IDS),
     children: simChildIds.length,
+    student_teachers: simChildIds.length > 0 ? await countWhereIn(admin, 'student_teachers', 'child_id', simChildIds) : 0,
     'students with no child': unlinkedStudents,
     students: simStudentIds.length,
     student_details: simStudentIds.length > 0 ? await countWhereIn(admin, 'student_details', 'student_id', simStudentIds) : 0,
@@ -235,6 +237,10 @@ async function main() {
     // whole point — the gap is exactly the fixture's shared pairs (spec §6),
     // and TOTAL_CHILDREN derives from the same childKey() the seed uses.
     expect('children', n => n === TOTAL_CHILDREN, String(TOTAL_CHILDREN));
+    // SPE-334: one link per (child, teacher). Fewer links than students for the
+    // same reason there are fewer children — the shared pairs name one teacher
+    // between them, so their two caseload rows collapse to one link.
+    expect('student_teachers', n => n === TOTAL_STUDENT_TEACHER_LINKS, String(TOTAL_STUDENT_TEACHER_LINKS));
     expect('students with no child', n => n === 0, '0');
     expect('student_details', n => n > 0, '> 0');
     expect('bell_schedules', n => n > 0, '> 0');
