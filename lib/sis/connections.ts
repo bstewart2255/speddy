@@ -218,7 +218,16 @@ export interface StoreCredentialInput {
   connectionId: string;
   actorId: string;
   baseUrl?: string;
-  tokenUrl?: string;
+  /**
+   * Pass `null` to CLEAR a stored token address.
+   *
+   * `undefined` means "leave whatever is there", which is right for the Aeries
+   * flow that never sends this field. It is wrong for OneRoster, where the
+   * field is optional and we tell districts to leave it blank: without an
+   * explicit clear, a district cannot remove an earlier wrong guess, and that
+   * stale value goes on being tried first by the resolver (SPE-426).
+   */
+  tokenUrl?: string | null;
   /** Aeries */
   certificate?: string;
   /** OneRoster */
@@ -279,7 +288,7 @@ export async function storeCredential(
     last_test_result: null,
   };
   if (input.baseUrl !== undefined) patch.base_url = input.baseUrl;
-  if (input.tokenUrl !== undefined) patch.token_url = input.tokenUrl;
+  if (input.tokenUrl !== undefined) patch.token_url = input.tokenUrl;   // null clears it
 
   if (existing.sis_type === 'aeries') {
     if (!input.certificate) throw new Error('Aeries connection requires a certificate');

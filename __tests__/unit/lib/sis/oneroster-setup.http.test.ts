@@ -179,6 +179,74 @@ describe('resolving the token endpoint when the stored one is wrong (SPE-426)', 
     for (const r of seen) expect(r.url.startsWith('/admin/')).toBe(true);
   });
 
+  it('keeps looking past a 405 — something is there, but it is not a token endpoint', async () => {
+    // A vendor's data path answers a POST exactly like this. A 404-only check
+    // stops here and tells the district their credentials are wrong.
+    handler = (req) => {
+      if (req.url.startsWith('/admin/token')) return { status: 405, body: { message: 'nope' } };
+      if (req.url.includes('/oauth/token')) {
+        return { status: 200, body: { access_token: TOKEN, token_type: 'bearer', expires_in: 3600 } };
+      }
+      return { status: 200, body: { orgs: [{ sourcedId: 'org-1', name: 'Sim USD', type: 'district' }] } };
+    };
+
+    const report = await runWith(`${origin}/admin/token`);
+
+    expect(stepOf(report, 'token').status).toBe('ok');
+    expect(report.usedTokenUrl).toBe(`${origin}/admin/oauth/token`);
+  });
+
+  it('keeps looking past a 200 that carries no token', async () => {
+    // The wrong endpoint wearing a success status — a landing page, a data
+    // collection, a proxy's maintenance body. Stopping here would report
+    // "the token endpoint answered but returned no access token" about an
+    // address that was never the token endpoint.
+    handler = (req) => {
+      if (req.url.startsWith('/admin/token')) return { status: 200, body: { hello: 'world' } };
+      if (req.url.includes('/oauth/token')) {
+        return { status: 200, body: { access_token: TOKEN, token_type: 'bearer', expires_in: 3600 } };
+      }
+      return { status: 200, body: { orgs: [{ sourcedId: 'org-1', name: 'Sim USD', type: 'district' }] } };
+    };
+
+    const report = await runWith(`${origin}/admin/token`);
+
+    expect(stepOf(report, 'token').status).toBe('ok');
+    expect(report.usedTokenUrl).toBe(`${origin}/admin/oauth/token`);
+  });
+
+  it('names the endpoint it CHOSE when sign-in fails, not just that sign-in failed', async () => {
+    // The district left the field blank, so we picked an address for them. Being
+    // told the Consumer ID and Secret are wrong, with no mention that an address
+    // was guessed, is the same dead end one field over.
+    handler = () => ({ status: 401, body: { error: 'invalid_client' } });
+
+    const report = await runOneRosterConnectionTest({
+      baseUrl: `${origin}/admin`,
+      clientId: CLIENT_ID,
+      clientSecret: CLIENT_SECRET,
+    });
+
+    expect(report.ok).toBe(false);
+    expect(stepOf(report, 'token').message).toMatch(/Consumer ID and Consumer Secret/i);
+    expect(stepOf(report, 'token').message).toContain(`${origin}/admin/token`);
+  });
+
+  it('names what it tried when NOTHING answers and the field was left blank', async () => {
+    // With no stored address there is nothing to report the failure against, so
+    // reporting against an empty string would tell them nothing at all.
+    handler = () => ({ status: 404, body: { message: 'nope' } });
+
+    const report = await runOneRosterConnectionTest({
+      baseUrl: `${origin}/admin`,
+      clientId: CLIENT_ID,
+      clientSecret: CLIENT_SECRET,
+    });
+
+    expect(report.ok).toBe(false);
+    expect(stepOf(report, 'token').message).toContain(`${origin}/admin/token`);
+  });
+
   it('STOPS at a 401 rather than trying other endpoints with the same credentials', async () => {
     // Two reasons this matters. A 401 means the endpoint exists and the
     // credentials are wrong — the district's real problem, which walking on

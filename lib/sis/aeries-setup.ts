@@ -84,10 +84,29 @@ export function aeriesBaseUrlCandidates(storedBaseUrl: string): string[] {
  * to stop repeating.
  *
  * The caller adds one more case the status code cannot express: a 200 whose
- * body is not a list. See the probe below.
+ * body is not a list of schools. See the probe below.
  */
 function isWrongAddress(err: unknown): boolean {
-  return err instanceof AeriesApiError && err.status === 404;
+  if (err instanceof AeriesApiError) return err.status === 404;
+
+  // A 200 whose body will not parse as JSON at all. `AeriesClient` calls
+  // `res.json()` and lets the parse error through raw, so this arrives as a
+  // SyntaxError with no status attached — and without this it falls into
+  // `explain`'s network branch, telling a district we "could not reach" a host
+  // that answered perfectly well.
+  //
+  // This is the ordinary shape of a wrong path on a district's own web server:
+  // an HTML login page, an error page, or whatever a redirect landed on. Not a
+  // rare case, and a 404-only check misses all of it.
+  //
+  // Matched on SHAPE, not `instanceof`. The parse error is raised inside the
+  // fetch implementation's own realm, so `err instanceof SyntaxError` — and
+  // even `err instanceof Error` — is false. The first version of this check
+  // used `instanceof` and therefore never fired once against a real HTML body.
+  const e = err as { name?: unknown; message?: unknown } | null | undefined;
+  const name = typeof e?.name === 'string' ? e.name : '';
+  const message = typeof e?.message === 'string' ? e.message : '';
+  return name === 'SyntaxError' || /JSON/i.test(message);
 }
 
 /**
@@ -218,6 +237,16 @@ function explain(err: unknown, area: string): { status: 'denied' | 'error'; mess
     }
     return { status: 'error', message: `Aeries returned an unexpected error (${err.status}).` };
   }
+  // Answered, but not with Aeries API data — a login or error page where the
+  // API should be. Reported separately from a network failure because the fixes
+  // are opposite: this host is reachable, the address is wrong.
+  if (isWrongAddress(err)) {
+    return {
+      status: 'error',
+      message:
+        'That address answered, but not with Aeries data. Check the Aeries web address — it should look like https://yourdistrict.aeries.net',
+    };
+  }
   // Network-level: DNS, TLS, refused connection. No status to report.
   return {
     status: 'error',
@@ -289,6 +318,10 @@ export async function runAeriesConnectionTest(params: {
   // to be tried last, blaming an address that is just as wrong as the one we
   // started with.
   let exhaustedFallback: { client: AeriesClient; schools: AeriesAreaResult } | null = null;
+  // Kept so a candidate list the guard refused outright reports WHY — the
+  // resolved-to-a-private-address or unreachable-name reason — instead of a
+  // bare "cannot be used" the district can do nothing with.
+  let guardRefusal: string | null = null;
 
   const candidates = aeriesBaseUrlCandidates(params.baseUrl);
   for (const candidate of candidates) {
@@ -297,7 +330,8 @@ export async function runAeriesConnectionTest(params: {
     // quietly stops covering one of its call sites.
     try {
       await assertSafeSisUrl(candidate, AERIES_URL_LABELS);
-    } catch {
+    } catch (err) {
+      guardRefusal ??= err instanceof Error ? err.message : null;
       continue;
     }
 
@@ -365,7 +399,7 @@ export async function runAeriesConnectionTest(params: {
           key: 'connection',
           label: 'Connection',
           status: 'error',
-          message: 'That address cannot be used.',
+          message: guardRefusal ?? 'That address cannot be used.',
         },
       ],
       summary: 'Could not connect to Aeries.',

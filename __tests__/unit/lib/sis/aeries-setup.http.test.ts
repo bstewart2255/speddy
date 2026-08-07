@@ -38,7 +38,19 @@ import { runAeriesConnectionTest } from '@/lib/sis/aeries-setup';
 const CERT = '477abe9e7d27439681d62f4e0de1f5e1';
 
 /** Route table keyed by the path segment the probe hits. */
-type Handler = (path: string) => { status: number; body?: unknown; headers?: Record<string, string> };
+type Handler = (path: string) => {
+  status: number;
+  body?: unknown;
+  headers?: Record<string, string>;
+  /**
+   * Send `body` verbatim as text/html instead of JSON-encoding it.
+   *
+   * Needed because a wrong path on a district's own web server answers with a
+   * real HTML page, and `JSON.stringify('<html>…')` is still valid JSON — so a
+   * test written without this proves nothing about the case it claims to cover.
+   */
+  raw?: boolean;
+};
 
 let server: Server;
 let baseUrl: string;
@@ -48,9 +60,12 @@ let seenCertHeaders: (string | undefined)[] = [];
 beforeAll(async () => {
   server = createServer((req, res) => {
     seenCertHeaders.push(req.headers['aeries-cert'] as string | undefined);
-    const { status, body, headers } = handler(req.url ?? '');
-    res.writeHead(status, { 'Content-Type': 'application/json', ...(headers ?? {}) });
-    res.end(body === undefined ? '' : JSON.stringify(body));
+    const { status, body, headers, raw } = handler(req.url ?? '');
+    res.writeHead(status, {
+      'Content-Type': raw ? 'text/html' : 'application/json',
+      ...(headers ?? {}),
+    });
+    res.end(body === undefined ? '' : raw ? String(body) : JSON.stringify(body));
   });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}/aeries/api/v5`;
@@ -125,20 +140,51 @@ describe('resolving the API root when the stored one is wrong (SPE-426)', () => 
     expect(report.usedBaseUrl).toBeUndefined();
   });
 
-  it('keeps looking when the stored root answers 200 with something that is not a list', async () => {
+  it('keeps looking when the stored root answers 200 with a real HTML page', async () => {
     // The commonest wrong-path shape after a 404, and the one a status-code-only
-    // check misses: a district web server that serves its login page, or an
-    // error page, for any path its API does not handle. Indistinguishable from
-    // a working endpoint by status alone, and just as wrong.
+    // check misses: a district web server that serves its login page for any
+    // path its API does not handle. Indistinguishable from a working endpoint by
+    // status alone, and just as wrong.
+    //
+    // `raw` matters. Served as JSON this is a valid JSON string and the
+    // non-array branch catches it; served as real text/html the JSON parse
+    // THROWS, which is a completely different path through the client and the
+    // one a district actually hits. The first version of this test used the
+    // JSON encoding and passed against code that had the real gap.
     handler = (path) =>
       path.startsWith('/aeries/api/v5')
-        ? { status: 200, body: '<html>Sign in</html>' }
+        ? { status: 200, body: '<!doctype html><html><body>Sign in</body></html>', raw: true }
         : allGranted(path);
 
     const report = await run();
 
     expect(report.ok).toBe(true);
     expect(report.usedBaseUrl).toBe(baseUrl.replace('/aeries/api/v5', '/api/v5'));
+  });
+
+  it('keeps looking when the stored root answers 200 with JSON that is not a list', async () => {
+    handler = (path) =>
+      path.startsWith('/aeries/api/v5')
+        ? { status: 200, body: { error: 'not the API' } }
+        : allGranted(path);
+
+    const report = await run();
+
+    expect(report.ok).toBe(true);
+    expect(report.usedBaseUrl).toBe(baseUrl.replace('/aeries/api/v5', '/api/v5'));
+  });
+
+  it('says the host ANSWERED when every root serves HTML, not that it is unreachable', async () => {
+    // The two failures need opposite fixes: "we could not reach you" sends a
+    // district to their firewall, when in fact their server replied and the
+    // address is wrong. Getting this backwards is what SPE-419 is about.
+    handler = () => ({ status: 200, body: '<html>Sign in</html>', raw: true });
+
+    const report = await run();
+
+    expect(report.ok).toBe(false);
+    expect(area(report, 'connection').message).toMatch(/answered, but not with Aeries data/i);
+    expect(area(report, 'connection').message).not.toMatch(/could not reach/i);
   });
 
   it('STOPS at a 401 instead of walking on to another root', async () => {

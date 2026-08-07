@@ -274,6 +274,34 @@ async function step(
 const NOT_REACHED = 'Not checked — the previous step has to work first.';
 
 /**
+ * Whether a token-step failure means "no token endpoint here" (keep looking)
+ * or "this IS the endpoint" (stop).
+ *
+ * Deliberately wider than a bare 404, and deliberately narrower than "any
+ * failure". Each status earns its place:
+ *
+ *   404 — nothing served at that path.
+ *   405 — something is there, but it does not take a POST. Not a token
+ *         endpoint; a vendor's data path answers exactly like this.
+ *   502 — OUR OWN marker, raised by `fetchToken` when the response is not JSON
+ *         or carries no `access_token`. A login page or a data collection
+ *         returning 200 is a wrong endpoint wearing a success status.
+ *
+ * What must NOT continue: 400, 401 and 403. Those are the endpoint telling us
+ * the CREDENTIALS are wrong, which is the district's real problem — walking on
+ * would replace it with "check your address" and hide it. Nor 5xx other than
+ * our own marker: their token endpoint exists and is broken, and trying two
+ * more paths would neither find it nor say anything useful.
+ *
+ * Every extra candidate also posts the consumer secret somewhere new, so the
+ * set stays as small as the failure modes allow.
+ */
+function isNotATokenEndpoint(err: unknown): boolean {
+  if (!(err instanceof OneRosterApiError) || err.phase !== 'token') return false;
+  return err.status === 404 || err.status === 405 || err.status === 502;
+}
+
+/**
  * Run the connection test: token grant, then orgs, then schools.
  *
  * Strictly sequential and short-circuiting. If the token grant fails, the two
@@ -333,7 +361,9 @@ export async function runOneRosterConnectionTest(params: {
   let client!: OneRosterClient;
   let resolvedTokenUrl = storedTokenUrl;
   let token!: OneRosterStepResult;
-  let tokenFallback: { client: OneRosterClient; step: OneRosterStepResult } | null = null;
+  let tokenFallback:
+    | { client: OneRosterClient; step: OneRosterStepResult; url: string }
+    | null = null;
   // Kept so a candidate list the guard refused outright reports WHY, rather
   // than a generic "cannot be used" the district can do nothing with.
   let guardRefusal: string | null = null;
@@ -354,14 +384,13 @@ export async function runOneRosterConnectionTest(params: {
         await attemptClient.fetchToken();
         return 1;
       } catch (err) {
-        missing =
-          err instanceof OneRosterApiError && err.phase === 'token' && err.status === 404;
+        missing = isNotATokenEndpoint(err);
         throw err;
       }
     });
 
     if (missing) {
-      tokenFallback ??= { client: attemptClient, step: attempt };
+      tokenFallback ??= { client: attemptClient, step: attempt, url: candidate };
       continue;
     }
 
@@ -371,12 +400,15 @@ export async function runOneRosterConnectionTest(params: {
     break;
   }
 
-  // Nothing served a token endpoint. Report the stored address's own failure —
-  // naming a guess we also could not reach would bury the truth.
+  // Nothing served a token endpoint. Report the FIRST candidate's own failure —
+  // naming the last guess we also could not reach would bury the truth.
   if (!token && tokenFallback) {
     client = tokenFallback.client;
     token = tokenFallback.step;
-    resolvedTokenUrl = storedTokenUrl;
+    // The address we actually dialled, not the stored one. When the district
+    // left the field blank there IS no stored address, and reporting a failure
+    // against an empty string tells them nothing about what was tried.
+    resolvedTokenUrl = tokenFallback.url;
   }
   if (!token) {
     return {
@@ -394,10 +426,15 @@ export async function runOneRosterConnectionTest(params: {
   }
 
   const usedTokenUrl = resolvedTokenUrl !== storedTokenUrl ? resolvedTokenUrl : undefined;
-  if (token.status === 'ok' && usedTokenUrl) {
-    // Named when it is not the address they gave us — most often because they
-    // gave us none at all. A district should be able to see what we used.
-    token = { ...token, message: `Working — signed in at ${usedTokenUrl}.` };
+  if (usedTokenUrl) {
+    // Named whether it worked or not, and most of all when it did NOT. A
+    // district who left the field blank and is then told their Consumer ID and
+    // Secret are wrong has no way to know we picked an address for them — which
+    // is the same dead end, one field over, that this ticket exists to remove.
+    token =
+      token.status === 'ok'
+        ? { ...token, message: `Working — signed in at ${usedTokenUrl}.` }
+        : { ...token, message: `${token.message} (Tried ${usedTokenUrl}.)` };
   }
   steps.push(token);
 

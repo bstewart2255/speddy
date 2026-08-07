@@ -61,14 +61,19 @@ export const POST = withRoute(
     }
 
     let baseUrl: string;
-    let tokenUrl: string | undefined;
+    let tokenUrl: string | null;
     try {
       baseUrl = normalizeOneRosterBaseUrl(body.baseUrl);
       // Stored only when the district actually gave us one. Left blank the
-      // column stays empty and the connection test derives the endpoint on each
-      // run, which is more honest than recording our own guess in the field
-      // that is supposed to hold what they told us.
-      tokenUrl = body.tokenUrl ? normalizeOneRosterTokenUrl(body.tokenUrl) : undefined;
+      // column is CLEARED — `null`, not `undefined` — and the connection test
+      // derives the endpoint on each run.
+      //
+      // The clear is the load-bearing half. We tell districts to leave this
+      // blank, so the first thing one with a bad earlier guess will do is empty
+      // the field; if that only meant "leave the column alone", their stale
+      // value would go on being tried first by the resolver and they would be
+      // back in the dead end this ticket exists to remove.
+      tokenUrl = body.tokenUrl ? normalizeOneRosterTokenUrl(body.tokenUrl) : null;
     } catch (err) {
       // Written for the district administrator and containing nothing
       // sensitive — passing them through is the point.
