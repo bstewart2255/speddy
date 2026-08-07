@@ -75,6 +75,89 @@ const allGranted: Handler = (path) => {
   return { status: 200, body: [{ SchoolCode: 1, Name: 'Sim High' }] };
 };
 
+describe('resolving the API root when the stored one is wrong (SPE-426)', () => {
+  /**
+   * The JSUSD shape: the district is on an Aeries-HOSTED api host, where the
+   * API lives at /api/v5, but we stored the self-hosted default /aeries/api/v5.
+   * Their server answered every probe with 404 and the form gave them no way to
+   * correct it, so resolution has to do it for them.
+   */
+  const hostedOnly: Handler = (path) => {
+    if (path.startsWith('/aeries/api/v5')) return { status: 404, body: { message: 'not found' } };
+    if (path.includes('/programs')) return { status: 200, body: [{ ProgramCode: '144' }] };
+    if (path.includes('/teachers')) return { status: 200, body: [{ TeacherNumber: 7 }] };
+    if (path.includes('/students')) return { status: 200, body: [{ StudentID: 1 }] };
+    if (path.startsWith('/api/v5')) return { status: 200, body: [{ SchoolCode: 1, Name: 'Sim High' }] };
+    return { status: 404, body: { message: 'not found' } };
+  };
+
+  it('finds the working root when the stored one 404s, and reports it for persisting', async () => {
+    handler = hostedOnly;
+    const report = await run();
+
+    expect(report.ok).toBe(true);
+    // Reported so the caller can correct the stored row once, rather than
+    // re-deriving it on every test and leaving a later sync pointed at a 404.
+    expect(report.resolvedBaseUrl).toBe(baseUrl.replace('/aeries/api/v5', '/api/v5'));
+  });
+
+  it('does not report a correction when the stored root already works', async () => {
+    handler = allGranted;
+    const report = await run();
+
+    expect(report.ok).toBe(true);
+    // Absent, not equal-to-stored: a caller that persisted on every pass would
+    // write an audit record for a change that did not happen.
+    expect(report.resolvedBaseUrl).toBeUndefined();
+  });
+
+  it('STOPS at a 401 instead of walking on to another root', async () => {
+    // The load-bearing case. A 401 means the endpoint EXISTS and refused the
+    // certificate. If resolution treated that as "wrong address" it would move
+    // on, and the district would be told to fix an address that was correct
+    // while the real problem — their certificate — went unmentioned. That is
+    // the SPE-417 misdiagnosis shape, which this whole ticket exists to stop.
+    handler = (path) =>
+      path.startsWith('/aeries/api/v5')
+        ? { status: 401, body: { message: 'bad cert' } }
+        : { status: 200, body: [{ SchoolCode: 1, Name: 'Sim High' }] };
+
+    const report = await run();
+
+    expect(report.ok).toBe(false);
+    expect(report.resolvedBaseUrl).toBeUndefined();
+    expect(area(report, 'connection').message).toMatch(/re-copy it/i);
+    expect(area(report, 'connection').message).not.toMatch(/address/i);
+  });
+
+  it('STOPS at a 403 instead of walking on to another root', async () => {
+    // Same reasoning: 403 means the endpoint exists and a permission box is
+    // unticked. Walking past it would hide the checkbox they need to tick.
+    handler = (path) =>
+      path.startsWith('/aeries/api/v5')
+        ? { status: 403, body: { message: 'forbidden' } }
+        : { status: 200, body: [{ SchoolCode: 1, Name: 'Sim High' }] };
+
+    const report = await run();
+
+    expect(report.ok).toBe(false);
+    expect(report.resolvedBaseUrl).toBeUndefined();
+    expect(area(report, 'schools').status).toBe('denied');
+  });
+
+  it('reports a 404 honestly when no known layout answers', async () => {
+    // Nothing to correct: say the address did not work rather than inventing a
+    // root, and leave the stored value alone.
+    handler = () => ({ status: 404, body: { message: 'not found' } });
+
+    const report = await run();
+
+    expect(report.ok).toBe(false);
+    expect(report.resolvedBaseUrl).toBeUndefined();
+    expect(report.summary).toMatch(/could not connect/i);
+  });
+});
+
 describe('runAeriesConnectionTest over real HTTP', () => {
   it('reports every area granted, and sends the certificate as a header', async () => {
     handler = allGranted;

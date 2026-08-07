@@ -7,6 +7,7 @@ import { listConnections, storeCredential } from '@/lib/sis/connections';
 import {
   normalizeOneRosterBaseUrl,
   normalizeOneRosterTokenUrl,
+  oneRosterTokenUrlCandidates,
 } from '@/lib/sis/oneroster-setup';
 
 const log = logger.child({ module: 'tech-sis-oneroster' });
@@ -29,7 +30,13 @@ export const POST = withRoute(
   {
     body: z.object({
       baseUrl: z.string().min(1, 'Enter your OneRoster address'),
-      tokenUrl: z.string().min(1, 'Enter your OneRoster token address'),
+      // OPTIONAL on purpose. An Aeries OneRoster console shows a URL, a
+      // consumer ID and a secret — never a token endpoint — so requiring this
+      // asked districts for something they could only guess at (SPE-426).
+      // Left blank, it is derived from the base URL and settled by the
+      // connection test; supplied, it is honoured verbatim, because a district
+      // that knows its endpoint should never be second-guessed.
+      tokenUrl: z.string().trim().optional(),
       // No format regex on either credential, unlike the Aeries certificate's
       // 32-character shape. OneRoster consumer IDs and secrets have no length
       // or character set defined by the standard, and they differ per vendor —
@@ -58,7 +65,12 @@ export const POST = withRoute(
     let tokenUrl: string;
     try {
       baseUrl = normalizeOneRosterBaseUrl(body.baseUrl);
-      tokenUrl = normalizeOneRosterTokenUrl(body.tokenUrl);
+      // Falls back to the most common shape so the row is never left without a
+      // token URL; the connection test resolves it properly against the
+      // candidates and corrects the row with whichever answered.
+      tokenUrl = body.tokenUrl
+        ? normalizeOneRosterTokenUrl(body.tokenUrl)
+        : (oneRosterTokenUrlCandidates(baseUrl)[0] ?? `${baseUrl}/token`);
     } catch (err) {
       // Written for the district administrator and containing nothing
       // sensitive — passing them through is the point.

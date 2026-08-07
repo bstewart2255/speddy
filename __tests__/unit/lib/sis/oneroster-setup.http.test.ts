@@ -103,6 +103,69 @@ const allGood: Handler = (req) => {
   return { status: 200, body: { orgs: [{ sourcedId: 'org-1', name: 'Sim USD', type: 'district' }] } };
 };
 
+describe('resolving the token endpoint when the stored one is wrong (SPE-426)', () => {
+  const runWith = (tokenUrl: string) =>
+    runOneRosterConnectionTest({
+      baseUrl: `${origin}/admin`,
+      tokenUrl,
+      clientId: CLIENT_ID,
+      clientSecret: CLIENT_SECRET,
+    });
+
+  it('finds the working token endpoint when the stored one 404s', async () => {
+    // The district could only ever guess this field — their console does not
+    // show it — so a wrong guess must not be a dead end.
+    handler = (req) => {
+      if (req.url.startsWith('/admin/token')) return { status: 404, body: { message: 'nope' } };
+      if (req.url.includes('/oauth/token')) {
+        return { status: 200, body: { access_token: TOKEN, token_type: 'bearer', expires_in: 3600 } };
+      }
+      return { status: 200, body: { orgs: [{ sourcedId: 'org-1', name: 'Sim USD', type: 'district' }] } };
+    };
+
+    const report = await runWith(`${origin}/admin/token`);
+
+    expect(stepOf(report, 'token').status).toBe('ok');
+    expect(report.resolvedTokenUrl).toBe(`${origin}/admin/oauth/token`);
+  });
+
+  it('does not report a correction when the stored endpoint already works', async () => {
+    handler = allGood;
+    const report = await runWith(`${origin}/admin/token`);
+
+    expect(stepOf(report, 'token').status).toBe('ok');
+    expect(report.resolvedTokenUrl).toBeUndefined();
+  });
+
+  it('STOPS at a 401 rather than trying other endpoints with the same credentials', async () => {
+    // Two reasons this matters. A 401 means the endpoint exists and the
+    // credentials are wrong — the district's real problem, which walking on
+    // would replace with "check your address". And every extra candidate posts
+    // the consumer secret somewhere new; there is no reason to keep spraying it
+    // once an endpoint has answered.
+    handler = () => ({ status: 401, body: { message: 'bad creds' } });
+
+    const report = await runWith(`${origin}/admin/token`);
+
+    expect(report.ok).toBe(false);
+    expect(report.resolvedTokenUrl).toBeUndefined();
+    expect(stepOf(report, 'token').message).toMatch(/Consumer ID and Consumer Secret/i);
+
+    const tokenPosts = seen.filter((r) => r.url.includes('token'));
+    expect(tokenPosts).toHaveLength(1);
+  });
+
+  it('corrects nothing when no candidate serves a token endpoint', async () => {
+    handler = () => ({ status: 404, body: { message: 'nope' } });
+
+    const report = await runWith(`${origin}/admin/token`);
+
+    expect(report.ok).toBe(false);
+    expect(report.resolvedTokenUrl).toBeUndefined();
+    expect(stepOf(report, 'token').message).toMatch(/Nothing answered at that token address/i);
+  });
+});
+
 describe('the OneRoster exchange over real HTTP', () => {
   it('reports every step working', async () => {
     handler = allGood;

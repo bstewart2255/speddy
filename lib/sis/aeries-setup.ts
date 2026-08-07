@@ -28,6 +28,66 @@ import type { SisTestResult } from './connections';
 export const AERIES_API_PATH = '/aeries/api/v5';
 
 /**
+ * The API roots we know Aeries serves, in the order we try them.
+ *
+ * Two real deployment shapes, both ordinary:
+ *   - `/aeries/api/v5` — a district running Aeries on its own web server, where
+ *     `/aeries` is the application root. `demo.aeries.net` is one of these, and
+ *     it is what this integration was originally built and tested against.
+ *   - `/api/v5` — an Aeries-HOSTED dedicated API host (`<district>api.aeries.net`),
+ *     where the API is the whole point of the host and has no app prefix.
+ *
+ * Assuming the first cost a live district a morning (SPE-426): their server
+ * answered every probe with 404, and because `normalizeAeriesBaseUrl` replaced
+ * whatever they typed, there was no address they could have entered to fix it.
+ * Order is deliberate — the historical default stays first, so nothing changes
+ * for a district that already works.
+ */
+export const AERIES_API_PATHS = [AERIES_API_PATH, '/api/v5'] as const;
+
+/**
+ * Every base URL worth trying for a district, most-likely first.
+ *
+ * The stored value leads: if a district (or a previous resolution) gave us a
+ * specific path, it is tried before anything we would guess. The known layouts
+ * follow, on the same host — only the PATH ever varies, so this widens no
+ * egress beyond the host the district supplied and the guard already cleared.
+ */
+export function aeriesBaseUrlCandidates(storedBaseUrl: string): string[] {
+  const trimmed = storedBaseUrl.trim().replace(/\/+$/, '');
+  const candidates: string[] = [];
+  const add = (value: string) => {
+    if (!candidates.includes(value)) candidates.push(value);
+  };
+
+  add(trimmed);
+  try {
+    const { origin } = new URL(trimmed);
+    for (const path of AERIES_API_PATHS) add(`${origin}${path}`);
+  } catch {
+    // Unparseable stored value: the caller's SSRF check will reject it and
+    // report properly. Nothing to add.
+  }
+  return candidates;
+}
+
+/**
+ * Whether a failure means "wrong address" (keep looking) or "right address"
+ * (stop).
+ *
+ * This is the load-bearing distinction in the whole resolver. A 404 is the only
+ * status that says the endpoint is not there. A 401 means the server HAS that
+ * endpoint and refused the certificate; a 403 means it has it and a permission
+ * box is unticked. Treating either as "keep looking" would walk past the
+ * correct address and then report a credential problem as an address problem —
+ * the same class of misdiagnosis as SPE-417, which is what this ticket exists
+ * to stop repeating.
+ */
+function isWrongAddress(err: unknown): boolean {
+  return err instanceof AeriesApiError && err.status === 404;
+}
+
+/**
  * Turn whatever a district administrator pasted into the base URL the client
  * needs.
  *
@@ -72,7 +132,15 @@ export function normalizeAeriesBaseUrl(input: string): string {
   // what the store and test paths actually await.
   assertPublicSisHostSyntax(url.hostname, AERIES_URL_LABELS);
 
-  // Strip whatever path they landed on and append the API path ourselves.
+  // An explicit API root is KEPT. Overriding it is what left a district unable
+  // to enter a working address at all (SPE-426): their API lives at `/api/v5`,
+  // and pasting exactly that still produced `/aeries/api/v5`. If they have told
+  // us where their API is, believe them — the connection test will find out
+  // soon enough, and it can try the other layouts if this one 404s.
+  const path = url.pathname.replace(/\/+$/, '');
+  if (/\/api\/v\d+$/i.test(path)) return `${url.origin}${path}`;
+
+  // Otherwise strip whatever page they landed on and apply the default root.
   // /admin, /student, a deep link — none of it is the API root, and guessing
   // from their path is how you end up with .../admin/aeries/api/v5.
   return `${url.origin}${AERIES_API_PATH}`;
@@ -96,6 +164,15 @@ export interface AeriesTestReport {
   areas: AeriesAreaResult[];
   /** One-line summary for the connection row and the status chip. */
   summary: string;
+  /**
+   * The base URL that actually answered, when it differs from the one stored.
+   *
+   * Present only when resolution had to move off the stored value. The caller
+   * persists it so the correction is made once rather than re-derived on every
+   * test — and so a later sync uses the address that works. Never contains a
+   * credential; it is a URL on the host the district already gave us.
+   */
+  resolvedBaseUrl?: string;
 }
 
 /**
@@ -180,28 +257,105 @@ export async function runAeriesConnectionTest(params: {
     };
   }
 
-  const client = new AeriesClient({
-    baseUrl: params.baseUrl,
-    certificate: params.certificate,
-  });
-
   const areas: AeriesAreaResult[] = [];
 
-  // 1. Reachability + certificate. `schools` doubles as the auth check: it is
-  // the smallest endpoint that requires a valid cert, and it carries no
-  // student data, so a failed connection never touches PII.
+  // 1. Reachability + certificate, across the known API layouts. `schools`
+  // doubles as the auth check: it is the smallest endpoint that requires a
+  // valid cert, and it carries no student data, so a failed connection never
+  // touches PII. It is also what resolution is decided on — a 404 here is the
+  // signal that the address, not the credential, is wrong.
+  //
+  // On the happy path this is exactly one request, as before: the stored base
+  // is tried first and anything other than a 404 ends the search.
   let schoolCodes: number[] = [];
-  const schools = await probe('schools', 'Schools', async () => {
-    const list = await client.getSchools({ fields: ['SchoolCode', 'Name'] });
-    // Without this, a non-array body makes `.map` throw a TypeError, which
-    // `explain` reads as a network failure — telling a district their reachable
-    // instance is unreachable.
-    if (!Array.isArray(list)) {
-      throw new AeriesApiError('Aeries returned an unexpected response for Schools.', 502, 'schools');
+  let client = new AeriesClient({ baseUrl: params.baseUrl, certificate: params.certificate });
+  let resolvedBaseUrl = params.baseUrl;
+  let schools!: AeriesAreaResult;
+
+  // The stored value's own verdict, kept in case nothing answers. Without it,
+  // exhausting every candidate would report against — and correct the row to —
+  // whichever layout happened to be tried last, inventing an address that is
+  // just as wrong as the one we started with.
+  let exhaustedFallback: { client: AeriesClient; schools: AeriesAreaResult } | null = null;
+
+  const candidates = aeriesBaseUrlCandidates(params.baseUrl);
+  for (const candidate of candidates) {
+    // Each candidate is re-guarded. Only the path varies, but the check is
+    // cheap and skipping it on the strength of "same host" is how a guard
+    // quietly stops covering one of its call sites.
+    try {
+      await assertSafeSisUrl(candidate, AERIES_URL_LABELS);
+    } catch {
+      continue;
     }
-    schoolCodes = list.map((s) => s.SchoolCode).filter((c) => Number.isFinite(c));
-    return list.length;
-  });
+
+    const attemptClient = new AeriesClient({
+      baseUrl: candidate,
+      certificate: params.certificate,
+    });
+    let wrongAddress = false;
+    const attempt = await probe('schools', 'Schools', async () => {
+      try {
+        const list = await attemptClient.getSchools({ fields: ['SchoolCode', 'Name'] });
+        // Without this, a non-array body makes `.map` throw a TypeError, which
+        // `explain` reads as a network failure — telling a district their
+        // reachable instance is unreachable.
+        if (!Array.isArray(list)) {
+          throw new AeriesApiError(
+            'Aeries returned an unexpected response for Schools.',
+            502,
+            'schools',
+          );
+        }
+        schoolCodes = list.map((s) => s.SchoolCode).filter((c) => Number.isFinite(c));
+        return list.length;
+      } catch (err) {
+        wrongAddress = isWrongAddress(err);
+        throw err;
+      }
+    });
+
+    // Keep looking only while the server says "not here". Anything else — a
+    // success, a rejected certificate, an unticked permission, a timeout — is
+    // an answer FROM this address, so it is the address to report against.
+    if (wrongAddress) {
+      exhaustedFallback ??= { client: attemptClient, schools: attempt };
+      schoolCodes = [];
+      continue;
+    }
+
+    client = attemptClient;
+    resolvedBaseUrl = candidate;
+    schools = attempt;
+    break;
+  }
+
+  // Nothing answered. Report the stored address's own 404 and correct nothing:
+  // "we could not find your API at any layout we know" is the truth, and
+  // rewriting the row to a guess would bury it.
+  if (!schools && exhaustedFallback) {
+    client = exhaustedFallback.client;
+    schools = exhaustedFallback.schools;
+    resolvedBaseUrl = params.baseUrl;
+  }
+
+  // Every candidate was refused by the guard: nothing was dialled at all.
+  if (!schools) {
+    return {
+      ok: false,
+      areas: [
+        {
+          key: 'connection',
+          label: 'Connection',
+          status: 'error',
+          message: 'That address cannot be used.',
+        },
+      ],
+      summary: 'Could not connect to Aeries.',
+    };
+  }
+
+  const corrected = resolvedBaseUrl !== params.baseUrl ? resolvedBaseUrl : undefined;
   areas.push(
     schools.status === 'ok'
       ? { key: 'connection', label: 'Connection', status: 'ok', message: 'Speddy can reach your Aeries instance.' }
@@ -228,6 +382,7 @@ export async function runAeriesConnectionTest(params: {
     return {
       ok: false,
       areas,
+      resolvedBaseUrl: corrected,
       summary:
         schools.status === 'ok'
           ? 'Connected, but Aeries returned no schools.'
@@ -294,7 +449,7 @@ export async function runAeriesConnectionTest(params: {
     summary = `${failed.length} of ${permissionAreas.length} areas need attention in Aeries.`;
   }
 
-  return { ok: failed.length === 0, areas, summary };
+  return { ok: failed.length === 0, areas, summary, resolvedBaseUrl: corrected };
 }
 
 /**

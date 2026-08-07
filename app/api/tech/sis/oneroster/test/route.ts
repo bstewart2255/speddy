@@ -6,6 +6,7 @@ import {
   getDecryptedCredential,
   listConnections,
   recordTestResult,
+  updateConnectionUrls,
 } from '@/lib/sis/connections';
 import {
   runOneRosterConnectionTest,
@@ -99,6 +100,28 @@ export const POST = withRoute(
       clientId: credential.clientId,
       clientSecret: credential.clientSecret,
     });
+
+    // Persist a corrected token endpoint before the verdict, for the same
+    // reason as the Aeries base URL: make the fix once instead of re-deriving
+    // it on every test. Non-fatal — the report is already complete.
+    if (report.resolvedTokenUrl) {
+      try {
+        await updateConnectionUrls({
+          connectionId: connection.id,
+          actorId: userId,
+          tokenUrl: report.resolvedTokenUrl,
+        });
+        log.info('Corrected the stored OneRoster token URL', {
+          connectionId: connection.id,
+          from: connection.token_url,
+          to: report.resolvedTokenUrl,
+        });
+      } catch (err) {
+        log.error('Could not persist the corrected OneRoster token URL', err, {
+          connectionId: connection.id,
+        });
+      }
+    }
 
     try {
       await recordTestResult({

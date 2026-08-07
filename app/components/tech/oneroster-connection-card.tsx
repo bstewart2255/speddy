@@ -74,7 +74,11 @@ export default function OneRosterConnectionCard({
 
   const hasCredential = Boolean(connection.credential_hint);
   const canSave =
-    baseUrl.trim() && tokenUrl.trim() && clientId.trim() && clientSecret.trim();
+    // The token address is deliberately NOT required. An Aeries OneRoster
+    // console shows a URL, a Consumer ID and a Secret — never a token endpoint
+    // — so demanding it forced districts to guess (SPE-426). Left blank, the
+    // server derives it and the connection test settles which shape is right.
+    baseUrl.trim() && clientId.trim() && clientSecret.trim();
 
   const save = async () => {
     // setSaving(true) does not disable the button until the next render, so a
@@ -161,7 +165,7 @@ export default function OneRosterConnectionCard({
 
           <div>
             <label htmlFor="oneroster-token-url" className="block text-sm font-medium text-gray-900">
-              Your token address
+              Your token address <span className="font-normal text-gray-500">(optional)</span>
             </label>
             <input
               id="oneroster-token-url"
@@ -173,8 +177,8 @@ export default function OneRosterConnectionCard({
               className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
             <p className="mt-1 text-xs text-gray-500">
-              Usually the same address as above with <span className="font-mono">/token/</span> on
-              the end.
+              Leave this blank unless your OneRoster settings show one — we will work it out
+              from the address above and confirm it when you test the connection.
             </p>
           </div>
 

@@ -6,6 +6,7 @@ import {
   getDecryptedCredential,
   listConnections,
   recordTestResult,
+  updateConnectionUrls,
 } from '@/lib/sis/connections';
 import { runAeriesConnectionTest, toStoredTestResult } from '@/lib/sis/aeries-setup';
 
@@ -78,6 +79,31 @@ export const POST = withRoute(
       baseUrl: connection.base_url,
       certificate: credential.certificate,
     });
+
+    // Persist a corrected address before the verdict. Resolution only moves off
+    // the stored value when that value produced a 404 and another layout
+    // answered, so this makes the fix once rather than re-deriving it on every
+    // test — and points a later sync at the address that actually works.
+    // Non-fatal: the report is already complete and is worth returning even if
+    // the correction cannot be written.
+    if (report.resolvedBaseUrl) {
+      try {
+        await updateConnectionUrls({
+          connectionId: connection.id,
+          actorId: userId,
+          baseUrl: report.resolvedBaseUrl,
+        });
+        log.info('Corrected the stored Aeries base URL', {
+          connectionId: connection.id,
+          from: connection.base_url,
+          to: report.resolvedBaseUrl,
+        });
+      } catch (err) {
+        log.error('Could not persist the corrected Aeries base URL', err, {
+          connectionId: connection.id,
+        });
+      }
+    }
 
     try {
       await recordTestResult({
