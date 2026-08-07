@@ -286,6 +286,16 @@ Field conventions:
   also calls one child. It is an artifact of the initials generator rather than
   a designed pair, so it stays two children — negative space for SPE-348's
   create-or-attach step, which must cope with exactly that shape.
+- **One `student_teachers` link per (child, teacher) (SPE-334), 200 today.**
+  The child's teacher set, anchored on `children` — so the co-served pairs carry
+  one link between them, not one per caseload copy, exactly as production's
+  backfill collapsed its one real shared pair. Seeding is still **1:1 with the
+  legacy `students.teacher_id`** in this ticket; per-period sets at Cedar/Redwood
+  and the elementary co-teacher pair arrive with SPE-336 (§10). Links are seeded
+  explicitly with manifest-derived ids **before** the caseload rows, so the
+  dual-write trigger's `ON CONFLICT DO NOTHING` is a no-op instead of planting a
+  row with an id the manifest does not own (invariant 1). `TOTAL_STUDENT_TEACHER_LINKS`
+  derives from the same functions the seed uses.
 - Both scoping systems set on every row: legacy text (`school_site`,
   `school_district`) **and** structured FKs (`school_id`, `district_id`,
   `state_id`), plus `teacher_name` text **and** `teacher_id` FK — mirroring
@@ -375,10 +385,12 @@ npm scripts: the three lifecycle commands `sim:reset`, `sim:teardown`,
 `sim:verify`, plus the **signed-in-session guards** that mocked unit tests
 structurally cannot cover (they see no RLS policy, trigger or SECURITY DEFINER
 guard at all): `sim:verify-rls` (`profiles`), `sim:verify-children-rls`
-(SPE-347 `children` RLS + the child-link trigger) and `sim:verify-child-link`
-(SPE-348: the server re-validating a claimed create-or-attach). All `npx tsx`.
-The two `children` guards write sim rows — re-seed afterward to restore a
-pristine fixture.
+(SPE-347 `children` RLS + the child-link trigger), `sim:verify-child-link`
+(SPE-348: the server re-validating a claimed create-or-attach) and
+`sim:verify-student-teachers-rls` (SPE-334: the teacher read sets, the
+co-teacher case, the school-consistency refusal and the dual-write). All
+`npx tsx`. The two `children` guards and the `student_teachers` guard write sim
+rows — re-seed afterward to restore a pristine fixture.
 
 Env requirements are scoped per command. Every command needs
 `NEXT_PUBLIC_SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`. Beyond that:
@@ -387,7 +399,7 @@ Env requirements are scoped per command. Every command needs
 |---|---|---|
 | `sim:reset` | `SIM_DISTRICT_PASSWORD` | it sets the persona passwords |
 | `sim:verify`, `sim:teardown` | — | read-only / delete-only, so they never receive the credential secret |
-| the three `sim:verify-*` guards | `SIM_DISTRICT_PASSWORD` + `NEXT_PUBLIC_SUPABASE_ANON_KEY` | they sign IN as personas, which needs the same derived password and a client-side key |
+| the four `sim:verify-*` guards | `SIM_DISTRICT_PASSWORD` + `NEXT_PUBLIC_SUPABASE_ANON_KEY` | they sign IN as personas, which needs the same derived password and a client-side key |
 
 **Preflight, before any write.** Scripts hard-fail unless: **(a)** the host in
 `NEXT_PUBLIC_SUPABASE_URL` is a front for the project pinned in `manifest.ts` —

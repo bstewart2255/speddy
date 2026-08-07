@@ -381,6 +381,38 @@ export function studentTeacher(rule: CaseloadRule, index: number): { teacherRowI
   return { teacherRowId: teacherRecordId(t.key), teacherName: `${t.firstName} ${t.lastName}` };
 }
 
+/**
+ * SPE-334 — a row in `student_teachers`, the child's teacher set.
+ *
+ * The link is anchored on the CHILD, not on the caseload row, so a co-served
+ * child carries ONE link per teacher no matter how many providers serve them.
+ * That is why the id is keyed on (childId, teacherRowId) rather than on the
+ * students row: the two mirrored Willow pairs collapse to a single link each,
+ * exactly as the production backfill collapses the one real shared pair.
+ *
+ * Seeding stays 1:1 with `studentTeacher()` in this ticket — one link per child,
+ * the same teacher the legacy `students.teacher_id` column names. Per-period
+ * teacher sets at Cedar/Redwood and the elementary co-teacher pair arrive with
+ * SPE-336 (docs/SIM_DISTRICT.md §10, "Secondary rostering ships").
+ */
+export function studentTeacherLinkId(childUuid: string, teacherRowId: string): string {
+  return simUuid(`student_teacher:${childUuid}:${teacherRowId}`);
+}
+
+/**
+ * Distinct (child, teacher) links the seed plants — students minus the links
+ * the shared pairs collapse. Derived from the same functions the seed uses, so
+ * it cannot drift from what actually lands.
+ */
+export const TOTAL_STUDENT_TEACHER_LINKS = new Set(
+  CASELOADS.flatMap(rule =>
+    Array.from(
+      { length: rule.count },
+      (_, i) => `${childKey(rule.providerKey, rule.schoolId, i)}|${studentTeacher(rule, i).teacherRowId}`,
+    ),
+  ),
+).size;
+
 // Edge-case rows (spec §6), all on Rachel's Willow caseload:
 export const EDGE = {
   /** Index of the student with zero scheduled sessions (unscheduled alert). */
@@ -675,7 +707,13 @@ export const SEEDED_TABLES = [
   // `children` is a PARENT of students (students.child_id), so it seeds before
   // them and tears down after them — the one entry here whose order is the
   // reverse of the rest (SPE-347).
-  'user_site_schedules', 'teachers', 'children', 'students', 'student_details',
+  // `student_teachers` (SPE-334) is the child's teacher set. It seeds between
+  // children and students — before students so the legacy-column dual-write
+  // trigger finds the link already there (its ON CONFLICT DO NOTHING then makes
+  // the insert a no-op rather than planting a row with an unmanifested id), and
+  // it tears down between them so the reverse mirror has no caseload rows left
+  // to repoint.
+  'user_site_schedules', 'teachers', 'children', 'student_teachers', 'students', 'student_details',
   'bell_schedules', 'school_hours', 'special_activities',
   'session_groups', 'schedule_sessions',
   'attendance', 'care_referrals', 'care_cases', 'care_meeting_notes',
