@@ -166,19 +166,26 @@ async function main(): Promise<void> {
     check(insErr?.code === '42501', 'unlinked provider INSERT refused with 42501',
       `code=${insErr?.code ?? 'none'}`);
 
+    // RLS filters these to zero rows and reports 2xx — so the PASS condition is
+    // "no error AND nothing changed". Without the error check, a request that
+    // failed for an unrelated reason also yields 0 rows and the guard goes
+    // green while proving nothing.
     const countBefore = (await links(target.child_id)).length;
-    const { data: delRows } = await alicia.from('student_teachers')
+    const { data: delRows, error: delErr } = await alicia.from('student_teachers')
       .delete().eq('child_id', target.child_id).select('id');
-    check((delRows?.length ?? 0) === 0 && (await links(target.child_id)).length === countBefore,
+    check(
+      !delErr && (delRows?.length ?? 0) === 0 &&
+        (await links(target.child_id)).length === countBefore,
       'unlinked provider DELETE affects 0 rows and destroys nothing',
-      `${delRows?.length ?? 0} rows, ${countBefore} links intact`);
+      delErr ? `${delErr.code} ${delErr.message}`
+             : `${delRows?.length ?? 0} rows, ${countBefore} links intact`);
 
-    const { data: updRows } = await alicia.from('student_teachers')
+    const { data: updRows, error: updErr } = await alicia.from('student_teachers')
       .update({ subject: 'HACKED' }).eq('child_id', target.child_id).select('id');
     const stillClean = (await links(target.child_id)).every(l => l.subject !== 'HACKED');
-    check((updRows?.length ?? 0) === 0 && stillClean,
+    check(!updErr && (updRows?.length ?? 0) === 0 && stillClean,
       'unlinked provider UPDATE affects 0 rows and persists nothing',
-      `${updRows?.length ?? 0} rows`);
+      updErr ? `${updErr.code} ${updErr.message}` : `${updRows?.length ?? 0} rows`);
   }
 
   console.log('\nre-assigning the same teacher is a no-op, not an error:');
@@ -198,8 +205,9 @@ async function main(): Promise<void> {
       helperError ?? `${countBefore} -> ${after.length}`);
     // ignoreDuplicates must not have blanked the labels we set earlier.
     const davidLink = after.find(l => l.teacher_id === davidTeacherId);
-    check(davidLink?.subject === 'Algebra I',
-      'and does not wipe the existing link\'s labels', `${davidLink?.subject}`);
+    check(davidLink?.subject === 'Algebra I' && davidLink?.period === '3',
+      'and does not wipe the existing link\'s labels',
+      `${davidLink?.subject} / ${davidLink?.period}`);
   }
 
   console.log('\nreordering the set is not a change (co-teachers are equals):');

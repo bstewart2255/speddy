@@ -509,11 +509,15 @@ export function StudentDetailsModal({
 
                 <FormGroup>
                   <Label htmlFor="teacher">{isSecondary ? 'Teachers' : 'Teacher'}</Label>
+                  {/* Locked until the set has loaded, and while a save is in
+                      flight: an edit before the fetch lands is overwritten by
+                      it, and one made during the save is not in the request
+                      but looks saved. */}
                   <StudentTeachersField
                     value={teacherLinks}
                     onChange={setTeacherLinks}
                     isSecondary={isSecondary}
-                    disabled={readOnly}
+                    disabled={readOnly || loading || !linksLoaded}
                     schoolId={student.school_id || undefined}
                   />
                 </FormGroup>
