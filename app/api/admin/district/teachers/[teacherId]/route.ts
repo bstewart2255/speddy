@@ -74,9 +74,13 @@ export const GET = withRoute<{ teacherId: string }>({}, async ({ userId, params 
       .eq('id', teacherId)
       .single();
 
-    // Check for dependencies (students assigned to this teacher)
+    // SPE-336: count LINKS, not rows carrying the legacy column. A teacher who
+    // is only ever a CO-teacher has no `students.teacher_id` pointing at them,
+    // so the old check reported zero assigned students and let the delete
+    // through — and the FK cascade then silently destroyed their
+    // `student_teachers` rows, which are the authoritative assignment.
     const { count: studentCount } = await adminClient
-      .from('students')
+      .from('student_teachers')
       .select('id', { count: 'exact', head: true })
       .eq('teacher_id', teacherId);
 
@@ -245,9 +249,10 @@ export const DELETE = withRoute<{ teacherId: string }>({}, async ({ userId, para
     // Use admin client for checks and delete
     const adminClient = createServiceClient();
 
-    // Check for dependencies
+    // SPE-336: count LINKS — see the GET handler above. Deleting a teacher
+    // cascades their student_teachers rows away, so the guard has to see them.
     const { count: studentCount } = await adminClient
-      .from('students')
+      .from('student_teachers')
       .select('id', { count: 'exact', head: true })
       .eq('teacher_id', teacherId);
 

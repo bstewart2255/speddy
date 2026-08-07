@@ -816,6 +816,8 @@ export async function deleteTeacher(teacherId: string) {
 
 export interface AdminStudentView {
   id: string;
+  /** SPE-336: the child this caseload row serves — the identity key. */
+  child_id: string | null;
   initials: string;
   grade_level: string;
   teacher_id: string | null;
@@ -849,8 +851,19 @@ export interface GroupedStudent {
 }
 
 /**
- * Groups students by their identity (initials + grade + teacher).
- * Multiple provider records for the same student are combined.
+ * Groups a school's caseload rows by the CHILD they serve, so one kid served
+ * by two providers is one row with two provider records.
+ *
+ * SPE-336: the key used to be `initials + grade + teacher_id`, which breaks
+ * both ways once a student can have more than one teacher — a second teacher
+ * would fragment one child into two rows. Dropping teacher from the tuple was
+ * the original plan, but that over-merges instead: two genuinely different
+ * children who happen to share initials and grade at one school would collapse
+ * into one. `child_id` (SPE-347) is the actual identity and avoids both, so
+ * that is the key. Rows with no child fall back to the old heuristic, which
+ * cannot happen today — every students row is linked, asserted by the
+ * migration and by sim:verify — but the fallback keeps a null from silently
+ * merging unrelated rows under one empty key.
  */
 export function groupStudentsByIdentity(students: AdminStudentView[]): GroupedStudent[] {
   const groupMap = new Map<string, GroupedStudent>();
@@ -859,7 +872,9 @@ export function groupStudentsByIdentity(students: AdminStudentView[]): GroupedSt
     // Null-safe grouping key - handle missing initials/grade gracefully
     const initials = (student.initials || '').toLowerCase();
     const gradeLevel = student.grade_level || '';
-    const groupKey = `${initials}_${gradeLevel}_${student.teacher_id || ''}`;
+    const groupKey = student.child_id
+      ? `child_${student.child_id}`
+      : `${initials}_${gradeLevel}_${student.id}`;
 
     if (!groupMap.has(groupKey)) {
       groupMap.set(groupKey, {
@@ -938,6 +953,7 @@ export async function getSchoolStudents(schoolId: string): Promise<AdminStudentV
         .from('students')
         .select(`
           id,
+          child_id,
           initials,
           grade_level,
           teacher_id,
@@ -966,6 +982,7 @@ export async function getSchoolStudents(schoolId: string): Promise<AdminStudentV
   // Transform to AdminStudentView format
   return (studentsResult.data || []).map(student => ({
     id: student.id,
+    child_id: student.child_id,
     initials: student.initials,
     grade_level: student.grade_level,
     teacher_id: student.teacher_id,

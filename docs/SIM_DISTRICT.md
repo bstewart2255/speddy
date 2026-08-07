@@ -207,9 +207,11 @@ sites are the rare exception, so the sim doesn't model them).
 | 13 | Tomás Reyes-Sim | `speech` | Willow (primary) + Juniper + Cedar | `slp.itinerant` | **3-site itinerant near the 55-case SLP average (48)**: `provider_schools` M:N + `is_primary`, `user_site_schedules` workdays, school switcher, mixed elementary/secondary UX |
 | 14 | Jun Park-Sim | `ot` | Maple (primary) + Redwood | `ot.itinerant` | **Both UXes on one login** — elementary UX at Maple, trimmed secondary UX at Redwood (§9's exact scenario); OT service type |
 | 15 | Leah Kim-Sim | `sea` | Willow | `sea.willow` | `delivered_by='sea'` delegation (`assigned_to_sea_id`); lesson **view-only** RLS; no schedule editing |
-| 16 | Nora Ellison-Sim | `teacher` (gr 3) | Willow | `teacher.willow.1` | Teacher dashboard with a roster (`students.teacher_id`); linked `teachers.account_id`; submits CARE Lane A referral |
-| 17 | David Osei-Sim | `teacher` (gr 5) | Willow | `teacher.willow.2` | Teacher **empty state** — zero SPED students |
-| 18 | Fatima Haddad-Sim | `teacher` (gr 7) | Cedar | `teacher.cedar` | Secondary teacher view: "Case Manager" label, accommodations-first student page |
+| 16 | Nora Ellison-Sim | `teacher` (gr 3) | Willow | `teacher.willow.1` | Teacher dashboard with a roster (via `student_teachers`); linked `teachers.account_id`; submits CARE Lane A referral |
+| 17 | David Osei-Sim | `teacher` (gr 5) | Willow | `teacher.willow.2` | Teacher **empty state** — zero SPED students, and the only teacher who can prove a *non*-linked teacher sees nothing |
+| 18 | Imani Brooks-Sim | `teacher` (gr 3) | Willow | `teacher.willow.3` | **Nora's co-teacher** (SPE-336): the same grade-3 class, as equals. Both must see every student in it — the elementary half of multi-teacher |
+| 19 | Fatima Haddad-Sim | `teacher` (gr 7) | Cedar | `teacher.cedar` | Secondary teacher view: "Case Manager" label, accommodations-first student page |
+| 20 | Sanjay Rao-Sim | `teacher` (gr 7) | Cedar | `teacher.cedar.2` | **A second Cedar subject teacher** (SPE-336): shares students with Fatima across different periods, and must see them independently of her |
 
 ### Record-only teachers (no login)
 
@@ -217,17 +219,24 @@ sites are the rare exception, so the sim doesn't model them).
 "teacher exists as a record, not an account" state that admin rosters have to
 deal with, and a legitimate steady state rather than a half-finished signup:
 `teachers` is a directory, and only some of the people in it are also users.
-**Eighteen across all five
-schools** (5 at Willow, 4 at Maple, 4 at Juniper, 2 at Cedar, 3 at Redwood),
+**Twenty-seven across all five
+schools** (5 at Willow, 4 at Maple, 4 at Juniper, 6 at Cedar, 8 at Redwood),
 so every school's roster looks staffed and every seeded student has a
 homeroom teacher to hang off. Names (all `-Sim`) and grade assignments live
 in the manifest.
 
+The two secondary schools carry a deeper bench on purpose (SPE-336): eight
+teachers each, against `SECONDARY_PERIODS`' six. A middle/high student has a
+teacher per period, and if the faculty were only as deep as the timetable
+every student would carry an identical set — "which of my teachers" would
+never be a real question, and the fixture would prove nothing about the
+multi-teacher reads.
+
 **Deliberately absent from v1:** `counseling`, `psychologist`,
 `specialist`, `intervention` personas (they behave identically to the seeded
 provider roles at the RLS/delivery layer — `delivered_by='specialist'`); a
-high-school **teacher login** (record-only HS teachers hold the rosters;
-Fatima covers the secondary teacher UX); a second district; a state-scoped
+high-school **teacher login** (record-only HS teachers hold the
+rosters; Fatima and Sanjay cover the secondary teacher UX at middle school); a second district; a state-scoped
 admin. Each is a small manifest addition when a feature actually targets it.
 
 ---
@@ -290,8 +299,14 @@ Field conventions:
   The child's teacher set, anchored on `children` — so the co-served pairs carry
   one link between them, not one per caseload copy, exactly as production's
   backfill collapsed its one real shared pair. Seeding is still **1:1 with the
-  legacy `students.teacher_id`** in this ticket; per-period sets at Cedar/Redwood
-  and the elementary co-teacher pair arrive with SPE-336 (§10). Links are seeded
+  legacy `students.teacher_id`** at elementary — except Nora's grade-3 class,
+  which Imani co-teaches (two links per child). At **Cedar and Redwood every
+  student carries six links**, one per `SECONDARY_PERIODS` slot, drawn from the
+  school's eight teachers starting at their homeroom teacher and wrapping — so
+  the homeroom teacher is always in the set (which keeps the legacy column
+  naming a teacher the child really has) while different students still get
+  different sets. `subject`/`period` are display labels only; no seeded session
+  derives from them. Links are seeded
   explicitly with manifest-derived ids **before** the caseload rows, so the
   dual-write trigger's `ON CONFLICT DO NOTHING` is a no-op instead of planting a
   row with an id the manifest does not own (invariant 1). `TOTAL_STUDENT_TEACHER_LINKS`
@@ -388,9 +403,12 @@ guard at all): `sim:verify-rls` (`profiles`), `sim:verify-children-rls`
 (SPE-347 `children` RLS + the child-link trigger), `sim:verify-child-link`
 (SPE-348: the server re-validating a claimed create-or-attach) and
 `sim:verify-student-teachers-rls` (SPE-334: the teacher read sets, the
-co-teacher case, the school-consistency refusal and the dual-write). All
+co-teacher case, the school-consistency refusal and the dual-write) and
+`sim:verify-teacher-set-reads` (SPE-336: the two teacher-set reads the portal
+walk cannot see — `get_sea_students` and the IEP-meeting caseload). All
 `npx tsx`. The two `children` guards and the `student_teachers` guard write sim
-rows — re-seed afterward to restore a pristine fixture.
+rows — re-seed afterward to restore a pristine fixture;
+`sim:verify-teacher-set-reads` is read-only.
 
 Env requirements are scoped per command. Every command needs
 `NEXT_PUBLIC_SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`. Beyond that:
@@ -399,7 +417,7 @@ Env requirements are scoped per command. Every command needs
 |---|---|---|
 | `sim:reset` | `SIM_DISTRICT_PASSWORD` | it sets the persona passwords |
 | `sim:verify`, `sim:teardown` | — | read-only / delete-only, so they never receive the credential secret |
-| the four `sim:verify-*` guards | `SIM_DISTRICT_PASSWORD` + `NEXT_PUBLIC_SUPABASE_ANON_KEY` | they sign IN as personas, which needs the same derived password and a client-side key |
+| the five `sim:verify-*` guards | `SIM_DISTRICT_PASSWORD` + `NEXT_PUBLIC_SUPABASE_ANON_KEY` | they sign IN as personas, which needs the same derived password and a client-side key |
 
 **Preflight, before any write.** Scripts hard-fail unless: **(a)** the host in
 `NEXT_PUBLIC_SUPABASE_URL` is a front for the project pinned in `manifest.ts` —
@@ -528,7 +546,7 @@ Triggers to revisit this spec (tracked here so they don't rely on memory):
 | **AI features enabled** (SPE-174) | Sim-driven generation burns real API budget; keep generation steps deliberate and budgeted in verification runs. |
 | **Billing / payments return** | Sim users need an explicit exemption path before any billing integration ships. |
 | **Outbound email / notifications ship** | Re-confirm the sim domain can never receive or leak mail; decide per-channel whether sim users are suppressed or plus-addressed. |
-| **Secondary rostering ships (SPE-194)** | Today the sim mirrors the current one-teacher-per-student model even at Cedar/Redwood — a known simplification the owner has flagged (real secondary students have a teacher per period). When multi-teacher rostering lands, the sim gains per-period teacher assignments and the secondary session seeding switches on (§7). |
+| **Secondary rostering ships (SPE-194)** | ✅ **Fired 2026-08-07 (SPE-334/SPE-336).** The sim no longer mirrors one-teacher-per-student: Cedar and Redwood students carry a teacher per period, and Willow has a co-teacher pair (§7). Still open from this trigger: secondary **session** seeding, which stays off because Speddy does not schedule at secondary (SPE-149/193 posture). |
 | **Any new integration** | Standing question in its design: *"what does the sim district do here?"* |
 
 ---

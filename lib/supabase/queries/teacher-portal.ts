@@ -3,6 +3,7 @@ import { safeQuery } from '@/lib/supabase/safe-query';
 import { measurePerformanceWithAlerts } from '@/lib/monitoring/performance-alerts';
 import { requireNonNull } from '@/lib/types/utils';
 import { getCurrentSchoolYear } from '@/lib/school-year';
+import { getMyLinkedStudentIds } from './student-teachers';
 import type { Database } from '../../../src/types/database';
 
 type Student = Database['public']['Tables']['students']['Row'];
@@ -69,8 +70,13 @@ export async function getMyStudentsInResource() {
 
   const user = authResult.data.data.user;
 
-  // First get teacher ID
-  const teacher = await getCurrentTeacher();
+  // SPE-336: the roster is the teacher's LINK SET, not the single legacy
+  // column — at secondary that is every subject teacher's students, and at
+  // elementary both co-teachers see the shared class. Resolved through the
+  // same seam RLS uses, so this returns exactly what RLS would allow and
+  // covers an account holding teacher rows at more than one school.
+  const studentIds = await getMyLinkedStudentIds(supabase, user.id);
+  if (studentIds.length === 0) return [];
 
   const fetchPerf = measurePerformanceWithAlerts('fetch_my_students_in_resource', 'database');
   const fetchResult = await safeQuery(
@@ -91,7 +97,7 @@ export async function getMyStudentsInResource() {
             full_name
           )
         `)
-        .eq('teacher_id', teacher.id)
+        .in('id', studentIds)
         .order('grade_level', { ascending: true })
         .order('initials', { ascending: true });
       if (error) throw error;
@@ -99,8 +105,7 @@ export async function getMyStudentsInResource() {
     },
     {
       operation: 'fetch_my_students_in_resource',
-      userId: user.id,
-      teacherId: teacher.id
+      userId: user.id
     }
   );
   fetchPerf.end({ success: !fetchResult.error });
@@ -129,6 +134,16 @@ export async function getStudentDetails(studentId: string) {
 
   const user = authResult.data.data.user;
 
+  // SPE-336 defense in depth: this used to rely 100% on RLS to decide whether
+  // the caller may see this student. Scope the query to the caller's own link
+  // set as well, so a policy regression cannot quietly widen a teacher's
+  // reach — the exact failure mode SPE-332 hid for seven months. Belt and
+  // braces: RLS still runs, this just stops trusting it alone.
+  const myStudentIds = await getMyLinkedStudentIds(supabase, user.id);
+  if (!myStudentIds.includes(studentId)) {
+    throw new Error('Student not found or access denied');
+  }
+
   const fetchPerf = measurePerformanceWithAlerts('fetch_student_details', 'database');
   const fetchResult = await safeQuery(
     async () => {
@@ -150,6 +165,7 @@ export async function getStudentDetails(studentId: string) {
           )
         `)
         .eq('id', studentId)
+        .in('id', myStudentIds)
         .single();
       if (error) throw error;
       return data;
@@ -185,6 +201,12 @@ export async function getStudentResourceSchedule(studentId: string) {
   }
 
   const user = authResult.data.data.user;
+
+  // SPE-336 defense in depth — see getStudentDetails above.
+  const myStudentIds = await getMyLinkedStudentIds(supabase, user.id);
+  if (!myStudentIds.includes(studentId)) {
+    return [];
+  }
 
   const fetchPerf = measurePerformanceWithAlerts('fetch_student_schedule', 'database');
   const fetchResult = await safeQuery(
@@ -452,30 +474,12 @@ export async function getTodayStudentSessions() {
   }
 
   const user = authResult.data.data.user;
-  const teacher = await getCurrentTeacher();
 
-  // First, get the student IDs for this teacher
-  const studentsResult = await safeQuery(
-    async () => {
-      const { data, error } = await supabase
-        .from('students')
-        .select('id')
-        .eq('teacher_id', teacher.id);
-      if (error) throw error;
-      return data;
-    },
-    {
-      operation: 'fetch_teacher_student_ids',
-      userId: user.id,
-      teacherId: teacher.id
-    }
-  );
-
-  if (studentsResult.error || !studentsResult.data || studentsResult.data.length === 0) {
+  // SPE-336: same link set as the roster above.
+  const studentIds = await getMyLinkedStudentIds(supabase, user.id);
+  if (studentIds.length === 0) {
     return [];
   }
-
-  const studentIds = studentsResult.data.map(s => s.id);
 
   const fetchPerf = measurePerformanceWithAlerts('fetch_today_student_sessions', 'database');
   const fetchResult = await safeQuery(
@@ -506,8 +510,7 @@ export async function getTodayStudentSessions() {
     },
     {
       operation: 'fetch_today_student_sessions',
-      userId: user.id,
-      teacherId: teacher.id
+      userId: user.id
     }
   );
   fetchPerf.end({ success: !fetchResult.error });
