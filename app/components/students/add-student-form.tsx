@@ -4,7 +4,9 @@
   import { createStudent } from '../../../lib/supabase/queries/students';
   import { Button } from '../ui/button';
   import { Label, Input, Select, FormGroup, FormSection, HelperText, ErrorMessage } from '../ui/form';
-  import { TeacherAutocomplete } from '../teachers/teacher-autocomplete';
+  import { StudentTeachersField } from '../teachers/student-teachers-field';
+  import { saveTeacherLinksForStudent, type EditableTeacherLink } from '@/lib/supabase/queries/student-teachers';
+  import { createClient } from '@/lib/supabase/client';
 
   interface AddStudentFormProps {
     onClose: () => void;
@@ -12,11 +14,13 @@
   }
 
   export function AddStudentForm({ onClose, onSuccess }: AddStudentFormProps) {
+    // SPE-337: a teacher SET. The first entry rides the legacy columns (the
+    // SPE-334 dual-write mirrors it into a link); any co-teachers are written
+    // once the student — and its child record — exists.
+    const [teacherLinks, setTeacherLinks] = useState<EditableTeacherLink[]>([]);
     const [formData, setFormData] = useState({
       initials: '',
       grade_level: '',
-      teacher_id: null as string | null,
-      teacherName: null as string | null,
       sessions_per_week: 1,
       minutes_per_session: 30,
     });
@@ -35,8 +39,8 @@
         const student = await createStudent({
           initials: formData.initials.toUpperCase(),
           grade_level: formData.grade_level.trim(),
-          teacher_id: formData.teacher_id,
-          teacher_name: formData.teacherName || undefined,
+          teacher_id: teacherLinks[0]?.teacherId ?? null,
+          teacher_name: teacherLinks[0]?.name || undefined,
           sessions_per_week: formData.sessions_per_week,
           minutes_per_session: formData.minutes_per_session,
         });
@@ -47,8 +51,32 @@
           throw new Error('Failed to create student');
         }
 
+        // Everything the SPE-334 mirror cannot carry from the legacy column:
+        // co-teachers, and the subject/period labels on ANY link — so this runs
+        // for a single teacher too, or a secondary student with exactly one
+        // teacher would silently lose their labels.
+        //
+        // Second round trip, and the student already exists. If it fails, the
+        // add itself still succeeded — reporting it as a failure would send the
+        // user to retry initials that now collide. Say what is missing instead.
+        let coTeachersFailed = false;
+        if (teacherLinks.length > 0) {
+          try {
+            await saveTeacherLinksForStudent(createClient(), student.id, teacherLinks);
+          } catch (linkError) {
+            console.error('Error saving co-teacher links:', linkError);
+            coTeachersFailed = true;
+          }
+        }
+
         // Show success message - sessions are auto-created
-        alert(`Student "${student.initials}" has been added successfully!\n\nSessions created in Unscheduled Sessions! You can now drag them to the schedule grid or click "Schedule Sessions" to auto-place them.`);
+        alert(
+          `Student "${student.initials}" has been added successfully!` +
+          (coTeachersFailed
+            ? `\n\nThe teacher details could not be saved — open the student to set them again.`
+            : '') +
+          `\n\nSessions created in Unscheduled Sessions! You can now drag them to the schedule grid or click "Schedule Sessions" to auto-place them.`
+        );
 
         onSuccess();
         onClose();
@@ -108,11 +136,9 @@
         <Label htmlFor="teacher" required>
           Teacher
         </Label>
-        <TeacherAutocomplete
-          value={formData.teacher_id}
-          teacherName={formData.teacherName || undefined}
-          onChange={(teacherId, teacherName) => setFormData({ ...formData, teacher_id: teacherId, teacherName })}
-          placeholder="Search for a teacher..."
+        <StudentTeachersField
+          value={teacherLinks}
+          onChange={setTeacherLinks}
           required
         />
       </FormGroup>

@@ -80,6 +80,9 @@ export interface LinkedTeacher {
   /** `profiles` id when the teacher has a Speddy account, else null. */
   profileId: string | null;
   email: string | null;
+  /** Display labels only (SPE-334) — secondary carries them, elementary does not. */
+  subject: string | null;
+  period: string | null;
 }
 
 /**
@@ -100,7 +103,7 @@ export async function getTeachersByChildId(
 
   const { data, error } = await supabase
     .from('student_teachers')
-    .select('child_id, created_at, id, teachers(id, first_name, last_name, email, account_id)')
+    .select('child_id, created_at, id, subject, period, teachers(id, first_name, last_name, email, account_id)')
     .in('child_id', unique)
     .order('created_at', { ascending: true })
     .order('id', { ascending: true });
@@ -115,6 +118,8 @@ export async function getTeachersByChildId(
       name: [teacher.first_name, teacher.last_name].filter(Boolean).join(' ') || null,
       profileId: teacher.account_id ?? null,
       email: teacher.email ?? null,
+      subject: link.subject,
+      period: link.period,
     });
     byChild.set(link.child_id, list);
   }
@@ -132,4 +137,192 @@ export async function getTeachersByChildId(
 export function formatTeacherSet(teachers: LinkedTeacher[]): string | null {
   const names = teachers.map(t => t.name).filter((n): n is string => !!n);
   return names.length > 0 ? names.join(' / ') : null;
+}
+
+/**
+ * SPE-337 — how a teacher set reads in a table cell.
+ *
+ * Elementary lists every name, because a class has one teacher or two and both
+ * belong on screen. Secondary summarises: a student with six subject teachers
+ * turns a roster row into a paragraph, and the individual names are not what
+ * the reader is scanning for. One teacher renders as the name at either level,
+ * so nothing changes for the single-teacher case.
+ */
+export function summarizeTeacherSet(
+  teachers: LinkedTeacher[],
+  isSecondary: boolean,
+): string | null {
+  if (teachers.length === 0) return null;
+  if (teachers.length === 1) return teachers[0].name ?? 'Unnamed teacher';
+  if (!isSecondary) return formatTeacherSet(teachers);
+  return `${teachers.length} teachers`;
+}
+
+// ---------------------------------------------------------------------------
+// SPE-337 — reading and writing a student's teacher set by hand
+// ---------------------------------------------------------------------------
+
+/** A link as the editing UI holds it. `id` is absent until it is saved. */
+export interface EditableTeacherLink {
+  id?: string;
+  teacherId: string;
+  name: string | null;
+  /** Display labels only — secondary carries them, elementary leaves them null. */
+  subject: string | null;
+  period: string | null;
+}
+
+/** The child a caseload row serves. Null only if the row predates SPE-347. */
+async function childIdForStudent(supabase: Client, studentId: string): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('students').select('child_id').eq('id', studentId).single();
+  if (error) throw error;
+  return (data?.child_id as string | null) ?? null;
+}
+
+/** The teacher set of one caseload row, in link order. */
+export async function getTeacherLinksForStudent(
+  supabase: Client,
+  studentId: string,
+): Promise<EditableTeacherLink[]> {
+  const childId = await childIdForStudent(supabase, studentId);
+  if (!childId) return [];
+
+  const { data, error } = await supabase
+    .from('student_teachers')
+    .select('id, teacher_id, subject, period, created_at, teachers(first_name, last_name)')
+    .eq('child_id', childId)
+    .order('created_at', { ascending: true })
+    .order('id', { ascending: true });
+  if (error) throw error;
+
+  return (data ?? []).map(row => {
+    const teacher = Array.isArray(row.teachers) ? row.teachers[0] : row.teachers;
+    return {
+      id: row.id,
+      teacherId: row.teacher_id,
+      name: [teacher?.first_name, teacher?.last_name].filter(Boolean).join(' ') || null,
+      subject: row.subject,
+      period: row.period,
+    };
+  });
+}
+
+/**
+ * Make the child's teacher set match `links`.
+ *
+ * A DIFF, not a replace-all: rows the user did not touch are left alone, so
+ * their `created_at` — and therefore the "first listed" link that the legacy
+ * `students.teacher_id` mirror follows (SPE-334) — does not shuffle every time
+ * somebody edits a subject label.
+ *
+ * Deletes run LAST. Removing every link before re-adding would briefly leave
+ * the child with none, and the legacy-column mirror would fire on that empty
+ * moment and null out `teacher_id` on every caseload row of the child.
+ *
+ * Not transactional — PostgREST has no client-side transaction — so a failure
+ * midway leaves a partially-applied set. The operations are individually
+ * idempotent and the UI re-reads afterwards, so a retry converges; the
+ * alternative (an RPC) is more surface than this ticket needs.
+ */
+export async function saveTeacherLinksForStudent(
+  supabase: Client,
+  studentId: string,
+  links: EditableTeacherLink[],
+): Promise<void> {
+  const childId = await childIdForStudent(supabase, studentId);
+  if (!childId) throw new Error('This student has no child record yet; reload and try again.');
+
+  const existing = await getTeacherLinksForStudent(supabase, studentId);
+  const existingByTeacher = new Map(existing.map(l => [l.teacherId, l]));
+
+  // Guard against a double-added teacher slipping through as a unique violation.
+  const wanted = new Map<string, EditableTeacherLink>();
+  for (const link of links) {
+    if (link.teacherId) wanted.set(link.teacherId, link);
+  }
+
+  const toInsert = [...wanted.values()].filter(l => !existingByTeacher.has(l.teacherId));
+  const toUpdate = [...wanted.values()].filter(l => {
+    const prev = existingByTeacher.get(l.teacherId);
+    return prev && (prev.subject !== l.subject || prev.period !== l.period);
+  });
+  const toDelete = existing.filter(l => !wanted.has(l.teacherId));
+
+  if (toInsert.length > 0) {
+    const { error } = await supabase.from('student_teachers').insert(
+      toInsert.map(l => ({
+        child_id: childId,
+        teacher_id: l.teacherId,
+        subject: l.subject,
+        period: l.period,
+      })),
+    );
+    if (error) throw error;
+  }
+
+  for (const link of toUpdate) {
+    const { error } = await supabase
+      .from('student_teachers')
+      .update({ subject: link.subject, period: link.period })
+      .eq('child_id', childId)
+      .eq('teacher_id', link.teacherId);
+    if (error) throw error;
+  }
+
+  if (toDelete.length > 0) {
+    const { error } = await supabase
+      .from('student_teachers')
+      .delete()
+      .eq('child_id', childId)
+      .in('teacher_id', toDelete.map(l => l.teacherId));
+    if (error) throw error;
+  }
+}
+
+/**
+ * Link one more teacher to a student, leaving the rest of the set alone.
+ *
+ * Idempotent: the `(child_id, teacher_id)` unique constraint means re-adding
+ * an existing teacher is a no-op rather than an error, so callers can assign
+ * without first checking.
+ */
+export async function addTeacherLinkForStudent(
+  supabase: Client,
+  studentId: string,
+  teacherId: string,
+): Promise<void> {
+  const childId = await childIdForStudent(supabase, studentId);
+  if (!childId) throw new Error('This student has no child record yet; reload and try again.');
+
+  const { error } = await supabase
+    .from('student_teachers')
+    .upsert({ child_id: childId, teacher_id: teacherId }, { onConflict: 'child_id,teacher_id', ignoreDuplicates: true });
+  if (error) throw error;
+}
+
+/**
+ * Teacher sets for a page of students, keyed by `students.id`.
+ *
+ * Two round trips for the whole table rather than one per row.
+ */
+export async function getTeacherSetsForStudents(
+  supabase: Client,
+  studentIds: string[],
+): Promise<Map<string, LinkedTeacher[]>> {
+  const byStudent = new Map<string, LinkedTeacher[]>();
+  const unique = Array.from(new Set(studentIds.filter(Boolean)));
+  if (unique.length === 0) return byStudent;
+
+  const { data: rows, error } = await supabase
+    .from('students').select('id, child_id').in('id', unique);
+  if (error) throw error;
+
+  const childIds = (rows ?? []).map(r => r.child_id).filter((c): c is string => !!c);
+  const byChild = await getTeachersByChildId(supabase, childIds);
+
+  for (const row of rows ?? []) {
+    byStudent.set(row.id, row.child_id ? (byChild.get(row.child_id) ?? []) : []);
+  }
+  return byStudent;
 }

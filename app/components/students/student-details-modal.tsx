@@ -13,7 +13,13 @@ import {
   type ReviewConfirmSelection,
   type ReviewWriteResult,
 } from './review/student-import-review';
-import { TeacherAutocomplete } from '../teachers/teacher-autocomplete';
+import { StudentTeachersField } from '../teachers/student-teachers-field';
+import {
+  getTeacherLinksForStudent,
+  saveTeacherLinksForStudent,
+  type EditableTeacherLink,
+} from '@/lib/supabase/queries/student-teachers';
+import { createClient } from '@/lib/supabase/client';
 import { StudentProgressTab } from './student-progress-tab';
 import { StudentAttendanceTab } from './student-attendance-tab';
 import { SharedStudentBadge } from './shared-student-badge';
@@ -36,11 +42,14 @@ interface StudentDetailsModalProps {
   };
   readOnly?: boolean;
   onSave?: (studentId: string, details: StudentDetails) => void;
+  /**
+   * SPE-337: no teacher fields here. The teacher set is written directly to
+   * `student_teachers`, and the legacy `students.teacher_id`/`teacher_name`
+   * pair is maintained by the SPE-334 mirror — not by this form.
+   */
   onUpdateStudent?: (studentId: string, updates: {
     initials?: string;
     grade_level: string;
-    teacher_id?: string | null;
-    teacher_name?: string;
     sessions_per_week: number;
     minutes_per_session: number;
   }) => void;
@@ -75,37 +84,66 @@ export function StudentDetailsModal({
   // hidden: the "Current Information" (service-minutes) and Attendance tabs.
   // This is purely subtractive — the underlying data is untouched.
   const { isSecondary } = useSchool();
+  const supabase = useMemo(() => createClient(), []);
+
+  // SPE-337: the student's teacher SET, loaded from student_teachers and
+  // written back on save. The legacy single pair is NOT written from here —
+  // the SPE-334 mirror owns that column and repoints it only when the row's
+  // current teacher has actually left the set.
+  const [teacherLinks, setTeacherLinks] = useState<EditableTeacherLink[]>([]);
+  // Until the set has actually loaded, `teacherLinks` is [] — which as a
+  // *requested* set means "remove every teacher". Saving during that window
+  // would delete the student's real links, so Save waits for the load.
+  const [linksLoaded, setLinksLoaded] = useState(false);
+  const [linksLoadFailed, setLinksLoadFailed] = useState(false);
+  // What the set looked like on open. A student's teachers are anchored on the
+  // CHILD, so a co-provider can add one while this modal sits open; writing an
+  // untouched snapshot back would delete their addition. Compare before
+  // writing, and a user who never touched the teacher field never disturbs it.
+  const [loadedLinks, setLoadedLinks] = useState<EditableTeacherLink[]>([]);
 
   const [studentInfo, setStudentInfo] = useState({
     initials: student.initials,
     grade_level: student.grade_level,
-    teacher_id: student.teacher_id || null,
-    teacherName: student.teacher_name || null,
     sessions_per_week: student.sessions_per_week,
     minutes_per_session: student.minutes_per_session,
   });
 
   // Reset form when modal opens with a different student
   useEffect(() => {
+    let stale = false;
+
     if (isOpen && student.id) {
       // Reset student info to current values
       setStudentInfo({
         initials: student.initials,
         grade_level: student.grade_level,
-        teacher_id: student.teacher_id || null,
-        teacherName: student.teacher_name || null,
         sessions_per_week: student.sessions_per_week,
         minutes_per_session: student.minutes_per_session,
       });
+      // Clear the previous student's set immediately — showing their teachers
+      // under this student's name for the length of a fetch is worse than
+      // showing none, and saving it would apply them to the wrong child.
+      setTeacherLinks([]);
+      setLoadedLinks([]);
+      setLinksLoaded(false);
+      setLinksLoadFailed(false);
 
       // Load existing student details and matching provider roles
       const loadData = async () => {
         try {
-          // Load student details and matching provider roles in parallel
-          const [existingDetails, roles] = await Promise.all([
+          // Load student details, matching provider roles and the teacher set
+          // in parallel.
+          const [existingDetails, roles, links] = await Promise.all([
             getStudentDetails(student.id),
-            getMatchingProviderRoles(student.id)
+            getMatchingProviderRoles(student.id),
+            getTeacherLinksForStudent(supabase, student.id),
           ]);
+          // A slower earlier request must not overwrite a newer student's data.
+          if (stale) return;
+          setTeacherLinks(links);
+          setLoadedLinks(links);
+          setLinksLoaded(true);
 
           if (existingDetails) {
             setDetails(existingDetails);
@@ -126,13 +164,19 @@ export function StudentDetailsModal({
 
           setMatchingRoles(roles);
         } catch (error) {
+          if (stale) return;
           console.error('Error loading student data:', error);
+          // Save stays disabled without this — the user would face a dead
+          // button and no reason for it.
+          setLinksLoadFailed(true);
         }
       };
 
       loadData();
     }
-  }, [isOpen, student.id, student.initials, student.grade_level, student.teacher_id, student.teacher_name, student.sessions_per_week, student.minutes_per_session]);
+
+    return () => { stale = true; };
+  }, [isOpen, supabase, student.id, student.initials, student.grade_level, student.sessions_per_week, student.minutes_per_session]);
 
   // Secondary mode hides only the Attendance tab; if it's active, snap to a
   // visible tab. Current Information stays visible so grade/teacher/IEP dates
@@ -143,30 +187,78 @@ export function StudentDetailsModal({
     }
   }, [isSecondary, activeTab]);
 
+  // Set equality, not array equality: order carries no meaning (co-teachers
+  // are equals), so only membership and the labels count as an edit.
+  const teacherLinksChanged = (() => {
+    if (teacherLinks.length !== loadedLinks.length) return true;
+    const before = new Map(loadedLinks.map(l => [l.teacherId, l]));
+    return teacherLinks.some(l => {
+      const prev = before.get(l.teacherId);
+      return !prev || prev.subject !== l.subject || prev.period !== l.period;
+    });
+  })();
+
   const handleSave = async () => {
+    // The set is the source of truth for what gets written; an unloaded [] is
+    // not an instruction to unassign everyone.
+    if (!linksLoaded) return;
     setLoading(true);
     try {
       // Save student details
       await upsertStudentDetails(student.id, details);
       console.log('Student details saved successfully');
 
-      // Update student info if changed
+      // SPE-337: the link set is the whole teacher edit. The legacy
+      // students.teacher_id/teacher_name pair is NOT written from here — the
+      // SPE-334 mirror maintains it, repointing a caseload row only when that
+      // row's current teacher has genuinely left the child's set.
+      //
+      // Deriving it from teacherLinks[0] instead would read meaning into the
+      // row order that the editor deliberately does not carry: removing and
+      // re-adding a co-teacher reorders the array without changing the set,
+      // and the mirror would then read the new first entry as a replacement
+      // and revoke the other teacher's access.
+      //
+      // Only written when actually edited: the set belongs to the child, so a
+      // co-provider may have changed it since this modal opened, and someone
+      // saving an IEP date should not silently undo that.
+      //
+      // The details above are already committed by the time this runs, so a
+      // throw here must not abandon the rest of the save — the grade and
+      // service minutes would be dropped for a reason that has nothing to do
+      // with them. Report just the part that failed.
+      let teacherSaveError: Error | null = null;
+      if (teacherLinksChanged) {
+        try {
+          await saveTeacherLinksForStudent(supabase, student.id, teacherLinks);
+        } catch (err) {
+          console.error('Error saving teacher links:', err);
+          teacherSaveError = err instanceof Error ? err : new Error(String(err));
+        }
+      }
+
+      // Update student info if changed. Passed as a literal on purpose: that
+      // is what makes excess-property checking apply, so re-adding a teacher
+      // field here is a compile error rather than a silent regression.
       if (onUpdateStudent) {
-        // Convert teacherName to teacher_name for database compatibility
-        const updates = {
+        await onUpdateStudent(student.id, {
           initials: studentInfo.initials,
           grade_level: studentInfo.grade_level,
-          teacher_id: studentInfo.teacher_id,
-          teacher_name: studentInfo.teacherName || undefined,
           sessions_per_week: studentInfo.sessions_per_week,
           minutes_per_session: studentInfo.minutes_per_session,
-        };
-        await onUpdateStudent(student.id, updates);
+        });
         console.log('Student info updated successfully');
       }
 
       if (onSave) {
         onSave(student.id, details);
+      }
+
+      if (teacherSaveError) {
+        // Stay open on the teachers the user asked for, so a retry is one
+        // click rather than re-entering the whole set.
+        alert(`Everything else was saved, but the teachers were not: ${teacherSaveError.message}`);
+        return;
       }
       onClose();
     } catch (error) {
@@ -416,13 +508,16 @@ export function StudentDetailsModal({
                 </FormGroup>
 
                 <FormGroup>
-                  <Label htmlFor="teacher">Teacher</Label>
-                  <TeacherAutocomplete
-                    value={studentInfo.teacher_id}
-                    teacherName={studentInfo.teacherName || undefined}
-                    onChange={(teacherId, teacherName) => setStudentInfo({...studentInfo, teacher_id: teacherId, teacherName})}
-                    placeholder="Search for a teacher..."
-                    disabled={readOnly}
+                  <Label htmlFor="teacher">{isSecondary ? 'Teachers' : 'Teacher'}</Label>
+                  {/* Locked until the set has loaded, and while a save is in
+                      flight: an edit before the fetch lands is overwritten by
+                      it, and one made during the save is not in the request
+                      but looks saved. */}
+                  <StudentTeachersField
+                    value={teacherLinks}
+                    onChange={setTeacherLinks}
+                    isSecondary={isSecondary}
+                    disabled={readOnly || loading || !linksLoaded}
                     schoolId={student.school_id || undefined}
                   />
                 </FormGroup>
@@ -762,7 +857,12 @@ export function StudentDetailsModal({
           </div>
           
           {/* Footer */}
-          <div className="flex justify-end gap-3 px-6 py-4 border-t bg-gray-50">
+          <div className="flex items-center justify-end gap-3 px-6 py-4 border-t bg-gray-50">
+            {!readOnly && linksLoadFailed && (
+              <span role="alert" className="mr-auto text-sm text-red-700">
+                This student&apos;s details could not be loaded. Close and reopen to try again.
+              </span>
+            )}
             <Button variant="secondary" onClick={onClose}>
               {readOnly ? 'Close' : 'Cancel'}
             </Button>
@@ -770,7 +870,7 @@ export function StudentDetailsModal({
               <Button
                 variant="primary"
                 onClick={handleSave}
-                disabled={loading}
+                disabled={loading || !linksLoaded}
               >
                 {loading ? 'Saving...' : 'Save Details'}
               </Button>

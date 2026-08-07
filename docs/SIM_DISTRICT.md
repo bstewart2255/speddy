@@ -405,10 +405,19 @@ guard at all): `sim:verify-rls` (`profiles`), `sim:verify-children-rls`
 `sim:verify-student-teachers-rls` (SPE-334: the teacher read sets, the
 co-teacher case, the school-consistency refusal and the dual-write) and
 `sim:verify-teacher-set-reads` (SPE-336: the two teacher-set reads the portal
-walk cannot see — `get_sea_students` and the IEP-meeting caseload). All
-`npx tsx`. The two `children` guards and the `student_teachers` guard write sim
-rows — re-seed afterward to restore a pristine fixture;
+walk cannot see — `get_sea_students` and the IEP-meeting caseload) and
+`sim:verify-teacher-link-writes` (SPE-337: adding, labelling and removing a
+teacher link from a provider's own session, plus the refusals). All `npx tsx`.
+The two `children` guards and both `student_teachers` guards write sim rows —
+re-seed afterward to restore a pristine fixture;
 `sim:verify-teacher-set-reads` is read-only.
+
+> **Writing a walk that touches links? Delete only what you created.** A record
+> teacher is usually already the homeroom teacher for several seeded students,
+> so `delete().eq('teacher_id', …)` as "cleanup" destroys fixture data — and
+> the SPE-334 legacy mirror then repoints `students.teacher_name` on every
+> affected child, which is a confusing way to find out. Snapshot the link ids
+> first and remove the delta. (Learned the hard way during the SPE-337 run.)
 
 Env requirements are scoped per command. Every command needs
 `NEXT_PUBLIC_SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`. Beyond that:
@@ -417,7 +426,7 @@ Env requirements are scoped per command. Every command needs
 |---|---|---|
 | `sim:reset` | `SIM_DISTRICT_PASSWORD` | it sets the persona passwords |
 | `sim:verify`, `sim:teardown` | — | read-only / delete-only, so they never receive the credential secret |
-| the five `sim:verify-*` guards | `SIM_DISTRICT_PASSWORD` + `NEXT_PUBLIC_SUPABASE_ANON_KEY` | they sign IN as personas, which needs the same derived password and a client-side key |
+| the six `sim:verify-*` guards | `SIM_DISTRICT_PASSWORD` + `NEXT_PUBLIC_SUPABASE_ANON_KEY` | they sign IN as personas, which needs the same derived password and a client-side key |
 
 **Preflight, before any write.** Scripts hard-fail unless: **(a)** the host in
 `NEXT_PUBLIC_SUPABASE_URL` is a front for the project pinned in `manifest.ts` —
