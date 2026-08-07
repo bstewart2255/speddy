@@ -4,7 +4,6 @@ import { WorkScheduleSettings } from '../../../components/settings/work-schedule
 import { Card, CardHeader, CardTitle, CardBody } from '../../../components/ui/card';
 import { useCallback, useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { CurriculumsSettings } from '../../../components/settings/curriculums';
 import { ApiKeysSettings } from '../../../components/settings/api-keys';
 import { EmailNotificationsSettings } from '../../../components/settings/email-notifications';
 import { formatRoleLabel } from '@/lib/utils/role-utils';
@@ -87,12 +86,11 @@ export default function SettingsPage() {
             <WorkScheduleSettings />
           )}
 
-          {/* Curriculums Settings — teaching roles only. District Tech Admins
-              (SPE-393) reach this page for their account details alone and have
-              no caseload to pick curriculums for. */}
-          {userProfile?.role !== 'district_tech' && (
-            <CurriculumsSettings />
-          )}
+          {/* District Curriculums moved out of Settings entirely (SPE-422):
+              district admins curate the list at /dashboard/admin/curriculums,
+              and providers meet it as the options in their session curriculum
+              pickers. The old per-user checkbox list saved to
+              profiles.selected_curriculums, which nothing ever read. */}
 
           {/* Email notifications — daily schedule email opt-in (SPE-320).
               Providers toggle their own; resource specialists additionally

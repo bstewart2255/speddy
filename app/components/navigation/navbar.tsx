@@ -95,10 +95,11 @@ export default function Navbar() {
     }
 
     if (role === 'district_admin') {
-      // District admins see schools overview, dashboard, and CARE
+      // District admins see schools overview, dashboard, curriculums, and CARE
       return [
         { name: 'Dashboard', href: '/dashboard/admin' },
         { name: 'Schools', href: '/dashboard/admin/schools' },
+        { name: 'Curriculums', href: '/dashboard/admin/curriculums' },
         { name: 'CARE', href: '/dashboard/admin/care' },
       ];
     } else if (role === 'district_tech') {

@@ -455,9 +455,30 @@ erDiagram
   point — it gives the role a district without giving it the district's data
   (SPE-393; see §1 for what actually keeps the role out).
 
+### District-scoped configuration tables (SPE-395, SPE-422)
+
+Two tables hang configuration directly off a district, with the same
+access shape: **district members (and district admins via their grant) read;
+browser writes are denied outright; mutations run server-side with the service
+role after an `admin_permissions` check** in the API route.
+
+- **`district_sis_connections`** — per-district SIS credentials (§2's
+  column-level-grants example).
+- **`district_curriculums`** — the curriculums a district has enabled for
+  lesson planning (SPE-422). District admins curate it at
+  `/dashboard/admin/curriculums` from the master catalog in
+  `lib/curriculums/catalog.ts`; the session/group modal picker offers exactly
+  this list (plus whatever the session already tracks), and stays empty-with-a-
+  note until it's configured. Its read policy has two branches: caller's
+  `profiles.district_id` matches, or the caller holds a `district_admin` grant
+  for the district — the latter because admin profiles are school-less and may
+  predate the `profiles.district_id` backfill.
+
 **Source of truth:** live tables `states`, `districts`, `schools`, `profiles`,
 `provider_schools`, `admin_permissions`;
-`supabase/migrations/20251112_add_admin_roles_and_school_scoped_teachers.sql`.
+`supabase/migrations/20251112_add_admin_roles_and_school_scoped_teachers.sql`;
+`supabase/migrations/20260807_spe422_district_curriculums.sql`;
+`app/api/admin/district/curriculums/route.ts`; `lib/curriculums/catalog.ts`.
 
 ---
 

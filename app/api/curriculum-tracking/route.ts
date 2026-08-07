@@ -13,8 +13,11 @@ const sessionIdQuerySchema = z.object({
 const saveCurriculumSchema = z
   .object({
     sessionId: z.string().min(1),
-    curriculumType: z.string().min(1),
-    curriculumLevel: z.string().min(1),
+    // Max lengths mirror the curriculum_tracking columns — VARCHAR(100)/(50).
+    // Trimmed: the typed level input (SPE-422) is free text; without it a
+    // whitespace-only level would pass min(1) and save.
+    curriculumType: z.string().trim().min(1).max(100),
+    curriculumLevel: z.string().trim().min(1).max(50),
     currentLesson: z.number().int().min(1),
     promptAnswered: z.boolean().optional(),
   })
