@@ -647,6 +647,15 @@ export interface OneRosterRosterProbeStep {
 
 /** First page only — a probe measures presence and shape, not the district. */
 const PROBE_PAGE_LIMIT = 200;
+/**
+ * Per-request ceiling, well under the client's 30s default. Five sequential
+ * requests at the default could hold the route open for minutes on a slow
+ * server; a healthy OneRoster answers these in a couple of seconds, and a
+ * server that cannot answer in ten is itself a finding. Keeps the completed
+ * CONNECTION verdict deliverable even when the probe crawls (CodeRabbit,
+ * PR #827).
+ */
+const PROBE_REQUEST_TIMEOUT_MS = 10_000;
 
 /**
  * Measure whether a OneRoster server carries the data SPE-414 would sync:
@@ -740,20 +749,20 @@ export async function probeOneRosterRosterData(params: {
       ? { status: 'ok', message: `${n} ${noun} in the first page.` }
       : { status: 'denied', message: `The server answered, with zero ${noun}.` };
 
-  await sample('teachers', 'Teacher directory', () => client.getTeachers({ limit: PROBE_PAGE_LIMIT }), (rows) =>
+  await sample('teachers', 'Teacher directory', () => client.getTeachers({ limit: PROBE_PAGE_LIMIT, timeoutMs: PROBE_REQUEST_TIMEOUT_MS }), (rows) =>
     countMessage(rows.length, 'teachers'),
   );
-  await sample('students', 'Student roster', () => client.getStudents({ limit: PROBE_PAGE_LIMIT }), (rows) =>
+  await sample('students', 'Student roster', () => client.getStudents({ limit: PROBE_PAGE_LIMIT, timeoutMs: PROBE_REQUEST_TIMEOUT_MS }), (rows) =>
     countMessage(rows.length, 'students'),
   );
-  await sample('classes', 'Class records', () => client.getClasses({ limit: PROBE_PAGE_LIMIT }), (rows) =>
+  await sample('classes', 'Class records', () => client.getClasses({ limit: PROBE_PAGE_LIMIT, timeoutMs: PROBE_REQUEST_TIMEOUT_MS }), (rows) =>
     countMessage(rows.length, 'classes'),
   );
 
   const enrollments = await sample(
     'rosters',
     'Class rosters',
-    () => client.getEnrollments({ limit: PROBE_PAGE_LIMIT }),
+    () => client.getEnrollments({ limit: PROBE_PAGE_LIMIT, timeoutMs: PROBE_REQUEST_TIMEOUT_MS }),
     (rows) => {
       // Joinability is the whole question: a row missing either key cannot
       // connect a person to a class, whatever else it says.

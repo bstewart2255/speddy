@@ -1212,6 +1212,31 @@ describe('the roster probe measures presence and joinability, never people (SPE-
     expect(stepIn(steps, 'linkage').status).toBe('untested');
   });
 
+  it('enrollments with no STUDENT-role entries is the mirrored no-go, said just as plainly', async () => {
+    // The mirror of the case above (CodeRabbit, PR #827): teacher entries
+    // without student entries also cannot join, and the message must blame the
+    // right absence.
+    handler = (req) => {
+      if (req.url.includes('/enrollments')) {
+        return {
+          status: 200,
+          body: {
+            enrollments: [
+              { sourcedId: 'e1', role: 'teacher', user: { sourcedId: 't1' }, class: { sourcedId: 'c1' } },
+            ],
+          },
+        };
+      }
+      return rosterHandler(req);
+    };
+
+    const steps = await probe();
+
+    expect(stepIn(steps, 'rosters').status).toBe('denied');
+    expect(stepIn(steps, 'rosters').message).toMatch(/NO student entries/);
+    expect(stepIn(steps, 'linkage').status).toBe('untested');
+  });
+
   it('a token endpoint that dies MID-PROBE reads as a sign-in problem, not four missing endpoints', async () => {
     // The probe signs in on its own, so a token blip after a green connection
     // test hits every check. Read as 404-on-the-collection it would record
