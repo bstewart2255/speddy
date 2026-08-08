@@ -95,10 +95,12 @@ export default function Navbar() {
     }
 
     if (role === 'district_admin') {
-      // District admins see schools overview, dashboard, curriculums, and CARE
+      // District admins see schools overview, dashboard, curriculums, CARE,
+      // and the SIS directories (SPE-436).
       return [
         { name: 'Dashboard', href: '/dashboard/admin' },
         { name: 'Schools', href: '/dashboard/admin/schools' },
+        { name: 'Directories', href: '/dashboard/admin/directories' },
         { name: 'Curriculums', href: '/dashboard/admin/curriculums' },
         { name: 'CARE', href: '/dashboard/admin/care' },
       ];
