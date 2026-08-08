@@ -46,7 +46,19 @@ interface Seen {
 const everything = (r: Seen) =>
   [r.url, r.body, ...Object.entries(r.headers).map(([k, v]) => `${k}: ${v}`)].join('\n');
 
-type Handler = (req: Seen) => { status: number; body?: unknown; headers?: Record<string, string> };
+type Handler = (req: Seen) => {
+  status: number;
+  body?: unknown;
+  headers?: Record<string, string>;
+  /**
+   * Served VERBATIM, not JSON-encoded. Without this, an "HTML body" test would
+   * actually serve the page through JSON.stringify — which is valid JSON and
+   * takes a different code path entirely. The Aeries harness learned this the
+   * hard way (SPE-426): its stringified-HTML test stayed green while the real
+   * behaviour was broken.
+   */
+  raw?: string;
+};
 
 let server: Server;
 let origin: string;
@@ -68,9 +80,9 @@ beforeAll(async () => {
         body,
       };
       seen.push(entry);
-      const { status, body: out, headers } = handler(entry);
+      const { status, body: out, headers, raw } = handler(entry);
       res.writeHead(status, { 'Content-Type': 'application/json', ...(headers ?? {}) });
-      res.end(out === undefined ? '' : JSON.stringify(out));
+      res.end(raw !== undefined ? raw : out === undefined ? '' : JSON.stringify(out));
     });
   });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -868,5 +880,130 @@ describe('the OneRoster exchange over real HTTP', () => {
     });
     expect(stepOf(report, 'token').message).toMatch(/Could not reach/i);
     expect(stepOf(report, 'token').message).not.toMatch(/not the certificate/i);
+  });
+});
+
+describe('the SHAPE of a refusal is logged — its CONTENT never is (SPE-434)', () => {
+  // JSUSD's live failure: every token candidate answers 400 with no RFC 6749
+  // code, which the allow-list rightly discards — leaving the log unable to say
+  // WHY. The fix logs what KIND of thing answered, built entirely from our own
+  // fixed vocabulary. These tests pin both halves: the diagnosis arrives, and
+  // the no-content rule stays absolute even against a server crafted to smuggle
+  // the credential through a field name or a header.
+  let spy: jest.SpyInstance;
+  beforeEach(() => {
+    spy = jest.spyOn(logger, 'error').mockImplementation(() => {});
+  });
+  afterEach(() => spy.mockRestore());
+  const logged = () => JSON.stringify(spy.mock.calls);
+
+  it('an ASP.NET-style refusal logs its field NAME and kind, never its message', async () => {
+    // The exact shape ASP.NET Web API uses for a framework-level rejection —
+    // the leading hypothesis for a 400 that names no OAuth code. Seeing
+    // fieldNames:["Message"] in production settles it without one byte of the
+    // message itself.
+    handler = (req) =>
+      req.url.includes('/token')
+        ? { status: 400, body: { Message: 'The request is invalid.' } }
+        : allGood(req);
+
+    await run();
+
+    expect(logged()).toContain('"bodyKind":"json"');
+    expect(logged()).toContain('"fieldNames":["Message"]');
+    expect(logged()).toContain('"contentType":"application/json"');
+    expect(logged()).not.toContain('The request is invalid');
+  });
+
+  it('logs known names ONLY — a value, an unknown code, even a field NAMED the secret stay out', async () => {
+    // The strongest form of the property. Field names are logged, and a server
+    // that echoes submitted credentials could put the secret IN a name — so
+    // names are matched against a fixed vocabulary, and anything else becomes
+    // arithmetic. If this test fails after a refactor, the refactor reopened
+    // the credential-echo channel that SPE-430 closed.
+    handler = (req) =>
+      req.url.includes('/token')
+        ? {
+            status: 400,
+            body: {
+              error: 'not_a_real_code',
+              error_description: `secret=${CLIENT_SECRET}`,
+              [CLIENT_SECRET]: 'a hostile server can put the credential in a KEY',
+            },
+          }
+        : allGood(req);
+
+    await run();
+
+    const out = logged();
+    expect(out).toContain('"fieldNames":["error","error_description","+1 unrecognised"]');
+    expect(out).not.toContain(CLIENT_SECRET);
+    expect(out).not.toContain('not_a_real_code');
+  });
+
+  it('an HTML error page logs as kind "html" with none of the page', async () => {
+    // Served RAW — through JSON.stringify this would be a JSON string and take
+    // the wrong code path entirely, which is how the Aeries suite once shipped
+    // a vacuous version of this exact test.
+    handler = (req) =>
+      req.url.includes('/token')
+        ? {
+            status: 400,
+            headers: { 'Content-Type': 'text/html' },
+            raw: `<!DOCTYPE html><html><body><h1>Server Error</h1><p>${CLIENT_SECRET}</p></body></html>`,
+          }
+        : allGood(req);
+
+    await run();
+
+    expect(logged()).toContain('"bodyKind":"html"');
+    expect(logged()).toContain('"contentType":"text/html"');
+    expect(logged()).not.toContain('DOCTYPE');
+    expect(logged()).not.toContain(CLIENT_SECRET);
+  });
+
+  it('an empty refusal logs as kind "empty"', async () => {
+    // The shape that would point at a switched-off API record: the server
+    // refuses and attaches nothing at all.
+    handler = (req) => (req.url.includes('/token') ? { status: 400, raw: '' } : allGood(req));
+
+    await run();
+
+    expect(logged()).toContain('"bodyKind":"empty"');
+  });
+
+  it('an unrecognised content-type logs as "other", never verbatim', async () => {
+    // The header is server-controlled text, same as the body — one more place
+    // a credential echo could hide, so it faces the same allow-list.
+    handler = (req) =>
+      req.url.includes('/token')
+        ? {
+            status: 400,
+            headers: { 'Content-Type': `application/x-${CLIENT_SECRET}` },
+            raw: 'no thanks',
+          }
+        : allGood(req);
+
+    await run();
+
+    expect(logged()).toContain('"contentType":"other"');
+    expect(logged()).toContain('"bodyKind":"text"');
+    expect(logged()).not.toContain(CLIENT_SECRET);
+  });
+
+  it('changes NOTHING about what the district is told', async () => {
+    // Pure observability: the report for a wordless 400 reads exactly as
+    // SPE-431 left it. A shape that leaked into district-facing advice would
+    // be a behaviour change wearing a logging patch.
+    handler = (req) =>
+      req.url.includes('/token')
+        ? { status: 400, body: { Message: 'The request is invalid.' } }
+        : allGood(req);
+
+    const report = await run();
+
+    expect(stepOf(report, 'token').message).toMatch(/behaved like a OneRoster sign-in endpoint/i);
+    expect(JSON.stringify(report)).not.toContain('Message');
+    expect(JSON.stringify(report)).not.toContain('bodyKind');
   });
 });
