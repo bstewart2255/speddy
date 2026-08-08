@@ -629,9 +629,11 @@ describe('the OneRoster exchange over real HTTP', () => {
     expect(report.ok).toBe(true);
     const tokenBodies = seen.filter((r) => r.url.includes('/token')).map((r) => r.body);
     expect(tokenBodies).toHaveLength(2);
-    expect(decodeURIComponent(tokenBodies[1].replace(/\+/g, ' '))).not.toContain(
-      'scope/roster.readonly',
-    );
+    // Present AND absent, both asserted: an empty scope on the retry would
+    // also "not contain" the umbrella (CodeRabbit, PR #829).
+    const fallbackBody = decodeURIComponent(tokenBodies[1].replace(/\+/g, ' '));
+    expect(fallbackBody).toContain('scope/roster-core.readonly');
+    expect(fallbackBody).not.toContain('scope/roster.readonly');
   });
 
   it('fetches the token once and reuses it across both collections', async () => {
