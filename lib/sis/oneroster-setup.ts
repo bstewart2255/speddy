@@ -188,7 +188,27 @@ export interface OneRosterTestReport {
 function explain(err: unknown, step: string): { status: 'denied' | 'error'; message: string } {
   if (err instanceof OneRosterApiError) {
     if (err.phase === 'token') {
+      // NESTED inside the credential-status check on purpose. An OAuth error
+      // object is only meaningful on the statuses a token endpoint uses to
+      // report one; at the top level this branch also caught 404/405/5xx, so a
+      // candidate that 404'd with `{"error":"invalid_scope"}` in its body would
+      // claim "nothing for you to change" and then override the correct "no
+      // sign-in endpoint answered under your OneRoster address" advice.
       if (err.status === 401 || err.status === 400) {
+        // OUR fault, not theirs. Every code here describes the REQUEST: it was
+        // malformed, asked for a scope they do not offer, or used a grant type
+        // they do not support. In each case the endpoint objected before it
+        // ever evaluated the credentials. Telling a district to re-enter
+        // correct credentials because of our own bad request is the exact
+        // misdiagnosis this area keeps producing (SPE-419), and a 400 alone
+        // cannot tell it apart from a real credential failure.
+        if (err.oauthError && REQUEST_SHAPE_ERRORS.has(err.oauthError)) {
+          return {
+            status: 'error',
+            message:
+              'Your OneRoster refused the way Speddy asked for access, not your credentials. Nothing for you to change — this is ours to fix, and we can see it.',
+          };
+        }
         return {
           status: 'error',
           message:
@@ -272,6 +292,23 @@ async function step(
 }
 
 const NOT_REACHED = 'Not checked — the previous step has to work first.';
+
+/**
+ * RFC 6749 error codes that mean OUR request was wrong, not their credentials.
+ *
+ * `invalid_request` belongs here and is easy to miss — RFC 6749 §5.2 defines it
+ * as "the request is missing a required parameter, includes an unsupported
+ * parameter value, repeats a parameter, or is otherwise malformed". Every one
+ * of those is something we did. A token endpoint that does not implement the
+ * `scope` parameter we always send commonly answers `invalid_request` rather
+ * than `invalid_scope`, so omitting it would leave the single likeliest
+ * our-fault case still blaming the district.
+ */
+const REQUEST_SHAPE_ERRORS = new Set([
+  'invalid_request',
+  'invalid_scope',
+  'unsupported_grant_type',
+]);
 
 /**
  * Whether a token-step failure means "no token endpoint here" (keep looking)

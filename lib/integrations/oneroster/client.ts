@@ -13,8 +13,16 @@
  *
  * SECRETS. Three things here must never leave the server or reach a log: the
  * client secret, the bearer token, and any response body (OneRoster error
- * bodies can echo the request). Every log call in this file is status + path +
- * phase, and there is no branch that widens that.
+ * bodies can echo the request).
+ *
+ * There is exactly ONE thing read out of a response body, and it is worth
+ * stating precisely because it is the only hole in the rule above: on a failed
+ * TOKEN request, the RFC 6749 `error` code — and only when its value is one of
+ * the six constants in `OAUTH_ERROR_CODES`. An allow-list of six known strings
+ * cannot carry a secret, however hostile or malformed the body. Nothing else
+ * from any body is read, logged or surfaced; `error_description`, which is free
+ * text from the district's server, deliberately is not. Every log call is
+ * status + path + phase, plus that one allow-listed code.
  *
  * Auth layering note (SPE-397 asks for this explicitly): the token request is
  * isolated in `fetchToken` so that OneRoster 1.2's scoped client-credentials
@@ -63,6 +71,47 @@ function formEncode(value: string): string {
 /** Which half of the exchange failed. The district-facing advice differs entirely. */
 export type OneRosterPhase = 'token' | 'request';
 
+/**
+ * The complete set of OAuth 2.0 token-endpoint error codes (RFC 6749 §5.2).
+ *
+ * An ALLOW-LIST, and that is the entire safety argument. A token endpoint's
+ * error body can echo the credentials that were submitted to it, so the body is
+ * never read, logged or surfaced — except for a single `error` field, and only
+ * when its value is one of these six constants. A hostile or malformed body
+ * cannot smuggle a secret through a fixed set of six strings.
+ */
+const OAUTH_ERROR_CODES = new Set([
+  'invalid_request',
+  'invalid_client',
+  'invalid_grant',
+  'unauthorized_client',
+  'unsupported_grant_type',
+  'invalid_scope',
+]);
+
+/**
+ * Pull the RFC 6749 error code out of a failed token response, or nothing.
+ *
+ * Why this exists: a 400 from a token endpoint is ambiguous in the one way that
+ * matters. `invalid_client` means the district's Consumer ID and Secret are
+ * wrong; `invalid_scope` or `unsupported_grant_type` means OUR request is wrong
+ * and their credentials are fine. Without this, both produce "your credentials
+ * were rejected" — and a live district was about to be asked to re-enter
+ * credentials that may have been correct all along (SPE-430).
+ *
+ * Never throws: a diagnostic that can fail the request it is diagnosing is
+ * worse than no diagnostic.
+ */
+async function readOAuthErrorCode(res: Response): Promise<string | undefined> {
+  try {
+    const body: unknown = await res.json();
+    const code = (body as { error?: unknown } | null)?.error;
+    return typeof code === 'string' && OAUTH_ERROR_CODES.has(code) ? code : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** Raised on a non-2xx from either the token endpoint or a data endpoint. */
 export class OneRosterApiError extends Error {
   constructor(
@@ -81,6 +130,15 @@ export class OneRosterApiError extends Error {
      * another candidate. Without this flag the two are indistinguishable.
      */
     readonly unusableTokenResponse = false,
+    /**
+     * The RFC 6749 error code the token endpoint returned, when it returned a
+     * recognised one. Always one of `OAUTH_ERROR_CODES` or undefined — never
+     * free text from the response body, which can echo the credentials.
+     *
+     * This is what tells "your credentials are wrong" apart from "our request
+     * is wrong", which a 400 alone cannot.
+     */
+    readonly oauthError?: string,
   ) {
     super(message);
     this.name = 'OneRosterApiError';
@@ -352,18 +410,25 @@ export class OneRosterClient {
       });
 
       if (!res.ok) {
-        // Status and path only. A OneRoster error body can echo the submitted
-        // credentials, so it is never logged and never surfaced.
+        // The body is still never logged or surfaced — it can echo the
+        // submitted credentials. The one exception is the token endpoint's
+        // RFC 6749 `error` code, and only when it matches the fixed six-value
+        // allow-list, which cannot carry a secret. Reading it here is safe
+        // because a failed response is thrown, never returned to a caller.
+        const oauthError = phase === 'token' ? await readOAuthErrorCode(res) : undefined;
         logger.error('OneRoster API request failed', {
           status: res.status,
           path,
           phase,
+          oauthError,
         });
         throw new OneRosterApiError(
           `OneRoster responded ${res.status} for ${path}`,
           res.status,
           path,
           phase,
+          false,
+          oauthError,
         );
       }
 
