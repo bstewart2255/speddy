@@ -194,6 +194,12 @@ function explain(err: unknown, step: string): { status: 'denied' | 'error'; mess
       // candidate that 404'd with `{"error":"invalid_scope"}` in its body would
       // claim "nothing for you to change" and then override the correct "no
       // sign-in endpoint answered under your OneRoster address" advice.
+      // Same conclusion as a 404, reached by a different route: nothing here
+      // looks like a sign-in endpoint. Only ever surfaces when EVERY candidate
+      // failed, because a bare 400 no longer stops the search.
+      if (err.status === 400 && !err.oauthError) {
+        return { status: 'error', message: NO_TOKEN_ENDPOINT };
+      }
       if (err.status === 401 || err.status === 400) {
         // OUR fault, not theirs. Every code here describes the REQUEST: it was
         // malformed, asked for a scope they do not offer, or used a grant type
@@ -220,11 +226,7 @@ function explain(err: unknown, step: string): { status: 'denied' | 'error'; mess
         // address has 404'd too, so "check the token address" is the wrong
         // advice — it is the field we now tell them to leave blank. The address
         // still worth checking is the one they DID give us.
-        return {
-          status: 'error',
-          message:
-            'No sign-in endpoint answered under your OneRoster address. Check that address first; if your OneRoster settings do show a separate token address, enter it above.',
-        };
+        return { status: 'error', message: NO_TOKEN_ENDPOINT };
       }
       if (err.status === 408) {
         return {
@@ -304,6 +306,15 @@ const NOT_REACHED = 'Not checked — the previous step has to work first.';
  * than `invalid_scope`, so omitting it would leave the single likeliest
  * our-fault case still blaming the district.
  */
+/**
+ * Said when nothing under the district's OneRoster address looks like a sign-in
+ * endpoint — whether every candidate 404'd, or answered 400 without naming a
+ * reason. One string because it is one conclusion, and because the advice must
+ * not drift apart between the two ways of reaching it.
+ */
+const NO_TOKEN_ENDPOINT =
+  'No sign-in endpoint answered under your OneRoster address. Check that address first; if your OneRoster settings do show a separate token address, enter it above.';
+
 const REQUEST_SHAPE_ERRORS = new Set([
   'invalid_request',
   'invalid_scope',
@@ -340,7 +351,26 @@ const REQUEST_SHAPE_ERRORS = new Set([
  */
 function isNotATokenEndpoint(err: unknown): boolean {
   if (!(err instanceof OneRosterApiError) || err.phase !== 'token') return false;
-  return err.unusableTokenResponse || err.status === 404 || err.status === 405;
+  if (err.unusableTokenResponse || err.status === 404 || err.status === 405) return true;
+
+  // A 400 that names no reason. RFC 6749 §5.2 REQUIRES a token endpoint to
+  // return an error code in the body when it refuses — `invalid_client`,
+  // `invalid_scope`, and so on. A bare 400 is therefore evidence that whatever
+  // answered is not a token endpoint at all, rather than a token endpoint
+  // refusing a credential.
+  //
+  // Learned from a live district (SPE-431). Their guessed `<base>/token`
+  // answered 400 with no code, we read that as "your credentials were
+  // rejected", and we stopped — so we never tried `<base>/oauth/token` and may
+  // never have found their real sign-in endpoint at all. That is the SPE-426
+  // failure exactly, one connector over: assume an address, stop early, blame
+  // the district for it.
+  //
+  // Deliberately NOT extended to 401. A 401 is a strong authentication verdict
+  // from any server, compliant or not, and treating it as "wrong address" would
+  // walk past a genuine credential failure — the misdiagnosis running the other
+  // way, which is the one this module was built to prevent.
+  return err.status === 400 && !err.oauthError;
 }
 
 /**
