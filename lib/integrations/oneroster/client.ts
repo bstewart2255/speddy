@@ -15,14 +15,16 @@
  * client secret, the bearer token, and any response body (OneRoster error
  * bodies can echo the request).
  *
- * There is exactly ONE thing read out of a response body, and it is worth
- * stating precisely because it is the only hole in the rule above: on a failed
- * TOKEN request, the RFC 6749 `error` code — and only when its value is one of
- * the six constants in `OAUTH_ERROR_CODES`. An allow-list of six known strings
- * cannot carry a secret, however hostile or malformed the body. Nothing else
- * from any body is read, logged or surfaced; `error_description`, which is free
- * text from the district's server, deliberately is not. Every log call is
- * status + path + phase, plus that one allow-listed code.
+ * Exactly TWO things are derived from a response body, and both are worth
+ * stating precisely because they are the only holes in the rule above — and
+ * both are allow-lists, which is why they are safe. On a failed TOKEN request:
+ * the RFC 6749 `error` code, only when its value is one of the six constants
+ * in `OAUTH_ERROR_CODES` (SPE-430); and the body's STRUCTURE — kind, length,
+ * and field names matched against `KNOWN_ERROR_FIELD_NAMES` (SPE-434). A fixed
+ * vocabulary cannot carry a secret, however hostile or malformed the body.
+ * Nothing else from any body is read, logged or surfaced; `error_description`,
+ * which is free text from the district's server, deliberately is not. Every
+ * log call is status + path + phase, plus those allow-listed derivations.
  *
  * Auth layering note (SPE-397 asks for this explicitly): the token request is
  * isolated in `fetchToken` so that OneRoster 1.2's scoped client-credentials
@@ -90,26 +92,160 @@ const OAUTH_ERROR_CODES = new Set([
 ]);
 
 /**
- * Pull the RFC 6749 error code out of a failed token response, or nothing.
+ * The structure of a refused token response — categories and counts only.
  *
- * Why this exists: a 400 from a token endpoint is ambiguous in the one way that
- * matters. `invalid_client` means the district's Consumer ID and Secret are
- * wrong; `invalid_scope` or `unsupported_grant_type` means OUR request is wrong
- * and their credentials are fine. Without this, both produce "your credentials
- * were rejected" — and a live district was about to be asked to re-enter
- * credentials that may have been correct all along (SPE-430).
+ * Every string here is one of OUR OWN constants, matched against the response
+ * rather than copied out of it. That is the entire safety argument, and it is
+ * the same one `OAUTH_ERROR_CODES` makes: a fixed vocabulary cannot carry a
+ * secret, however hostile or echo-happy the server. Even a field NAME or a
+ * content-type header could be crafted from the submitted credential, so
+ * neither is ever logged verbatim — an unrecognised name becomes a count.
+ */
+interface TokenRefusalShape {
+  /** One of `KNOWN_CONTENT_TYPES`, or 'other' / 'none'. */
+  contentType: string;
+  bodyKind: 'json' | 'json-nonobject' | 'xml' | 'html' | 'text' | 'empty';
+  /** Length of the body text — enough to tell an empty refusal from an essay. */
+  bodyChars: number;
+  /**
+   * JSON objects only: the top-level names that EXACTLY match a member of
+   * `KNOWN_ERROR_FIELD_NAMES`, sorted, plus one `+N unrecognised` entry for
+   * the rest. Sorted because key order is server-chosen data too.
+   */
+  fieldNames?: string[];
+}
+
+/**
+ * Field names that identify WHICH error dialect the server speaks — RFC 6749,
+ * ASP.NET Web API, or RFC 7807 problem+json.
+ *
+ * Matched EXACTLY, which is what lets the log claim to contain only our own
+ * constants: a case-insensitive match would log the server's verbatim casing,
+ * and per-character case choices (or a Unicode character that merely
+ * case-folds into a constant, like the Kelvin sign into 'k') are a channel for
+ * server-chosen bytes. The dialects that differ by case are enumerated in the
+ * casing they actually ship.
+ */
+const KNOWN_ERROR_FIELD_NAMES = new Set([
+  // RFC 6749 §5.2
+  'error',
+  'error_description',
+  'error_uri',
+  // ASP.NET Web API's default error envelope, in its shipped PascalCase
+  'Message',
+  'ExceptionMessage',
+  'ExceptionType',
+  'ModelState',
+  'StackTrace',
+  // the same names as ad-hoc servers usually write them
+  'message',
+  'exceptionMessage',
+  'exceptionType',
+  'modelState',
+  'stackTrace',
+  // RFC 7807 problem+json
+  'type',
+  'title',
+  'status',
+  'detail',
+  'instance',
+  'errors',
+  // Common ad-hoc shapes
+  'code',
+  'description',
+]);
+
+const KNOWN_CONTENT_TYPES = new Set([
+  'application/json',
+  'application/problem+json',
+  'text/html',
+  'text/plain',
+  'application/xml',
+  'text/xml',
+]);
+
+/**
+ * Read a refused token response for its RFC 6749 error code AND its shape.
+ *
+ * The code half exists because a 400 from a token endpoint is ambiguous in the
+ * one way that matters: `invalid_client` means the district's Consumer ID and
+ * Secret are wrong; `invalid_scope` or `unsupported_grant_type` means OUR
+ * request is wrong and their credentials are fine (SPE-430).
+ *
+ * The shape half exists because the first live district answered with a 400
+ * carrying NO recognised code at all — which the spec forbids — and the
+ * allow-list correctly discarded everything else, leaving nothing to diagnose
+ * with (SPE-434). Structure fills that gap without touching content: an
+ * ASP.NET `{"Message": …}` points at our request format, an OAuth-shaped body
+ * speaking a non-standard vocabulary points at their configuration, an HTML
+ * page says this is not a token endpoint at all.
+ *
+ * The safety rule is unchanged and load-bearing: the body can echo the
+ * submitted credentials, so no VALUE from it is ever returned except `error`,
+ * allow-listed against six fixed constants, and no NAME except against the
+ * fixed vocabulary above. `error_description` — where servers most often echo
+ * the secret — is never read.
  *
  * Never throws: a diagnostic that can fail the request it is diagnosing is
  * worse than no diagnostic.
  */
-async function readOAuthErrorCode(res: Response): Promise<string | undefined> {
+async function describeTokenRefusal(
+  res: Response,
+): Promise<{ oauthError?: string; shape: TokenRefusalShape }> {
+  const rawContentType = res.headers.get('content-type');
+  const mediaType = rawContentType ? rawContentType.split(';')[0].trim().toLowerCase() : '';
+  const contentType = !mediaType ? 'none' : KNOWN_CONTENT_TYPES.has(mediaType) ? mediaType : 'other';
+
+  let text = '';
   try {
-    const body: unknown = await res.json();
-    const code = (body as { error?: unknown } | null)?.error;
-    return typeof code === 'string' && OAUTH_ERROR_CODES.has(code) ? code : undefined;
+    text = await res.text();
   } catch {
-    return undefined;
+    // An unreadable body reads as empty; the status still tells its story.
   }
+  const bodyChars = text.length;
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return { shape: { contentType, bodyKind: 'empty', bodyChars } };
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    // XML before HTML (Codex, PR #826): both start with '<', but they carry
+    // opposite diagnoses — an XML error document is a framework SPEAKING to
+    // us, an HTML page is a gateway or a wrong address. Decided from two
+    // signals that are already ours: the allow-listed media type constant and
+    // the fixed '<?xml' prolog. No content is copied either way.
+    const declaredXml = contentType === 'application/xml' || contentType === 'text/xml';
+    const bodyKind =
+      declaredXml || trimmed.startsWith('<?xml')
+        ? 'xml'
+        : trimmed.startsWith('<')
+          ? 'html'
+          : 'text';
+    return { shape: { contentType, bodyKind, bodyChars } };
+  }
+
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    return { shape: { contentType, bodyKind: 'json-nonobject', bodyChars } };
+  }
+
+  const fieldNames: string[] = [];
+  let unrecognised = 0;
+  for (const key of Object.keys(parsed)) {
+    if (KNOWN_ERROR_FIELD_NAMES.has(key)) {
+      fieldNames.push(key);
+    } else {
+      unrecognised += 1;
+    }
+  }
+  fieldNames.sort();
+  if (unrecognised > 0) fieldNames.push(`+${unrecognised} unrecognised`);
+
+  const code = (parsed as { error?: unknown }).error;
+  const oauthError = typeof code === 'string' && OAUTH_ERROR_CODES.has(code) ? code : undefined;
+  return { oauthError, shape: { contentType, bodyKind: 'json', bodyChars, fieldNames } };
 }
 
 /** Raised on a non-2xx from either the token endpoint or a data endpoint. */
@@ -411,16 +547,27 @@ export class OneRosterClient {
 
       if (!res.ok) {
         // The body is still never logged or surfaced — it can echo the
-        // submitted credentials. The one exception is the token endpoint's
-        // RFC 6749 `error` code, and only when it matches the fixed six-value
-        // allow-list, which cannot carry a secret. Reading it here is safe
-        // because a failed response is thrown, never returned to a caller.
-        const oauthError = phase === 'token' ? await readOAuthErrorCode(res) : undefined;
-        logger.error('OneRoster API request failed', {
+        // submitted credentials. Two derived exceptions, both bounded: the
+        // RFC 6749 `error` code when it matches the fixed six-value
+        // allow-list, and the body's STRUCTURE (kind, sanitized field names,
+        // length), which is metadata about the content rather than the
+        // content. Reading them here is safe because a failed response is
+        // thrown, never returned to a caller.
+        const refusal = phase === 'token' ? await describeTokenRefusal(res) : undefined;
+        const oauthError = refusal?.oauthError;
+        // Diagnostics ride in the META slot, where the logger stringifies
+        // them into the formatted line and — per SPE-167 — never forwards
+        // them to Sentry. (Sentry still records one captureMessage per failed
+        // candidate, exactly as before; what changed is that the payload
+        // stays out of it.) The previous shape passed this object as the
+        // `error` argument — a loose positional value that a line-capturing
+        // pipeline would drop entirely.
+        logger.error('OneRoster API request failed', undefined, {
           status: res.status,
           path,
           phase,
           oauthError,
+          refusalShape: refusal?.shape,
         });
         throw new OneRosterApiError(
           `OneRoster responded ${res.status} for ${path}`,
