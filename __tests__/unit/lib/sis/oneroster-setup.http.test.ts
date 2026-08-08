@@ -1244,6 +1244,25 @@ describe('the roster probe measures presence and joinability, never people (SPE-
     expect(stepIn(steps, 'linkage').status).toBe('untested');
   });
 
+  it("a 403 on ONE collection reads as 'refused permission' — the live JSUSD misreport", async () => {
+    // The first production run of this probe hit exactly this: /enrollments
+    // answered 403 with everything else green, and the panel said the server
+    // 'did not answer'. It answered. It refused. Those send the investigation
+    // to different people, and the misreport survived the whole test suite —
+    // caught by the self-review reading the live logs against the screenshot.
+    handler = (req) =>
+      req.url.includes('/enrollments') ? { status: 403, body: {} } : rosterHandler(req);
+
+    const steps = await probe();
+
+    expect(stepIn(steps, 'rosters').status).toBe('denied');
+    expect(stepIn(steps, 'rosters').message).toMatch(/refused permission/i);
+    expect(stepIn(steps, 'rosters').message).not.toMatch(/did not answer/i);
+    // Everything the server DID grant still reports normally.
+    expect(stepIn(steps, 'teachers').status).toBe('ok');
+    expect(stepIn(steps, 'linkage').status).toBe('untested');
+  });
+
   it('a token endpoint that dies MID-PROBE reads as a sign-in problem, not four missing endpoints', async () => {
     // The probe signs in on its own, so a token blip after a green connection
     // test hits every check. Read as 404-on-the-collection it would record
@@ -1254,13 +1273,19 @@ describe('the roster probe measures presence and joinability, never people (SPE-
 
     const steps = await probe();
 
-    for (const key of ['teachers', 'students', 'classes', 'rosters'] as const) {
-      expect(stepIn(steps, key).status).toBe('error');
-      expect(stepIn(steps, key).message).toMatch(/sign in/i);
-      expect(stepIn(steps, key).message).not.toMatch(/not provided/i);
+    expect(stepIn(steps, 'teachers').status).toBe('error');
+    expect(stepIn(steps, 'teachers').message).toMatch(/sign in/i);
+    expect(stepIn(steps, 'teachers').message).not.toMatch(/not provided/i);
+    // The rest bail rather than re-POSTing the district's credentials at a
+    // dead token endpoint three more times (self-review, PR #827): exactly
+    // one token request left this probe.
+    for (const key of ['students', 'classes', 'rosters'] as const) {
+      expect(stepIn(steps, key).status).toBe('untested');
+      expect(stepIn(steps, key).message).toMatch(/not attempted/i);
     }
+    expect(seen.filter((r) => r.url.includes('/token')).length).toBe(1);
     expect(stepIn(steps, 'linkage').status).toBe('untested');
-    expect(stepIn(steps, 'linkage').message).toMatch(/did not answer/i);
+    expect(stepIn(steps, 'linkage').message).toMatch(/no class-roster sample/i);
   });
 
   it('a server without /enrollments leaves linkage "not measured", not a claim about a sample', async () => {
@@ -1271,7 +1296,7 @@ describe('the roster probe measures presence and joinability, never people (SPE-
 
     expect(stepIn(steps, 'rosters').status).toBe('denied');
     expect(stepIn(steps, 'linkage').status).toBe('untested');
-    expect(stepIn(steps, 'linkage').message).toMatch(/did not answer/i);
+    expect(stepIn(steps, 'linkage').message).toMatch(/no class-roster sample/i);
     expect(stepIn(steps, 'linkage').message).not.toMatch(/shares a class/i);
   });
 
@@ -1335,6 +1360,7 @@ describe('the GRANTED scope is logged from our own vocabulary — never verbatim
     await run();
 
     expect(logged()).toContain('"grantedScopes":["roster-core.readonly","roster.readonly"]');
+    expect(logged()).toContain('"tokenHost":"127.0.0.1"');
     expect(logged()).toContain('"unrecognisedScopes":1');
     expect(logged()).not.toContain(CLIENT_SECRET);
     expect(logged()).not.toContain('evil.example');
