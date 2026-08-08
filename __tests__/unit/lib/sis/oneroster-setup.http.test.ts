@@ -594,18 +594,62 @@ describe('the OneRoster exchange over real HTTP', () => {
     expect(decoded).toBe(`${CLIENT_ID}:${CLIENT_SECRET}`);
   });
 
-  it('asks for client_credentials and only the roster-core scope', async () => {
+  it('asks for client_credentials and BOTH read-only scopes — never demographics', async () => {
+    // Dual request per the SPE-435 experiment: Aeries granted full
+    // roster-core.readonly and still refused /enrollments, so the umbrella
+    // read-only scope rides along. The line that must never change: no
+    // demographics, under any experiment.
     handler = allGood;
     await run();
 
     const body = seen.find((r) => r.url.includes('/token'))!.body;
     expect(body).toContain('grant_type=client_credentials');
-    expect(decodeURIComponent(body)).toContain(
-      'https://purl.imsglobal.org/spec/or/v1p1/scope/roster-core.readonly',
-    );
+    const decoded = decodeURIComponent(body.replace(/\+/g, ' '));
+    expect(decoded).toContain('https://purl.imsglobal.org/spec/or/v1p1/scope/roster-core.readonly');
+    expect(decoded).toContain('https://purl.imsglobal.org/spec/or/v1p1/scope/roster.readonly');
     // Demographics carries birthdate, sex and race. This flow has no use for
     // any of it, and a district reviewing the grant should see that.
-    expect(decodeURIComponent(body)).not.toContain('demographics');
+    expect(decoded).not.toContain('demographics');
+  });
+
+  it('falls back to the core scope alone when the dual request is refused', async () => {
+    // RFC 6749 lets a server refuse an unrecognised scope rather than narrow
+    // it. The experiment must never cost a district a sign-in that worked
+    // yesterday: one retry, core scope only, and the test still goes green.
+    handler = (req) => {
+      if (!req.url.includes('/token')) return allGood(req);
+      const scopes = decodeURIComponent(req.body.replace(/\+/g, ' '));
+      return scopes.includes('scope/roster.readonly')
+        ? { status: 400, body: { error: 'invalid_scope' } }
+        : { status: 200, body: { access_token: TOKEN, token_type: 'bearer' } };
+    };
+
+    const report = await run();
+
+    expect(report.ok).toBe(true);
+    const tokenBodies = seen.filter((r) => r.url.includes('/token')).map((r) => r.body);
+    expect(tokenBodies).toHaveLength(2);
+    // Present AND absent, both asserted: an empty scope on the retry would
+    // also "not contain" the umbrella (CodeRabbit, PR #829).
+    const fallbackBody = decodeURIComponent(tokenBodies[1].replace(/\+/g, ' '));
+    expect(fallbackBody).toContain('scope/roster-core.readonly');
+    expect(fallbackBody).not.toContain('scope/roster.readonly');
+  });
+
+  it('does NOT retry the fallback at an address that 404s wearing an OAuth body', async () => {
+    // The SPE-431 lesson applied to the fallback: the invalid_scope code only
+    // means "scope refused" on a 400. A wrong address answering 404 with an
+    // OAuth-shaped body must get ONE credentialed POST, not two (Codex,
+    // PR #829).
+    handler = (req) =>
+      req.url.includes('/token')
+        ? { status: 404, body: { error: 'invalid_scope' } }
+        : allGood(req);
+
+    await run();
+
+    const tokenUrls = seen.filter((r) => r.url.includes('/token')).map((r) => r.url);
+    expect(new Set(tokenUrls).size).toBe(tokenUrls.length);
   });
 
   it('fetches the token once and reuses it across both collections', async () => {

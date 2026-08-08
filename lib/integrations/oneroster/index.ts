@@ -14,6 +14,7 @@ export {
 
 export {
   ONEROSTER_API_PATH,
+  ONEROSTER_CORE_SCOPE,
   ONEROSTER_SCOPE,
   type OneRosterConnectionConfig,
 } from './config';
