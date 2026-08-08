@@ -555,11 +555,13 @@ export class OneRosterClient {
         // thrown, never returned to a caller.
         const refusal = phase === 'token' ? await describeTokenRefusal(res) : undefined;
         const oauthError = refusal?.oauthError;
-        // Diagnostics ride in the META slot, where the logger stringifies them
-        // into the formatted line and — per SPE-167 — never forwards them to
-        // Sentry. The previous shape passed this object as the `error`
-        // argument, which reached the console only as a loose positional value
-        // and pinged Sentry's non-Error branch on every failed candidate.
+        // Diagnostics ride in the META slot, where the logger stringifies
+        // them into the formatted line and — per SPE-167 — never forwards
+        // them to Sentry. (Sentry still records one captureMessage per failed
+        // candidate, exactly as before; what changed is that the payload
+        // stays out of it.) The previous shape passed this object as the
+        // `error` argument — a loose positional value that a line-capturing
+        // pipeline would drop entirely.
         logger.error('OneRoster API request failed', undefined, {
           status: res.status,
           path,

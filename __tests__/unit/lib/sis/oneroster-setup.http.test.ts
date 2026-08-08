@@ -1018,6 +1018,21 @@ describe('the SHAPE of a refusal is logged — its CONTENT never is (SPE-434)', 
     expect(logged()).toContain('"bodyKind":"empty"');
   });
 
+  it('a JSON array refusal is "json-nonobject" — no field names from indices', async () => {
+    // Raised by CodeRabbit on PR #826. The regression it guards: drop the
+    // Array.isArray check and Object.keys on an array yields "0", "1", … —
+    // and the array's CONTENTS would be one refactor away from the log.
+    const rawBody = JSON.stringify([{ error: 'invalid_client' }]);
+    handler = (req) => (req.url.includes('/token') ? { status: 400, raw: rawBody } : allGood(req));
+
+    await run();
+
+    expect(logged()).toContain('"bodyKind":"json-nonobject"');
+    expect(logged()).toContain(`"bodyChars":${rawBody.length}`);
+    expect(logged()).not.toContain('fieldNames');
+    expect(logged()).not.toContain('invalid_client');
+  });
+
   it('an unrecognised content-type logs as "other", never verbatim', async () => {
     // The header is server-controlled text, same as the body — one more place
     // a credential echo could hide, so it faces the same allow-list.
