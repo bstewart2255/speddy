@@ -91,6 +91,26 @@ export function oneRosterTokenUrlCandidates(baseUrl: string): string[] {
     new URL(trimmed);
     add(`${trimmed}/token`);
     add(`${trimmed}/oauth/token`);
+    // The form Aeries documents — `https://<district>api.aeries.net/admin/token/`,
+    // with the trailing slash. On ASP.NET that slash can select a different
+    // route entirely. It was absent from this list, and stripped from what
+    // districts typed, which is why the one address the vendor documents was
+    // never dialled (SPE-432).
+    //
+    // LAST, and that position is load-bearing. Any candidate absorbs the
+    // failures the search cannot continue past — chiefly a redirect, which
+    // `redirect: 'error'` turns into a plain TypeError rather than a
+    // OneRosterApiError, and which therefore ends the loop (SPE-433). A gateway
+    // that canonicalises `/token/` to `/token` answers with exactly that.
+    //
+    // So this probe is placed where it can only ever help: after both
+    // established candidates. Ahead of `/token` it would abort the search for a
+    // district whose slashless endpoint works; between the two it would abort
+    // it for a district relying on the `/oauth/token` fallback — a regression
+    // against behaviour that already worked, to fix a district that did not.
+    // Appended, it is reached only once both have failed in a continuable way,
+    // which is precisely JSUSD's case.
+    add(`${trimmed}/token/`);
   } catch {
     // Unparseable base: the caller's guard reports it properly.
   }
@@ -98,17 +118,28 @@ export function oneRosterTokenUrlCandidates(baseUrl: string): string[] {
 }
 
 /**
- * Normalize a token endpoint the district DID supply.
+ * Normalize a token endpoint the district DID supply — which now means barely
+ * touching it.
  *
- * Kept whole — unlike the base URL there is no version segment to strip, and
- * the path genuinely varies between vendors (`/token`, `/token/`, `/oauth/token`).
- * Only the trailing slash is normalized, so two districts who typed the same
- * endpoint differently don't produce two different stored rows.
+ * The path is kept EXACTLY as given, trailing slash and all. This used to strip
+ * the trailing slash, so that two districts typing the same endpoint differently
+ * did not produce two different stored rows. That tidiness cost a live district
+ * their integration (SPE-432).
+ *
+ * Aeries documents its OneRoster token endpoint as
+ * `https://<district>api.aeries.net/admin/token/` — WITH the slash. JSUSD's tech
+ * admin entered exactly that, we stripped it, and `/admin/token` answered 400
+ * from some other handler while `/admin/token/` was never once dialled. Aeries
+ * runs on ASP.NET, where the two can route to genuinely different endpoints.
+ *
+ * The rule this file keeps re-learning: when a district tells us an address,
+ * believe them. Normalising away what they typed is how SPE-426 happened on the
+ * Aeries side, and this is the same mistake on the OneRoster side.
  */
 export function normalizeOneRosterTokenUrl(input: string): string {
   return normalizeSisUrl(
     input,
-    (url) => `${url.origin}${url.pathname.replace(/\/+$/, '')}`,
+    (url) => `${url.origin}${url.pathname}`,
     'OneRoster token address',
   );
 }
@@ -442,9 +473,12 @@ export async function runOneRosterConnectionTest(params: {
   // credential error as an address error. On the happy path this is exactly one
   // request, because the stored value is tried first.
   //
-  // Trimmed, so a stored value that differs only by a trailing slash is not
-  // tried twice and does not later read as "we found a different endpoint".
-  const storedTokenUrl = (params.tokenUrl ?? '').trim().replace(/\/+$/, '');
+  // Whitespace only. The trailing slash is NOT stripped: `/token` and `/token/`
+  // are two different addresses on the servers this has to work against, so
+  // collapsing them is how we ended up never dialling the documented one
+  // (SPE-432). Dedup below is exact-match for the same reason — the two
+  // spellings are candidates in their own right, not duplicates.
+  const storedTokenUrl = (params.tokenUrl ?? '').trim();
   const tokenCandidates = [
     ...(storedTokenUrl ? [storedTokenUrl] : []),
     ...oneRosterTokenUrlCandidates(params.baseUrl).filter((u) => u !== storedTokenUrl),

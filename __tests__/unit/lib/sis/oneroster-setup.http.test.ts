@@ -159,6 +159,8 @@ describe('resolving the token endpoint when the stored one is wrong (SPE-426)', 
     });
 
     expect(report.ok).toBe(true);
+    // `/token` still leads — the documented slashed form sits behind it so that
+    // it cannot absorb a failure the search is unable to continue past.
     expect(report.usedTokenUrl).toBe(`${origin}/admin/token`);
     expect(stepOf(report, 'token').message).toContain(`${origin}/admin/token`);
   });
@@ -214,6 +216,102 @@ describe('resolving the token endpoint when the stored one is wrong (SPE-426)', 
 
     expect(stepOf(report, 'token').status).toBe('ok');
     expect(report.usedTokenUrl).toBe(`${origin}/admin/oauth/token`);
+  });
+
+  it("finds the DOCUMENTED /token/ when the slashless one answers a bare 400 (SPE-432)", async () => {
+    // JSUSD's real shape. Aeries documents the token endpoint WITH a trailing
+    // slash; their tech admin typed exactly that; we stripped it before saving.
+    // Aeries runs on ASP.NET, where the two spellings can route to different
+    // handlers — so `/admin/token` answered 400 from something that is not a
+    // token endpoint, and `/admin/token/` was never once dialled.
+    handler = (req) => {
+      if (req.url === '/admin/token/') {
+        return { status: 200, body: { access_token: TOKEN, token_type: 'bearer', expires_in: 3600 } };
+      }
+      if (req.url.startsWith('/admin/token')) return { status: 400, body: { message: 'nope' } };
+      return { status: 200, body: { orgs: [{ sourcedId: 'org-1', name: 'Sim USD', type: 'district' }] } };
+    };
+
+    const report = await runWith(`${origin}/admin/token`);
+
+    expect(stepOf(report, 'token').status).toBe('ok');
+    expect(report.usedTokenUrl).toBe(`${origin}/admin/token/`);
+  });
+
+  it('does not let the slashed candidate abort a district whose /token works', async () => {
+    // The regression the ordering guards against. A gateway that canonicalises
+    // `/token/` to `/token` answers with a redirect, which `redirect: 'error'`
+    // turns into a plain TypeError — NOT a "keep looking" signal. Leading with
+    // the slashed form would abort the search there and tell a district with a
+    // perfectly good endpoint that we could not reach them.
+    handler = (req) => {
+      if (req.url === '/admin/token/') {
+        return { status: 308, headers: { Location: `${origin}/admin/token` } };
+      }
+      if (req.url === '/admin/token') {
+        return { status: 200, body: { access_token: TOKEN, token_type: 'bearer', expires_in: 3600 } };
+      }
+      return { status: 200, body: { orgs: [{ sourcedId: 'org-1', name: 'Sim USD', type: 'district' }] } };
+    };
+
+    const report = await runOneRosterConnectionTest({
+      baseUrl: `${origin}/admin`,
+      clientId: CLIENT_ID,
+      clientSecret: CLIENT_SECRET,
+    });
+
+    expect(report.ok).toBe(true);
+    // The redirecting address was never dialled at all, because /token came
+    // first and answered.
+    expect(seen.every((r) => r.url !== '/admin/token/')).toBe(true);
+  });
+
+  it('does not let the slashed candidate abort a district on the /oauth/token fallback', async () => {
+    // Raised by Codex against the first ordering. Placing the slashed probe
+    // between `/token` and `/oauth/token` broke the districts the OAuth
+    // fallback exists for: `/token` says keep looking, `/token/` redirects, the
+    // redirect ends the loop, and `/oauth/token` is never reached — a
+    // regression against behaviour that already worked, to help a district that
+    // did not. Appended last, it cannot come between them.
+    handler = (req) => {
+      if (req.url === '/admin/token') return { status: 404, body: { message: 'nope' } };
+      if (req.url === '/admin/token/') {
+        return { status: 308, headers: { Location: `${origin}/admin/token` } };
+      }
+      if (req.url === '/admin/oauth/token') {
+        return { status: 200, body: { access_token: TOKEN, token_type: 'bearer', expires_in: 3600 } };
+      }
+      return { status: 200, body: { orgs: [{ sourcedId: 'org-1', name: 'Sim USD', type: 'district' }] } };
+    };
+
+    const report = await runOneRosterConnectionTest({
+      baseUrl: `${origin}/admin`,
+      clientId: CLIENT_ID,
+      clientSecret: CLIENT_SECRET,
+    });
+
+    expect(report.ok).toBe(true);
+    expect(report.usedTokenUrl).toBe(`${origin}/admin/oauth/token`);
+    // The redirecting probe was never dialled — it sits behind the fallback.
+    expect(seen.every((r) => r.url !== '/admin/token/')).toBe(true);
+  });
+
+  it('dials the stored token address VERBATIM, trailing slash and all', async () => {
+    // The other half of SPE-432: if a district has the documented address on
+    // file, we must send it as given rather than normalising the slash off and
+    // dialling something they never entered.
+    handler = (req) =>
+      req.url === '/admin/token/'
+        ? { status: 200, body: { access_token: TOKEN, token_type: 'bearer', expires_in: 3600 } }
+        : { status: 404, body: { message: 'not here' } };
+
+    const report = await runWith(`${origin}/admin/token/`);
+
+    expect(stepOf(report, 'token').status).toBe('ok');
+    // The FIRST request went to the address on file, unmodified.
+    expect(seen[0].url).toBe('/admin/token/');
+    // And it is not reported as a correction, because nothing was corrected.
+    expect(report.usedTokenUrl).toBeUndefined();
   });
 
   it('keeps looking past a 400 that names NO reason (SPE-431)', async () => {
