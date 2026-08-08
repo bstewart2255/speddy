@@ -1301,3 +1301,50 @@ describe('the roster probe measures presence and joinability, never people (SPE-
     expect(stepIn(steps, 'rosters').message).toContain('2 entries');
   });
 });
+
+describe('the GRANTED scope is logged from our own vocabulary — never verbatim (SPE-435)', () => {
+  // The 403 on /enrollments made "what did the server actually grant us"
+  // the deciding fact between our-request-too-narrow and their-console-says-no.
+  // The scope field is server text, so it faces the same allow-list as every
+  // other derivation: known IMS constants are logged in short form, anything
+  // else becomes arithmetic.
+  let spy: jest.SpyInstance;
+  beforeEach(() => {
+    spy = jest.spyOn(logger, 'info').mockImplementation(() => {});
+  });
+  afterEach(() => spy.mockRestore());
+  const logged = () => JSON.stringify(spy.mock.calls);
+
+  it('logs known granted scopes in short form, counts the rest, leaks nothing', async () => {
+    handler = (req) =>
+      req.url.includes('/token')
+        ? {
+            status: 200,
+            body: {
+              access_token: TOKEN,
+              token_type: 'bearer',
+              scope: [
+                'https://purl.imsglobal.org/spec/or/v1p1/scope/roster-core.readonly',
+                'https://purl.imsglobal.org/spec/or/v1p1/scope/roster.readonly',
+                `https://evil.example/echo/${CLIENT_SECRET}`,
+              ].join(' '),
+            },
+          }
+        : allGood(req);
+
+    await run();
+
+    expect(logged()).toContain('"grantedScopes":["roster-core.readonly","roster.readonly"]');
+    expect(logged()).toContain('"unrecognisedScopes":1');
+    expect(logged()).not.toContain(CLIENT_SECRET);
+    expect(logged()).not.toContain('evil.example');
+  });
+
+  it('says "not stated" when the server omits the scope field', async () => {
+    handler = allGood;
+
+    await run();
+
+    expect(logged()).toContain('"grantedScopes":"not stated"');
+  });
+});
