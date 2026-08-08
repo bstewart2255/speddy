@@ -7,98 +7,115 @@
  *
  * Everything shown here came through the server route's picked shapes; this
  * page adds no fields, stores nothing, and offers no actions but "look".
+ * Row/stat types are imported type-only from the server module — erased at
+ * build time, so the server-only code never enters the client bundle, and the
+ * shapes cannot drift from what the route actually returns.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Card } from '@/app/components/ui/card';
+import type {
+  DirectoryArea,
+  DirectoryClassRow,
+  DirectoryPage,
+  DirectoryPersonRow,
+  DirectorySchoolRow,
+  DirectoryStat,
+} from '@/lib/sis/oneroster-directory';
 
-type Area = 'teachers' | 'students' | 'classes' | 'schools';
-
-interface Stat {
-  label: string;
-  value: string;
-}
-
-interface PersonRow {
-  sourcedId: string;
-  name: string;
-  email: string | null;
-  identifier: string | null;
-  grades: string[];
-  schools: string[];
-}
-
-interface ClassRow {
-  sourcedId: string;
-  title: string;
-  classType: string | null;
-  subjects: string[];
-  periods: string[];
-  grades: string[];
-}
-
-interface SchoolRow {
-  sourcedId: string;
-  name: string;
-  identifier: string | null;
-  type: string | null;
-}
-
-interface Page {
-  area: Area;
-  rows: (PersonRow | ClassRow | SchoolRow)[];
-  offset: number;
-  pageFull: boolean;
-  stats: Stat[];
-}
-
-const AREA_LABELS: Record<Area, string> = {
+const AREA_LABELS: Record<DirectoryArea, string> = {
   teachers: 'Teachers',
   students: 'Students',
   classes: 'Classes',
   schools: 'Schools',
 };
 
-const AREAS: Area[] = ['teachers', 'students', 'classes', 'schools'];
+const AREAS: DirectoryArea[] = ['teachers', 'students', 'classes', 'schools'];
 
 const join = (values: string[]) => (values.length ? values.join(', ') : '—');
 const dash = (value: string | null) => value ?? '—';
+const formatStat = (s: DirectoryStat) => (s.of === undefined ? String(s.n) : `${s.n} of ${s.of}`);
+
+/** Sum page stats by label, so badges describe everything loaded, not the last page. */
+function sumStats(prev: DirectoryStat[], next: DirectoryStat[]): DirectoryStat[] {
+  const byLabel = new Map(prev.map((s) => [s.label, { ...s }]));
+  for (const stat of next) {
+    const existing = byLabel.get(stat.label);
+    if (!existing) {
+      byLabel.set(stat.label, { ...stat });
+    } else {
+      existing.n += stat.n;
+      if (existing.of !== undefined || stat.of !== undefined) {
+        existing.of = (existing.of ?? 0) + (stat.of ?? 0);
+      }
+    }
+  }
+  return [...byLabel.values()];
+}
 
 export default function DirectoriesPage() {
-  const [area, setArea] = useState<Area>('teachers');
-  const [rows, setRows] = useState<Page['rows']>([]);
-  const [stats, setStats] = useState<Stat[]>([]);
-  const [pageFull, setPageFull] = useState(false);
+  const [area, setArea] = useState<DirectoryArea>('teachers');
+  const [rows, setRows] = useState<DirectoryPage['rows']>([]);
+  const [stats, setStats] = useState<DirectoryStat[]>([]);
   const [nextOffset, setNextOffset] = useState(0);
+  /** Last page had rows — more MAY exist. Never trusts the requested limit. */
+  const [mayHaveMore, setMayHaveMore] = useState(false);
+  const [exhausted, setExhausted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [appendNotice, setAppendNotice] = useState<string | null>(null);
+  /**
+   * Latest-request-wins: a slow response for a previous tab must not land in
+   * the current one — person rows rendered under class columns is a crash.
+   */
+  const requestSeq = useRef(0);
 
-  const load = useCallback(async (target: Area, offset: number, append: boolean) => {
+  const load = useCallback(async (target: DirectoryArea, offset: number, append: boolean) => {
+    const seq = ++requestSeq.current;
     if (append) {
       setLoadingMore(true);
+      setAppendNotice(null);
     } else {
       setLoading(true);
       setNotice(null);
+      setAppendNotice(null);
       setRows([]);
       setStats([]);
+      setExhausted(false);
+      setMayHaveMore(false);
     }
     try {
       const res = await fetch(`/api/district/sis-directory?area=${target}&offset=${offset}`);
-      const body = (await res.json()) as Page & { error?: string };
+      const body = (await res.json()) as DirectoryPage & { error?: string };
+      if (seq !== requestSeq.current) return; // a newer request owns the screen
       if (!res.ok) {
-        setNotice(body.error ?? 'Something went wrong loading this directory.');
+        const message = body.error ?? 'Something went wrong loading this directory.';
+        if (append) {
+          setAppendNotice(message);
+        } else {
+          setNotice(message);
+        }
         return;
       }
       setRows((prev) => (append ? [...prev, ...body.rows] : body.rows));
-      setStats(body.stats);
-      setPageFull(body.pageFull);
-      setNextOffset(body.offset + body.rows.length);
+      setStats((prev) => (append ? sumStats(prev, body.stats) : body.stats));
+      setNextOffset(offset + body.rows.length);
+      setMayHaveMore(body.rows.length > 0);
+      if (append && body.rows.length === 0) setExhausted(true);
     } catch {
-      setNotice('Something went wrong loading this directory. Try again in a moment.');
+      if (seq !== requestSeq.current) return;
+      const message = 'Something went wrong loading this directory. Try again in a moment.';
+      if (append) {
+        setAppendNotice(message);
+      } else {
+        setNotice(message);
+      }
     } finally {
-      setLoading(false);
-      setLoadingMore(false);
+      if (seq === requestSeq.current) {
+        setLoading(false);
+        setLoadingMore(false);
+      }
     }
   }, []);
 
@@ -149,13 +166,13 @@ export default function DirectoriesPage() {
                   key={s.label}
                   className="inline-flex items-baseline gap-1.5 rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-600"
                 >
-                  <span className="font-semibold text-slate-900">{s.value}</span>
+                  <span className="font-semibold text-slate-900">{formatStat(s)}</span>
                   {s.label}
                 </span>
               ))}
-              {pageFull && (
+              {mayHaveMore && !exhausted && (
                 <span className="inline-flex items-center rounded-full bg-amber-50 px-3 py-1 text-xs text-amber-700">
-                  Showing the first {rows.length} — counts describe what&apos;s loaded
+                  Counts describe the {rows.length} loaded so far
                 </span>
               )}
             </div>
@@ -173,7 +190,9 @@ export default function DirectoriesPage() {
                         <>
                           <th className="py-2 pr-4">Name</th>
                           <th className="py-2 pr-4">Email</th>
-                          <th className="py-2 pr-4">{area === 'teachers' ? 'Staff ID' : 'District ID'}</th>
+                          <th className="py-2 pr-4">
+                            {area === 'teachers' ? 'Staff ID' : 'District ID'}
+                          </th>
                           <th className="py-2 pr-4">Grades</th>
                           <th className="py-2">School</th>
                         </>
@@ -202,36 +221,36 @@ export default function DirectoriesPage() {
                         {(area === 'teachers' || area === 'students') && (
                           <>
                             <td className="py-2 pr-4 font-medium text-slate-900">
-                              {(row as PersonRow).name}
+                              {(row as DirectoryPersonRow).name}
                             </td>
-                            <td className="py-2 pr-4">{dash((row as PersonRow).email)}</td>
+                            <td className="py-2 pr-4">{dash((row as DirectoryPersonRow).email)}</td>
                             <td className="py-2 pr-4 font-mono text-xs">
-                              {dash((row as PersonRow).identifier)}
+                              {dash((row as DirectoryPersonRow).identifier)}
                             </td>
-                            <td className="py-2 pr-4">{join((row as PersonRow).grades)}</td>
-                            <td className="py-2">{join((row as PersonRow).schools)}</td>
+                            <td className="py-2 pr-4">{join((row as DirectoryPersonRow).grades)}</td>
+                            <td className="py-2">{join((row as DirectoryPersonRow).schools)}</td>
                           </>
                         )}
                         {area === 'classes' && (
                           <>
                             <td className="py-2 pr-4 font-medium text-slate-900">
-                              {(row as ClassRow).title}
+                              {(row as DirectoryClassRow).title}
                             </td>
-                            <td className="py-2 pr-4">{dash((row as ClassRow).classType)}</td>
-                            <td className="py-2 pr-4">{join((row as ClassRow).subjects)}</td>
-                            <td className="py-2 pr-4">{join((row as ClassRow).periods)}</td>
-                            <td className="py-2">{join((row as ClassRow).grades)}</td>
+                            <td className="py-2 pr-4">{dash((row as DirectoryClassRow).classType)}</td>
+                            <td className="py-2 pr-4">{join((row as DirectoryClassRow).subjects)}</td>
+                            <td className="py-2 pr-4">{join((row as DirectoryClassRow).periods)}</td>
+                            <td className="py-2">{join((row as DirectoryClassRow).grades)}</td>
                           </>
                         )}
                         {area === 'schools' && (
                           <>
                             <td className="py-2 pr-4 font-medium text-slate-900">
-                              {(row as SchoolRow).name}
+                              {(row as DirectorySchoolRow).name}
                             </td>
                             <td className="py-2 pr-4 font-mono text-xs">
-                              {dash((row as SchoolRow).identifier)}
+                              {dash((row as DirectorySchoolRow).identifier)}
                             </td>
-                            <td className="py-2">{dash((row as SchoolRow).type)}</td>
+                            <td className="py-2">{dash((row as DirectorySchoolRow).type)}</td>
                           </>
                         )}
                       </tr>
@@ -241,8 +260,8 @@ export default function DirectoriesPage() {
               </div>
             )}
 
-            {pageFull && (
-              <div className="mt-4 text-center">
+            {mayHaveMore && !exhausted && rows.length > 0 && (
+              <div className="mt-4 text-center space-y-2">
                 <button
                   onClick={() => void load(area, nextOffset, true)}
                   disabled={loadingMore}
@@ -250,7 +269,13 @@ export default function DirectoriesPage() {
                 >
                   {loadingMore ? 'Loading…' : 'Load more'}
                 </button>
+                {appendNotice && <p className="text-xs text-amber-700">{appendNotice}</p>}
               </div>
+            )}
+            {exhausted && rows.length > 0 && (
+              <p className="mt-4 text-center text-xs text-slate-400">
+                That&apos;s everything your SIS lists here.
+              </p>
             )}
           </>
         )}

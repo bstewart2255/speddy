@@ -64,10 +64,16 @@ export interface DirectorySchoolRow {
 
 export type DirectoryRow = DirectoryPersonRow | DirectoryClassRow | DirectorySchoolRow;
 
-/** A named number the panel shows above the table — the owner's "our check". */
+/**
+ * A named count the panel shows above the table — the owner's "our check".
+ * Numeric on purpose: the client sums stats across appended pages by label,
+ * so counting stays server-side and only formatting lives in the page.
+ */
 export interface DirectoryStat {
   label: string;
-  value: string;
+  n: number;
+  /** When present, renders as "n of of" — a coverage ratio. */
+  of?: number;
 }
 
 export interface DirectoryPage {
@@ -126,29 +132,29 @@ function pickSchool(raw: RawOneRosterSchool): DirectorySchoolRow {
   };
 }
 
-const pct = (n: number, of: number) => (of === 0 ? '0' : `${n} of ${of}`);
-
 function personStats(rows: DirectoryPersonRow[], noun: string): DirectoryStat[] {
   const withEmail = rows.filter((r) => r.email).length;
   const withId = rows.filter((r) => r.identifier).length;
   const withGrade = rows.filter((r) => r.grades.length > 0).length;
   return [
-    { label: `${noun} listed`, value: String(rows.length) },
-    { label: 'with an email', value: pct(withEmail, rows.length) },
-    { label: noun === 'Students' ? 'with a district ID' : 'with a staff ID', value: pct(withId, rows.length) },
-    { label: 'with a grade level', value: pct(withGrade, rows.length) },
+    { label: `${noun} listed`, n: rows.length },
+    { label: 'with an email', n: withEmail, of: rows.length },
+    { label: noun === 'Students' ? 'with a district ID' : 'with a staff ID', n: withId, of: rows.length },
+    { label: 'with a grade level', n: withGrade, of: rows.length },
   ];
 }
 
 function classStats(rows: DirectoryClassRow[]): DirectoryStat[] {
   const homeroom = rows.filter((r) => r.classType === 'homeroom').length;
   const scheduled = rows.filter((r) => r.classType === 'scheduled').length;
-  const other = rows.length - homeroom - scheduled;
+  const untyped = rows.length - homeroom - scheduled;
   const withSubject = rows.filter((r) => r.subjects.length > 0).length;
   return [
-    { label: 'Classes listed', value: String(rows.length) },
-    { label: 'homeroom / scheduled', value: `${homeroom} / ${scheduled}${other ? ` (+${other} untyped)` : ''}` },
-    { label: 'with a subject', value: pct(withSubject, rows.length) },
+    { label: 'Classes listed', n: rows.length },
+    { label: 'homeroom', n: homeroom },
+    { label: 'scheduled', n: scheduled },
+    { label: 'untyped', n: untyped },
+    { label: 'with a subject', n: withSubject, of: rows.length },
   ];
 }
 
@@ -194,7 +200,7 @@ export async function fetchDirectoryPage(params: {
       rows,
       offset,
       pageFull: rows.length === DIRECTORY_PAGE_SIZE,
-      stats: [{ label: 'Schools listed', value: String(rows.length) }],
+      stats: [{ label: 'Schools listed', n: rows.length }],
     };
   }
 
@@ -213,9 +219,20 @@ export async function fetchDirectoryPage(params: {
   // own /schools list is small and resolves them in one extra read.
   const schoolNames = new Map<string, string>();
   try {
-    for (const school of await client.getSchools({ limit: DIRECTORY_PAGE_SIZE })) {
-      const name = str(school.name);
-      if (name) schoolNames.set(school.sourcedId, name);
+    // Follow full pages a few deep: a first page that comes back full may be
+    // a truncation, and a person whose school fell off the map would render
+    // an empty School column — indistinguishable from the SIS not linking
+    // them, which is exactly the data-quality signal this surface displays.
+    for (let page = 0; page < 5; page += 1) {
+      const batch = await client.getSchools({
+        limit: DIRECTORY_PAGE_SIZE,
+        offset: page * DIRECTORY_PAGE_SIZE,
+      });
+      for (const school of batch) {
+        const name = str(school.name);
+        if (name) schoolNames.set(school.sourcedId, name);
+      }
+      if (batch.length < DIRECTORY_PAGE_SIZE) break;
     }
   } catch {
     // A directory without school names is degraded, not dead — rows still

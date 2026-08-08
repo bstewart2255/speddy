@@ -178,23 +178,28 @@ describe('the pick is the contract', () => {
 });
 
 describe('the owner check numbers', () => {
-  it('teachers: coverage stats count what the page shows', async () => {
+  it('teachers: coverage stats count what the page shows, numerically', async () => {
+    // Numeric (n / of) rather than pre-formatted strings, so the client can
+    // sum stats across appended pages instead of showing the last page's
+    // counts over an accumulated table (self-review, PR: stats drift).
     const page = await fetchArea('teachers');
-    const byLabel = Object.fromEntries(page.stats.map((s) => [s.label, s.value]));
+    const byLabel = Object.fromEntries(page.stats.map((s) => [s.label, s]));
 
-    expect(byLabel['Teachers listed']).toBe('2');
-    expect(byLabel['with an email']).toBe('1 of 2');
-    expect(byLabel['with a staff ID']).toBe('1 of 2');
-    expect(byLabel['with a grade level']).toBe('1 of 2');
+    expect(byLabel['Teachers listed']).toMatchObject({ n: 2 });
+    expect(byLabel['with an email']).toMatchObject({ n: 1, of: 2 });
+    expect(byLabel['with a staff ID']).toMatchObject({ n: 1, of: 2 });
+    expect(byLabel['with a grade level']).toMatchObject({ n: 1, of: 2 });
   });
 
   it('classes: the homeroom/scheduled split is the elementary detector', async () => {
     const page = await fetchArea('classes');
-    const byLabel = Object.fromEntries(page.stats.map((s) => [s.label, s.value]));
+    const byLabel = Object.fromEntries(page.stats.map((s) => [s.label, s]));
 
-    expect(byLabel['Classes listed']).toBe('2');
-    expect(byLabel['homeroom / scheduled']).toBe('1 / 1');
-    expect(byLabel['with a subject']).toBe('1 of 2');
+    expect(byLabel['Classes listed']).toMatchObject({ n: 2 });
+    expect(byLabel['homeroom']).toMatchObject({ n: 1 });
+    expect(byLabel['scheduled']).toMatchObject({ n: 1 });
+    expect(byLabel['untyped']).toMatchObject({ n: 0 });
+    expect(byLabel['with a subject']).toMatchObject({ n: 1, of: 2 });
   });
 
   it('a full page is flagged so counts read as page counts, not district counts', async () => {
@@ -217,6 +222,42 @@ describe('the owner check numbers', () => {
     const page = await fetchArea('schools');
     expect(page.rows).toHaveLength(DIRECTORY_PAGE_SIZE);
     expect(page.pageFull).toBe(true);
+  });
+});
+
+describe('the school-name map', () => {
+  it('follows a FULL schools page so big districts keep their names', async () => {
+    // A first page that comes back full may be truncation. A person whose
+    // school fell off the map would render an empty School column —
+    // indistinguishable from the SIS not linking them (self-review).
+    handler = (url) => {
+      if (url.includes('/token')) return { status: 200, body: { access_token: TOKEN } };
+      if (url.includes('/schools')) {
+        const offset = Number(new URL(`http://x${url}`).searchParams.get('offset') ?? '0');
+        if (offset === 0) {
+          return {
+            status: 200,
+            body: {
+              orgs: Array.from({ length: DIRECTORY_PAGE_SIZE }, (_, i) => ({
+                sourcedId: `sch-${i}`,
+                name: `School ${i}`,
+              })),
+            },
+          };
+        }
+        return { status: 200, body: { orgs: [{ sourcedId: 'sch-tail', name: 'Tail School' }] } };
+      }
+      if (url.includes('/teachers')) {
+        return {
+          status: 200,
+          body: { users: [{ sourcedId: 't-1', familyName: 'Tail', orgs: [{ sourcedId: 'sch-tail' }] }] },
+        };
+      }
+      return { status: 404, body: {} };
+    };
+
+    const page = await fetchArea('teachers');
+    expect((page.rows[0] as { schools: string[] }).schools).toEqual(['Tail School']);
   });
 });
 
