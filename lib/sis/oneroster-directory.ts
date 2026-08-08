@@ -16,6 +16,7 @@
  *
  * Server-only: dials an external SIS with a decrypted credential.
  */
+import { logger } from '@/lib/logger';
 import {
   OneRosterClient,
   type RawOneRosterClass,
@@ -25,9 +26,9 @@ import {
 import { ONEROSTER_URL_LABELS, assertSafeSisUrl } from './ssrf-guard';
 import { oneRosterTokenUrlCandidates } from './oneroster-setup';
 
-export type DirectoryArea = 'teachers' | 'students' | 'classes' | 'schools';
+export const DIRECTORY_AREAS = ['teachers', 'students', 'classes', 'schools'] as const;
 
-export const DIRECTORY_AREAS: DirectoryArea[] = ['teachers', 'students', 'classes', 'schools'];
+export type DirectoryArea = (typeof DIRECTORY_AREAS)[number];
 
 /** One page per request. JSUSD-sized areas fit in one; larger districts page. */
 export const DIRECTORY_PAGE_SIZE = 200;
@@ -234,9 +235,15 @@ export async function fetchDirectoryPage(params: {
       }
       if (batch.length < DIRECTORY_PAGE_SIZE) break;
     }
-  } catch {
+  } catch (err) {
     // A directory without school names is degraded, not dead — rows still
-    // render, the schools column is simply empty.
+    // render, the schools column is simply empty. Logged, because that state
+    // is otherwise indistinguishable from the SIS not linking anyone
+    // (CodeRabbit, PR #830). Our own error strings only, never response text.
+    logger.warn('Directory school-name map unavailable; school column will be empty', {
+      area: params.area,
+      error: err instanceof Error ? err.message : 'unknown',
+    });
   }
 
   const rawRows =

@@ -8,11 +8,14 @@
  * a stored credential, asked for a directory page.
  */
 import { NextRequest } from 'next/server';
+import type { DirectoryPage } from '@/lib/sis/oneroster-directory';
 
 const ADMIN_ID = '44444444-4444-4444-8444-444444444444';
 const DISTRICT_ID = '0618990';
 
 let currentUserId: string | null = ADMIN_ID;
+/** Whether the grant lookup finds a district_admin row for a tech-role caller. */
+let holdsAdminGrant = false;
 
 jest.mock('@/lib/supabase/server', () => ({
   createClient: async () => ({
@@ -23,7 +26,17 @@ jest.mock('@/lib/supabase/server', () => ({
           : { data: { user: null }, error: { message: 'no session' } },
     },
   }),
-  createServiceClient: () => ({ from: () => ({}) }),
+  createServiceClient: () => ({
+    from: () => {
+      const q: Record<string, unknown> = {};
+      q.select = () => q;
+      q.eq = () => q;
+      q.limit = () => q;
+      q.maybeSingle = () =>
+        Promise.resolve({ data: holdsAdminGrant ? { id: 'grant-1' } : null, error: null });
+      return q;
+    },
+  }),
 }));
 
 jest.mock('@/lib/api/rate-limit-user', () => ({
@@ -59,7 +72,7 @@ const CONNECTION = {
   token_url: 'https://district.aeries.net/admin/token',
 };
 
-const PAGE = {
+const PAGE: DirectoryPage = {
   area: 'teachers',
   rows: [
     {
@@ -73,7 +86,7 @@ const PAGE = {
   ],
   offset: 0,
   pageFull: false,
-  stats: [{ label: 'Teachers listed', value: '1' }],
+  stats: [{ label: 'Teachers listed', n: 1 }],
 };
 
 const call = (qs = 'area=teachers') =>
@@ -86,6 +99,7 @@ const sisWasDialled = () => mockFetchPage.mock.calls.length > 0;
 beforeEach(() => {
   jest.clearAllMocks();
   currentUserId = ADMIN_ID;
+  holdsAdminGrant = false;
   mockResolveCaller.mockResolvedValue({ ok: true, districtId: DISTRICT_ID, role: 'district_admin' });
   mockListConnections.mockResolvedValue([CONNECTION]);
   mockGetCredential.mockResolvedValue({
@@ -110,6 +124,38 @@ describe('the gate', () => {
     expect(res.status).toBe(403);
     expect(sisWasDialled()).toBe(false);
     expect(mockGetCredential).not.toHaveBeenCalled();
+  });
+
+  it('403s a district_tech caller — SPE-393: tech has no right to student data', async () => {
+    // The shared seam admits tech for connection MANAGEMENT. Reused unchecked
+    // here it would have served student names, IDs and grades to the role the
+    // permission model explicitly keeps out of them (Codex, PR #830).
+    mockResolveCaller.mockResolvedValue({
+      ok: true,
+      districtId: DISTRICT_ID,
+      role: 'district_tech',
+    });
+
+    const res = await call();
+
+    expect(res.status).toBe(403);
+    expect((await res.json()).error).toMatch(/district admins/i);
+    expect(sisWasDialled()).toBe(false);
+    expect(mockGetCredential).not.toHaveBeenCalled();
+  });
+
+  it('admits a caller the seam REPORTS as tech who also holds the admin grant', async () => {
+    // resolveDistrictSisCaller prefers the tech role when both are held; the
+    // extra grant lookup keeps that person from being wrongly refused.
+    mockResolveCaller.mockResolvedValue({
+      ok: true,
+      districtId: DISTRICT_ID,
+      role: 'district_tech',
+    });
+    holdsAdminGrant = true;
+
+    const res = await call();
+    expect(res.status).toBe(200);
   });
 
   it('the district comes from the caller grants — the request cannot name one', async () => {
@@ -139,6 +185,16 @@ describe('setup states', () => {
     mockGetCredential.mockResolvedValue(null);
     const res = await call();
     expect(res.status).toBe(409);
+    expect(sisWasDialled()).toBe(false);
+  });
+
+  it('a credential that cannot be DECRYPTED is a 500 with re-save guidance, not setup advice', async () => {
+    // "No credentials stored yet" about credentials that exist would send the
+    // admin to re-enter what a key rotation broke (CodeRabbit, PR #830).
+    mockGetCredential.mockRejectedValue(new Error('bad ciphertext'));
+    const res = await call();
+    expect(res.status).toBe(500);
+    expect((await res.json()).error).toMatch(/re-save/i);
     expect(sisWasDialled()).toBe(false);
   });
 });

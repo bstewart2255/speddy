@@ -59,4 +59,7 @@ it('derives the first candidate when no token address is stored — and still gu
 
   await fetchDirectoryPage({ ...PARAMS, tokenUrl: null });
   expect(constructed).toEqual(['https://data.example.com/admin/token']);
+  // "Still guards it" means the derived address went through DNS resolution
+  // too — one lookup per URL (CodeRabbit, PR #830).
+  expect(mockLookup).toHaveBeenCalledTimes(2);
 });

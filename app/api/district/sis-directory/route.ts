@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { withRoute } from '@/lib/api/with-route';
 import { resolveDistrictSisCaller } from '@/lib/api/district-sis-caller';
+import { createServiceClient } from '@/lib/supabase/server';
 import { logger } from '@/lib/logger';
 import { getDecryptedCredential, listConnections } from '@/lib/sis/connections';
 import {
@@ -13,7 +14,7 @@ import {
 const log = logger.child({ module: 'district-sis-directory' });
 
 const querySchema = z.object({
-  area: z.enum(DIRECTORY_AREAS as [DirectoryArea, ...DirectoryArea[]]),
+  area: z.enum(DIRECTORY_AREAS),
   offset: z.coerce.number().int().min(0).max(100_000).default(0),
 });
 
@@ -28,8 +29,9 @@ const querySchema = z.object({
  * else — see `oneroster-directory.ts` for why the pick is the contract.
  *
  * Rate-limited like the SIS test routes: every call reaches a school
- * district's production server (teachers/students cost two upstream reads —
- * the area plus the school-name map).
+ * district's production server (teachers/students cost the area read plus the
+ * school-name map — up to six upstream reads for a district with hundreds of
+ * schools).
  */
 export const GET = withRoute(
   {
@@ -47,6 +49,33 @@ export const GET = withRoute(
         { error: 'Forbidden: district admin access required' },
         { status: 403 },
       );
+    }
+
+    // DIRECTORIES ARE DISTRICT-ADMIN ONLY. The shared seam admits
+    // district_tech too — right for connection management, wrong here:
+    // `district_tech` has no right to student data (SPE-393), and this route
+    // serves student names, IDs and grades. The seam also REPORTS
+    // district_tech when a caller holds both grants, so a tech-role answer
+    // gets one more look at the grants before it is refused (Codex, PR #830).
+    if (caller.role !== 'district_admin') {
+      const { data: adminGrant } = await createServiceClient()
+        .from('admin_permissions')
+        .select('id')
+        .eq('admin_id', userId)
+        .eq('role', 'district_admin')
+        .eq('district_id', caller.districtId)
+        .limit(1)
+        .maybeSingle();
+      if (!adminGrant) {
+        log.warn('district_tech tried to read the SIS directory', {
+          userId,
+          districtId: caller.districtId,
+        });
+        return NextResponse.json(
+          { error: 'Forbidden: directories are for district admins.' },
+          { status: 403 },
+        );
+      }
     }
 
     // Wrapped: withRoute's catch echoes error.message to the client in
@@ -75,9 +104,16 @@ export const GET = withRoute(
     try {
       credential = await getDecryptedCredential(connection.id);
     } catch (err) {
+      // Distinct from "not stored yet": telling an admin to enter credentials
+      // that exist hides an operational fault (likely a key rotation) behind
+      // setup guidance (CodeRabbit, PR #830).
       log.error('Could not decrypt the stored SIS credential for the directory', err, {
         connectionId: connection.id,
       });
+      return NextResponse.json(
+        { error: 'Your stored OneRoster credential could not be read. Re-save it in the tech portal.' },
+        { status: 500 },
+      );
     }
     if (!credential || credential.sisType !== 'oneroster') {
       return NextResponse.json(

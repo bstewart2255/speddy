@@ -32,7 +32,7 @@ const AREA_LABELS: Record<DirectoryArea, string> = {
 
 const AREAS: DirectoryArea[] = ['teachers', 'students', 'classes', 'schools'];
 
-const join = (values: string[]) => (values.length ? values.join(', ') : '—');
+const join = (values: string[] | undefined) => (values?.length ? values.join(', ') : '—');
 const dash = (value: string | null) => value ?? '—';
 const formatStat = (s: DirectoryStat) => (s.of === undefined ? String(s.n) : `${s.n} of ${s.of}`);
 
@@ -123,6 +123,28 @@ export default function DirectoriesPage() {
     void load(area, 0, false);
   }, [area, load]);
 
+  /**
+   * Tab switches clear the table SYNCHRONOUSLY. The effect above also clears
+   * it, but only after a render in which the old area's rows would already
+   * have met the new area's columns — person rows under class headers is a
+   * crash, not a flicker (Codex, PR #830).
+   */
+  const switchArea = (target: DirectoryArea) => {
+    if (target === area) return;
+    // Kill any in-flight response NOW: until the effect's load() bumps the
+    // sequence, an old response would still pass the seq check and land its
+    // old-shape rows under the new columns (CodeRabbit, PR #830).
+    requestSeq.current += 1;
+    setRows([]);
+    setStats([]);
+    setNotice(null);
+    setAppendNotice(null);
+    setExhausted(false);
+    setMayHaveMore(false);
+    setLoading(true);
+    setArea(target);
+  };
+
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-4">
       <div>
@@ -139,7 +161,7 @@ export default function DirectoriesPage() {
             key={a}
             role="tab"
             aria-selected={area === a}
-            onClick={() => setArea(a)}
+            onClick={() => switchArea(a)}
             className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
               area === a
                 ? 'bg-slate-900 text-white'

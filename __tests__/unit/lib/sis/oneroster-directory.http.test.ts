@@ -76,6 +76,8 @@ const baseHandler = (url: string): { status: number; body: unknown } => {
             vendorExtra: PLANTED.vendorExtra,
           },
           { sourcedId: 't-2', familyName: 'Okafor', orgs: [{ sourcedId: 'sch-2' }] },
+          // Neither name field — the placeholder branch (CodeRabbit, PR #830).
+          { sourcedId: 't-3', orgs: [] },
         ],
       },
     };
@@ -141,7 +143,7 @@ describe('the pick is the contract', () => {
   it('teachers: picked fields arrive, planted vendor fields cannot', async () => {
     const page = await fetchArea('teachers');
 
-    expect(page.rows).toHaveLength(2);
+    expect(page.rows).toHaveLength(3);
     expect(page.rows[0]).toEqual({
       sourcedId: 't-1',
       name: 'Dana Alvarez',
@@ -174,6 +176,7 @@ describe('the pick is the contract', () => {
     const second = page.rows[1] as { name: string; schools: string[] };
     expect(second.name).toBe('Okafor');
     expect(second.schools).toEqual(['Crockett Middle']);
+    expect((page.rows[2] as { name: string }).name).toBe('(no name given)');
   });
 });
 
@@ -185,10 +188,10 @@ describe('the owner check numbers', () => {
     const page = await fetchArea('teachers');
     const byLabel = Object.fromEntries(page.stats.map((s) => [s.label, s]));
 
-    expect(byLabel['Teachers listed']).toMatchObject({ n: 2 });
-    expect(byLabel['with an email']).toMatchObject({ n: 1, of: 2 });
-    expect(byLabel['with a staff ID']).toMatchObject({ n: 1, of: 2 });
-    expect(byLabel['with a grade level']).toMatchObject({ n: 1, of: 2 });
+    expect(byLabel['Teachers listed']).toMatchObject({ n: 3 });
+    expect(byLabel['with an email']).toMatchObject({ n: 1, of: 3 });
+    expect(byLabel['with a staff ID']).toMatchObject({ n: 1, of: 3 });
+    expect(byLabel['with a grade level']).toMatchObject({ n: 1, of: 3 });
   });
 
   it('classes: the homeroom/scheduled split is the elementary detector', async () => {
@@ -269,7 +272,7 @@ describe('degradation', () => {
     };
 
     const page = await fetchArea('teachers');
-    expect(page.rows).toHaveLength(2);
+    expect(page.rows).toHaveLength(3);
     expect((page.rows[0] as { schools: string[] }).schools).toEqual([]);
   });
 
