@@ -850,7 +850,13 @@ export async function probeOneRosterRosterData(params: {
         counts.sort((a, b) => a - b);
         const min = counts[0];
         const max = counts[counts.length - 1];
-        const median = counts[Math.floor((counts.length - 1) / 2)];
+        // True median: even-length samples average the two middle values. The
+        // lower-middle shortcut reported [1, 1, 5, 5] as "typical 1" — a
+        // systematic understatement in the one number the elementary-vs-
+        // secondary default gets decided on (Codex, PR #827).
+        const mid =
+          (counts[Math.floor((counts.length - 1) / 2)] + counts[Math.ceil((counts.length - 1) / 2)]) / 2;
+        const median = Number.isInteger(mid) ? mid : mid.toFixed(1);
         const gap = unlinked > 0 ? ` ${unlinked} of them had NO teacher entry.` : '';
         steps.push({
           key,

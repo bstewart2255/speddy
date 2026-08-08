@@ -121,6 +121,9 @@ export const POST = withRoute<{ connectionId: string }>(
     // and for OneRoster — where the token address is normally blank — it would
     // guess wrong on every healthy test.
     let storedAddress: string | null;
+    // Set inside the OneRoster branch, consumed only after the verdict is
+    // recorded — see the ordering note below.
+    let oneRosterProbeArgs: Parameters<typeof probeOneRosterRosterData>[0] | null = null;
 
     if (credential.sisType === 'aeries') {
       const report = await runAeriesConnectionTest({
@@ -145,52 +148,25 @@ export const POST = withRoute<{ connectionId: string }>(
       usedAddress = report.usedTokenUrl;
       storedAddress = connection.token_url;
 
-      // SPE-435: with the connection green, keep going and measure whether
-      // this server carries the data SPE-414 would sync — teachers, classes,
-      // and enrollments joinable in both directions. Appended AFTER `stored`
-      // and `ok` are fixed, deliberately: the probe is exploratory, so its
-      // findings must never change the connection verdict the district's own
-      // button would report, and never touch what recordTestResult persists.
-      //
       // `usedTokenUrl` is only set when resolution moved off the stored
       // address, so the fallback chain covers both green cases; a report
       // green with NEITHER address cannot happen, and skipping is safer than
       // guessing one.
-      if (ok) {
-        const probeTokenUrl = report.usedTokenUrl ?? connection.token_url;
-        if (probeTokenUrl) {
-          try {
-            const probeSteps = await probeOneRosterRosterData({
-              baseUrl: connection.base_url,
-              tokenUrl: probeTokenUrl,
-              clientId: credential.clientId,
-              clientSecret: credential.clientSecret,
-            });
-            checks = [...checks, ...probeSteps];
-            // Aggregates only, by the probe's construction — this line is how
-            // the result outlives the panel (SPE-435's record is written from
-            // these logs, not from a screenshot).
-            log.info('OneRoster roster probe', {
-              connectionId: connection.id,
-              districtId: connection.district_id,
-              probe: probeSteps.map(({ key, status, message }) => ({ key, status, message })),
-            });
-          } catch (err) {
-            log.error('OneRoster roster probe failed', err, { connectionId: connection.id });
-            checks = [
-              ...checks,
-              {
-                key: 'roster-probe',
-                label: 'Roster data',
-                status: 'error',
-                message: 'The roster probe itself failed — the connection result above is unaffected.',
-              },
-            ];
-          }
-        }
+      const probeTokenUrl = report.usedTokenUrl ?? connection.token_url;
+      if (ok && probeTokenUrl) {
+        oneRosterProbeArgs = {
+          baseUrl: connection.base_url,
+          tokenUrl: probeTokenUrl,
+          clientId: credential.clientId,
+          clientSecret: credential.clientSecret,
+        };
       }
     }
 
+    // The verdict is persisted BEFORE the roster probe runs (Codex, PR #827):
+    // the probe adds up to five more upstream requests, and a platform timeout
+    // or client abort during them must not cost the district their recorded
+    // green. The probe is exploratory; the record is not.
     try {
       await recordTestResult({
         connectionId: connection.id,
@@ -205,6 +181,38 @@ export const POST = withRoute<{ connectionId: string }>(
       log.error('Failed to record the SIS test result', err, {
         connectionId: connection.id,
       });
+    }
+
+    // SPE-435: with the connection green and recorded, keep going and measure
+    // whether this server carries the data SPE-414 would sync — teachers,
+    // classes, and enrollments joinable in both directions. Appended after
+    // `stored` and `ok` are fixed AND persisted: the probe's findings must
+    // never change the connection verdict the district's own button would
+    // report, and never touch what recordTestResult persists.
+    if (oneRosterProbeArgs) {
+      try {
+        const probeSteps = await probeOneRosterRosterData(oneRosterProbeArgs);
+        checks = [...checks, ...probeSteps];
+        // Aggregates only, by the probe's construction — this line is how the
+        // result outlives the panel (SPE-435's record is written from these
+        // logs, not from a screenshot).
+        log.info('OneRoster roster probe', {
+          connectionId: connection.id,
+          districtId: connection.district_id,
+          probe: probeSteps.map(({ key, status, message }) => ({ key, status, message })),
+        });
+      } catch (err) {
+        log.error('OneRoster roster probe failed', err, { connectionId: connection.id });
+        checks = [
+          ...checks,
+          {
+            key: 'roster-probe',
+            label: 'Roster data',
+            status: 'error',
+            message: 'The roster probe itself failed — the connection result above is unaffected.',
+          },
+        ];
+      }
     }
 
     log.info('SIS connection tested by Speddy staff', {

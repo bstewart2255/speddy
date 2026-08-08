@@ -268,6 +268,20 @@ describe('the roster probe rides behind a green OneRoster test (SPE-435)', () =>
     expect(body.ok).toBe(false);
   });
 
+  it('records the verdict BEFORE the probe runs, so a dead probe cannot cost the green', async () => {
+    // The probe adds up to five upstream requests after the connection test.
+    // With persistence on the far side of that await, a platform timeout or
+    // panel abort mid-probe would throw away the verdict the district's server
+    // just gave us (Codex, PR #827).
+    await call();
+
+    expect(mockRecordTestResult).toHaveBeenCalledTimes(1);
+    expect(mockProbe).toHaveBeenCalledTimes(1);
+    expect(mockRecordTestResult.mock.invocationCallOrder[0]).toBeLessThan(
+      mockProbe.mock.invocationCallOrder[0],
+    );
+  });
+
   it('a probe crash appends an error check and changes nothing else', async () => {
     mockProbe.mockRejectedValue(new Error('boom'));
 

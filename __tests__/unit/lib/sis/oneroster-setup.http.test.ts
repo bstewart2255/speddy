@@ -1124,6 +1124,10 @@ describe('the roster probe measures presence and joinability, never people (SPE-
             { sourcedId: 'e2', role: 'student', user: { sourcedId: PII_STUDENT_ID }, class: { sourcedId: 'cls-1' } },
             { sourcedId: 'e3', role: 'student', user: { sourcedId: 'stu-PII-9002' }, class: { sourcedId: 'cls-1' } },
             { sourcedId: 'e4', role: 'teacher', user: { sourcedId: 'tea-2' }, class: { sourcedId: 'cls-2' } },
+            // Co-teacher in cls-1: pushes the sample's teacher counts to
+            // [0, 1, 2, 2], whose even-length median must average the middles
+            // to 1.5 — the lower-middle shortcut reported 1 (Codex, PR #827).
+            { sourcedId: 'e8', role: 'teacher', user: { sourcedId: 'tea-2' }, class: { sourcedId: 'cls-1' } },
             { sourcedId: 'e5', role: 'student', user: { sourcedId: 'stu-PII-9003' }, class: { sourcedId: 'cls-2' } },
             // The cross-class student: sits in BOTH classes, so their teacher
             // count must come out 2 — the join actually joining.
@@ -1159,11 +1163,14 @@ describe('the roster probe measures presence and joinability, never people (SPE-
     expect(stepIn(steps, 'students').message).toContain('3 students');
     expect(stepIn(steps, 'classes').message).toContain('2 classes');
     expect(stepIn(steps, 'rosters').status).toBe('ok');
-    expect(stepIn(steps, 'rosters').message).toContain('5 student and 2 teacher entries across 3 classes');
-    // One student sits in both classes → 2 teachers; two have 1; the stranded
-    // one has 0 — and 0 must appear as the floor, not vanish.
+    expect(stepIn(steps, 'rosters').message).toContain('5 student and 3 teacher entries across 3 classes');
+    // Teacher counts per student come out [0, 1, 2, 2]: the cross-class
+    // student and one classmate reach 2, one has 1, the stranded one has 0 —
+    // and 0 must appear as the floor, not vanish. The even-length median
+    // averages the middles: typical 1.5, not the lower-middle 1.
     expect(stepIn(steps, 'linkage').message).toContain('Sampled 4 students');
     expect(stepIn(steps, 'linkage').message).toContain('fewest 0');
+    expect(stepIn(steps, 'linkage').message).toContain('typical 1.5');
     expect(stepIn(steps, 'linkage').message).toContain('most 2');
     expect(stepIn(steps, 'linkage').message).toContain('1 of them had NO teacher entry');
 
