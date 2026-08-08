@@ -631,3 +631,189 @@ export function toStoredOneRosterTestResult(report: OneRosterTestReport): SisTes
     message: report.summary,
   };
 }
+
+/**
+ * One roster-probe finding. Same display contract as a test step — the
+ * internal panel renders both through one list — but its own key space, so
+ * the connection test's steps and the probe's can never collide.
+ */
+export interface OneRosterRosterProbeStep {
+  key: 'teachers' | 'students' | 'classes' | 'rosters' | 'linkage';
+  label: string;
+  status: 'ok' | 'denied' | 'error' | 'untested';
+  /** Plain English, numbers and fixed words only. Never a name or an ID. */
+  message: string;
+}
+
+/** First page only — a probe measures presence and shape, not the district. */
+const PROBE_PAGE_LIMIT = 200;
+
+/**
+ * Measure whether a OneRoster server carries the data SPE-414 would sync:
+ * teachers, classes, and enrollments joinable in BOTH directions (SPE-435).
+ *
+ * Read-only, first-page samples, aggregate-only messages. Runs AFTER a green
+ * connection test, against the token endpoint that test resolved — it never
+ * re-resolves candidates, because a probe that hunted for endpoints would turn
+ * one staff click into a scatter of requests the connection test already made.
+ *
+ * Never throws for server-side reasons: a district whose server omits
+ * `/classes` is a FINDING (labels unavailable), not an error — each check
+ * degrades independently, because "which parts are missing" is exactly what
+ * this probe exists to learn. The one hard refusal is the SSRF guard: both
+ * URLs are checked before any request, same as every other caller (SPE-396's
+ * lesson — a guard nothing calls is not a control).
+ */
+export async function probeOneRosterRosterData(params: {
+  baseUrl: string;
+  /** The token endpoint the connection test signed in at. */
+  tokenUrl: string;
+  clientId: string;
+  clientSecret: string;
+}): Promise<OneRosterRosterProbeStep[]> {
+  try {
+    await assertSafeSisUrl(params.baseUrl, ONEROSTER_URL_LABELS);
+    await assertSafeSisUrl(params.tokenUrl, ONEROSTER_URL_LABELS);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'That address cannot be used.';
+    return [
+      { key: 'rosters', label: 'Roster data', status: 'error', message: `Roster probe refused: ${message}` },
+    ];
+  }
+
+  const client = new OneRosterClient({
+    baseUrl: params.baseUrl,
+    tokenUrl: params.tokenUrl,
+    clientId: params.clientId,
+    clientSecret: params.clientSecret,
+  });
+
+  const steps: OneRosterRosterProbeStep[] = [];
+
+  /**
+   * Fetch one collection, folding every failure into a step. 404/405 read as
+   * "this server does not provide the endpoint" — a per-collection verdict the
+   * probe exists to report — while anything else reads as an error.
+   */
+  const sample = async <T>(
+    key: OneRosterRosterProbeStep['key'],
+    label: string,
+    fetchPage: () => Promise<T[]>,
+    describe: (rows: T[]) => { status: OneRosterRosterProbeStep['status']; message: string },
+  ): Promise<T[] | null> => {
+    try {
+      const rows = await fetchPage();
+      steps.push({ key, label, ...describe(rows) });
+      return rows;
+    } catch (err) {
+      if (err instanceof OneRosterApiError && (err.status === 404 || err.status === 405)) {
+        steps.push({ key, label, status: 'denied', message: 'Not provided by this server.' });
+      } else {
+        steps.push({
+          key,
+          label,
+          status: 'error',
+          message: 'The server did not answer this request. The connection result above is unaffected.',
+        });
+      }
+      return null;
+    }
+  };
+
+  const countMessage = (n: number, noun: string): { status: 'ok' | 'denied'; message: string } =>
+    n > 0
+      ? {
+          status: 'ok',
+          message: `${n} ${noun} in the first page${n === PROBE_PAGE_LIMIT ? ' (page full — more exist)' : ''}.`,
+        }
+      : { status: 'denied', message: `The server answered, with zero ${noun}.` };
+
+  await sample('teachers', 'Teacher directory', () => client.getTeachers({ limit: PROBE_PAGE_LIMIT }), (rows) =>
+    countMessage(rows.length, 'teachers'),
+  );
+  await sample('students', 'Student roster', () => client.getStudents({ limit: PROBE_PAGE_LIMIT }), (rows) =>
+    countMessage(rows.length, 'students'),
+  );
+  await sample('classes', 'Class records', () => client.getClasses({ limit: PROBE_PAGE_LIMIT }), (rows) =>
+    countMessage(rows.length, 'classes'),
+  );
+
+  const enrollments = await sample(
+    'rosters',
+    'Class rosters',
+    () => client.getEnrollments({ limit: PROBE_PAGE_LIMIT }),
+    (rows) => {
+      // Joinability is the whole question: a row missing either key cannot
+      // connect a person to a class, whatever else it says.
+      const joinable = rows.filter((r) => r.user?.sourcedId && r.class?.sourcedId);
+      const students = joinable.filter((r) => r.role === 'student').length;
+      const teachers = joinable.filter((r) => r.role === 'teacher').length;
+      const classCount = new Set(joinable.map((r) => r.class!.sourcedId)).size;
+      if (rows.length === 0) return { status: 'denied', message: 'The server answered, with zero roster entries.' };
+      if (teachers === 0) {
+        return {
+          status: 'denied',
+          message: `${students} student entries but NO teacher entries in the first page — students cannot be joined to teachers from this data.`,
+        };
+      }
+      if (students === 0) {
+        return {
+          status: 'denied',
+          message: `${teachers} teacher entries but NO student entries in the first page — students cannot be joined to teachers from this data.`,
+        };
+      }
+      return {
+        status: 'ok',
+        message: `${students} student and ${teachers} teacher entries across ${classCount} classes in the first page.`,
+      };
+    },
+  );
+
+  // Teachers-per-student, from the same sample: student → their classes →
+  // every teacher-role entry sharing a class. First-page arithmetic, so it can
+  // undercount a student whose classes fall outside the page — stated in the
+  // message rather than silently presented as the whole truth.
+  {
+    const key = 'linkage' as const;
+    const label = 'Teachers per student';
+    const joinable = (enrollments ?? []).filter((r) => r.user?.sourcedId && r.class?.sourcedId);
+    const teachersByClass = new Map<string, Set<string>>();
+    for (const row of joinable) {
+      if (row.role !== 'teacher') continue;
+      const classId = row.class!.sourcedId;
+      if (!teachersByClass.has(classId)) teachersByClass.set(classId, new Set());
+      teachersByClass.get(classId)!.add(row.user!.sourcedId);
+    }
+    const teachersByStudent = new Map<string, Set<string>>();
+    for (const row of joinable) {
+      if (row.role !== 'student') continue;
+      const studentId = row.user!.sourcedId;
+      if (!teachersByStudent.has(studentId)) teachersByStudent.set(studentId, new Set());
+      for (const teacher of teachersByClass.get(row.class!.sourcedId) ?? []) {
+        teachersByStudent.get(studentId)!.add(teacher);
+      }
+    }
+    const counts = [...teachersByStudent.values()].map((set) => set.size).filter((n) => n > 0);
+    if (counts.length === 0) {
+      steps.push({
+        key,
+        label,
+        status: 'untested',
+        message: 'Not computable — no student in the sample shares a class with a teacher entry.',
+      });
+    } else {
+      counts.sort((a, b) => a - b);
+      const min = counts[0];
+      const max = counts[counts.length - 1];
+      const median = counts[Math.floor((counts.length - 1) / 2)];
+      steps.push({
+        key,
+        label,
+        status: 'ok',
+        message: `Sampled ${counts.length} students: fewest ${min}, typical ${median}, most ${max} teachers each (first-page sample).`,
+      });
+    }
+  }
+
+  return steps;
+}

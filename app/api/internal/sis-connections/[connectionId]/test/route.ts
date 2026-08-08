@@ -5,6 +5,7 @@ import { logger } from '@/lib/logger';
 import { getConnection, getDecryptedCredential, recordTestResult } from '@/lib/sis/connections';
 import { runAeriesConnectionTest, toStoredTestResult } from '@/lib/sis/aeries-setup';
 import {
+  probeOneRosterRosterData,
   runOneRosterConnectionTest,
   toStoredOneRosterTestResult,
 } from '@/lib/sis/oneroster-setup';
@@ -143,6 +144,51 @@ export const POST = withRoute<{ connectionId: string }>(
       stored = toStoredOneRosterTestResult(report);
       usedAddress = report.usedTokenUrl;
       storedAddress = connection.token_url;
+
+      // SPE-435: with the connection green, keep going and measure whether
+      // this server carries the data SPE-414 would sync — teachers, classes,
+      // and enrollments joinable in both directions. Appended AFTER `stored`
+      // and `ok` are fixed, deliberately: the probe is exploratory, so its
+      // findings must never change the connection verdict the district's own
+      // button would report, and never touch what recordTestResult persists.
+      //
+      // `usedTokenUrl` is only set when resolution moved off the stored
+      // address, so the fallback chain covers both green cases; a report
+      // green with NEITHER address cannot happen, and skipping is safer than
+      // guessing one.
+      if (ok) {
+        const probeTokenUrl = report.usedTokenUrl ?? connection.token_url;
+        if (probeTokenUrl) {
+          try {
+            const probeSteps = await probeOneRosterRosterData({
+              baseUrl: connection.base_url,
+              tokenUrl: probeTokenUrl,
+              clientId: credential.clientId,
+              clientSecret: credential.clientSecret,
+            });
+            checks = [...checks, ...probeSteps];
+            // Aggregates only, by the probe's construction — this line is how
+            // the result outlives the panel (SPE-435's record is written from
+            // these logs, not from a screenshot).
+            log.info('OneRoster roster probe', {
+              connectionId: connection.id,
+              districtId: connection.district_id,
+              probe: probeSteps.map(({ key, status, message }) => ({ key, status, message })),
+            });
+          } catch (err) {
+            log.error('OneRoster roster probe failed', err, { connectionId: connection.id });
+            checks = [
+              ...checks,
+              {
+                key: 'roster-probe',
+                label: 'Roster data',
+                status: 'error',
+                message: 'The roster probe itself failed — the connection result above is unaffected.',
+              },
+            ];
+          }
+        }
+      }
     }
 
     try {

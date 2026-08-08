@@ -56,6 +56,16 @@ export interface RawOneRosterEnrollment {
   [key: string]: unknown;
 }
 
+/** A class record — the node that joins a student's enrollment to a teacher's. */
+export interface RawOneRosterClass {
+  sourcedId: string;
+  title?: string | null;
+  /** 'homeroom' | 'scheduled' in v1.1 — the elementary/secondary discriminator. */
+  classType?: string | null;
+  periods?: string[];
+  [key: string]: unknown;
+}
+
 /**
  * The OAuth2 token response.
  *

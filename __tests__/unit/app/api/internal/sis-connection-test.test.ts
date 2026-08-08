@@ -76,9 +76,11 @@ jest.mock('@/lib/sis/aeries-setup', () => ({
   runAeriesConnectionTest: (...a: unknown[]) => mockAeriesTest(...a),
 }));
 const mockOneRosterTest = jest.fn();
+const mockProbe = jest.fn();
 jest.mock('@/lib/sis/oneroster-setup', () => ({
   ...jest.requireActual('@/lib/sis/oneroster-setup'),
   runOneRosterConnectionTest: (...a: unknown[]) => mockOneRosterTest(...a),
+  probeOneRosterRosterData: (...a: unknown[]) => mockProbe(...a),
 }));
 
 import { POST } from '@/app/api/internal/sis-connections/[connectionId]/test/route';
@@ -113,7 +115,10 @@ const call = () =>
 
 /** Every path that reaches a district's server, in one place. */
 const sisWasDialled = () =>
-  mockAeriesTest.mock.calls.length + mockOneRosterTest.mock.calls.length > 0;
+  mockAeriesTest.mock.calls.length +
+    mockOneRosterTest.mock.calls.length +
+    mockProbe.mock.calls.length >
+  0;
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -123,6 +128,7 @@ beforeEach(() => {
   mockGetCredential.mockResolvedValue({ sisType: 'aeries', certificate: CERT });
   mockAeriesTest.mockResolvedValue(AERIES_REPORT);
   mockRecordTestResult.mockResolvedValue(undefined);
+  mockProbe.mockResolvedValue([]);
 });
 
 describe('the staff gate', () => {
@@ -197,6 +203,94 @@ describe('nothing to test', () => {
     const res = await call();
     expect(res.status).toBe(409);
     expect(sisWasDialled()).toBe(false);
+  });
+});
+
+describe('the roster probe rides behind a green OneRoster test (SPE-435)', () => {
+  const ONEROSTER_CONNECTION = {
+    ...AERIES_CONNECTION,
+    sis_type: 'oneroster',
+    base_url: 'https://district.aeries.net/admin',
+    token_url: 'https://district.aeries.net/admin/token',
+  };
+  const ONEROSTER_CREDENTIAL = {
+    sisType: 'oneroster',
+    clientId: 'consumer-id',
+    clientSecret: 'consumer-secret',
+  };
+  const GREEN_REPORT = {
+    ok: true,
+    summary: 'Connected. OneRoster is ready.',
+    steps: [{ key: 'token', label: 'Sign-in', status: 'ok', message: 'Working.' }],
+  };
+
+  beforeEach(() => {
+    mockGetConnection.mockResolvedValue(ONEROSTER_CONNECTION);
+    mockGetCredential.mockResolvedValue(ONEROSTER_CREDENTIAL);
+    mockOneRosterTest.mockResolvedValue(GREEN_REPORT);
+  });
+
+  it('appends the probe checks and dials the address the test resolved', async () => {
+    mockOneRosterTest.mockResolvedValue({
+      ...GREEN_REPORT,
+      usedTokenUrl: 'https://district.aeries.net/admin/token/',
+    });
+    mockProbe.mockResolvedValue([
+      { key: 'teachers', label: 'Teacher directory', status: 'ok', message: '47 teachers in the first page.' },
+    ]);
+
+    const body = await (await call()).json();
+
+    // The resolved address wins over the stored one — probing the address the
+    // test did NOT use would measure a different server than the one that
+    // answered.
+    expect(mockProbe).toHaveBeenCalledWith(
+      expect.objectContaining({ tokenUrl: 'https://district.aeries.net/admin/token/' }),
+    );
+    expect(body.checks).toEqual([...GREEN_REPORT.steps, expect.objectContaining({ key: 'teachers' })]);
+  });
+
+  it('falls back to the stored token address when resolution never moved', async () => {
+    await call();
+    expect(mockProbe).toHaveBeenCalledWith(
+      expect.objectContaining({ tokenUrl: 'https://district.aeries.net/admin/token' }),
+    );
+  });
+
+  it('does NOT probe when the connection test failed', async () => {
+    // A probe behind a red test would fire more credentialed requests at a
+    // server we just failed to sign in to — noise for them, nothing for us.
+    mockOneRosterTest.mockResolvedValue({ ok: false, summary: 'Rejected.', steps: [] });
+
+    const body = await (await call()).json();
+
+    expect(mockProbe).not.toHaveBeenCalled();
+    expect(body.ok).toBe(false);
+  });
+
+  it('a probe crash appends an error check and changes nothing else', async () => {
+    mockProbe.mockRejectedValue(new Error('boom'));
+
+    const res = await call();
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.checks).toEqual([
+      ...GREEN_REPORT.steps,
+      expect.objectContaining({ key: 'roster-probe', status: 'error' }),
+    ]);
+    // The stored verdict is the district's own test, never the probe.
+    expect(mockRecordTestResult).toHaveBeenCalledWith(expect.objectContaining({ ok: true }));
+  });
+
+  it('never probes an Aeries connection', async () => {
+    mockGetConnection.mockResolvedValue(AERIES_CONNECTION);
+    mockGetCredential.mockResolvedValue({ sisType: 'aeries', certificate: CERT });
+
+    await call();
+
+    expect(mockProbe).not.toHaveBeenCalled();
   });
 });
 

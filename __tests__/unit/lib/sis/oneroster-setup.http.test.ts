@@ -26,7 +26,7 @@ jest.mock('@/lib/sis/ssrf-guard', () => ({
   assertSafeSisUrl: jest.fn().mockResolvedValue(undefined),
 }));
 
-import { runOneRosterConnectionTest } from '@/lib/sis/oneroster-setup';
+import { probeOneRosterRosterData, runOneRosterConnectionTest } from '@/lib/sis/oneroster-setup';
 import { logger } from '@/lib/logger';
 
 const CLIENT_ID = 'speddy-consumer-id';
@@ -1066,5 +1066,143 @@ describe('the SHAPE of a refusal is logged — its CONTENT never is (SPE-434)', 
     expect(stepOf(report, 'token').message).toMatch(/behaved like a OneRoster sign-in endpoint/i);
     expect(JSON.stringify(report)).not.toContain('Message');
     expect(JSON.stringify(report)).not.toContain('bodyKind');
+  });
+});
+
+describe('the roster probe measures presence and joinability, never people (SPE-435)', () => {
+  // SPE-414 builds against whatever these checks report from JSUSD's real
+  // server. The fixtures plant names and IDs precisely so the negative
+  // assertions mean something: a probe that leaked its sample would fail here
+  // before it ever saw a real student.
+  const PII_TEACHER = 'Zelda Probe-Teacher';
+  const PII_STUDENT_ID = 'stu-PII-9001';
+
+  const rosterHandler: Handler = (req) => {
+    if (req.url.includes('/token')) {
+      return { status: 200, body: { access_token: TOKEN, token_type: 'bearer' } };
+    }
+    if (req.url.includes('/teachers')) {
+      return {
+        status: 200,
+        body: {
+          users: [
+            { sourcedId: 'tea-1', givenName: PII_TEACHER },
+            { sourcedId: 'tea-2' },
+          ],
+        },
+      };
+    }
+    if (req.url.includes('/students')) {
+      return {
+        status: 200,
+        body: {
+          users: [
+            { sourcedId: PII_STUDENT_ID },
+            { sourcedId: 'stu-PII-9002' },
+            { sourcedId: 'stu-PII-9003' },
+          ],
+        },
+      };
+    }
+    if (req.url.includes('/classes')) {
+      return {
+        status: 200,
+        body: {
+          classes: [
+            { sourcedId: 'cls-1', title: 'Room 12', classType: 'homeroom' },
+            { sourcedId: 'cls-2', title: 'Period 3 English' },
+          ],
+        },
+      };
+    }
+    if (req.url.includes('/enrollments')) {
+      return {
+        status: 200,
+        body: {
+          enrollments: [
+            { sourcedId: 'e1', role: 'teacher', user: { sourcedId: 'tea-1' }, class: { sourcedId: 'cls-1' } },
+            { sourcedId: 'e2', role: 'student', user: { sourcedId: PII_STUDENT_ID }, class: { sourcedId: 'cls-1' } },
+            { sourcedId: 'e3', role: 'student', user: { sourcedId: 'stu-PII-9002' }, class: { sourcedId: 'cls-1' } },
+            { sourcedId: 'e4', role: 'teacher', user: { sourcedId: 'tea-2' }, class: { sourcedId: 'cls-2' } },
+            { sourcedId: 'e5', role: 'student', user: { sourcedId: 'stu-PII-9003' }, class: { sourcedId: 'cls-2' } },
+            // The cross-class student: sits in BOTH classes, so their teacher
+            // count must come out 2 — the join actually joining.
+            { sourcedId: 'e6', role: 'student', user: { sourcedId: PII_STUDENT_ID }, class: { sourcedId: 'cls-2' } },
+          ],
+        },
+      };
+    }
+    return { status: 404, body: {} };
+  };
+
+  const probe = () =>
+    probeOneRosterRosterData({
+      baseUrl: `${origin}/admin`,
+      tokenUrl: `${origin}/admin/token/`,
+      clientId: CLIENT_ID,
+      clientSecret: CLIENT_SECRET,
+    });
+
+  const stepIn = (steps: Awaited<ReturnType<typeof probe>>, key: string) =>
+    steps.find((s) => s.key === key)!;
+
+  it('reports counts, both roles, and the teachers-per-student spread — and no sample content', async () => {
+    handler = rosterHandler;
+
+    const steps = await probe();
+
+    expect(stepIn(steps, 'teachers').message).toContain('2 teachers');
+    expect(stepIn(steps, 'students').message).toContain('3 students');
+    expect(stepIn(steps, 'classes').message).toContain('2 classes');
+    expect(stepIn(steps, 'rosters').status).toBe('ok');
+    expect(stepIn(steps, 'rosters').message).toContain('4 student and 2 teacher entries across 2 classes');
+    // One student sits in both classes → 2 teachers; the other two have 1.
+    expect(stepIn(steps, 'linkage').message).toContain('Sampled 3 students');
+    expect(stepIn(steps, 'linkage').message).toContain('fewest 1');
+    expect(stepIn(steps, 'linkage').message).toContain('most 2');
+
+    // The whole point: names and IDs from the sample never leave the probe.
+    const serialized = JSON.stringify(steps);
+    expect(serialized).not.toContain(PII_TEACHER);
+    expect(serialized).not.toContain('Zelda');
+    expect(serialized).not.toContain(PII_STUDENT_ID);
+    expect(serialized).not.toContain('stu-PII');
+    expect(serialized).not.toContain('Room 12');
+  });
+
+  it('a server without /classes is a finding on that check, not a dead probe', async () => {
+    handler = (req) =>
+      req.url.includes('/classes') ? { status: 404, body: {} } : rosterHandler(req);
+
+    const steps = await probe();
+
+    expect(stepIn(steps, 'classes').status).toBe('denied');
+    expect(stepIn(steps, 'classes').message).toMatch(/not provided/i);
+    // Everything else still measured.
+    expect(stepIn(steps, 'teachers').status).toBe('ok');
+    expect(stepIn(steps, 'rosters').status).toBe('ok');
+    expect(stepIn(steps, 'linkage').status).toBe('ok');
+  });
+
+  it('enrollments with no teacher-role entries is the SPE-414 no-go verdict, said plainly', async () => {
+    handler = (req) => {
+      if (req.url.includes('/enrollments')) {
+        return {
+          status: 200,
+          body: {
+            enrollments: [
+              { sourcedId: 'e1', role: 'student', user: { sourcedId: 's1' }, class: { sourcedId: 'c1' } },
+            ],
+          },
+        };
+      }
+      return rosterHandler(req);
+    };
+
+    const steps = await probe();
+
+    expect(stepIn(steps, 'rosters').status).toBe('denied');
+    expect(stepIn(steps, 'rosters').message).toMatch(/NO teacher entries/);
+    expect(stepIn(steps, 'linkage').status).toBe('untested');
   });
 });

@@ -23,5 +23,6 @@ export type {
   RawOneRosterSchool,
   RawOneRosterUser,
   RawOneRosterEnrollment,
+  RawOneRosterClass,
   OneRosterTokenResponse,
 } from './types';
