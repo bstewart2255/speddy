@@ -35,6 +35,7 @@
 import { logger } from '@/lib/logger';
 import {
   ONEROSTER_API_PATH,
+  ONEROSTER_CORE_SCOPE,
   ONEROSTER_SCOPE,
   type OneRosterConnectionConfig,
 } from './config';
@@ -324,14 +325,37 @@ export class OneRosterClient {
   /**
    * Exchange the consumer ID and secret for a bearer token.
    *
+   * Requests the dual read-only scope, and if the server rejects that outright
+   * with `invalid_scope` — RFC 6749 lets a server refuse rather than narrow —
+   * retries ONCE with the core scope alone. The experiment the dual request
+   * exists for (SPE-435) must never cost a district a sign-in that worked
+   * yesterday.
+   */
+  async fetchToken(timeoutMs = DEFAULT_TIMEOUT_MS): Promise<string> {
+    if (this.token) return this.token;
+    try {
+      this.token = await this.exchange(ONEROSTER_SCOPE, timeoutMs);
+    } catch (err) {
+      const dualRefused =
+        err instanceof OneRosterApiError &&
+        err.phase === 'token' &&
+        err.oauthError === 'invalid_scope';
+      if (!dualRefused) throw err;
+      logger.info('OneRoster dual-scope request refused; retrying with the core scope alone');
+      this.token = await this.exchange(ONEROSTER_CORE_SCOPE, timeoutMs);
+    }
+    return this.token;
+  }
+
+  /**
+   * One token request for one scope string.
+   *
    * Credentials go in the Authorization header via HTTP Basic, not in the body.
    * Both are permitted by RFC 6749, but a body parameter is far more likely to
    * be captured by an intermediary's request logging, and this is a district's
    * long-lived SIS credential rather than a short-lived token.
    */
-  async fetchToken(timeoutMs = DEFAULT_TIMEOUT_MS): Promise<string> {
-    if (this.token) return this.token;
-
+  private async exchange(scope: string, timeoutMs: number): Promise<string> {
     // Each component is form-urlencoded BEFORE being joined and base64'd, per
     // RFC 6749 §2.3.1. For the ordinary alphanumeric credential this is a
     // no-op, so it costs nothing in the common case — but Basic auth splits on
@@ -345,7 +369,7 @@ export class OneRosterClient {
 
     const body = new URLSearchParams({
       grant_type: 'client_credentials',
-      scope: ONEROSTER_SCOPE,
+      scope,
     });
 
     const res = await this.dial(
@@ -428,8 +452,7 @@ export class OneRosterClient {
       logger.info('OneRoster token granted', { tokenEndpoint, grantedScopes: 'not stated' });
     }
 
-    this.token = parsed.access_token;
-    return this.token;
+    return parsed.access_token;
   }
 
   /** GET a OneRoster collection, fetching a token first if needed. */

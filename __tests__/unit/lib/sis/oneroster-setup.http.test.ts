@@ -594,18 +594,44 @@ describe('the OneRoster exchange over real HTTP', () => {
     expect(decoded).toBe(`${CLIENT_ID}:${CLIENT_SECRET}`);
   });
 
-  it('asks for client_credentials and only the roster-core scope', async () => {
+  it('asks for client_credentials and BOTH read-only scopes — never demographics', async () => {
+    // Dual request per the SPE-435 experiment: Aeries granted full
+    // roster-core.readonly and still refused /enrollments, so the umbrella
+    // read-only scope rides along. The line that must never change: no
+    // demographics, under any experiment.
     handler = allGood;
     await run();
 
     const body = seen.find((r) => r.url.includes('/token'))!.body;
     expect(body).toContain('grant_type=client_credentials');
-    expect(decodeURIComponent(body)).toContain(
-      'https://purl.imsglobal.org/spec/or/v1p1/scope/roster-core.readonly',
-    );
+    const decoded = decodeURIComponent(body.replace(/\+/g, ' '));
+    expect(decoded).toContain('https://purl.imsglobal.org/spec/or/v1p1/scope/roster-core.readonly');
+    expect(decoded).toContain('https://purl.imsglobal.org/spec/or/v1p1/scope/roster.readonly');
     // Demographics carries birthdate, sex and race. This flow has no use for
     // any of it, and a district reviewing the grant should see that.
-    expect(decodeURIComponent(body)).not.toContain('demographics');
+    expect(decoded).not.toContain('demographics');
+  });
+
+  it('falls back to the core scope alone when the dual request is refused', async () => {
+    // RFC 6749 lets a server refuse an unrecognised scope rather than narrow
+    // it. The experiment must never cost a district a sign-in that worked
+    // yesterday: one retry, core scope only, and the test still goes green.
+    handler = (req) => {
+      if (!req.url.includes('/token')) return allGood(req);
+      const scopes = decodeURIComponent(req.body.replace(/\+/g, ' '));
+      return scopes.includes('scope/roster.readonly')
+        ? { status: 400, body: { error: 'invalid_scope' } }
+        : { status: 200, body: { access_token: TOKEN, token_type: 'bearer' } };
+    };
+
+    const report = await run();
+
+    expect(report.ok).toBe(true);
+    const tokenBodies = seen.filter((r) => r.url.includes('/token')).map((r) => r.body);
+    expect(tokenBodies).toHaveLength(2);
+    expect(decodeURIComponent(tokenBodies[1].replace(/\+/g, ' '))).not.toContain(
+      'scope/roster.readonly',
+    );
   });
 
   it('fetches the token once and reuses it across both collections', async () => {
