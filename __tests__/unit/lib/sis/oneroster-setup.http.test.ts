@@ -159,9 +159,10 @@ describe('resolving the token endpoint when the stored one is wrong (SPE-426)', 
     });
 
     expect(report.ok).toBe(true);
-    // The documented form leads, so that is what a blank field now resolves to.
-    expect(report.usedTokenUrl).toBe(`${origin}/admin/token/`);
-    expect(stepOf(report, 'token').message).toContain(`${origin}/admin/token/`);
+    // `/token` still leads — the documented slashed form sits behind it so that
+    // it cannot absorb a failure the search is unable to continue past.
+    expect(report.usedTokenUrl).toBe(`${origin}/admin/token`);
+    expect(stepOf(report, 'token').message).toContain(`${origin}/admin/token`);
   });
 
   it('never guesses a token endpoint OUTSIDE the path the district gave us', async () => {
@@ -235,6 +236,34 @@ describe('resolving the token endpoint when the stored one is wrong (SPE-426)', 
 
     expect(stepOf(report, 'token').status).toBe('ok');
     expect(report.usedTokenUrl).toBe(`${origin}/admin/token/`);
+  });
+
+  it('does not let the slashed candidate abort a district whose /token works', async () => {
+    // The regression the ordering guards against. A gateway that canonicalises
+    // `/token/` to `/token` answers with a redirect, which `redirect: 'error'`
+    // turns into a plain TypeError — NOT a "keep looking" signal. Leading with
+    // the slashed form would abort the search there and tell a district with a
+    // perfectly good endpoint that we could not reach them.
+    handler = (req) => {
+      if (req.url === '/admin/token/') {
+        return { status: 308, headers: { Location: `${origin}/admin/token` } };
+      }
+      if (req.url === '/admin/token') {
+        return { status: 200, body: { access_token: TOKEN, token_type: 'bearer', expires_in: 3600 } };
+      }
+      return { status: 200, body: { orgs: [{ sourcedId: 'org-1', name: 'Sim USD', type: 'district' }] } };
+    };
+
+    const report = await runOneRosterConnectionTest({
+      baseUrl: `${origin}/admin`,
+      clientId: CLIENT_ID,
+      clientSecret: CLIENT_SECRET,
+    });
+
+    expect(report.ok).toBe(true);
+    // The redirecting address was never dialled at all, because /token came
+    // first and answered.
+    expect(seen.every((r) => r.url !== '/admin/token/')).toBe(true);
   });
 
   it('dials the stored token address VERBATIM, trailing slash and all', async () => {

@@ -157,11 +157,10 @@ describe('runOneRosterConnectionTest guards both URLs before sending a credentia
 
     // Never built for the private address, so nothing was posted to it.
     expect(mockClientTokenUrls).not.toContain('https://token.example.com/token');
-    // And the derived candidates under the district's own base were tried,
-    // starting with the form Aeries documents.
-    expect(mockClientTokenUrls).toContain('https://data.example.com/admin/token/');
+    // And the derived candidates under the district's own base were tried.
+    expect(mockClientTokenUrls).toContain('https://data.example.com/admin/token');
     expect(report.ok).toBe(true);
-    expect(report.usedTokenUrl).toBe('https://data.example.com/admin/token/');
+    expect(report.usedTokenUrl).toBe('https://data.example.com/admin/token');
   });
 
   it('refuses outright when EVERY candidate resolves privately', async () => {

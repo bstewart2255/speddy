@@ -89,13 +89,23 @@ export function oneRosterTokenUrlCandidates(baseUrl: string): string[] {
   try {
     // Parsed for validation only — an unparseable base has no safe guesses.
     new URL(trimmed);
-    // Documented form first: Aeries publishes its token endpoint as
-    // `https://<district>api.aeries.net/admin/token/`, with the trailing slash,
-    // and on ASP.NET that slash can select a different route entirely. It was
-    // absent from this list — and stripped from what districts typed — which is
-    // why we never dialled the one address the vendor actually documents.
-    add(`${trimmed}/token/`);
     add(`${trimmed}/token`);
+    // The form Aeries documents — `https://<district>api.aeries.net/admin/token/`,
+    // with the trailing slash. On ASP.NET that slash can select a different
+    // route entirely. It was absent from this list, and stripped from what
+    // districts typed, which is why the one address the vendor documents was
+    // never dialled (SPE-432).
+    //
+    // SECOND, not first, and that ordering is load-bearing. Whichever candidate
+    // leads absorbs every failure the search cannot continue past — and a
+    // gateway that canonicalises `/token/` to `/token` answers with a redirect,
+    // which `redirect: 'error'` turns into a plain TypeError rather than a
+    // OneRosterApiError. That is not a "keep looking" signal, so leading with
+    // the slashed form would abort the whole search before `/token` was ever
+    // tried, and report "could not reach OneRoster" to a district whose
+    // slashless endpoint works perfectly. Reached second, it costs nothing when
+    // `/token` is right and still rescues the districts where it is not.
+    add(`${trimmed}/token/`);
     add(`${trimmed}/oauth/token`);
   } catch {
     // Unparseable base: the caller's guard reports it properly.
