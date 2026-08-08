@@ -159,8 +159,9 @@ describe('resolving the token endpoint when the stored one is wrong (SPE-426)', 
     });
 
     expect(report.ok).toBe(true);
-    expect(report.usedTokenUrl).toBe(`${origin}/admin/token`);
-    expect(stepOf(report, 'token').message).toContain(`${origin}/admin/token`);
+    // The documented form leads, so that is what a blank field now resolves to.
+    expect(report.usedTokenUrl).toBe(`${origin}/admin/token/`);
+    expect(stepOf(report, 'token').message).toContain(`${origin}/admin/token/`);
   });
 
   it('never guesses a token endpoint OUTSIDE the path the district gave us', async () => {
@@ -214,6 +215,44 @@ describe('resolving the token endpoint when the stored one is wrong (SPE-426)', 
 
     expect(stepOf(report, 'token').status).toBe('ok');
     expect(report.usedTokenUrl).toBe(`${origin}/admin/oauth/token`);
+  });
+
+  it("finds the DOCUMENTED /token/ when the slashless one answers a bare 400 (SPE-432)", async () => {
+    // JSUSD's real shape. Aeries documents the token endpoint WITH a trailing
+    // slash; their tech admin typed exactly that; we stripped it before saving.
+    // Aeries runs on ASP.NET, where the two spellings can route to different
+    // handlers — so `/admin/token` answered 400 from something that is not a
+    // token endpoint, and `/admin/token/` was never once dialled.
+    handler = (req) => {
+      if (req.url === '/admin/token/') {
+        return { status: 200, body: { access_token: TOKEN, token_type: 'bearer', expires_in: 3600 } };
+      }
+      if (req.url.startsWith('/admin/token')) return { status: 400, body: { message: 'nope' } };
+      return { status: 200, body: { orgs: [{ sourcedId: 'org-1', name: 'Sim USD', type: 'district' }] } };
+    };
+
+    const report = await runWith(`${origin}/admin/token`);
+
+    expect(stepOf(report, 'token').status).toBe('ok');
+    expect(report.usedTokenUrl).toBe(`${origin}/admin/token/`);
+  });
+
+  it('dials the stored token address VERBATIM, trailing slash and all', async () => {
+    // The other half of SPE-432: if a district has the documented address on
+    // file, we must send it as given rather than normalising the slash off and
+    // dialling something they never entered.
+    handler = (req) =>
+      req.url === '/admin/token/'
+        ? { status: 200, body: { access_token: TOKEN, token_type: 'bearer', expires_in: 3600 } }
+        : { status: 404, body: { message: 'not here' } };
+
+    const report = await runWith(`${origin}/admin/token/`);
+
+    expect(stepOf(report, 'token').status).toBe('ok');
+    // The FIRST request went to the address on file, unmodified.
+    expect(seen[0].url).toBe('/admin/token/');
+    // And it is not reported as a correction, because nothing was corrected.
+    expect(report.usedTokenUrl).toBeUndefined();
   });
 
   it('keeps looking past a 400 that names NO reason (SPE-431)', async () => {
