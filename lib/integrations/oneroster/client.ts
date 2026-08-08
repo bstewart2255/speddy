@@ -395,6 +395,15 @@ export class OneRosterClient {
     // than our request — or the refusal lives in the district's console.
     // Same allow-list rule as every derivation in this file: the logged names
     // are matched against our own constants, and anything else is a count.
+    // Attributed by token host — two districts' tests can fetch tokens in the
+    // same minute, and an unattributable grant line answers nothing. The host
+    // is operator-entered configuration, not response text and not a secret.
+    let tokenHost = 'unparseable';
+    try {
+      tokenHost = new URL(this.config.tokenUrl).hostname;
+    } catch {
+      // Never let attribution break the exchange itself.
+    }
     if (typeof parsed.scope === 'string') {
       const granted: string[] = [];
       let unrecognised = 0;
@@ -407,11 +416,12 @@ export class OneRosterClient {
       }
       granted.sort();
       logger.info('OneRoster token granted', {
+        tokenHost,
         grantedScopes: granted,
         unrecognisedScopes: unrecognised,
       });
     } else {
-      logger.info('OneRoster token granted', { grantedScopes: 'not stated' });
+      logger.info('OneRoster token granted', { tokenHost, grantedScopes: 'not stated' });
     }
 
     this.token = parsed.access_token;
