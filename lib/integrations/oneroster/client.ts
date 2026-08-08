@@ -336,9 +336,15 @@ export class OneRosterClient {
     try {
       this.token = await this.exchange(ONEROSTER_SCOPE, timeoutMs);
     } catch (err) {
+      // Status 400 required, not just the code: describeTokenRefusal reads
+      // the `error` field off ANY failed token response, so a wrong address
+      // 404ing with an OAuth-shaped body would otherwise trigger a second
+      // credentialed POST at a non-endpoint (Codex, PR #829 — the SPE-431
+      // status-gating lesson, one layer down).
       const dualRefused =
         err instanceof OneRosterApiError &&
         err.phase === 'token' &&
+        err.status === 400 &&
         err.oauthError === 'invalid_scope';
       if (!dualRefused) throw err;
       logger.info('OneRoster dual-scope request refused; retrying with the core scope alone');

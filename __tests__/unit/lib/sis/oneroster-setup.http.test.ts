@@ -636,6 +636,22 @@ describe('the OneRoster exchange over real HTTP', () => {
     expect(fallbackBody).not.toContain('scope/roster.readonly');
   });
 
+  it('does NOT retry the fallback at an address that 404s wearing an OAuth body', async () => {
+    // The SPE-431 lesson applied to the fallback: the invalid_scope code only
+    // means "scope refused" on a 400. A wrong address answering 404 with an
+    // OAuth-shaped body must get ONE credentialed POST, not two (Codex,
+    // PR #829).
+    handler = (req) =>
+      req.url.includes('/token')
+        ? { status: 404, body: { error: 'invalid_scope' } }
+        : allGood(req);
+
+    await run();
+
+    const tokenUrls = seen.filter((r) => r.url.includes('/token')).map((r) => r.url);
+    expect(new Set(tokenUrls).size).toBe(tokenUrls.length);
+  });
+
   it('fetches the token once and reuses it across both collections', async () => {
     handler = allGood;
     await run();
