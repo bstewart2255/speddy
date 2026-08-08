@@ -1371,6 +1371,10 @@ describe('the GRANTED scope is logged from our own vocabulary — never verbatim
               token_type: 'bearer',
               scope: [
                 'https://purl.imsglobal.org/spec/or/v1p1/scope/roster-core.readonly',
+                // Repeated deliberately: a duplicated value must not produce a
+                // duplicated log entry, or the same grant reads differently
+                // run to run.
+                'https://purl.imsglobal.org/spec/or/v1p1/scope/roster-core.readonly',
                 'https://purl.imsglobal.org/spec/or/v1p1/scope/roster.readonly',
                 `https://evil.example/echo/${CLIENT_SECRET}`,
               ].join(' '),

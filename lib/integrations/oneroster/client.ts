@@ -408,19 +408,20 @@ export class OneRosterClient {
       // Never let attribution break the exchange itself.
     }
     if (typeof parsed.scope === 'string') {
-      const granted: string[] = [];
+      // A Set: servers can repeat a scope value, and a duplicated grant line
+      // reads as a different grant than yesterday's (CodeRabbit, PR #828).
+      const granted = new Set<string>();
       let unrecognised = 0;
       for (const entry of parsed.scope.split(/\s+/).filter(Boolean)) {
         if (KNOWN_ONEROSTER_SCOPES.has(entry)) {
-          granted.push(entry.slice(IMS_SCOPE_PREFIX.length));
+          granted.add(entry.slice(IMS_SCOPE_PREFIX.length));
         } else {
           unrecognised += 1;
         }
       }
-      granted.sort();
       logger.info('OneRoster token granted', {
         tokenEndpoint,
-        grantedScopes: granted,
+        grantedScopes: [...granted].sort(),
         unrecognisedScopes: unrecognised,
       });
     } else {
