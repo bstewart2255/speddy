@@ -37,6 +37,12 @@ jest.mock('@/lib/integrations/oneroster', () => {
       fetchToken = (...a: unknown[]) => mockFetchToken(...a);
       getOrgs = (...a: unknown[]) => mockGetOrgs(...a);
       getSchools = jest.fn().mockResolvedValue([{ sourcedId: 'school-1' }]);
+      // The roster probe's collections (SPE-435). Empty is fine: the guard
+      // tests below only care whether a client was EVER built and used.
+      getTeachers = jest.fn().mockResolvedValue([]);
+      getStudents = jest.fn().mockResolvedValue([]);
+      getClasses = jest.fn().mockResolvedValue([]);
+      getEnrollments = jest.fn().mockResolvedValue([]);
     },
   };
 });
@@ -44,6 +50,7 @@ jest.mock('@/lib/integrations/oneroster', () => {
 import {
   normalizeOneRosterBaseUrl,
   normalizeOneRosterTokenUrl,
+  probeOneRosterRosterData,
   runOneRosterConnectionTest,
   toStoredOneRosterTestResult,
 } from '@/lib/sis/oneroster-setup';
@@ -214,6 +221,42 @@ describe('runOneRosterConnectionTest guards both URLs before sending a credentia
 
     expect(mockFetchToken).toHaveBeenCalled();
     expect(report.ok).toBe(true);
+  });
+});
+
+describe('probeOneRosterRosterData guards both URLs before building a client (SPE-435)', () => {
+  const PARAMS = {
+    baseUrl: 'https://data.example.com/admin',
+    tokenUrl: 'https://data.example.com/admin/token',
+    ...CREDS,
+  };
+
+  it('refuses a privately-resolving address and never constructs a client', async () => {
+    // The probe reuses the district's stored credential against addresses read
+    // from the connection row. Rows can predate the guard, and DNS answers
+    // change — so the probe re-checks at dial time like every other caller.
+    // Delete the guard calls and this test fails while every http-level test
+    // stays green (they stub the guard).
+    mockLookup.mockResolvedValue([{ address: '10.0.0.5', family: 4 }]);
+
+    const steps = await probeOneRosterRosterData(PARAMS);
+
+    expect(steps).toHaveLength(1);
+    expect(steps[0].status).toBe('error');
+    expect(steps[0].message).toMatch(/refused/i);
+    expect(mockClientTokenUrls).toHaveLength(0);
+    expect(mockFetchToken).not.toHaveBeenCalled();
+  });
+
+  it('builds exactly ONE client, for exactly the token URL it was given', async () => {
+    // No candidate resolution in the probe — the connection test already did
+    // that, and a probe that hunted for endpoints would multiply requests
+    // against a district's production server.
+    mockLookup.mockResolvedValue([{ address: '104.16.0.1', family: 4 }]);
+
+    await probeOneRosterRosterData(PARAMS);
+
+    expect(mockClientTokenUrls).toEqual(['https://data.example.com/admin/token']);
   });
 });
 

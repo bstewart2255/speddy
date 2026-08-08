@@ -40,6 +40,7 @@ import {
 } from './config';
 import type {
   OneRosterTokenResponse,
+  RawOneRosterClass,
   RawOneRosterEnrollment,
   RawOneRosterOrg,
   RawOneRosterSchool,
@@ -425,6 +426,11 @@ export class OneRosterClient {
   /** `GET /enrollments` — the student↔class↔teacher edges (SPE-398 report 3). */
   async getEnrollments(options?: OneRosterRequestOptions): Promise<RawOneRosterEnrollment[]> {
     return this.namedCollection<RawOneRosterEnrollment>('enrollments', 'enrollments', options);
+  }
+
+  /** `GET /classes` — titles, types and periods for future link labels (SPE-435). */
+  async getClasses(options?: OneRosterRequestOptions): Promise<RawOneRosterClass[]> {
+    return this.namedCollection<RawOneRosterClass>('classes', 'classes', options);
   }
 
   /**

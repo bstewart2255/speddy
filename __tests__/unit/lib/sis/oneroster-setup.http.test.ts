@@ -26,7 +26,7 @@ jest.mock('@/lib/sis/ssrf-guard', () => ({
   assertSafeSisUrl: jest.fn().mockResolvedValue(undefined),
 }));
 
-import { runOneRosterConnectionTest } from '@/lib/sis/oneroster-setup';
+import { probeOneRosterRosterData, runOneRosterConnectionTest } from '@/lib/sis/oneroster-setup';
 import { logger } from '@/lib/logger';
 
 const CLIENT_ID = 'speddy-consumer-id';
@@ -1066,5 +1066,238 @@ describe('the SHAPE of a refusal is logged — its CONTENT never is (SPE-434)', 
     expect(stepOf(report, 'token').message).toMatch(/behaved like a OneRoster sign-in endpoint/i);
     expect(JSON.stringify(report)).not.toContain('Message');
     expect(JSON.stringify(report)).not.toContain('bodyKind');
+  });
+});
+
+describe('the roster probe measures presence and joinability, never people (SPE-435)', () => {
+  // SPE-414 builds against whatever these checks report from JSUSD's real
+  // server. The fixtures plant names and IDs precisely so the negative
+  // assertions mean something: a probe that leaked its sample would fail here
+  // before it ever saw a real student.
+  const PII_TEACHER = 'Zelda Probe-Teacher';
+  const PII_STUDENT_ID = 'stu-PII-9001';
+
+  const rosterHandler: Handler = (req) => {
+    if (req.url.includes('/token')) {
+      return { status: 200, body: { access_token: TOKEN, token_type: 'bearer' } };
+    }
+    if (req.url.includes('/teachers')) {
+      return {
+        status: 200,
+        body: {
+          users: [
+            { sourcedId: 'tea-1', givenName: PII_TEACHER },
+            { sourcedId: 'tea-2' },
+          ],
+        },
+      };
+    }
+    if (req.url.includes('/students')) {
+      return {
+        status: 200,
+        body: {
+          users: [
+            { sourcedId: PII_STUDENT_ID },
+            { sourcedId: 'stu-PII-9002' },
+            { sourcedId: 'stu-PII-9003' },
+          ],
+        },
+      };
+    }
+    if (req.url.includes('/classes')) {
+      return {
+        status: 200,
+        body: {
+          classes: [
+            { sourcedId: 'cls-1', title: 'Room 12', classType: 'homeroom' },
+            { sourcedId: 'cls-2', title: 'Period 3 English' },
+          ],
+        },
+      };
+    }
+    if (req.url.includes('/enrollments')) {
+      return {
+        status: 200,
+        body: {
+          enrollments: [
+            { sourcedId: 'e1', role: 'teacher', user: { sourcedId: 'tea-1' }, class: { sourcedId: 'cls-1' } },
+            { sourcedId: 'e2', role: 'student', user: { sourcedId: PII_STUDENT_ID }, class: { sourcedId: 'cls-1' } },
+            { sourcedId: 'e3', role: 'student', user: { sourcedId: 'stu-PII-9002' }, class: { sourcedId: 'cls-1' } },
+            { sourcedId: 'e4', role: 'teacher', user: { sourcedId: 'tea-2' }, class: { sourcedId: 'cls-2' } },
+            // Co-teacher in cls-1: pushes the sample's teacher counts to
+            // [0, 1, 2, 2], whose even-length median must average the middles
+            // to 1.5 — the lower-middle shortcut reported 1 (Codex, PR #827).
+            { sourcedId: 'e8', role: 'teacher', user: { sourcedId: 'tea-2' }, class: { sourcedId: 'cls-1' } },
+            { sourcedId: 'e5', role: 'student', user: { sourcedId: 'stu-PII-9003' }, class: { sourcedId: 'cls-2' } },
+            // The cross-class student: sits in BOTH classes, so their teacher
+            // count must come out 2 — the join actually joining.
+            { sourcedId: 'e6', role: 'student', user: { sourcedId: PII_STUDENT_ID }, class: { sourcedId: 'cls-2' } },
+            // And the stranded one: a class with no teacher entry at all. Their
+            // zero must be COUNTED, not dropped — the rate of unjoinable
+            // students is the number SPE-414 decides with (self-review fix).
+            { sourcedId: 'e7', role: 'student', user: { sourcedId: 'stu-PII-9004' }, class: { sourcedId: 'cls-9' } },
+          ],
+        },
+      };
+    }
+    return { status: 404, body: {} };
+  };
+
+  const probe = () =>
+    probeOneRosterRosterData({
+      baseUrl: `${origin}/admin`,
+      tokenUrl: `${origin}/admin/token/`,
+      clientId: CLIENT_ID,
+      clientSecret: CLIENT_SECRET,
+    });
+
+  const stepIn = (steps: Awaited<ReturnType<typeof probe>>, key: string) =>
+    steps.find((s) => s.key === key)!;
+
+  it('reports counts, both roles, and the teachers-per-student spread — and no sample content', async () => {
+    handler = rosterHandler;
+
+    const steps = await probe();
+
+    expect(stepIn(steps, 'teachers').message).toContain('2 teachers');
+    expect(stepIn(steps, 'students').message).toContain('3 students');
+    expect(stepIn(steps, 'classes').message).toContain('2 classes');
+    expect(stepIn(steps, 'rosters').status).toBe('ok');
+    expect(stepIn(steps, 'rosters').message).toContain('5 student and 3 teacher entries across 3 classes');
+    // Teacher counts per student come out [0, 1, 2, 2]: the cross-class
+    // student and one classmate reach 2, one has 1, the stranded one has 0 —
+    // and 0 must appear as the floor, not vanish. The even-length median
+    // averages the middles: typical 1.5, not the lower-middle 1.
+    expect(stepIn(steps, 'linkage').message).toContain('Sampled 4 students');
+    expect(stepIn(steps, 'linkage').message).toContain('fewest 0');
+    expect(stepIn(steps, 'linkage').message).toContain('typical 1.5');
+    expect(stepIn(steps, 'linkage').message).toContain('most 2');
+    expect(stepIn(steps, 'linkage').message).toContain('1 of them had NO teacher entry');
+
+    // The whole point: names and IDs from the sample never leave the probe.
+    const serialized = JSON.stringify(steps);
+    expect(serialized).not.toContain(PII_TEACHER);
+    expect(serialized).not.toContain('Zelda');
+    expect(serialized).not.toContain(PII_STUDENT_ID);
+    expect(serialized).not.toContain('stu-PII');
+    expect(serialized).not.toContain('Room 12');
+  });
+
+  it('a server without /classes is a finding on that check, not a dead probe', async () => {
+    handler = (req) =>
+      req.url.includes('/classes') ? { status: 404, body: {} } : rosterHandler(req);
+
+    const steps = await probe();
+
+    expect(stepIn(steps, 'classes').status).toBe('denied');
+    expect(stepIn(steps, 'classes').message).toMatch(/not provided/i);
+    // Everything else still measured.
+    expect(stepIn(steps, 'teachers').status).toBe('ok');
+    expect(stepIn(steps, 'rosters').status).toBe('ok');
+    expect(stepIn(steps, 'linkage').status).toBe('ok');
+  });
+
+  it('enrollments with no teacher-role entries is the SPE-414 no-go verdict, said plainly', async () => {
+    handler = (req) => {
+      if (req.url.includes('/enrollments')) {
+        return {
+          status: 200,
+          body: {
+            enrollments: [
+              { sourcedId: 'e1', role: 'student', user: { sourcedId: 's1' }, class: { sourcedId: 'c1' } },
+            ],
+          },
+        };
+      }
+      return rosterHandler(req);
+    };
+
+    const steps = await probe();
+
+    expect(stepIn(steps, 'rosters').status).toBe('denied');
+    expect(stepIn(steps, 'rosters').message).toMatch(/NO teacher entries/);
+    expect(stepIn(steps, 'linkage').status).toBe('untested');
+  });
+
+  it('enrollments with no STUDENT-role entries is the mirrored no-go, said just as plainly', async () => {
+    // The mirror of the case above (CodeRabbit, PR #827): teacher entries
+    // without student entries also cannot join, and the message must blame the
+    // right absence.
+    handler = (req) => {
+      if (req.url.includes('/enrollments')) {
+        return {
+          status: 200,
+          body: {
+            enrollments: [
+              { sourcedId: 'e1', role: 'teacher', user: { sourcedId: 't1' }, class: { sourcedId: 'c1' } },
+            ],
+          },
+        };
+      }
+      return rosterHandler(req);
+    };
+
+    const steps = await probe();
+
+    expect(stepIn(steps, 'rosters').status).toBe('denied');
+    expect(stepIn(steps, 'rosters').message).toMatch(/NO student entries/);
+    expect(stepIn(steps, 'linkage').status).toBe('untested');
+  });
+
+  it('a token endpoint that dies MID-PROBE reads as a sign-in problem, not four missing endpoints', async () => {
+    // The probe signs in on its own, so a token blip after a green connection
+    // test hits every check. Read as 404-on-the-collection it would record
+    // "this district lacks /teachers, /students, /classes and /enrollments"
+    // about endpoints that were never dialled (self-review fix).
+    handler = (req) =>
+      req.url.includes('/token') ? { status: 404, body: {} } : rosterHandler(req);
+
+    const steps = await probe();
+
+    for (const key of ['teachers', 'students', 'classes', 'rosters'] as const) {
+      expect(stepIn(steps, key).status).toBe('error');
+      expect(stepIn(steps, key).message).toMatch(/sign in/i);
+      expect(stepIn(steps, key).message).not.toMatch(/not provided/i);
+    }
+    expect(stepIn(steps, 'linkage').status).toBe('untested');
+    expect(stepIn(steps, 'linkage').message).toMatch(/did not answer/i);
+  });
+
+  it('a server without /enrollments leaves linkage "not measured", not a claim about a sample', async () => {
+    handler = (req) =>
+      req.url.includes('/enrollments') ? { status: 404, body: {} } : rosterHandler(req);
+
+    const steps = await probe();
+
+    expect(stepIn(steps, 'rosters').status).toBe('denied');
+    expect(stepIn(steps, 'linkage').status).toBe('untested');
+    expect(stepIn(steps, 'linkage').message).toMatch(/did not answer/i);
+    expect(stepIn(steps, 'linkage').message).not.toMatch(/shares a class/i);
+  });
+
+  it('enrollments without joinable IDs are called an ID-shape problem, not a role problem', async () => {
+    // Some vendors nest the user/class references differently. 150 rows with
+    // no sourcedIds is not "no teacher entries" — saying so would send the
+    // SPE-414 investigation toward roles when the defect is the ID nesting.
+    handler = (req) => {
+      if (req.url.includes('/enrollments')) {
+        return {
+          status: 200,
+          body: {
+            enrollments: [
+              { sourcedId: 'e1', role: 'student' },
+              { sourcedId: 'e2', role: 'teacher' },
+            ],
+          },
+        };
+      }
+      return rosterHandler(req);
+    };
+
+    const steps = await probe();
+
+    expect(stepIn(steps, 'rosters').status).toBe('denied');
+    expect(stepIn(steps, 'rosters').message).toMatch(/none carry joinable user and class IDs/);
+    expect(stepIn(steps, 'rosters').message).toContain('2 entries');
   });
 });

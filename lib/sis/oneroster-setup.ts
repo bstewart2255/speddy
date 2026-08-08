@@ -631,3 +631,242 @@ export function toStoredOneRosterTestResult(report: OneRosterTestReport): SisTes
     message: report.summary,
   };
 }
+
+/**
+ * One roster-probe finding. Same display contract as a test step — the
+ * internal panel renders both through one list — but its own key space, so
+ * the connection test's steps and the probe's can never collide.
+ */
+export interface OneRosterRosterProbeStep {
+  key: 'teachers' | 'students' | 'classes' | 'rosters' | 'linkage';
+  label: string;
+  status: 'ok' | 'denied' | 'error' | 'untested';
+  /** Plain English, numbers and fixed words only. Never a name or an ID. */
+  message: string;
+}
+
+/** First page only — a probe measures presence and shape, not the district. */
+const PROBE_PAGE_LIMIT = 200;
+/**
+ * Per-request ceiling, well under the client's 30s default. Five sequential
+ * requests at the default could hold the route open for minutes on a slow
+ * server; a healthy OneRoster answers these in a couple of seconds, and a
+ * server that cannot answer in ten is itself a finding. Keeps the completed
+ * CONNECTION verdict deliverable even when the probe crawls (CodeRabbit,
+ * PR #827).
+ */
+const PROBE_REQUEST_TIMEOUT_MS = 10_000;
+
+/**
+ * Measure whether a OneRoster server carries the data SPE-414 would sync:
+ * teachers, classes, and enrollments joinable in BOTH directions (SPE-435).
+ *
+ * Read-only, first-page samples, aggregate-only messages. Runs AFTER a green
+ * connection test, against the token endpoint that test resolved — it never
+ * re-resolves candidates, because a probe that hunted for endpoints would turn
+ * one staff click into a scatter of requests the connection test already made.
+ *
+ * Never throws for server-side reasons: a district whose server omits
+ * `/classes` is a FINDING (labels unavailable), not an error — each check
+ * degrades independently, because "which parts are missing" is exactly what
+ * this probe exists to learn. The one hard refusal is the SSRF guard: both
+ * URLs are checked before any request, same as every other caller (SPE-396's
+ * lesson — a guard nothing calls is not a control).
+ */
+export async function probeOneRosterRosterData(params: {
+  baseUrl: string;
+  /** The token endpoint the connection test signed in at. */
+  tokenUrl: string;
+  clientId: string;
+  clientSecret: string;
+}): Promise<OneRosterRosterProbeStep[]> {
+  try {
+    await assertSafeSisUrl(params.baseUrl, ONEROSTER_URL_LABELS);
+    await assertSafeSisUrl(params.tokenUrl, ONEROSTER_URL_LABELS);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'That address cannot be used.';
+    return [
+      { key: 'rosters', label: 'Roster data', status: 'error', message: `Roster probe refused: ${message}` },
+    ];
+  }
+
+  const client = new OneRosterClient({
+    baseUrl: params.baseUrl,
+    tokenUrl: params.tokenUrl,
+    clientId: params.clientId,
+    clientSecret: params.clientSecret,
+  });
+
+  const steps: OneRosterRosterProbeStep[] = [];
+
+  /**
+   * Fetch one collection, folding every failure into a step. 404/405 read as
+   * "this server does not provide the endpoint" — a per-collection verdict the
+   * probe exists to report — while anything else reads as an error.
+   */
+  const sample = async <T>(
+    key: OneRosterRosterProbeStep['key'],
+    label: string,
+    fetchPage: () => Promise<T[]>,
+    describe: (rows: T[]) => { status: OneRosterRosterProbeStep['status']; message: string },
+  ): Promise<T[] | null> => {
+    try {
+      const rows = await fetchPage();
+      steps.push({ key, label, ...describe(rows) });
+      return rows;
+    } catch (err) {
+      if (err instanceof OneRosterApiError && err.phase === 'token') {
+        // The probe fetches its own token, so a token-endpoint blip surfaces
+        // on every check. Without this branch it would read as the COLLECTION
+        // being absent — recording "this district lacks /teachers, /students,
+        // /classes and /enrollments" about endpoints that were never dialled.
+        steps.push({
+          key,
+          label,
+          status: 'error',
+          message:
+            'Could not sign in for this check — the sign-in that just passed stopped answering mid-probe. Run the test again.',
+        });
+      } else if (err instanceof OneRosterApiError && (err.status === 404 || err.status === 405)) {
+        steps.push({ key, label, status: 'denied', message: 'Not provided by this server.' });
+      } else {
+        steps.push({
+          key,
+          label,
+          status: 'error',
+          message: 'The server did not answer this request. The connection result above is unaffected.',
+        });
+      }
+      return null;
+    }
+  };
+
+  // "In the first page", never a total: servers cap `limit` silently (the
+  // client's getAllPages docstring exists because of it), so a full page at
+  // ANY size may be truncation. The wording claims exactly what was seen.
+  const countMessage = (n: number, noun: string): { status: 'ok' | 'denied'; message: string } =>
+    n > 0
+      ? { status: 'ok', message: `${n} ${noun} in the first page.` }
+      : { status: 'denied', message: `The server answered, with zero ${noun}.` };
+
+  await sample('teachers', 'Teacher directory', () => client.getTeachers({ limit: PROBE_PAGE_LIMIT, timeoutMs: PROBE_REQUEST_TIMEOUT_MS }), (rows) =>
+    countMessage(rows.length, 'teachers'),
+  );
+  await sample('students', 'Student roster', () => client.getStudents({ limit: PROBE_PAGE_LIMIT, timeoutMs: PROBE_REQUEST_TIMEOUT_MS }), (rows) =>
+    countMessage(rows.length, 'students'),
+  );
+  await sample('classes', 'Class records', () => client.getClasses({ limit: PROBE_PAGE_LIMIT, timeoutMs: PROBE_REQUEST_TIMEOUT_MS }), (rows) =>
+    countMessage(rows.length, 'classes'),
+  );
+
+  const enrollments = await sample(
+    'rosters',
+    'Class rosters',
+    () => client.getEnrollments({ limit: PROBE_PAGE_LIMIT, timeoutMs: PROBE_REQUEST_TIMEOUT_MS }),
+    (rows) => {
+      // Joinability is the whole question: a row missing either key cannot
+      // connect a person to a class, whatever else it says.
+      const joinable = rows.filter((r) => r.user?.sourcedId && r.class?.sourcedId);
+      const students = joinable.filter((r) => r.role === 'student').length;
+      const teachers = joinable.filter((r) => r.role === 'teacher').length;
+      const classCount = new Set(joinable.map((r) => r.class!.sourcedId)).size;
+      if (rows.length === 0) return { status: 'denied', message: 'The server answered, with zero roster entries.' };
+      if (joinable.length === 0) {
+        // Entries exist but none carry both IDs — a shape problem, not a role
+        // problem. Reported as such so the SPE-414 investigation starts at the
+        // ID nesting, not at roles that were never the issue.
+        return {
+          status: 'denied',
+          message: `${rows.length} entries in the first page, but none carry joinable user and class IDs.`,
+        };
+      }
+      if (teachers === 0) {
+        return {
+          status: 'denied',
+          message: `${students} student entries but NO teacher entries in the first page — students cannot be joined to teachers from this data.`,
+        };
+      }
+      if (students === 0) {
+        return {
+          status: 'denied',
+          message: `${teachers} teacher entries but NO student entries in the first page — students cannot be joined to teachers from this data.`,
+        };
+      }
+      return {
+        status: 'ok',
+        message: `${students} student and ${teachers} teacher entries across ${classCount} classes in the first page.`,
+      };
+    },
+  );
+
+  // Teachers-per-student, from the same sample: student → their classes →
+  // every teacher-role entry sharing a class. First-page arithmetic, so it can
+  // undercount a student whose classes fall outside the page — stated in the
+  // message rather than silently presented as the whole truth.
+  {
+    const key = 'linkage' as const;
+    const label = 'Teachers per student';
+    if (enrollments === null) {
+      // A statement about a sample requires a sample. Without this branch the
+      // step would assert "no student shares a class with a teacher" about
+      // enrollments that were never fetched.
+      steps.push({
+        key,
+        label,
+        status: 'untested',
+        message: 'Not measured — the class-roster request did not answer.',
+      });
+    } else {
+      const joinable = enrollments.filter((r) => r.user?.sourcedId && r.class?.sourcedId);
+      const teachersByClass = new Map<string, Set<string>>();
+      for (const row of joinable) {
+        if (row.role !== 'teacher') continue;
+        const classId = row.class!.sourcedId;
+        if (!teachersByClass.has(classId)) teachersByClass.set(classId, new Set());
+        teachersByClass.get(classId)!.add(row.user!.sourcedId);
+      }
+      const teachersByStudent = new Map<string, Set<string>>();
+      for (const row of joinable) {
+        if (row.role !== 'student') continue;
+        const studentId = row.user!.sourcedId;
+        if (!teachersByStudent.has(studentId)) teachersByStudent.set(studentId, new Set());
+        for (const teacher of teachersByClass.get(row.class!.sourcedId) ?? []) {
+          teachersByStudent.get(studentId)!.add(teacher);
+        }
+      }
+      // Zeroes stay in. A student with no reachable teacher is the finding
+      // SPE-414 most needs to know the rate of — dropping them would let a
+      // sample where joining mostly FAILS read as one where it worked.
+      const counts = [...teachersByStudent.values()].map((set) => set.size);
+      const unlinked = counts.filter((n) => n === 0).length;
+      if (counts.length === 0 || counts.every((n) => n === 0)) {
+        steps.push({
+          key,
+          label,
+          status: 'untested',
+          message: 'Not computable — no student in the sample shares a class with a teacher entry.',
+        });
+      } else {
+        counts.sort((a, b) => a - b);
+        const min = counts[0];
+        const max = counts[counts.length - 1];
+        // True median: even-length samples average the two middle values. The
+        // lower-middle shortcut reported [1, 1, 5, 5] as "typical 1" — a
+        // systematic understatement in the one number the elementary-vs-
+        // secondary default gets decided on (Codex, PR #827).
+        const mid =
+          (counts[Math.floor((counts.length - 1) / 2)] + counts[Math.ceil((counts.length - 1) / 2)]) / 2;
+        const median = Number.isInteger(mid) ? mid : mid.toFixed(1);
+        const gap = unlinked > 0 ? ` ${unlinked} of them had NO teacher entry.` : '';
+        steps.push({
+          key,
+          label,
+          status: 'ok',
+          message: `Sampled ${counts.length} students: fewest ${min}, typical ${median}, most ${max} teachers each (first-page sample).${gap}`,
+        });
+      }
+    }
+  }
+
+  return steps;
+}
