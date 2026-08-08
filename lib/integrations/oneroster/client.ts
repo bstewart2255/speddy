@@ -108,30 +108,41 @@ interface TokenRefusalShape {
   /** Length of the body text — enough to tell an empty refusal from an essay. */
   bodyChars: number;
   /**
-   * JSON objects only: the top-level names that match `KNOWN_ERROR_FIELD_NAMES`
-   * (original casing, which itself distinguishes ASP.NET's `Message` from
-   * everyone else's `message`), plus one `+N unrecognised` entry for the rest.
+   * JSON objects only: the top-level names that EXACTLY match a member of
+   * `KNOWN_ERROR_FIELD_NAMES`, sorted, plus one `+N unrecognised` entry for
+   * the rest. Sorted because key order is server-chosen data too.
    */
   fieldNames?: string[];
 }
 
 /**
  * Field names that identify WHICH error dialect the server speaks — RFC 6749,
- * ASP.NET Web API, or RFC 7807 problem+json. Matched case-insensitively;
- * that per-dialect casing survives because the logged string is the matched
- * key only when it differs from a constant by case alone.
+ * ASP.NET Web API, or RFC 7807 problem+json.
+ *
+ * Matched EXACTLY, which is what lets the log claim to contain only our own
+ * constants: a case-insensitive match would log the server's verbatim casing,
+ * and per-character case choices (or a Unicode character that merely
+ * case-folds into a constant, like the Kelvin sign into 'k') are a channel for
+ * server-chosen bytes. The dialects that differ by case are enumerated in the
+ * casing they actually ship.
  */
 const KNOWN_ERROR_FIELD_NAMES = new Set([
   // RFC 6749 §5.2
   'error',
   'error_description',
   'error_uri',
-  // ASP.NET Web API's default error envelope
+  // ASP.NET Web API's default error envelope, in its shipped PascalCase
+  'Message',
+  'ExceptionMessage',
+  'ExceptionType',
+  'ModelState',
+  'StackTrace',
+  // the same names as ad-hoc servers usually write them
   'message',
-  'exceptionmessage',
-  'exceptiontype',
-  'modelstate',
-  'stacktrace',
+  'exceptionMessage',
+  'exceptionType',
+  'modelState',
+  'stackTrace',
   // RFC 7807 problem+json
   'type',
   'title',
@@ -213,12 +224,13 @@ async function describeTokenRefusal(
   const fieldNames: string[] = [];
   let unrecognised = 0;
   for (const key of Object.keys(parsed)) {
-    if (KNOWN_ERROR_FIELD_NAMES.has(key.toLowerCase())) {
+    if (KNOWN_ERROR_FIELD_NAMES.has(key)) {
       fieldNames.push(key);
     } else {
       unrecognised += 1;
     }
   }
+  fieldNames.sort();
   if (unrecognised > 0) fieldNames.push(`+${unrecognised} unrecognised`);
 
   const code = (parsed as { error?: unknown }).error;
@@ -533,7 +545,12 @@ export class OneRosterClient {
         // thrown, never returned to a caller.
         const refusal = phase === 'token' ? await describeTokenRefusal(res) : undefined;
         const oauthError = refusal?.oauthError;
-        logger.error('OneRoster API request failed', {
+        // Diagnostics ride in the META slot, where the logger stringifies them
+        // into the formatted line and — per SPE-167 — never forwards them to
+        // Sentry. The previous shape passed this object as the `error`
+        // argument, which reached the console only as a loose positional value
+        // and pinged Sentry's non-Error branch on every failed candidate.
+        logger.error('OneRoster API request failed', undefined, {
           status: res.status,
           path,
           phase,

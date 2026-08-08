@@ -716,8 +716,8 @@ describe('the OneRoster exchange over real HTTP', () => {
   });
 
   it('DOES log a recognised code, so the allow-list is not just "log nothing"', async () => {
-    // The other half of the property above. A readOAuthErrorCode that always
-    // returned undefined would pass every safety assertion while making the
+    // The other half of the property above. A describeTokenRefusal that never
+    // surfaced a code would pass every safety assertion while making the
     // whole feature useless — this is the diagnostic we built it for.
     const spy = jest.spyOn(logger, 'error').mockImplementation(() => {});
     try {
@@ -918,9 +918,11 @@ describe('the SHAPE of a refusal is logged — its CONTENT never is (SPE-434)', 
   it('logs known names ONLY — a value, an unknown code, even a field NAMED the secret stay out', async () => {
     // The strongest form of the property. Field names are logged, and a server
     // that echoes submitted credentials could put the secret IN a name — so
-    // names are matched against a fixed vocabulary, and anything else becomes
-    // arithmetic. If this test fails after a refactor, the refactor reopened
-    // the credential-echo channel that SPE-430 closed.
+    // names are matched EXACTLY against a fixed vocabulary, and anything else
+    // becomes arithmetic. Exact, not case-insensitive: per-character casing of
+    // a matched word is itself a channel for server-chosen bytes, which is
+    // what the MeSsAgE key checks. If this test fails after a refactor, the
+    // refactor reopened the credential-echo channel that SPE-430 closed.
     handler = (req) =>
       req.url.includes('/token')
         ? {
@@ -929,6 +931,7 @@ describe('the SHAPE of a refusal is logged — its CONTENT never is (SPE-434)', 
               error: 'not_a_real_code',
               error_description: `secret=${CLIENT_SECRET}`,
               [CLIENT_SECRET]: 'a hostile server can put the credential in a KEY',
+              MeSsAgE: 'or spell bytes with the CASING of a recognised name',
             },
           }
         : allGood(req);
@@ -936,9 +939,10 @@ describe('the SHAPE of a refusal is logged — its CONTENT never is (SPE-434)', 
     await run();
 
     const out = logged();
-    expect(out).toContain('"fieldNames":["error","error_description","+1 unrecognised"]');
+    expect(out).toContain('"fieldNames":["error","error_description","+2 unrecognised"]');
     expect(out).not.toContain(CLIENT_SECRET);
     expect(out).not.toContain('not_a_real_code');
+    expect(out).not.toContain('MeSsAgE');
   });
 
   it('an HTML error page logs as kind "html" with none of the page', async () => {
