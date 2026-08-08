@@ -1128,6 +1128,10 @@ describe('the roster probe measures presence and joinability, never people (SPE-
             // The cross-class student: sits in BOTH classes, so their teacher
             // count must come out 2 — the join actually joining.
             { sourcedId: 'e6', role: 'student', user: { sourcedId: PII_STUDENT_ID }, class: { sourcedId: 'cls-2' } },
+            // And the stranded one: a class with no teacher entry at all. Their
+            // zero must be COUNTED, not dropped — the rate of unjoinable
+            // students is the number SPE-414 decides with (self-review fix).
+            { sourcedId: 'e7', role: 'student', user: { sourcedId: 'stu-PII-9004' }, class: { sourcedId: 'cls-9' } },
           ],
         },
       };
@@ -1155,11 +1159,13 @@ describe('the roster probe measures presence and joinability, never people (SPE-
     expect(stepIn(steps, 'students').message).toContain('3 students');
     expect(stepIn(steps, 'classes').message).toContain('2 classes');
     expect(stepIn(steps, 'rosters').status).toBe('ok');
-    expect(stepIn(steps, 'rosters').message).toContain('4 student and 2 teacher entries across 2 classes');
-    // One student sits in both classes → 2 teachers; the other two have 1.
-    expect(stepIn(steps, 'linkage').message).toContain('Sampled 3 students');
-    expect(stepIn(steps, 'linkage').message).toContain('fewest 1');
+    expect(stepIn(steps, 'rosters').message).toContain('5 student and 2 teacher entries across 3 classes');
+    // One student sits in both classes → 2 teachers; two have 1; the stranded
+    // one has 0 — and 0 must appear as the floor, not vanish.
+    expect(stepIn(steps, 'linkage').message).toContain('Sampled 4 students');
+    expect(stepIn(steps, 'linkage').message).toContain('fewest 0');
     expect(stepIn(steps, 'linkage').message).toContain('most 2');
+    expect(stepIn(steps, 'linkage').message).toContain('1 of them had NO teacher entry');
 
     // The whole point: names and IDs from the sample never leave the probe.
     const serialized = JSON.stringify(steps);
@@ -1204,5 +1210,62 @@ describe('the roster probe measures presence and joinability, never people (SPE-
     expect(stepIn(steps, 'rosters').status).toBe('denied');
     expect(stepIn(steps, 'rosters').message).toMatch(/NO teacher entries/);
     expect(stepIn(steps, 'linkage').status).toBe('untested');
+  });
+
+  it('a token endpoint that dies MID-PROBE reads as a sign-in problem, not four missing endpoints', async () => {
+    // The probe signs in on its own, so a token blip after a green connection
+    // test hits every check. Read as 404-on-the-collection it would record
+    // "this district lacks /teachers, /students, /classes and /enrollments"
+    // about endpoints that were never dialled (self-review fix).
+    handler = (req) =>
+      req.url.includes('/token') ? { status: 404, body: {} } : rosterHandler(req);
+
+    const steps = await probe();
+
+    for (const key of ['teachers', 'students', 'classes', 'rosters'] as const) {
+      expect(stepIn(steps, key).status).toBe('error');
+      expect(stepIn(steps, key).message).toMatch(/sign in/i);
+      expect(stepIn(steps, key).message).not.toMatch(/not provided/i);
+    }
+    expect(stepIn(steps, 'linkage').status).toBe('untested');
+    expect(stepIn(steps, 'linkage').message).toMatch(/did not answer/i);
+  });
+
+  it('a server without /enrollments leaves linkage "not measured", not a claim about a sample', async () => {
+    handler = (req) =>
+      req.url.includes('/enrollments') ? { status: 404, body: {} } : rosterHandler(req);
+
+    const steps = await probe();
+
+    expect(stepIn(steps, 'rosters').status).toBe('denied');
+    expect(stepIn(steps, 'linkage').status).toBe('untested');
+    expect(stepIn(steps, 'linkage').message).toMatch(/did not answer/i);
+    expect(stepIn(steps, 'linkage').message).not.toMatch(/shares a class/i);
+  });
+
+  it('enrollments without joinable IDs are called an ID-shape problem, not a role problem', async () => {
+    // Some vendors nest the user/class references differently. 150 rows with
+    // no sourcedIds is not "no teacher entries" — saying so would send the
+    // SPE-414 investigation toward roles when the defect is the ID nesting.
+    handler = (req) => {
+      if (req.url.includes('/enrollments')) {
+        return {
+          status: 200,
+          body: {
+            enrollments: [
+              { sourcedId: 'e1', role: 'student' },
+              { sourcedId: 'e2', role: 'teacher' },
+            ],
+          },
+        };
+      }
+      return rosterHandler(req);
+    };
+
+    const steps = await probe();
+
+    expect(stepIn(steps, 'rosters').status).toBe('denied');
+    expect(stepIn(steps, 'rosters').message).toMatch(/none carry joinable user and class IDs/);
+    expect(stepIn(steps, 'rosters').message).toContain('2 entries');
   });
 });

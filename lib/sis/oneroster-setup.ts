@@ -706,7 +706,19 @@ export async function probeOneRosterRosterData(params: {
       steps.push({ key, label, ...describe(rows) });
       return rows;
     } catch (err) {
-      if (err instanceof OneRosterApiError && (err.status === 404 || err.status === 405)) {
+      if (err instanceof OneRosterApiError && err.phase === 'token') {
+        // The probe fetches its own token, so a token-endpoint blip surfaces
+        // on every check. Without this branch it would read as the COLLECTION
+        // being absent — recording "this district lacks /teachers, /students,
+        // /classes and /enrollments" about endpoints that were never dialled.
+        steps.push({
+          key,
+          label,
+          status: 'error',
+          message:
+            'Could not sign in for this check — the sign-in that just passed stopped answering mid-probe. Run the test again.',
+        });
+      } else if (err instanceof OneRosterApiError && (err.status === 404 || err.status === 405)) {
         steps.push({ key, label, status: 'denied', message: 'Not provided by this server.' });
       } else {
         steps.push({
@@ -720,12 +732,12 @@ export async function probeOneRosterRosterData(params: {
     }
   };
 
+  // "In the first page", never a total: servers cap `limit` silently (the
+  // client's getAllPages docstring exists because of it), so a full page at
+  // ANY size may be truncation. The wording claims exactly what was seen.
   const countMessage = (n: number, noun: string): { status: 'ok' | 'denied'; message: string } =>
     n > 0
-      ? {
-          status: 'ok',
-          message: `${n} ${noun} in the first page${n === PROBE_PAGE_LIMIT ? ' (page full — more exist)' : ''}.`,
-        }
+      ? { status: 'ok', message: `${n} ${noun} in the first page.` }
       : { status: 'denied', message: `The server answered, with zero ${noun}.` };
 
   await sample('teachers', 'Teacher directory', () => client.getTeachers({ limit: PROBE_PAGE_LIMIT }), (rows) =>
@@ -750,6 +762,15 @@ export async function probeOneRosterRosterData(params: {
       const teachers = joinable.filter((r) => r.role === 'teacher').length;
       const classCount = new Set(joinable.map((r) => r.class!.sourcedId)).size;
       if (rows.length === 0) return { status: 'denied', message: 'The server answered, with zero roster entries.' };
+      if (joinable.length === 0) {
+        // Entries exist but none carry both IDs — a shape problem, not a role
+        // problem. Reported as such so the SPE-414 investigation starts at the
+        // ID nesting, not at roles that were never the issue.
+        return {
+          status: 'denied',
+          message: `${rows.length} entries in the first page, but none carry joinable user and class IDs.`,
+        };
+      }
       if (teachers === 0) {
         return {
           status: 'denied',
@@ -776,42 +797,59 @@ export async function probeOneRosterRosterData(params: {
   {
     const key = 'linkage' as const;
     const label = 'Teachers per student';
-    const joinable = (enrollments ?? []).filter((r) => r.user?.sourcedId && r.class?.sourcedId);
-    const teachersByClass = new Map<string, Set<string>>();
-    for (const row of joinable) {
-      if (row.role !== 'teacher') continue;
-      const classId = row.class!.sourcedId;
-      if (!teachersByClass.has(classId)) teachersByClass.set(classId, new Set());
-      teachersByClass.get(classId)!.add(row.user!.sourcedId);
-    }
-    const teachersByStudent = new Map<string, Set<string>>();
-    for (const row of joinable) {
-      if (row.role !== 'student') continue;
-      const studentId = row.user!.sourcedId;
-      if (!teachersByStudent.has(studentId)) teachersByStudent.set(studentId, new Set());
-      for (const teacher of teachersByClass.get(row.class!.sourcedId) ?? []) {
-        teachersByStudent.get(studentId)!.add(teacher);
-      }
-    }
-    const counts = [...teachersByStudent.values()].map((set) => set.size).filter((n) => n > 0);
-    if (counts.length === 0) {
+    if (enrollments === null) {
+      // A statement about a sample requires a sample. Without this branch the
+      // step would assert "no student shares a class with a teacher" about
+      // enrollments that were never fetched.
       steps.push({
         key,
         label,
         status: 'untested',
-        message: 'Not computable — no student in the sample shares a class with a teacher entry.',
+        message: 'Not measured — the class-roster request did not answer.',
       });
     } else {
-      counts.sort((a, b) => a - b);
-      const min = counts[0];
-      const max = counts[counts.length - 1];
-      const median = counts[Math.floor((counts.length - 1) / 2)];
-      steps.push({
-        key,
-        label,
-        status: 'ok',
-        message: `Sampled ${counts.length} students: fewest ${min}, typical ${median}, most ${max} teachers each (first-page sample).`,
-      });
+      const joinable = enrollments.filter((r) => r.user?.sourcedId && r.class?.sourcedId);
+      const teachersByClass = new Map<string, Set<string>>();
+      for (const row of joinable) {
+        if (row.role !== 'teacher') continue;
+        const classId = row.class!.sourcedId;
+        if (!teachersByClass.has(classId)) teachersByClass.set(classId, new Set());
+        teachersByClass.get(classId)!.add(row.user!.sourcedId);
+      }
+      const teachersByStudent = new Map<string, Set<string>>();
+      for (const row of joinable) {
+        if (row.role !== 'student') continue;
+        const studentId = row.user!.sourcedId;
+        if (!teachersByStudent.has(studentId)) teachersByStudent.set(studentId, new Set());
+        for (const teacher of teachersByClass.get(row.class!.sourcedId) ?? []) {
+          teachersByStudent.get(studentId)!.add(teacher);
+        }
+      }
+      // Zeroes stay in. A student with no reachable teacher is the finding
+      // SPE-414 most needs to know the rate of — dropping them would let a
+      // sample where joining mostly FAILS read as one where it worked.
+      const counts = [...teachersByStudent.values()].map((set) => set.size);
+      const unlinked = counts.filter((n) => n === 0).length;
+      if (counts.length === 0 || counts.every((n) => n === 0)) {
+        steps.push({
+          key,
+          label,
+          status: 'untested',
+          message: 'Not computable — no student in the sample shares a class with a teacher entry.',
+        });
+      } else {
+        counts.sort((a, b) => a - b);
+        const min = counts[0];
+        const max = counts[counts.length - 1];
+        const median = counts[Math.floor((counts.length - 1) / 2)];
+        const gap = unlinked > 0 ? ` ${unlinked} of them had NO teacher entry.` : '';
+        steps.push({
+          key,
+          label,
+          status: 'ok',
+          message: `Sampled ${counts.length} students: fewest ${min}, typical ${median}, most ${max} teachers each (first-page sample).${gap}`,
+        });
+      }
     }
   }
 
