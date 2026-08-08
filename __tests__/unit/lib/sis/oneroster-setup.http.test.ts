@@ -1244,6 +1244,27 @@ describe('the roster probe measures presence and joinability, never people (SPE-
     expect(stepIn(steps, 'linkage').status).toBe('untested');
   });
 
+  it('a request-phase 401 is an authentication verdict, and ONE strike ends the probe', async () => {
+    // 401 rejects the bearer token itself, not a sharing setting — and the
+    // client reuses that token, so without the bail every later collection
+    // would be misreported as its own independent denial (Codex, PR #828).
+    handler = (req) => {
+      if (req.url.includes('/token')) return rosterHandler(req);
+      return { status: 401, body: {} };
+    };
+
+    const steps = await probe();
+
+    expect(stepIn(steps, 'teachers').status).toBe('error');
+    expect(stepIn(steps, 'teachers').message).toMatch(/authentication problem/i);
+    expect(stepIn(steps, 'teachers').message).not.toMatch(/refused permission/i);
+    for (const key of ['students', 'classes', 'rosters'] as const) {
+      expect(stepIn(steps, key).status).toBe('untested');
+    }
+    // One token fetch, one data request — then it stopped dialling.
+    expect(seen.filter((r) => !r.url.includes('/token')).length).toBe(1);
+  });
+
   it("a 403 on ONE collection reads as 'refused permission' — the live JSUSD misreport", async () => {
     // The first production run of this probe hit exactly this: /enrollments
     // answered 403 with everything else green, and the panel said the server
@@ -1360,7 +1381,7 @@ describe('the GRANTED scope is logged from our own vocabulary — never verbatim
     await run();
 
     expect(logged()).toContain('"grantedScopes":["roster-core.readonly","roster.readonly"]');
-    expect(logged()).toContain('"tokenHost":"127.0.0.1"');
+    expect(logged()).toContain('"tokenEndpoint":"127.0.0.1/admin/token/"');
     expect(logged()).toContain('"unrecognisedScopes":1');
     expect(logged()).not.toContain(CLIENT_SECRET);
     expect(logged()).not.toContain('evil.example');

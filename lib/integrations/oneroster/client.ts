@@ -395,12 +395,15 @@ export class OneRosterClient {
     // than our request — or the refusal lives in the district's console.
     // Same allow-list rule as every derivation in this file: the logged names
     // are matched against our own constants, and anything else is a count.
-    // Attributed by token host — two districts' tests can fetch tokens in the
-    // same minute, and an unattributable grant line answers nothing. The host
-    // is operator-entered configuration, not response text and not a secret.
-    let tokenHost = 'unparseable';
+    // Attributed by token endpoint (host + path) — two districts' tests can
+    // fetch tokens in the same minute, and an unattributable grant line
+    // answers nothing. Host ALONE is not enough: a multi-tenant SIS serves
+    // districts from one host, separated by path (Codex, PR #828). Both parts
+    // are operator-entered configuration, not response text and not a secret.
+    let tokenEndpoint = 'unparseable';
     try {
-      tokenHost = new URL(this.config.tokenUrl).hostname;
+      const u = new URL(this.config.tokenUrl);
+      tokenEndpoint = `${u.hostname}${u.pathname}`;
     } catch {
       // Never let attribution break the exchange itself.
     }
@@ -416,12 +419,12 @@ export class OneRosterClient {
       }
       granted.sort();
       logger.info('OneRoster token granted', {
-        tokenHost,
+        tokenEndpoint,
         grantedScopes: granted,
         unrecognisedScopes: unrecognised,
       });
     } else {
-      logger.info('OneRoster token granted', { tokenHost, grantedScopes: 'not stated' });
+      logger.info('OneRoster token granted', { tokenEndpoint, grantedScopes: 'not stated' });
     }
 
     this.token = parsed.access_token;
