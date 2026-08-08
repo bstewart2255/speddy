@@ -245,8 +245,32 @@ describe('resolving the token endpoint when the stored one is wrong (SPE-426)', 
     const report = await runWith(`${origin}/admin/token`);
 
     expect(report.ok).toBe(false);
-    expect(stepOf(report, 'token').message).toMatch(/under your OneRoster address/i);
+    // They DID give us a token address, so the advice must not tell them to
+    // enter one — it says what we tried instead.
+    expect(stepOf(report, 'token').message).toMatch(/Nothing at your token address/i);
+    expect(stepOf(report, 'token').message).toContain(`${origin}/admin/token`);
+    expect(stepOf(report, 'token').message).toContain(`${origin}/admin/oauth/token`);
+    expect(stepOf(report, 'token').message).not.toMatch(/enter it above/i);
     expect(stepOf(report, 'token').message).not.toMatch(/Consumer ID/i);
+  });
+
+  it('words the SAME failure differently when no token address was supplied', async () => {
+    // The distinction the message builder exists for. With nothing on file,
+    // "enter it above" is useful advice; with their field already filled in and
+    // that very address among the ones that just answered, it is a false
+    // statement dressed as advice.
+    handler = () => ({ status: 400, body: { message: 'nope' } });
+
+    const report = await runOneRosterConnectionTest({
+      baseUrl: `${origin}/admin`,
+      clientId: CLIENT_ID,
+      clientSecret: CLIENT_SECRET,
+    });
+
+    expect(stepOf(report, 'token').message).toMatch(/enter it above/i);
+    expect(stepOf(report, 'token').message).not.toMatch(/Nothing at your token address/i);
+    // Still names what was tried, either way.
+    expect(stepOf(report, 'token').message).toContain(`${origin}/admin/token`);
   });
 
   it('STILL stops on a 400 that DOES name invalid_client', async () => {
@@ -351,9 +375,10 @@ describe('resolving the token endpoint when the stored one is wrong (SPE-426)', 
 
     expect(report.ok).toBe(false);
     expect(report.usedTokenUrl).toBeUndefined();
-    // Points at the address they DID give us. Telling them to fix the token
-    // address would send them to correct the field we tell them to leave blank.
-    expect(stepOf(report, 'token').message).toMatch(/under your OneRoster address/i);
+    // Points at the addresses, not the credentials — and, because this district
+    // DID supply a token address, without telling them to enter one.
+    expect(stepOf(report, 'token').message).toMatch(/Nothing at your token address/i);
+    expect(stepOf(report, 'token').message).not.toMatch(/Consumer ID/i);
   });
 });
 
@@ -573,7 +598,8 @@ describe('the OneRoster exchange over real HTTP', () => {
       // A dropped code leaves a BARE 400, which now reads as "not a sign-in
       // endpoint" rather than a credential verdict (SPE-431) — so the district
       // is pointed at the address, not at credentials that were never judged.
-      expect(stepOf(report, 'token').message).toMatch(/under your OneRoster address/i);
+      expect(stepOf(report, 'token').message).toMatch(/behaved like a OneRoster sign-in endpoint/i);
+      expect(stepOf(report, 'token').message).not.toMatch(/Consumer ID/i);
     } finally {
       spy.mockRestore();
     }

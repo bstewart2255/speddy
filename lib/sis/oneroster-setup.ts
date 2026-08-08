@@ -198,7 +198,10 @@ function explain(err: unknown, step: string): { status: 'denied' | 'error'; mess
       // looks like a sign-in endpoint. Only ever surfaces when EVERY candidate
       // failed, because a bare 400 no longer stops the search.
       if (err.status === 400 && !err.oauthError) {
-        return { status: 'error', message: NO_TOKEN_ENDPOINT };
+        // Placeholder: neither a 404 nor a bare 400 stops the search, so this
+        // is always replaced by `noTokenEndpointMessage` once the candidates
+        // are exhausted and we know what was actually dialled.
+        return { status: 'error', message: noTokenEndpointMessage('', []) };
       }
       if (err.status === 401 || err.status === 400) {
         // OUR fault, not theirs. Every code here describes the REQUEST: it was
@@ -226,7 +229,10 @@ function explain(err: unknown, step: string): { status: 'denied' | 'error'; mess
         // address has 404'd too, so "check the token address" is the wrong
         // advice — it is the field we now tell them to leave blank. The address
         // still worth checking is the one they DID give us.
-        return { status: 'error', message: NO_TOKEN_ENDPOINT };
+        // Placeholder: neither a 404 nor a bare 400 stops the search, so this
+        // is always replaced by `noTokenEndpointMessage` once the candidates
+        // are exhausted and we know what was actually dialled.
+        return { status: 'error', message: noTokenEndpointMessage('', []) };
       }
       if (err.status === 408) {
         return {
@@ -306,20 +312,30 @@ const NOT_REACHED = 'Not checked — the previous step has to work first.';
  * than `invalid_scope`, so omitting it would leave the single likeliest
  * our-fault case still blaming the district.
  */
-/**
- * Said when nothing under the district's OneRoster address looks like a sign-in
- * endpoint — whether every candidate 404'd, or answered 400 without naming a
- * reason. One string because it is one conclusion, and because the advice must
- * not drift apart between the two ways of reaching it.
- */
-const NO_TOKEN_ENDPOINT =
-  'No sign-in endpoint answered under your OneRoster address. Check that address first; if your OneRoster settings do show a separate token address, enter it above.';
-
 const REQUEST_SHAPE_ERRORS = new Set([
   'invalid_request',
   'invalid_scope',
   'unsupported_grant_type',
 ]);
+
+/**
+ * Said when nothing we dialled behaved like a sign-in endpoint.
+ *
+ * Two shapes, because one sentence cannot be true for both. "Enter a token
+ * address above" is a false statement to a district whose field is already
+ * filled in and whose address was one of the ones that just answered — which is
+ * exactly JSUSD's situation. So when they supplied one, say so; and either way
+ * name what was actually tried rather than leaving them to guess at it.
+ *
+ * Reached only from the report level, once the candidates are exhausted: it
+ * needs to know what was dialled, which `explain` cannot see from one error.
+ */
+function noTokenEndpointMessage(storedTokenUrl: string, dialled: string[]): string {
+  const tried = dialled.length ? ` We tried ${dialled.join(' and ')}.` : '';
+  return storedTokenUrl
+    ? `Nothing at your token address behaved like a OneRoster sign-in endpoint.${tried} Check both addresses against your OneRoster settings — the sign-in address is often not the one the data lives at.`
+    : `No sign-in endpoint answered under your OneRoster address.${tried} Check that address first; if your OneRoster settings do show a separate token address, enter it above.`;
+}
 
 /**
  * Whether a token-step failure means "no token endpoint here" (keep looking)
@@ -342,9 +358,13 @@ const REQUEST_SHAPE_ERRORS = new Set([
  * district's consumer secret to two more paths would neither find it nor say
  * anything useful. Keying on the status alone conflated them (caught in review).
  *
- * What must NOT continue: 400, 401 and 403 — the endpoint telling us the
- * CREDENTIALS are wrong, which is the district's real problem, and walking on
- * would replace it with "check your address" and hide it. Nor any real 5xx.
+ * And one more that the body explains in full: a 400 naming NO reason at all,
+ * which RFC 6749 §5.2 says a real token endpoint must never send.
+ *
+ * What must NOT continue: 401, 403, and a 400 that DOES name a credential
+ * problem — the endpoint telling us the CREDENTIALS are wrong, which is the
+ * district's real problem, and walking on would replace it with "check your
+ * address" and hide it. Nor any real 5xx.
  *
  * Every extra candidate posts the consumer secret somewhere new, so the set
  * stays as small as the failure modes allow.
@@ -439,6 +459,10 @@ export async function runOneRosterConnectionTest(params: {
   // Kept so a candidate list the guard refused outright reports WHY, rather
   // than a generic "cannot be used" the district can do nothing with.
   let guardRefusal: string | null = null;
+  // Every address actually dialled, in order. Reported when none of them turn
+  // out to be a sign-in endpoint, because "check your token address" is not
+  // advice a district can act on without knowing what we already tried.
+  const dialled: string[] = [];
 
   for (const candidate of tokenCandidates) {
     // Re-guarded per candidate: a credential is about to be posted to it.
@@ -449,6 +473,7 @@ export async function runOneRosterConnectionTest(params: {
       continue;
     }
 
+    dialled.push(candidate);
     const attemptClient = new OneRosterClient({ ...params, tokenUrl: candidate });
     let missing = false;
     const attempt = await step('token', 'Sign-in', async () => {
@@ -481,6 +506,13 @@ export async function runOneRosterConnectionTest(params: {
     // left the field blank there IS no stored address, and reporting a failure
     // against an empty string tells them nothing about what was tried.
     resolvedTokenUrl = tokenFallback.url;
+    // Nothing that answered behaved like a sign-in endpoint, so the conclusion
+    // is a report-level one and only now can it be worded truthfully — it needs
+    // to know whether the district supplied a token address, and which
+    // addresses were tried. Telling someone to "enter a token address above"
+    // when theirs is already filled in, and was one of the ones that just
+    // answered, is a false statement dressed as advice.
+    token = { ...token, message: noTokenEndpointMessage(storedTokenUrl, dialled) };
   }
   if (!token) {
     return {
