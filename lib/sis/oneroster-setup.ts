@@ -698,11 +698,17 @@ export async function probeOneRosterRosterData(params: {
   });
 
   const steps: OneRosterRosterProbeStep[] = [];
+  // Once the probe's own sign-in has failed, every later sample would re-POST
+  // the district's credentials at the same dead token endpoint to learn what
+  // the first failure already established (self-review, PR #827). One strike.
+  let tokenDead = false;
 
   /**
-   * Fetch one collection, folding every failure into a step. 404/405 read as
-   * "this server does not provide the endpoint" — a per-collection verdict the
-   * probe exists to report — while anything else reads as an error.
+   * Fetch one collection, folding every failure into a step. The refusals a
+   * probe exists to tell apart: 404/405 is "this server does not provide the
+   * endpoint"; 401/403 on the DATA request is "the server refused permission
+   * for it" — JSUSD's live case on /enrollments, and reading it as a network
+   * failure was exactly the misreport this ticket was filed to end.
    */
   const sample = async <T>(
     key: OneRosterRosterProbeStep['key'],
@@ -710,6 +716,15 @@ export async function probeOneRosterRosterData(params: {
     fetchPage: () => Promise<T[]>,
     describe: (rows: T[]) => { status: OneRosterRosterProbeStep['status']; message: string },
   ): Promise<T[] | null> => {
+    if (tokenDead) {
+      steps.push({
+        key,
+        label,
+        status: 'untested',
+        message: 'Not attempted — the probe could not sign in.',
+      });
+      return null;
+    }
     try {
       const rows = await fetchPage();
       steps.push({ key, label, ...describe(rows) });
@@ -717,15 +732,36 @@ export async function probeOneRosterRosterData(params: {
     } catch (err) {
       if (err instanceof OneRosterApiError && err.phase === 'token') {
         // The probe fetches its own token, so a token-endpoint blip surfaces
-        // on every check. Without this branch it would read as the COLLECTION
+        // here first. Without this branch it would read as the COLLECTION
         // being absent — recording "this district lacks /teachers, /students,
         // /classes and /enrollments" about endpoints that were never dialled.
+        tokenDead = true;
         steps.push({
           key,
           label,
           status: 'error',
           message:
             'Could not sign in for this check — the sign-in that just passed stopped answering mid-probe. Run the test again.',
+        });
+      } else if (err instanceof OneRosterApiError && err.phase === 'request' && err.status === 401) {
+        // 401 rejects the BEARER TOKEN, not this resource's sharing — and the
+        // client reuses that token, so every later sample would be misreported
+        // as its own denial. One strike, same as a dead token endpoint
+        // (Codex, PR #828). 403 stays a per-resource permission verdict.
+        tokenDead = true;
+        steps.push({
+          key,
+          label,
+          status: 'error',
+          message:
+            'The sign-in pass was not accepted for this data request — an authentication problem, not a sharing setting. Run the test again.',
+        });
+      } else if (err instanceof OneRosterApiError && err.phase === 'request' && err.status === 403) {
+        steps.push({
+          key,
+          label,
+          status: 'denied',
+          message: 'The server refused permission for this data.',
         });
       } else if (err instanceof OneRosterApiError && (err.status === 404 || err.status === 405)) {
         steps.push({ key, label, status: 'denied', message: 'Not provided by this server.' });
@@ -809,12 +845,14 @@ export async function probeOneRosterRosterData(params: {
     if (enrollments === null) {
       // A statement about a sample requires a sample. Without this branch the
       // step would assert "no student shares a class with a teacher" about
-      // enrollments that were never fetched.
+      // enrollments that were never fetched. Worded for every way the sample
+      // can be missing — refused, absent, unanswered — because this step
+      // cannot see which; the rosters row above carries the specific verdict.
       steps.push({
         key,
         label,
         status: 'untested',
-        message: 'Not measured — the class-roster request did not answer.',
+        message: 'Not measured — no class-roster sample was available.',
       });
     } else {
       const joinable = enrollments.filter((r) => r.user?.sourcedId && r.class?.sourcedId);

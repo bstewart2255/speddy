@@ -191,14 +191,17 @@ export const POST = withRoute<{ connectionId: string }>(
     // report, and never touch what recordTestResult persists.
     if (oneRosterProbeArgs) {
       try {
+        const probeStartedAt = Date.now();
         const probeSteps = await probeOneRosterRosterData(oneRosterProbeArgs);
         checks = [...checks, ...probeSteps];
         // Aggregates only, by the probe's construction — this line is how the
         // result outlives the panel (SPE-435's record is written from these
-        // logs, not from a screenshot).
+        // logs, not from a screenshot). Duration included so a district whose
+        // server crawls is visible before it becomes a timeout mystery.
         log.info('OneRoster roster probe', {
           connectionId: connection.id,
           districtId: connection.district_id,
+          durationMs: Date.now() - probeStartedAt,
           probe: probeSteps.map(({ key, status, message }) => ({ key, status, message })),
         });
       } catch (err) {

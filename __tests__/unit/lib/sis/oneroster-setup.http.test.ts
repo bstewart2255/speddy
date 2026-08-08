@@ -1244,6 +1244,46 @@ describe('the roster probe measures presence and joinability, never people (SPE-
     expect(stepIn(steps, 'linkage').status).toBe('untested');
   });
 
+  it('a request-phase 401 is an authentication verdict, and ONE strike ends the probe', async () => {
+    // 401 rejects the bearer token itself, not a sharing setting — and the
+    // client reuses that token, so without the bail every later collection
+    // would be misreported as its own independent denial (Codex, PR #828).
+    handler = (req) => {
+      if (req.url.includes('/token')) return rosterHandler(req);
+      return { status: 401, body: {} };
+    };
+
+    const steps = await probe();
+
+    expect(stepIn(steps, 'teachers').status).toBe('error');
+    expect(stepIn(steps, 'teachers').message).toMatch(/authentication problem/i);
+    expect(stepIn(steps, 'teachers').message).not.toMatch(/refused permission/i);
+    for (const key of ['students', 'classes', 'rosters'] as const) {
+      expect(stepIn(steps, key).status).toBe('untested');
+    }
+    // One token fetch, one data request — then it stopped dialling.
+    expect(seen.filter((r) => !r.url.includes('/token')).length).toBe(1);
+  });
+
+  it("a 403 on ONE collection reads as 'refused permission' — the live JSUSD misreport", async () => {
+    // The first production run of this probe hit exactly this: /enrollments
+    // answered 403 with everything else green, and the panel said the server
+    // 'did not answer'. It answered. It refused. Those send the investigation
+    // to different people, and the misreport survived the whole test suite —
+    // caught by the self-review reading the live logs against the screenshot.
+    handler = (req) =>
+      req.url.includes('/enrollments') ? { status: 403, body: {} } : rosterHandler(req);
+
+    const steps = await probe();
+
+    expect(stepIn(steps, 'rosters').status).toBe('denied');
+    expect(stepIn(steps, 'rosters').message).toMatch(/refused permission/i);
+    expect(stepIn(steps, 'rosters').message).not.toMatch(/did not answer/i);
+    // Everything the server DID grant still reports normally.
+    expect(stepIn(steps, 'teachers').status).toBe('ok');
+    expect(stepIn(steps, 'linkage').status).toBe('untested');
+  });
+
   it('a token endpoint that dies MID-PROBE reads as a sign-in problem, not four missing endpoints', async () => {
     // The probe signs in on its own, so a token blip after a green connection
     // test hits every check. Read as 404-on-the-collection it would record
@@ -1254,13 +1294,19 @@ describe('the roster probe measures presence and joinability, never people (SPE-
 
     const steps = await probe();
 
-    for (const key of ['teachers', 'students', 'classes', 'rosters'] as const) {
-      expect(stepIn(steps, key).status).toBe('error');
-      expect(stepIn(steps, key).message).toMatch(/sign in/i);
-      expect(stepIn(steps, key).message).not.toMatch(/not provided/i);
+    expect(stepIn(steps, 'teachers').status).toBe('error');
+    expect(stepIn(steps, 'teachers').message).toMatch(/sign in/i);
+    expect(stepIn(steps, 'teachers').message).not.toMatch(/not provided/i);
+    // The rest bail rather than re-POSTing the district's credentials at a
+    // dead token endpoint three more times (self-review, PR #827): exactly
+    // one token request left this probe.
+    for (const key of ['students', 'classes', 'rosters'] as const) {
+      expect(stepIn(steps, key).status).toBe('untested');
+      expect(stepIn(steps, key).message).toMatch(/not attempted/i);
     }
+    expect(seen.filter((r) => r.url.includes('/token')).length).toBe(1);
     expect(stepIn(steps, 'linkage').status).toBe('untested');
-    expect(stepIn(steps, 'linkage').message).toMatch(/did not answer/i);
+    expect(stepIn(steps, 'linkage').message).toMatch(/no class-roster sample/i);
   });
 
   it('a server without /enrollments leaves linkage "not measured", not a claim about a sample', async () => {
@@ -1271,7 +1317,7 @@ describe('the roster probe measures presence and joinability, never people (SPE-
 
     expect(stepIn(steps, 'rosters').status).toBe('denied');
     expect(stepIn(steps, 'linkage').status).toBe('untested');
-    expect(stepIn(steps, 'linkage').message).toMatch(/did not answer/i);
+    expect(stepIn(steps, 'linkage').message).toMatch(/no class-roster sample/i);
     expect(stepIn(steps, 'linkage').message).not.toMatch(/shares a class/i);
   });
 
@@ -1299,5 +1345,57 @@ describe('the roster probe measures presence and joinability, never people (SPE-
     expect(stepIn(steps, 'rosters').status).toBe('denied');
     expect(stepIn(steps, 'rosters').message).toMatch(/none carry joinable user and class IDs/);
     expect(stepIn(steps, 'rosters').message).toContain('2 entries');
+  });
+});
+
+describe('the GRANTED scope is logged from our own vocabulary — never verbatim (SPE-435)', () => {
+  // The 403 on /enrollments made "what did the server actually grant us"
+  // the deciding fact between our-request-too-narrow and their-console-says-no.
+  // The scope field is server text, so it faces the same allow-list as every
+  // other derivation: known IMS constants are logged in short form, anything
+  // else becomes arithmetic.
+  let spy: jest.SpyInstance;
+  beforeEach(() => {
+    spy = jest.spyOn(logger, 'info').mockImplementation(() => {});
+  });
+  afterEach(() => spy.mockRestore());
+  const logged = () => JSON.stringify(spy.mock.calls);
+
+  it('logs known granted scopes in short form, counts the rest, leaks nothing', async () => {
+    handler = (req) =>
+      req.url.includes('/token')
+        ? {
+            status: 200,
+            body: {
+              access_token: TOKEN,
+              token_type: 'bearer',
+              scope: [
+                'https://purl.imsglobal.org/spec/or/v1p1/scope/roster-core.readonly',
+                // Repeated deliberately: a duplicated value must not produce a
+                // duplicated log entry, or the same grant reads differently
+                // run to run.
+                'https://purl.imsglobal.org/spec/or/v1p1/scope/roster-core.readonly',
+                'https://purl.imsglobal.org/spec/or/v1p1/scope/roster.readonly',
+                `https://evil.example/echo/${CLIENT_SECRET}`,
+              ].join(' '),
+            },
+          }
+        : allGood(req);
+
+    await run();
+
+    expect(logged()).toContain('"grantedScopes":["roster-core.readonly","roster.readonly"]');
+    expect(logged()).toContain('"tokenEndpoint":"127.0.0.1/admin/token/"');
+    expect(logged()).toContain('"unrecognisedScopes":1');
+    expect(logged()).not.toContain(CLIENT_SECRET);
+    expect(logged()).not.toContain('evil.example');
+  });
+
+  it('says "not stated" when the server omits the scope field', async () => {
+    handler = allGood;
+
+    await run();
+
+    expect(logged()).toContain('"grantedScopes":"not stated"');
   });
 });
