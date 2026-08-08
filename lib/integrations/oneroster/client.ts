@@ -104,7 +104,7 @@ const OAUTH_ERROR_CODES = new Set([
 interface TokenRefusalShape {
   /** One of `KNOWN_CONTENT_TYPES`, or 'other' / 'none'. */
   contentType: string;
-  bodyKind: 'json' | 'json-nonobject' | 'html' | 'text' | 'empty';
+  bodyKind: 'json' | 'json-nonobject' | 'xml' | 'html' | 'text' | 'empty';
   /** Length of the body text — enough to tell an empty refusal from an essay. */
   bodyChars: number;
   /**
@@ -212,9 +212,19 @@ async function describeTokenRefusal(
   try {
     parsed = JSON.parse(trimmed);
   } catch {
-    return {
-      shape: { contentType, bodyKind: trimmed.startsWith('<') ? 'html' : 'text', bodyChars },
-    };
+    // XML before HTML (Codex, PR #826): both start with '<', but they carry
+    // opposite diagnoses — an XML error document is a framework SPEAKING to
+    // us, an HTML page is a gateway or a wrong address. Decided from two
+    // signals that are already ours: the allow-listed media type constant and
+    // the fixed '<?xml' prolog. No content is copied either way.
+    const declaredXml = contentType === 'application/xml' || contentType === 'text/xml';
+    const bodyKind =
+      declaredXml || trimmed.startsWith('<?xml')
+        ? 'xml'
+        : trimmed.startsWith('<')
+          ? 'html'
+          : 'text';
+    return { shape: { contentType, bodyKind, bodyChars } };
   }
 
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {

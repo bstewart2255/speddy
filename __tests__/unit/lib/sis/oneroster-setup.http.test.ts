@@ -966,6 +966,48 @@ describe('the SHAPE of a refusal is logged — its CONTENT never is (SPE-434)', 
     expect(logged()).not.toContain(CLIENT_SECRET);
   });
 
+  it('an XML error document logs as "xml", not as "html" — with none of the document', async () => {
+    // Raised by Codex on PR #826, and it matters because the two kinds carry
+    // OPPOSITE diagnoses: html reads as "a gateway or wrong address", while an
+    // XML error document is a framework speaking to us. Lumping them would
+    // misread every XML-speaking SIS the same way this incident's 400s were
+    // misread.
+    handler = (req) =>
+      req.url.includes('/token')
+        ? {
+            status: 400,
+            headers: { 'Content-Type': 'application/xml' },
+            raw: `<Error><Message>denied</Message><Detail>${CLIENT_SECRET}</Detail></Error>`,
+          }
+        : allGood(req);
+
+    await run();
+
+    expect(logged()).toContain('"bodyKind":"xml"');
+    expect(logged()).toContain('"contentType":"application/xml"');
+    expect(logged()).not.toContain('"bodyKind":"html"');
+    expect(logged()).not.toContain('<Error>');
+    expect(logged()).not.toContain(CLIENT_SECRET);
+  });
+
+  it('a mislabeled XML body is still "xml", via the prolog', async () => {
+    // The other signal: a server sending XML under a generic content type. The
+    // prolog is a fixed string, so this adds no server-chosen bytes to the log.
+    handler = (req) =>
+      req.url.includes('/token')
+        ? {
+            status: 400,
+            headers: { 'Content-Type': 'text/plain' },
+            raw: `<?xml version="1.0"?><Error>denied</Error>`,
+          }
+        : allGood(req);
+
+    await run();
+
+    expect(logged()).toContain('"bodyKind":"xml"');
+    expect(logged()).toContain('"contentType":"text/plain"');
+  });
+
   it('an empty refusal logs as kind "empty"', async () => {
     // The shape that would point at a switched-off API record: the server
     // refuses and attaches nothing at all.
