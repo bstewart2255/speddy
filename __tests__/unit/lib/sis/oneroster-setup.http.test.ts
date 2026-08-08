@@ -216,6 +216,91 @@ describe('resolving the token endpoint when the stored one is wrong (SPE-426)', 
     expect(report.usedTokenUrl).toBe(`${origin}/admin/oauth/token`);
   });
 
+  it('keeps looking past a 400 that names NO reason (SPE-431)', async () => {
+    // The live-district case. RFC 6749 §5.2 requires a token endpoint to name
+    // why it refused, so a bare 400 is evidence we are not at a token endpoint
+    // at all. Reading it as "your credentials were rejected" stopped the search
+    // and blamed a district for an address that could not judge credentials —
+    // the SPE-426 failure, one connector over.
+    handler = (req) => {
+      if (req.url.startsWith('/admin/token')) return { status: 400, body: { message: 'nope' } };
+      if (req.url.includes('/oauth/token')) {
+        return { status: 200, body: { access_token: TOKEN, token_type: 'bearer', expires_in: 3600 } };
+      }
+      return { status: 200, body: { orgs: [{ sourcedId: 'org-1', name: 'Sim USD', type: 'district' }] } };
+    };
+
+    const report = await runWith(`${origin}/admin/token`);
+
+    expect(stepOf(report, 'token').status).toBe('ok');
+    expect(report.usedTokenUrl).toBe(`${origin}/admin/oauth/token`);
+  });
+
+  it('points at the ADDRESS when every candidate answers a bare 400', async () => {
+    // The exhausted case has to agree with the new reading. Reporting
+    // "credentials rejected" here would put the district back on the hook for
+    // an endpoint we do not believe judged their credentials at all.
+    handler = () => ({ status: 400, body: { message: 'nope' } });
+
+    const report = await runWith(`${origin}/admin/token`);
+
+    expect(report.ok).toBe(false);
+    // They DID give us a token address, so the advice must not tell them to
+    // enter one — it says what we tried instead.
+    expect(stepOf(report, 'token').message).toMatch(/Nothing at your token address/i);
+    expect(stepOf(report, 'token').message).toContain(`${origin}/admin/token`);
+    expect(stepOf(report, 'token').message).toContain(`${origin}/admin/oauth/token`);
+    expect(stepOf(report, 'token').message).not.toMatch(/enter it above/i);
+    expect(stepOf(report, 'token').message).not.toMatch(/Consumer ID/i);
+  });
+
+  it('words the SAME failure differently when no token address was supplied', async () => {
+    // The distinction the message builder exists for. With nothing on file,
+    // "enter it above" is useful advice; with their field already filled in and
+    // that very address among the ones that just answered, it is a false
+    // statement dressed as advice.
+    handler = () => ({ status: 400, body: { message: 'nope' } });
+
+    const report = await runOneRosterConnectionTest({
+      baseUrl: `${origin}/admin`,
+      clientId: CLIENT_ID,
+      clientSecret: CLIENT_SECRET,
+    });
+
+    expect(stepOf(report, 'token').message).toMatch(/enter it above/i);
+    expect(stepOf(report, 'token').message).not.toMatch(/Nothing at your token address/i);
+    // Still names what was tried, either way.
+    expect(stepOf(report, 'token').message).toContain(`${origin}/admin/token`);
+  });
+
+  it('STILL stops on a 400 that DOES name invalid_client', async () => {
+    // The load-bearing half. A compliant endpoint saying "your credentials are
+    // wrong" must end the search — walking on would replace the district's real
+    // problem with "check your address", and would post their consumer secret
+    // somewhere new for nothing.
+    handler = (req) =>
+      req.url.includes('/token')
+        ? { status: 400, body: { error: 'invalid_client' } }
+        : allGood(req);
+
+    const report = await runWith(`${origin}/admin/token`);
+
+    expect(stepOf(report, 'token').message).toMatch(/Consumer ID and Consumer Secret/i);
+    expect(seen.filter((r) => r.url.includes('token'))).toHaveLength(1);
+  });
+
+  it('STILL stops at a 401 that names nothing — auth verdicts are not addresses', async () => {
+    // Deliberately NOT extended to 401. A 401 is a strong authentication
+    // verdict from any server, compliant or not, and treating it as "wrong
+    // address" would walk past a genuine credential failure.
+    handler = () => ({ status: 401, body: { message: 'nope' } });
+
+    const report = await runWith(`${origin}/admin/token`);
+
+    expect(stepOf(report, 'token').message).toMatch(/Consumer ID and Consumer Secret/i);
+    expect(seen.filter((r) => r.url.includes('token'))).toHaveLength(1);
+  });
+
   it('STOPS at a real upstream 502 — their endpoint exists and is broken', async () => {
     // Raised by CodeRabbit, and it was right. `fetchToken` marks "answered but
     // the body is not a token" with a SYNTHETIC 502, and `dial` raises a real
@@ -290,9 +375,10 @@ describe('resolving the token endpoint when the stored one is wrong (SPE-426)', 
 
     expect(report.ok).toBe(false);
     expect(report.usedTokenUrl).toBeUndefined();
-    // Points at the address they DID give us. Telling them to fix the token
-    // address would send them to correct the field we tell them to leave blank.
-    expect(stepOf(report, 'token').message).toMatch(/under your OneRoster address/i);
+    // Points at the addresses, not the credentials — and, because this district
+    // DID supply a token address, without telling them to enter one.
+    expect(stepOf(report, 'token').message).toMatch(/Nothing at your token address/i);
+    expect(stepOf(report, 'token').message).not.toMatch(/Consumer ID/i);
   });
 });
 
@@ -509,8 +595,11 @@ describe('the OneRoster exchange over real HTTP', () => {
       expect(logged).toContain('OneRoster API request failed');
       expect(logged).not.toContain(CLIENT_SECRET);
       expect(logged).not.toContain('leaked-');
-      // And the district still gets the ordinary credential advice.
-      expect(stepOf(report, 'token').message).toMatch(/Consumer ID and Consumer Secret/i);
+      // A dropped code leaves a BARE 400, which now reads as "not a sign-in
+      // endpoint" rather than a credential verdict (SPE-431) — so the district
+      // is pointed at the address, not at credentials that were never judged.
+      expect(stepOf(report, 'token').message).toMatch(/behaved like a OneRoster sign-in endpoint/i);
+      expect(stepOf(report, 'token').message).not.toMatch(/Consumer ID/i);
     } finally {
       spy.mockRestore();
     }
