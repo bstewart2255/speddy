@@ -743,11 +743,20 @@ export async function probeOneRosterRosterData(params: {
           message:
             'Could not sign in for this check — the sign-in that just passed stopped answering mid-probe. Run the test again.',
         });
-      } else if (
-        err instanceof OneRosterApiError &&
-        err.phase === 'request' &&
-        (err.status === 401 || err.status === 403)
-      ) {
+      } else if (err instanceof OneRosterApiError && err.phase === 'request' && err.status === 401) {
+        // 401 rejects the BEARER TOKEN, not this resource's sharing — and the
+        // client reuses that token, so every later sample would be misreported
+        // as its own denial. One strike, same as a dead token endpoint
+        // (Codex, PR #828). 403 stays a per-resource permission verdict.
+        tokenDead = true;
+        steps.push({
+          key,
+          label,
+          status: 'error',
+          message:
+            'The sign-in pass was not accepted for this data request — an authentication problem, not a sharing setting. Run the test again.',
+        });
+      } else if (err instanceof OneRosterApiError && err.phase === 'request' && err.status === 403) {
         steps.push({
           key,
           label,
