@@ -266,6 +266,36 @@ describe('resolving the token endpoint when the stored one is wrong (SPE-426)', 
     expect(seen.every((r) => r.url !== '/admin/token/')).toBe(true);
   });
 
+  it('does not let the slashed candidate abort a district on the /oauth/token fallback', async () => {
+    // Raised by Codex against the first ordering. Placing the slashed probe
+    // between `/token` and `/oauth/token` broke the districts the OAuth
+    // fallback exists for: `/token` says keep looking, `/token/` redirects, the
+    // redirect ends the loop, and `/oauth/token` is never reached — a
+    // regression against behaviour that already worked, to help a district that
+    // did not. Appended last, it cannot come between them.
+    handler = (req) => {
+      if (req.url === '/admin/token') return { status: 404, body: { message: 'nope' } };
+      if (req.url === '/admin/token/') {
+        return { status: 308, headers: { Location: `${origin}/admin/token` } };
+      }
+      if (req.url === '/admin/oauth/token') {
+        return { status: 200, body: { access_token: TOKEN, token_type: 'bearer', expires_in: 3600 } };
+      }
+      return { status: 200, body: { orgs: [{ sourcedId: 'org-1', name: 'Sim USD', type: 'district' }] } };
+    };
+
+    const report = await runOneRosterConnectionTest({
+      baseUrl: `${origin}/admin`,
+      clientId: CLIENT_ID,
+      clientSecret: CLIENT_SECRET,
+    });
+
+    expect(report.ok).toBe(true);
+    expect(report.usedTokenUrl).toBe(`${origin}/admin/oauth/token`);
+    // The redirecting probe was never dialled — it sits behind the fallback.
+    expect(seen.every((r) => r.url !== '/admin/token/')).toBe(true);
+  });
+
   it('dials the stored token address VERBATIM, trailing slash and all', async () => {
     // The other half of SPE-432: if a district has the documented address on
     // file, we must send it as given rather than normalising the slash off and

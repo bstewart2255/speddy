@@ -90,23 +90,27 @@ export function oneRosterTokenUrlCandidates(baseUrl: string): string[] {
     // Parsed for validation only — an unparseable base has no safe guesses.
     new URL(trimmed);
     add(`${trimmed}/token`);
+    add(`${trimmed}/oauth/token`);
     // The form Aeries documents — `https://<district>api.aeries.net/admin/token/`,
     // with the trailing slash. On ASP.NET that slash can select a different
     // route entirely. It was absent from this list, and stripped from what
     // districts typed, which is why the one address the vendor documents was
     // never dialled (SPE-432).
     //
-    // SECOND, not first, and that ordering is load-bearing. Whichever candidate
-    // leads absorbs every failure the search cannot continue past — and a
-    // gateway that canonicalises `/token/` to `/token` answers with a redirect,
-    // which `redirect: 'error'` turns into a plain TypeError rather than a
-    // OneRosterApiError. That is not a "keep looking" signal, so leading with
-    // the slashed form would abort the whole search before `/token` was ever
-    // tried, and report "could not reach OneRoster" to a district whose
-    // slashless endpoint works perfectly. Reached second, it costs nothing when
-    // `/token` is right and still rescues the districts where it is not.
+    // LAST, and that position is load-bearing. Any candidate absorbs the
+    // failures the search cannot continue past — chiefly a redirect, which
+    // `redirect: 'error'` turns into a plain TypeError rather than a
+    // OneRosterApiError, and which therefore ends the loop (SPE-433). A gateway
+    // that canonicalises `/token/` to `/token` answers with exactly that.
+    //
+    // So this probe is placed where it can only ever help: after both
+    // established candidates. Ahead of `/token` it would abort the search for a
+    // district whose slashless endpoint works; between the two it would abort
+    // it for a district relying on the `/oauth/token` fallback — a regression
+    // against behaviour that already worked, to fix a district that did not.
+    // Appended, it is reached only once both have failed in a continuable way,
+    // which is precisely JSUSD's case.
     add(`${trimmed}/token/`);
-    add(`${trimmed}/oauth/token`);
   } catch {
     // Unparseable base: the caller's guard reports it properly.
   }
