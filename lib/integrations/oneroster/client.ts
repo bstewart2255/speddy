@@ -165,6 +165,26 @@ const KNOWN_CONTENT_TYPES = new Set([
   'text/xml',
 ]);
 
+const IMS_SCOPE_PREFIX = 'https://purl.imsglobal.org/spec/or/v1p1/scope/';
+
+/**
+ * Every scope OneRoster v1.1 defines. The token response's `scope` field
+ * states what the server actually granted; entries are logged only when they
+ * match one of these constants (shortened by the shared prefix), so the log
+ * stays inside our own vocabulary even against a server that echoes.
+ */
+const KNOWN_ONEROSTER_SCOPES = new Set(
+  [
+    'roster-core.readonly',
+    'roster.readonly',
+    'roster-demographics.readonly',
+    'resource.readonly',
+    'gradebook.readonly',
+    'gradebook.createput',
+    'gradebook.delete',
+  ].map((s) => `${IMS_SCOPE_PREFIX}${s}`),
+);
+
 /**
  * Read a refused token response for its RFC 6749 error code AND its shape.
  *
@@ -367,6 +387,31 @@ export class OneRosterClient {
         'token',
         true,
       );
+    }
+
+    // What the server GRANTED, versus what we asked for. JSUSD's first live
+    // probe hit a 403 on /enrollments with everything else green (SPE-435),
+    // and this is the field that says whether the grant itself was narrower
+    // than our request — or the refusal lives in the district's console.
+    // Same allow-list rule as every derivation in this file: the logged names
+    // are matched against our own constants, and anything else is a count.
+    if (typeof parsed.scope === 'string') {
+      const granted: string[] = [];
+      let unrecognised = 0;
+      for (const entry of parsed.scope.split(/\s+/).filter(Boolean)) {
+        if (KNOWN_ONEROSTER_SCOPES.has(entry)) {
+          granted.push(entry.slice(IMS_SCOPE_PREFIX.length));
+        } else {
+          unrecognised += 1;
+        }
+      }
+      granted.sort();
+      logger.info('OneRoster token granted', {
+        grantedScopes: granted,
+        unrecognisedScopes: unrecognised,
+      });
+    } else {
+      logger.info('OneRoster token granted', { grantedScopes: 'not stated' });
     }
 
     this.token = parsed.access_token;
