@@ -21,12 +21,27 @@ interface TeacherSyncResponse {
 
 function isTeacherSyncResponse(value: unknown): value is TeacherSyncResponse {
   if (typeof value !== 'object' || value === null) return false;
-  const body = value as { mode?: unknown; plan?: unknown };
+  const body = value as { mode?: unknown; plan?: unknown; written?: unknown };
   if (body.mode !== 'dry-run' && body.mode !== 'apply') return false;
   if (typeof body.plan !== 'object' || body.plan === null) return false;
-  return Array.isArray((body.plan as { schools?: unknown }).schools);
+  if (!Array.isArray((body.plan as { schools?: unknown }).schools)) return false;
+  // `written` renders its new fields directly — a malformed 200 must land in
+  // the "unreadable response" branch, not throw mid-render.
+  if (body.written !== undefined) {
+    if (!Array.isArray(body.written)) return false;
+    for (const entry of body.written) {
+      const w = entry as { accountsCreated?: unknown; accountConflicts?: unknown };
+      if (typeof w?.accountsCreated !== 'number' || !Array.isArray(w?.accountConflicts)) {
+        return false;
+      }
+    }
+  }
+  return true;
 }
 
+// Local copy of the server's `writableChangeCount` (that module is
+// server-only and cannot enter this bundle). Drift fails loudly: apply is
+// count-bound, so a mismatched copy 409s instead of writing the wrong set.
 const writableCount = (plan: TeacherSyncPlan): number =>
   plan.schools
     .filter((s) => !s.refusal)
@@ -218,16 +233,27 @@ export default function DistrictTeacherSyncPanel() {
         return;
       }
       if (!isTeacherSyncResponse(json)) {
-        setError('The sync returned an unreadable response. Nothing was written.');
+        // On apply, "nothing was written" would be a claim we cannot make —
+        // the server may have completed and answered in a shape we failed to
+        // read. Honest guidance: re-preview and look at the current state.
+        setError(
+          mode === 'apply'
+            ? 'The response could not be read, so the outcome is unknown. Run the preview again — it shows the current state.'
+            : 'The preview returned an unreadable response. Nothing was written.',
+        );
         return;
       }
       setResult(json);
     } catch (err) {
       const timedOut = err instanceof DOMException && err.name === 'AbortError';
+      // An apply that left the browser may have finished on the server —
+      // "nothing was written" is only claimable for a preview.
       setError(
-        timedOut
-          ? 'Gave up waiting for your SIS. The run may still be finishing — try the preview again in a moment.'
-          : 'Could not reach the sync. Nothing was written.',
+        mode === 'apply'
+          ? 'The connection dropped mid-run, so the outcome is unknown — the sync may have finished on the server. Run the preview again; it shows the current state.'
+          : timedOut
+            ? 'Gave up waiting for your SIS. Try the preview again in a moment.'
+            : 'Could not reach the sync. Nothing was written.',
       );
     } finally {
       clearTimeout(timer);
@@ -237,7 +263,11 @@ export default function DistrictTeacherSyncPanel() {
 
   const plan = result?.plan ?? null;
   const canApply = plan !== null && result?.mode === 'dry-run' && writableCount(plan) > 0;
-  const conflicts = (result?.written ?? []).flatMap((w) => w.accountConflicts);
+  // School-scoped keys: the same email can legitimately conflict at two
+  // schools (multi-school teachers plan one row per school).
+  const conflicts = (result?.written ?? []).flatMap((w) =>
+    w.accountConflicts.map((c) => ({ ...c, schoolId: w.schoolId })),
+  );
 
   return (
     <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
@@ -305,7 +335,7 @@ export default function DistrictTeacherSyncPanel() {
                 </p>
                 <ul className="mt-1 list-disc pl-4">
                   {conflicts.map((c) => (
-                    <li key={c.email}>
+                    <li key={`${c.schoolId}:${c.email}`}>
                       {c.name} · {c.email}
                     </li>
                   ))}

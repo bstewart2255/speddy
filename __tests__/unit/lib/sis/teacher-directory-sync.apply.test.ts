@@ -41,7 +41,7 @@ function makeFrom(table: string): Record<string, unknown> {
   const record: RecordedQuery = { table, calls: [], result: { data: [], error: null } };
   recorded.push(record);
   const chain: Record<string, unknown> = {};
-  for (const method of ['insert', 'update', 'select', 'eq', 'is', 'in']) {
+  for (const method of ['insert', 'update', 'delete', 'select', 'eq', 'is', 'in']) {
     chain[method] = (...args: unknown[]) => {
       record.calls.push({ method, args });
       return chain;
@@ -83,9 +83,20 @@ import {
   type TeacherSyncPlan,
 } from '@/lib/sis/teacher-directory-sync';
 
+const savedEnv = {
+  url: process.env.NEXT_PUBLIC_SUPABASE_URL,
+  key: process.env.SUPABASE_SERVICE_ROLE_KEY,
+};
 beforeAll(() => {
   process.env.NEXT_PUBLIC_SUPABASE_URL = 'http://supabase.test';
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'service-role-test-key';
+});
+afterAll(() => {
+  // Jest shares a worker between files; leaked env values would follow it.
+  if (savedEnv.url === undefined) delete process.env.NEXT_PUBLIC_SUPABASE_URL;
+  else process.env.NEXT_PUBLIC_SUPABASE_URL = savedEnv.url;
+  if (savedEnv.key === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+  else process.env.SUPABASE_SERVICE_ROLE_KEY = savedEnv.key;
 });
 
 const emptySchool: Omit<
@@ -298,14 +309,138 @@ describe('applyTeacherSyncPlan', () => {
     expect(results[0]).toMatchObject({ created: 1, accountsCreated: 0, directoryOnly: 1 });
   });
 
-  it('a profile failure rolls back ITS auth user and stops', async () => {
+  it('a profile failure rolls back ITS auth user — profile row FIRST, then auth — and stops', async () => {
     mockRpc.mockResolvedValue({ error: { message: 'rpc exploded' } });
     await expect(run()).rejects.toThrow(/Profile creation failed/);
+    // Order is load-bearing: profiles.id → auth.users(id) has no cascade, so
+    // deleting the auth user first would fail on the FK (PR #833 review).
+    const profileDelete = recorded.find(
+      (q) => q.table === 'admin:profiles' && q.calls.some((c) => c.method === 'delete'),
+    );
+    expect(profileDelete).toBeDefined();
     expect(mockDeleteUser).toHaveBeenCalledWith('auth-1');
     // Partial outcome still audited (nothing written yet for this school).
     expect(mockAudit).toHaveBeenCalledWith(
       expect.objectContaining({ metadata: expect.objectContaining({ partial: true }) }),
     );
+  });
+
+  it('a FAILED rollback is logged loudly by account id — never swallowed', async () => {
+    mockRpc.mockResolvedValue({ error: { message: 'rpc exploded' } });
+    // The admin API RESOLVES with { error }, it does not reject — the exact
+    // shape the first version's empty .catch() could never observe.
+    mockDeleteUser.mockResolvedValue({ data: null, error: { message: 'FK still references' } });
+    await expect(run()).rejects.toThrow(/Profile creation failed/);
+    const logged = JSON.stringify(logCalls);
+    expect(logged).toContain('orphaned auth account');
+    expect(logged).toContain('auth-1');
+  });
+
+  it('conflict detection honors the stable email_exists code, without prose', async () => {
+    mockCreateUser.mockResolvedValue({
+      data: { user: null },
+      error: { message: 'Unprocessable Entity', code: 'email_exists' },
+    });
+    const results = await run();
+    expect(results[0].accountConflicts).toHaveLength(1);
+  });
+
+  it('a multi-school teacher gets ONE account, linked at every school', async () => {
+    const twoSchoolPlan: TeacherSyncPlan = {
+      ...plan,
+      schools: [
+        {
+          ...plan.schools[0],
+          adopts: [],
+          updates: [],
+          creates: [
+            {
+              sisId: 'sid-multi',
+              firstName: 'SAMUEL',
+              lastName: 'DAVIS',
+              email: 'sdavis@example.org',
+              staffId: '33_TCH_779',
+              gradeLevel: null,
+            },
+          ],
+        },
+        {
+          ...plan.schools[0],
+          schoolId: 'sch-high',
+          schoolName: 'Crockett Point High',
+          refusal: null,
+          adopts: [],
+          updates: [],
+          creates: [
+            {
+              sisId: 'sid-multi',
+              firstName: 'SAMUEL',
+              lastName: 'DAVIS',
+              email: 'sdavis@example.org',
+              staffId: '33_TCH_779',
+              gradeLevel: null,
+            },
+          ],
+        },
+      ],
+      shadowDuplicates: 0,
+      duplicateEmailAnomalies: 0,
+    };
+    const results = await applyTeacherSyncPlan({
+      plan: twoSchoolPlan,
+      actorId: 'staff-1',
+      connectionId: 'conn-1',
+      districtId: 'district-1',
+    });
+
+    // One human, one account — created once, never misread as a conflict.
+    expect(mockCreateUser).toHaveBeenCalledTimes(1);
+    expect(results.map((r) => r.accountsCreated)).toEqual([1, 0]);
+    expect(results.flatMap((r) => r.accountConflicts)).toHaveLength(0);
+    // Both directory rows link the same account.
+    const inserts = recorded
+      .filter((q) => q.table === 'teachers' && q.calls.some((c) => c.method === 'insert'))
+      .map((q) => (q.calls.find((c) => c.method === 'insert')!.args[0] as { account_id: unknown }[])[0]);
+    expect(inserts.map((r) => r.account_id)).toEqual(['auth-1', 'auth-1']);
+  });
+
+  it('outcome counters move only AFTER the row lands — a failed insert reports nothing', async () => {
+    const emaillessPlan: TeacherSyncPlan = {
+      ...plan,
+      schools: [
+        {
+          ...plan.schools[0],
+          adopts: [],
+          updates: [],
+          creates: [
+            {
+              sisId: 'sid-noemail',
+              firstName: 'NO',
+              lastName: 'EMAIL',
+              email: null,
+              staffId: '11_TCH_9',
+              gradeLevel: null,
+            },
+          ],
+        },
+      ],
+    };
+    nextResult = (q) => {
+      const insert = q.calls.find((c) => c.method === 'insert');
+      if (insert) return { data: null, error: { message: 'insert refused' } };
+      return { data: [{ id: 'touched' }], error: null };
+    };
+    await expect(
+      applyTeacherSyncPlan({
+        plan: emaillessPlan,
+        actorId: 'staff-1',
+        connectionId: 'conn-1',
+        districtId: 'district-1',
+      }),
+    ).rejects.toThrow(/insert refused/);
+    // The partial audit must not claim a directory-only row that never landed.
+    const auditWritten = JSON.stringify(mockAudit.mock.calls);
+    expect(auditWritten).toContain('"directoryOnly":0');
   });
 
   it('never writes anything for a refused school — and provisions no account', async () => {

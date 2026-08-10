@@ -9,7 +9,11 @@ import {
   loadTeacherSyncInput,
   planCounts,
   planTeacherDirectorySync,
+  writableChangeCount,
 } from '@/lib/sis/teacher-directory-sync';
+
+// Full SIS pagination twice on apply, plus one-at-a-time account provisioning.
+export const maxDuration = 300;
 
 const log = logger.child({ module: 'internal-teacher-sync' });
 
@@ -149,9 +153,7 @@ export const POST = withRoute<{ connectionId: string }, z.infer<typeof bodySchem
     // writable count. The feed may have moved since; writing a different
     // change set under a confirmation for the old one is the one thing apply
     // must not do. Count mismatch → nothing written, re-preview.
-    const writable = plan.schools
-      .filter((s) => !s.refusal)
-      .reduce((sum, s) => sum + s.creates.length + s.adopts.length + s.updates.length, 0);
+    const writable = writableChangeCount(plan);
     if (writable !== body.expectedChanges) {
       log.info('Teacher sync apply refused: the plan moved since the preview', {
         connectionId: connection.id,

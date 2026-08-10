@@ -18,6 +18,8 @@ const DISTRICT_ID = '0618990';
 let currentUserId: string | null = ADMIN_ID;
 /** Whether the grant re-check finds a district_admin row for a tech-role caller. */
 let holdsAdminGrant = false;
+/** Every filter the grant re-check applied — the cross-district scoping pin. */
+const mockGrantFilters: [string, unknown][] = [];
 
 jest.mock('@/lib/supabase/server', () => ({
   createClient: async () => ({
@@ -32,7 +34,10 @@ jest.mock('@/lib/supabase/server', () => ({
     from: () => {
       const q: Record<string, unknown> = {};
       q.select = () => q;
-      q.eq = () => q;
+      q.eq = (col: string, val: unknown) => {
+        mockGrantFilters.push([col, val]);
+        return q;
+      };
       q.limit = () => q;
       q.maybeSingle = () =>
         Promise.resolve({ data: holdsAdminGrant ? { id: 'grant-1' } : null, error: null });
@@ -177,16 +182,26 @@ describe('the gate', () => {
     nothingHappened();
   });
 
-  it('admits a dual-role caller whose grants include district_admin', async () => {
+  it('admits a dual-role caller whose grants include district_admin — scoped to CALLER and DISTRICT', async () => {
     mockResolveCaller.mockResolvedValue({
       ok: true,
       role: 'district_tech',
       districtId: DISTRICT_ID,
     });
     holdsAdminGrant = true;
+    mockGrantFilters.length = 0;
     const res = await call({ mode: 'dry-run' });
     expect(res.status).toBe(200);
     expect(mockLoad).toHaveBeenCalledTimes(1);
+    // The re-check must filter on this caller, this role, this district — a
+    // dropped filter would admit an admin of a DIFFERENT district.
+    expect(mockGrantFilters).toEqual(
+      expect.arrayContaining([
+        ['admin_id', ADMIN_ID],
+        ['role', 'district_admin'],
+        ['district_id', DISTRICT_ID],
+      ]),
+    );
   });
 });
 

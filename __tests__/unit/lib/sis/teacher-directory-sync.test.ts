@@ -142,6 +142,29 @@ describe('toFeedTeacher (the feed-row pick)', () => {
     expect(toFeedTeacher({ sourcedId: '   ', givenName: 'A', familyName: 'B' })).toBeNull();
   });
 
+  it('nulls an implausible email so it behaves as absent everywhere at once', () => {
+    // GoTrue would reject it mid-apply otherwise, wedging the run on the same
+    // row forever (PR #833 review). Same shape check as the admin route.
+    for (const bad of ['j smith@district.org', 'none', 'x@y', 'trailingdot@x.', '@x.org']) {
+      const row = toFeedTeacher({
+        sourcedId: 'x',
+        givenName: 'A',
+        familyName: 'B',
+        identifier: '11_TCH_1',
+        email: bad,
+      });
+      expect(row?.email).toBeNull();
+    }
+    const good = toFeedTeacher({
+      sourcedId: 'x',
+      givenName: 'A',
+      familyName: 'B',
+      identifier: '11_TCH_1',
+      email: 'a.b@district.org',
+    });
+    expect(good?.email).toBe('a.b@district.org');
+  });
+
   it('degrades a non-array orgs value to no schools instead of throwing', () => {
     const row = toFeedTeacher({
       sourcedId: 'x',

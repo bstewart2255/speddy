@@ -26,10 +26,22 @@ interface TeacherSyncResponse {
  */
 function isTeacherSyncResponse(value: unknown): value is TeacherSyncResponse {
   if (typeof value !== 'object' || value === null) return false;
-  const body = value as { mode?: unknown; plan?: unknown };
+  const body = value as { mode?: unknown; plan?: unknown; written?: unknown };
   if (body.mode !== 'dry-run' && body.mode !== 'apply') return false;
   if (typeof body.plan !== 'object' || body.plan === null) return false;
-  return Array.isArray((body.plan as { schools?: unknown }).schools);
+  if (!Array.isArray((body.plan as { schools?: unknown }).schools)) return false;
+  // `written` renders its new fields directly — a malformed 200 must land in
+  // the "unreadable response" branch, not throw mid-render.
+  if (body.written !== undefined) {
+    if (!Array.isArray(body.written)) return false;
+    for (const entry of body.written) {
+      const w = entry as { accountsCreated?: unknown; accountConflicts?: unknown };
+      if (typeof w?.accountsCreated !== 'number' || !Array.isArray(w?.accountConflicts)) {
+        return false;
+      }
+    }
+  }
+  return true;
 }
 
 function writableCount(plan: TeacherSyncPlan): number {
@@ -252,18 +264,24 @@ export default function TeacherSyncCard({ connectionId }: { connectionId: string
         return;
       }
       if (!isTeacherSyncResponse(json)) {
-        setError('The sync returned an unreadable response. Nothing was written.');
+        setError(
+          mode === 'apply'
+            ? 'The response could not be read, so the outcome is unknown. Re-run the preview — it shows the current state.'
+            : 'The preview returned an unreadable response. Nothing was written.',
+        );
         return;
       }
       setResult(json);
     } catch (err) {
       const timedOut = err instanceof DOMException && err.name === 'AbortError';
+      // An apply that left the browser may have finished on the server —
+      // "nothing was written" is only claimable for a preview.
       setError(
-        timedOut
-          ? mode === 'apply'
-            ? 'Gave up waiting for the district’s SIS. The apply may still be running — re-run the preview before trying again.'
-            : 'Gave up waiting for the district’s SIS. Try the preview again in a moment.'
-          : 'Could not reach the sync. Nothing was written.',
+        mode === 'apply'
+          ? 'The connection dropped mid-run, so the outcome is unknown — the apply may have finished. Re-run the preview; it shows the current state.'
+          : timedOut
+            ? 'Gave up waiting for the district’s SIS. Try the preview again in a moment.'
+            : 'Could not reach the sync. Nothing was written.',
       );
     } finally {
       clearTimeout(timer);

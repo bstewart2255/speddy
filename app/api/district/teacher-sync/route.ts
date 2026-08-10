@@ -10,7 +10,13 @@ import {
   loadTeacherSyncInput,
   planCounts,
   planTeacherDirectorySync,
+  writableChangeCount,
 } from '@/lib/sis/teacher-directory-sync';
+
+// Full SIS pagination twice on apply, plus one-at-a-time account provisioning:
+// well past the platform's default function window. Matches the ceiling the
+// other long-running SIS routes use.
+export const maxDuration = 300;
 
 const log = logger.child({ module: 'district-teacher-sync' });
 
@@ -59,7 +65,7 @@ export const POST = withRoute<Record<string, string>, z.infer<typeof bodySchema>
       );
     }
     if (caller.role !== 'district_admin') {
-      const { data: adminGrant } = await createServiceClient()
+      const { data: adminGrant, error: grantError } = await createServiceClient()
         .from('admin_permissions')
         .select('id')
         .eq('admin_id', userId)
@@ -67,6 +73,14 @@ export const POST = withRoute<Record<string, string>, z.infer<typeof bodySchema>
         .eq('district_id', caller.districtId)
         .limit(1)
         .maybeSingle();
+      if (grantError) {
+        // Fail-closed either way, but a database fault must not read as a
+        // missing grant in the logs.
+        log.error('The district_admin grant re-check failed; refusing', grantError, {
+          userId,
+          districtId: caller.districtId,
+        });
+      }
       if (!adminGrant) {
         log.warn('district_tech tried the teacher sync', {
           userId,
@@ -118,13 +132,28 @@ export const POST = withRoute<Record<string, string>, z.infer<typeof bodySchema>
       );
     }
 
-    const input = await loadTeacherSyncInput({
-      districtId: connection.district_id,
-      baseUrl: connection.base_url,
-      tokenUrl: connection.token_url,
-      clientId: credential.clientId,
-      clientSecret: credential.clientSecret,
-    });
+    // Wrapped like the other outbound calls: withRoute's dev-mode catch
+    // echoes error.message, and a SIS failure's text can carry the base URL
+    // or upstream response fragments a district admin should not see.
+    let input;
+    try {
+      input = await loadTeacherSyncInput({
+        districtId: connection.district_id,
+        baseUrl: connection.base_url,
+        tokenUrl: connection.token_url,
+        clientId: credential.clientId,
+        clientSecret: credential.clientSecret,
+      });
+    } catch (err) {
+      log.error('Reading the district SIS for the teacher sync failed', err, {
+        connectionId: connection.id,
+        districtId: connection.district_id,
+      });
+      return NextResponse.json(
+        { error: 'Your SIS did not answer completely. Nothing was written — try again in a moment.' },
+        { status: 502 },
+      );
+    }
     const plan = planTeacherDirectorySync(input);
 
     log.info('Teacher directory sync planned by district admin', {
@@ -141,9 +170,7 @@ export const POST = withRoute<Record<string, string>, z.infer<typeof bodySchema>
 
     // The approval boundary, same as the internal route: apply is bound to
     // the count the admin confirmed; drift refuses and asks for a re-preview.
-    const writable = plan.schools
-      .filter((s) => !s.refusal)
-      .reduce((sum, s) => sum + s.creates.length + s.adopts.length + s.updates.length, 0);
+    const writable = writableChangeCount(plan);
     if (writable !== body.expectedChanges) {
       log.info('Teacher sync apply refused: the plan moved since the preview', {
         connectionId: connection.id,

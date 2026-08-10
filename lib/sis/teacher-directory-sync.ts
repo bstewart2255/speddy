@@ -194,6 +194,27 @@ export interface TeacherSyncPlan {
 const trimOrNull = (v: unknown): string | null =>
   typeof v === 'string' && v.trim() ? v.trim() : null;
 
+/**
+ * The same deliberately-simple shape check the admin creation route uses
+ * (no regex — ReDoS posture). Applied in the feed pick so an unusable email
+ * behaves as NO email everywhere at once: the preview's "with sign-in"
+ * count, the dedupe, the adopt rung, and the apply all agree — instead of
+ * GoTrue rejecting it mid-apply and wedging the run on the same row forever
+ * (PR #833 review).
+ */
+function isPlausibleEmail(email: string): boolean {
+  const atIndex = email.indexOf('@');
+  const lastDotIndex = email.lastIndexOf('.');
+  return (
+    atIndex > 0 &&
+    atIndex < email.length - 1 &&
+    lastDotIndex > atIndex &&
+    lastDotIndex < email.length - 1 &&
+    !email.includes(' ') &&
+    email.length <= 254
+  );
+}
+
 /** Lowercased alphanumerics only — the school-name matching alphabet. */
 const normName = (v: string): string => v.toLowerCase().replace(/[^a-z0-9]/g, '');
 
@@ -616,11 +637,12 @@ export function toFeedTeacher(raw: RawOneRosterUser): FeedTeacher | null {
   // A row with no name at all cannot become a picker entry anyone recognizes.
   if (!firstName && !lastName) return null;
   const identifier = trimOrNull(raw.identifier);
+  const email = trimOrNull(raw.email);
   return {
     sourcedId,
     firstName,
     lastName,
-    email: trimOrNull(raw.email),
+    email: email !== null && isPlausibleEmail(email) ? email : null,
     identifier,
     grades: Array.isArray(raw.grades)
       ? raw.grades.filter((g): g is string => typeof g === 'string' && g.trim() !== '')
@@ -729,6 +751,19 @@ export async function loadTeacherSyncInput(
   }
 
   return { feedSchools, feedTeachers, speddySchools, existingTeachers, studentCounts };
+}
+
+/**
+ * The count Apply binds to: every write the plan would make, refused schools
+ * excluded. One definition for both routes so the 409 drift check can never
+ * disagree with itself. (The two client panels carry local copies — this
+ * module is server-only and cannot enter their bundles — with comments
+ * pointing here; a drifted copy fails the count-binding loudly, not silently.)
+ */
+export function writableChangeCount(plan: TeacherSyncPlan): number {
+  return plan.schools
+    .filter((s) => !s.refusal)
+    .reduce((sum, s) => sum + s.creates.length + s.adopts.length + s.updates.length, 0);
 }
 
 /** Counts-only view of a plan — the ONLY shape this module ever logs. */
@@ -845,10 +880,45 @@ export async function applyTeacherSyncPlan(params: {
 }
 
 /**
+ * Undo a provisioned account: profile row FIRST, then the auth user.
+ *
+ * The order is load-bearing and was verified against the live schema:
+ * `profiles.id` references `auth.users(id)` with NO cascade, so deleting the
+ * auth user while its profile exists fails on the FK — the exact path the
+ * first version swallowed with an empty catch (PR #833 review, confirmed
+ * live). Both steps inspect their returned error (the admin API RESOLVES
+ * with `{ error }`, it does not reject) and a failed rollback is logged
+ * loudly by id — our own UUID, no PII — because an orphaned sign-in-capable
+ * account that nothing will retry is exactly what an operator must hear
+ * about. Never throws: rollback failing must not mask the original error.
+ */
+async function rollbackAccount(admin: SupabaseClient, accountId: string): Promise<void> {
+  try {
+    const { error: profileError } = await admin.from('profiles').delete().eq('id', accountId);
+    if (profileError) {
+      log.error('Rollback could not remove the profile of an orphaned account', undefined, {
+        accountId,
+        reason: profileError.message,
+      });
+    }
+    const { error: authError } = await admin.auth.admin.deleteUser(accountId);
+    if (authError) {
+      log.error('Rollback could not remove an orphaned auth account', undefined, {
+        accountId,
+        reason: authError.message,
+      });
+    }
+  } catch (err) {
+    log.error('Rollback of an orphaned account threw', err, { accountId });
+  }
+}
+
+/**
  * One login account for one planned create — the account half of the
  * create-teacher-account route, minus the temp-password relay. Returns
  * 'conflict' when the email is already registered to any Speddy account.
- * Cleans up the auth user itself if the profile steps fail, then rethrows.
+ * Cleans up after itself (profile then auth user) if a later step fails,
+ * then rethrows.
  */
 async function createLoginAccount(
   admin: SupabaseClient,
@@ -867,8 +937,14 @@ async function createLoginAccount(
     user_metadata: { full_name: fullName, role: 'teacher', created_by_admin: true },
   });
   if (error || !data?.user) {
+    // The stable GoTrue code first; the prose match stays as a fallback for
+    // older gateway shapes — message wording is not a contract (PR #833).
+    const code = (error as { code?: string } | null)?.code;
     const message = (error?.message ?? '').toLowerCase();
-    if (message.includes('already') && (message.includes('registered') || message.includes('exists'))) {
+    if (
+      code === 'email_exists' ||
+      (message.includes('already') && (message.includes('registered') || message.includes('exists')))
+    ) {
       return 'conflict';
     }
     throw new Error(
@@ -902,10 +978,7 @@ async function createLoginAccount(
 
     return { accountId: data.user.id };
   } catch (err) {
-    await admin.auth.admin.deleteUser(data.user.id).catch(() => {
-      // The rollback failing must not mask the original error; the partial
-      // audit and the thrown message are the operator's pointer.
-    });
+    await rollbackAccount(admin, data.user.id);
     throw err;
   }
 }
@@ -923,6 +996,13 @@ async function applySchools(
     throw new Error('Supabase URL and service role key are required to provision accounts.');
   }
   const admin = createSupabaseAdminClient(supabaseUrl, serviceRoleKey);
+
+  // Accounts provisioned in THIS run, by email. A multi-school teacher plans
+  // one create per school with the same email; the second school must link
+  // the account the first just made — reporting our own minutes-old account
+  // as "already uses Speddy in another role" would be false, and the row
+  // would stay unlinked (PR #833 review).
+  const provisionedThisRun = new Map<string, string>();
 
   for (const school of plan.schools) {
     if (school.refusal) continue;
@@ -945,21 +1025,26 @@ async function applySchools(
     // already linked — no window where a teacher exists accountless and a
     // parallel process could half-see them. Stop-on-failure posture holds:
     // a failed teacher stops the run (rolling back their own auth user);
-    // completed teachers stay and are audited.
+    // completed teachers stay and are audited. Outcome counters move ONLY
+    // after the row lands, so a partial audit never reports a teacher the
+    // database does not have (Codex/self-review, PR #833).
     for (const c of school.creates) {
       let accountId: string | null = null;
-      if (c.email) {
+      let outcome: 'account' | 'account-reused' | 'conflict' | 'directory-only';
+      const emailKey = c.email ? c.email.toLowerCase().trim() : null;
+      if (emailKey && provisionedThisRun.has(emailKey)) {
+        accountId = provisionedThisRun.get(emailKey) as string;
+        outcome = 'account-reused';
+      } else if (c.email) {
         const provisioned = await createLoginAccount(admin, c, school);
         if (provisioned === 'conflict') {
-          result.accountConflicts.push({
-            name: `${c.firstName} ${c.lastName}`.trim(),
-            email: c.email,
-          });
+          outcome = 'conflict';
         } else {
           accountId = provisioned.accountId;
+          outcome = 'account';
         }
       } else {
-        result.directoryOnly += 1;
+        outcome = 'directory-only';
       }
 
       const { data, error } = await supabase
@@ -980,17 +1065,31 @@ async function applySchools(
         ])
         .select('id');
       if (error) {
-        // The account exists but its directory row does not: undo the account
-        // so a re-run's plan (which only sees `teachers`) stays truthful.
-        if (accountId) {
-          await admin.auth.admin.deleteUser(accountId).catch(() => {});
+        // A freshly minted account whose directory row never landed must not
+        // survive: a re-run's plan reads only `teachers` and would report its
+        // own orphan as a conflict forever. A REUSED account belongs to an
+        // earlier, committed row — it stays.
+        if (accountId && outcome === 'account') {
+          await rollbackAccount(admin, accountId);
         }
         // Stop rather than continue past a failed school: a partial apply that
         // keeps going reports success about a state it does not know.
         throw new Error(`Creating teachers for ${school.schoolName} failed: ${error.message}`);
       }
-      result.created += (data ?? []).length;
-      if (accountId && (data ?? []).length > 0) result.accountsCreated += 1;
+      if ((data ?? []).length > 0) {
+        result.created += (data ?? []).length;
+        if (outcome === 'account' && emailKey && accountId) {
+          result.accountsCreated += 1;
+          provisionedThisRun.set(emailKey, accountId);
+        } else if (outcome === 'conflict' && c.email) {
+          result.accountConflicts.push({
+            name: `${c.firstName} ${c.lastName}`.trim(),
+            email: c.email,
+          });
+        } else if (outcome === 'directory-only') {
+          result.directoryOnly += 1;
+        }
+      }
     }
 
     for (const adopt of school.adopts) {
