@@ -22,8 +22,25 @@ ALTER TABLE public.teachers
 
 -- The pair travels together: a source without an id identifies nothing, and an
 -- id without a source is unkeyable the moment a second SIS exists.
-ALTER TABLE public.teachers
-  ADD CONSTRAINT teachers_sis_pair_chk CHECK ((sis_source IS NULL) = (sis_id IS NULL));
+--
+-- Guarded (Postgres has no ADD CONSTRAINT IF NOT EXISTS) so a partial or
+-- repeated run of this file cannot fail on the one unguarded statement, and
+-- NOT VALID + VALIDATE so adding it never takes the write-blocking scan —
+-- every existing row has both columns NULL, so validation is trivially true.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'public.teachers'::regclass
+      AND conname = 'teachers_sis_pair_chk'
+  ) THEN
+    ALTER TABLE public.teachers
+      ADD CONSTRAINT teachers_sis_pair_chk
+      CHECK ((sis_source IS NULL) = (sis_id IS NULL)) NOT VALID;
+  END IF;
+END $$;
+
+ALTER TABLE public.teachers VALIDATE CONSTRAINT teachers_sis_pair_chk;
 
 -- One row per SIS identity per school. Partial: the NULL (human-entered) rows
 -- stay unconstrained — a school can hand-enter as many teachers as it likes.

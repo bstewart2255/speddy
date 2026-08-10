@@ -13,7 +13,22 @@ import {
 
 const log = logger.child({ module: 'internal-teacher-sync' });
 
-const bodySchema = z.object({ mode: z.enum(['dry-run', 'apply']) });
+const bodySchema = z
+  .object({
+    mode: z.enum(['dry-run', 'apply']),
+    /**
+     * Apply only: the writable-change count from the dry-run the operator
+     * reviewed. Apply recomputes the plan from a fresh feed read; if the
+     * recomputed plan would write a DIFFERENT number of changes than the one
+     * approved, the route refuses with 409 and the operator re-previews.
+     * Count-level rather than a full plan digest — proportionate for a
+     * staff-clicked concierge surface (Codex/CodeRabbit, PR #831).
+     */
+    expectedChanges: z.number().int().min(0).optional(),
+  })
+  .refine((b) => b.mode !== 'apply' || b.expectedChanges !== undefined, {
+    message: 'apply requires expectedChanges from the reviewed preview',
+  });
 
 /**
  * POST /api/internal/sis-connections/[connectionId]/teacher-sync — plan (and,
@@ -86,9 +101,20 @@ export const POST = withRoute<{ connectionId: string }, z.infer<typeof bodySchem
     try {
       credential = await getDecryptedCredential(connection.id);
     } catch (err) {
+      // Distinct from "not stored yet": telling an operator to have the
+      // district re-enter credentials that exist hides an operational fault
+      // (likely a key rotation) behind setup guidance — same split the
+      // SPE-436 directory route makes.
       log.error('Could not decrypt the stored SIS credential', err, {
         connectionId: connection.id,
       });
+      return NextResponse.json(
+        {
+          error:
+            'The stored OneRoster credential could not be decrypted. Check the encryption key — re-entering credentials is not the fix.',
+        },
+        { status: 500 },
+      );
     }
     if (!credential || credential.sisType !== 'oneroster') {
       return NextResponse.json(
@@ -117,6 +143,29 @@ export const POST = withRoute<{ connectionId: string }, z.infer<typeof bodySchem
 
     if (body.mode === 'dry-run') {
       return NextResponse.json({ mode: 'dry-run', plan });
+    }
+
+    // The approval boundary: what the operator confirmed was the PREVIEW's
+    // writable count. The feed may have moved since; writing a different
+    // change set under a confirmation for the old one is the one thing apply
+    // must not do. Count mismatch → nothing written, re-preview.
+    const writable = plan.schools
+      .filter((s) => !s.refusal)
+      .reduce((sum, s) => sum + s.creates.length + s.adopts.length + s.updates.length, 0);
+    if (writable !== body.expectedChanges) {
+      log.info('Teacher sync apply refused: the plan moved since the preview', {
+        connectionId: connection.id,
+        expected: body.expectedChanges,
+        recomputed: writable,
+      });
+      return NextResponse.json(
+        {
+          error:
+            `The district's data changed since your preview (${body.expectedChanges} ` +
+            `change(s) approved, ${writable} now planned). Nothing was written — run the preview again.`,
+        },
+        { status: 409 },
+      );
     }
 
     const written = await applyTeacherSyncPlan({

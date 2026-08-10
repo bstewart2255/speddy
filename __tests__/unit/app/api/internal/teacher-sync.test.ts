@@ -191,6 +191,37 @@ describe('input gates', () => {
     expect(res.status).toBe(409);
     nothingHappened();
   });
+
+  it('409s a connection with no saved address, dialling nothing', async () => {
+    mockGetConnection.mockResolvedValue({ ...CONNECTION, base_url: null });
+    const res = await call({ mode: 'dry-run' });
+    expect(res.status).toBe(409);
+    nothingHappened();
+  });
+
+  it('409s an Aeries credential on the OneRoster path, dialling nothing', async () => {
+    mockGetCredential.mockResolvedValue({ ...CREDENTIAL, sisType: 'aeries' });
+    const res = await call({ mode: 'dry-run' });
+    expect(res.status).toBe(409);
+    nothingHappened();
+  });
+
+  it('500s a credential that exists but cannot be decrypted — a key fault, not setup guidance', async () => {
+    mockGetCredential.mockRejectedValue(new Error('decrypt failed'));
+    const res = await call({ mode: 'dry-run' });
+    expect(res.status).toBe(500);
+    const body = await res.json();
+    expect(body.error).toMatch(/could not be decrypted/i);
+    nothingHappened();
+  });
+
+  it('refuses a non-staff APPLY before anything dials or writes', async () => {
+    currentUserId = NON_STAFF_ID;
+    profileRow = { data: { is_speddy_admin: false }, error: null };
+    const res = await call({ mode: 'apply', expectedChanges: 1 });
+    expect(res.status).toBe(403);
+    nothingHappened();
+  });
 });
 
 describe('dry-run vs apply', () => {
@@ -204,8 +235,25 @@ describe('dry-run vs apply', () => {
     expect(mockApply).not.toHaveBeenCalled();
   });
 
-  it('apply recomputes the plan server-side and passes THAT to the writer', async () => {
+  it('apply without the reviewed count is refused at validation, dialling nothing', async () => {
     const res = await call({ mode: 'apply' });
+    expect(res.status).toBe(400);
+    nothingHappened();
+  });
+
+  it('apply refuses with 409 when the recomputed plan differs from the approved count', async () => {
+    // The operator approved 3 changes; the fresh plan writes 1 — the feed
+    // moved between preview and apply, so nothing may be written.
+    const res = await call({ mode: 'apply', expectedChanges: 3 });
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.error).toMatch(/changed since your preview/i);
+    expect(mockLoad).toHaveBeenCalledTimes(1);
+    expect(mockApply).not.toHaveBeenCalled();
+  });
+
+  it('apply recomputes the plan server-side and passes THAT to the writer', async () => {
+    const res = await call({ mode: 'apply', expectedChanges: 1 });
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.mode).toBe('apply');

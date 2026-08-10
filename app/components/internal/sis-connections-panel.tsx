@@ -620,12 +620,13 @@ export default function SisConnectionsPanel({ districtId }: { districtId: string
                 </div>
 
                 {/* SPE-437: the concierge teacher sync. Only where it can run —
-                    an OneRoster connection with a recorded DPA and a stored
-                    credential; anything else would be a button whose only
-                    outcome is a 409. */}
+                    an OneRoster connection with a recorded DPA, a stored
+                    credential AND a saved address; anything else would be a
+                    button whose only outcome is a 409. */}
                 {connection.sis_type === 'oneroster' &&
                   dpaCleared &&
-                  connection.credential_hint && (
+                  connection.credential_hint &&
+                  connection.base_url && (
                     <TeacherSyncCard connectionId={connection.id} />
                   )}
               </li>

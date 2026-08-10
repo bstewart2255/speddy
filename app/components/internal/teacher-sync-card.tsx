@@ -158,13 +158,17 @@ function SchoolSection({ school }: { school: SchoolPlan }) {
           {school.reviews.length > 0 && (
             <details className="mt-1" open>
               <summary className="cursor-pointer text-xs text-amber-300">
-                Needs a human ({school.reviews.length}) — name matches, email does not
+                Needs a human ({school.reviews.length}) — never auto-linked
               </summary>
               <ul className="mt-1 space-y-0.5 pl-4 text-xs text-amber-200/80">
                 {school.reviews.map((r) => (
-                  <li key={r.sisId}>
+                  <li key={`${r.sisId}:${r.existingTeacherId}`}>
                     SIS “{r.feedName}” ({r.feedEmail ?? 'no email'}) vs existing “{r.existingName}”
-                    ({r.existingEmail ?? 'no email'}) — nothing written either way.
+                    ({r.existingEmail ?? 'no email'}) —{' '}
+                    {r.reason === 'ambiguous-email'
+                      ? 'several existing rows share this email; picking one automatically could stamp the wrong row.'
+                      : 'the name matches but the email does not.'}{' '}
+                    Nothing written either way.
                   </li>
                 ))}
               </ul>
@@ -203,11 +207,15 @@ export default function TeacherSyncCard({ connectionId }: { connectionId: string
   const [error, setError] = useState<string | null>(null);
 
   const run = async (mode: 'dry-run' | 'apply') => {
+    // Apply carries the previewed count; the server refuses if the freshly
+    // recomputed plan would write a different number than was confirmed.
+    let expectedChanges: number | undefined;
     if (mode === 'apply') {
       const plan = result?.plan;
       if (!plan) return;
+      expectedChanges = writableCount(plan);
       const confirmed = window.confirm(
-        `Apply the teacher sync?\n\nThis writes ${writableCount(plan)} change(s) to the live ` +
+        `Apply the teacher sync?\n\nThis writes ${expectedChanges} change(s) to the live ` +
           'teacher directory (creates, adoptions, and updates shown in the preview). ' +
           'Review rows and refused schools are not touched.',
       );
@@ -229,7 +237,9 @@ export default function TeacherSyncCard({ connectionId }: { connectionId: string
         headers: { 'Content-Type': 'application/json' },
         cache: 'no-store',
         signal: abort.signal,
-        body: JSON.stringify({ mode }),
+        body: JSON.stringify(
+          mode === 'apply' ? { mode, expectedChanges } : { mode },
+        ),
       });
       const json: unknown = await res.json().catch(() => null);
       if (!res.ok) {

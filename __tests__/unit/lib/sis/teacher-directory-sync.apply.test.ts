@@ -229,7 +229,10 @@ describe('applyTeacherSyncPlan', () => {
   it('audits and logs COUNTS only — no names or emails anywhere', async () => {
     await run();
     expect(mockAudit).toHaveBeenCalledWith(
-      expect.objectContaining({ action: 'sis_teacher_sync_applied' }),
+      expect.objectContaining({
+        action: 'sis_teacher_sync_applied',
+        metadata: expect.objectContaining({ partial: false }),
+      }),
     );
     const everything = JSON.stringify([mockAudit.mock.calls, logCalls]);
     for (const value of ['CHARLI', 'OMALLEY', 'comalley@example.org', 'Hand Entered']) {
@@ -237,14 +240,26 @@ describe('applyTeacherSyncPlan', () => {
     }
   });
 
-  it('a failed insert throws with the school named, and stops', async () => {
+  it('a failed insert throws with the school named — and the partial outcome is STILL audited', async () => {
+    // Writes that landed before the failure are real; a staff-gated
+    // service-role write path must never leave them unrecorded
+    // (CodeRabbit, PR #831).
     nextResult = (q) => {
       const insert = q.calls.find((c) => c.method === 'insert');
       if (insert) return { data: null, error: { message: 'unique violation' } };
       return { data: [{ id: 'touched' }], error: null };
     };
     await expect(run()).rejects.toThrow(/Rodeo Vista Elementary failed: unique violation/);
-    // Nothing was audited about a run that did not complete.
-    expect(mockAudit).not.toHaveBeenCalled();
+    expect(mockAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'sis_teacher_sync_applied',
+        metadata: expect.objectContaining({ partial: true }),
+      }),
+    );
+    // Still counts only, even on the failure path.
+    const everything = JSON.stringify([mockAudit.mock.calls, logCalls]);
+    for (const value of ['CHARLI', 'OMALLEY', 'comalley@example.org']) {
+      expect(everything).not.toContain(value);
+    }
   });
 });

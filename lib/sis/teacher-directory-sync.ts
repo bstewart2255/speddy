@@ -136,6 +136,13 @@ export interface ReviewCandidate {
   existingTeacherId: string;
   existingName: string;
   existingEmail: string | null;
+  /**
+   * Why a human is needed: a bare name match (never auto-stamped), or an
+   * email carried by MORE THAN ONE unkeyed row — adopting one of those
+   * nondeterministically would make the wrong row SIS-owned forever
+   * (Codex P1, PR #831).
+   */
+  reason: 'name-match' | 'ambiguous-email';
 }
 
 export interface SchoolPlan {
@@ -243,7 +250,10 @@ function mapSchools(
     }
     const candidates = feedSchools.filter((f) => {
       const n = normName(f.name);
-      return n.startsWith(target) || target.startsWith(n);
+      // An empty normalized feed name would prefix-match EVERYTHING
+      // (`target.startsWith('')` is always true) — a junk-named SIS org must
+      // match nothing, not poison every school into ambiguity.
+      return n !== '' && (n.startsWith(target) || target.startsWith(n));
     });
     if (candidates.length === 0) {
       bySchoolId.set(school.id, {
@@ -334,13 +344,43 @@ export function planTeacherDirectorySync(input: PlannerInput): TeacherSyncPlan {
       (t) => !t.isTeacher && t.orgIds.includes(feedSchool.sourcedId),
     ).length;
 
+    // Index the existing rows once per school, by each ladder key. Indexed
+    // BEFORE feed dedup because the dedup preference below needs `keyed`.
+    const keyed = new Map<string, ExistingTeacher>();
+    const unkeyedByEmail = new Map<string, ExistingTeacher[]>();
+    const unkeyedByName = new Map<string, ExistingTeacher>();
+    for (const row of existingAtSchool) {
+      if (row.sis_source === TEACHER_SIS_SOURCE && row.sis_id) {
+        keyed.set(row.sis_id, row);
+        continue;
+      }
+      if (row.sis_id) continue; // keyed to some other SIS — not ours to match
+      const e = normEmail(row.email);
+      if (e) {
+        const list = unkeyedByEmail.get(e) ?? [];
+        list.push(row);
+        unkeyedByEmail.set(e, list);
+      }
+      const n = personKey(row.first_name, row.last_name);
+      if (n && !unkeyedByName.has(n)) unkeyedByName.set(n, row);
+    }
+
     // One row per person per school: sourcedId is the key; a second included
     // row carrying the same email at the same school is a feed anomaly — keep
-    // the deterministic first, count the rest rather than creating twins.
+    // one, count the rest rather than creating twins. The row an existing
+    // teacher is ALREADY KEYED to wins the tie: dropping it would orphan a
+    // stable key, create a duplicate, and report the real teacher as missing
+    // (Codex P1, PR #831). Ties among unkeyed rows fall back to sourcedId
+    // order for determinism.
     const seenIds = new Set<string>();
     const seenEmails = new Set<string>();
     const candidates: FeedTeacher[] = [];
-    for (const t of [...atSchool].sort((a, b) => a.sourcedId.localeCompare(b.sourcedId))) {
+    const deduped = [...atSchool].sort((a, b) => {
+      const aKeyed = keyed.has(a.sourcedId) ? 0 : 1;
+      const bKeyed = keyed.has(b.sourcedId) ? 0 : 1;
+      return aKeyed - bKeyed || a.sourcedId.localeCompare(b.sourcedId);
+    });
+    for (const t of deduped) {
       if (seenIds.has(t.sourcedId)) continue;
       seenIds.add(t.sourcedId);
       const e = normEmail(t.email);
@@ -354,28 +394,15 @@ export function planTeacherDirectorySync(input: PlannerInput): TeacherSyncPlan {
       candidates.push(t);
     }
 
-    // Index the existing rows once per school, by each ladder key.
-    const keyed = new Map<string, ExistingTeacher>();
-    const unkeyedByEmail = new Map<string, ExistingTeacher>();
-    const unkeyedByName = new Map<string, ExistingTeacher>();
-    for (const row of existingAtSchool) {
-      if (row.sis_source === TEACHER_SIS_SOURCE && row.sis_id) {
-        keyed.set(row.sis_id, row);
-        continue;
-      }
-      if (row.sis_id) continue; // keyed to some other SIS — not ours to match
-      const e = normEmail(row.email);
-      if (e && !unkeyedByEmail.has(e)) unkeyedByEmail.set(e, row);
-      const n = personKey(row.first_name, row.last_name);
-      if (n && !unkeyedByName.has(n)) unkeyedByName.set(n, row);
-    }
-
     const creates: PlannedCreate[] = [];
     const adopts: PlannedAdopt[] = [];
     const updates: PlannedUpdate[] = [];
     const reviews: ReviewCandidate[] = [];
     let unchanged = 0;
-    const feedIdsAtSchool = new Set(candidates.map((c) => c.sourcedId));
+    // ALL teacher-row ids at the school, pre-dedup: a keyed row whose feed
+    // twin lost the dedup tie must not be reported "gone from the SIS" —
+    // the feed still carries it (Codex P1, PR #831).
+    const feedIdsAtSchool = new Set(atSchool.map((c) => c.sourcedId));
 
     for (const t of candidates) {
       const gradeLevel = gradeLevelFor(t.grades, school.name);
@@ -400,16 +427,33 @@ export function planTeacherDirectorySync(input: PlannerInput): TeacherSyncPlan {
       }
 
       const email = normEmail(t.email);
-      const emailMatch = email ? unkeyedByEmail.get(email) : undefined;
-      if (emailMatch) {
-        // Email equality is strong identity: stamp the key, touch nothing
-        // else. The row stays human-owned.
+      const emailMatches = email ? (unkeyedByEmail.get(email) ?? []) : [];
+      if (emailMatches.length === 1) {
+        // Email equality against exactly ONE row is strong identity: stamp
+        // the key, touch nothing else. The row stays human-owned.
         adopts.push({
-          teacherId: emailMatch.id,
+          teacherId: emailMatches[0].id,
           sisId: t.sourcedId,
           name: feedName,
           email: t.email as string,
         });
+        continue;
+      }
+      if (emailMatches.length > 1) {
+        // The same email on SEVERAL unkeyed rows (the schema permits it):
+        // adopting one nondeterministically would make the wrong row
+        // SIS-owned forever. A human picks (Codex P1, PR #831).
+        for (const row of emailMatches) {
+          reviews.push({
+            sisId: t.sourcedId,
+            feedName,
+            feedEmail: t.email,
+            existingTeacherId: row.id,
+            existingName: `${row.first_name ?? ''} ${row.last_name ?? ''}`.trim(),
+            existingEmail: row.email,
+            reason: 'ambiguous-email',
+          });
+        }
         continue;
       }
 
@@ -424,6 +468,7 @@ export function planTeacherDirectorySync(input: PlannerInput): TeacherSyncPlan {
           existingTeacherId: nameMatch.id,
           existingName: `${nameMatch.first_name ?? ''} ${nameMatch.last_name ?? ''}`.trim(),
           existingEmail: nameMatch.email,
+          reason: 'name-match',
         });
         continue;
       }
@@ -448,11 +493,14 @@ export function planTeacherDirectorySync(input: PlannerInput): TeacherSyncPlan {
         name: `${row.first_name ?? ''} ${row.last_name ?? ''}`.trim(),
       }));
 
-    // The Carquinez guard: students but not one qualifying teacher row. Say
-    // exactly what the feed had, so the fix (district-side) is nameable.
-    const touchable = creates.length + adopts.length + updates.length + unchanged;
+    // The Carquinez guard: students but not one QUALIFYING teacher row in
+    // the feed. Gated on candidates, not on writable buckets — a school
+    // whose rows all await human review has qualifying rows and must render
+    // them, not a refusal claiming it has none (Codex P2 / CodeRabbit,
+    // PR #831). Say exactly what the feed had, so the district-side fix is
+    // nameable.
     const refusal =
-      studentCount > 0 && touchable === 0
+      studentCount > 0 && candidates.length === 0
         ? `“${feedSchool.name}” has ${excludedNonTeaching} staff row(s) in the feed, ` +
           'none with a real staff ID — nothing here can be created accurately. ' +
           'This is district-side data (teacher records missing their staff linkage), not a Speddy failure.'
@@ -506,13 +554,17 @@ export interface TeacherSyncConnectionParams {
 /** Exported for tests: the feed-row pick, sentinel rule included. */
 export function toFeedTeacher(raw: RawOneRosterUser): FeedTeacher | null {
   if (raw.status === 'tobedeleted') return null;
+  // A blank sourcedId cannot key anything — writing it to `teachers.sis_id`
+  // would collide every such row into one "identity".
+  const sourcedId = trimOrNull(raw.sourcedId);
+  if (!sourcedId) return null;
   const firstName = trimOrNull(raw.givenName) ?? '';
   const lastName = trimOrNull(raw.familyName) ?? '';
   // A row with no name at all cannot become a picker entry anyone recognizes.
   if (!firstName && !lastName) return null;
   const identifier = trimOrNull(raw.identifier);
   return {
-    sourcedId: raw.sourcedId,
+    sourcedId,
     firstName,
     lastName,
     email: trimOrNull(raw.email),
@@ -520,7 +572,15 @@ export function toFeedTeacher(raw: RawOneRosterUser): FeedTeacher | null {
     grades: Array.isArray(raw.grades)
       ? raw.grades.filter((g): g is string => typeof g === 'string' && g.trim() !== '')
       : [],
-    orgIds: (raw.orgs ?? []).map((o) => o.sourcedId),
+    // Guarded like `grades`: the shape comes from an external SIS, and a
+    // vendor sending `orgs` as an object must degrade to "no schools", not
+    // throw away the whole run.
+    orgIds: Array.isArray(raw.orgs)
+      ? raw.orgs.flatMap((o) => {
+          const id = trimOrNull(o?.sourcedId);
+          return id ? [id] : [];
+        })
+      : [],
     isTeacher: identifier !== null && !isNonTeachingSentinel(identifier),
   };
 }
@@ -576,30 +636,43 @@ export async function loadTeacherSyncInput(
   }));
   const schoolIds = speddySchools.map((s) => s.id);
 
-  let existingTeachers: ExistingTeacher[] = [];
+  const existingTeachers: ExistingTeacher[] = [];
   const studentCounts: Record<string, number> = {};
   if (schoolIds.length > 0) {
-    const { data: teacherRows, error: teachersError } = await supabase
-      .from('teachers')
-      .select('id, school_id, first_name, last_name, email, grade_level, sis_source, sis_id')
-      .in('school_id', schoolIds);
-    if (teachersError) {
-      throw new Error(`Could not load existing teachers: ${teachersError.message}`);
+    // Paged to completion: PostgREST caps a select at max_rows (1000 on this
+    // project), and a truncated read here has the same failure mode the SIS
+    // side avoids with getAllPages — keyed rows past the cap look absent, so
+    // the planner re-creates teachers that already exist and the apply then
+    // trips the unique index mid-school. Ordered so pages cannot shear.
+    const DB_PAGE = 1000;
+    for (let from = 0; ; from += DB_PAGE) {
+      const { data: teacherRows, error: teachersError } = await supabase
+        .from('teachers')
+        .select('id, school_id, first_name, last_name, email, grade_level, sis_source, sis_id')
+        .in('school_id', schoolIds)
+        .order('id')
+        .range(from, from + DB_PAGE - 1);
+      if (teachersError) {
+        throw new Error(`Could not load existing teachers: ${teachersError.message}`);
+      }
+      existingTeachers.push(...((teacherRows ?? []) as ExistingTeacher[]));
+      if (!teacherRows || teacherRows.length < DB_PAGE) break;
     }
-    existingTeachers = (teacherRows ?? []) as ExistingTeacher[];
 
     // Caseload rows per school — the "has students" side of the loud-refusal
-    // gate. Head-count per school id; the exact number is display-only.
-    for (const id of schoolIds) {
-      const { count, error: countError } = await supabase
-        .from('students')
-        .select('id', { count: 'exact', head: true })
-        .eq('school_id', id);
-      if (countError) {
-        throw new Error(`Could not count students: ${countError.message}`);
-      }
-      studentCounts[id] = count ?? 0;
-    }
+    // gate. Head-counts run concurrently; the exact number is display-only.
+    await Promise.all(
+      schoolIds.map(async (id) => {
+        const { count, error: countError } = await supabase
+          .from('students')
+          .select('id', { count: 'exact', head: true })
+          .eq('school_id', id);
+        if (countError) {
+          throw new Error(`Could not count students: ${countError.message}`);
+        }
+        studentCounts[id] = count ?? 0;
+      }),
+    );
   }
 
   return { feedSchools, feedTeachers, speddySchools, existingTeachers, studentCounts };
@@ -653,7 +726,49 @@ export async function applyTeacherSyncPlan(params: {
   const supabase = createServiceClient();
   const results: SchoolWriteResult[] = [];
 
-  for (const school of params.plan.schools) {
+  // Written in BOTH outcomes. Stop-on-failure means a school can fail after
+  // earlier schools committed, and service-role writes that happened must
+  // never go unrecorded because a later school threw (CodeRabbit, PR #831).
+  // Counts only, per the module's logging rule.
+  const recordOutcome = async (partial: boolean) => {
+    const written = results.map(({ schoolId, created, adopted, updated }) => ({
+      schoolId,
+      created,
+      adopted,
+      updated,
+    }));
+    await logServerAuditEvent({
+      user_id: params.actorId,
+      action: 'sis_teacher_sync_applied',
+      resource_type: 'district_sis_connection',
+      resource_id: params.connectionId,
+      metadata: { districtId: params.districtId, partial, written },
+    });
+    log.info('Teacher directory sync applied', {
+      connectionId: params.connectionId,
+      districtId: params.districtId,
+      partial,
+      written,
+    });
+  };
+
+  try {
+    await applySchools(supabase, params.plan, results);
+  } catch (err) {
+    await recordOutcome(true);
+    throw err;
+  }
+
+  await recordOutcome(false);
+  return results;
+}
+
+async function applySchools(
+  supabase: ReturnType<typeof createServiceClient>,
+  plan: TeacherSyncPlan,
+  results: SchoolWriteResult[],
+): Promise<void> {
+  for (const school of plan.schools) {
     if (school.refusal) continue;
     const result: SchoolWriteResult = {
       schoolId: school.schoolId,
@@ -662,6 +777,10 @@ export async function applyTeacherSyncPlan(params: {
       adopted: 0,
       updated: 0,
     };
+    // Pushed BEFORE the writes, counts accumulating on the shared reference:
+    // a school that fails halfway must still contribute what it DID write to
+    // the partial-outcome audit record, not vanish from it.
+    results.push(result);
 
     if (school.creates.length > 0) {
       const rows = school.creates.map((c) => ({
@@ -716,35 +835,5 @@ export async function applyTeacherSyncPlan(params: {
       result.updated += (data ?? []).length;
     }
 
-    results.push(result);
   }
-
-  await logServerAuditEvent({
-    user_id: params.actorId,
-    action: 'sis_teacher_sync_applied',
-    resource_type: 'district_sis_connection',
-    resource_id: params.connectionId,
-    metadata: {
-      districtId: params.districtId,
-      written: results.map((r) => ({
-        schoolId: r.schoolId,
-        created: r.created,
-        adopted: r.adopted,
-        updated: r.updated,
-      })),
-    },
-  });
-
-  log.info('Teacher directory sync applied', {
-    connectionId: params.connectionId,
-    districtId: params.districtId,
-    written: results.map(({ schoolId, created, adopted, updated }) => ({
-      schoolId,
-      created,
-      adopted,
-      updated,
-    })),
-  });
-
-  return results;
 }

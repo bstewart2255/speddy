@@ -133,11 +133,24 @@ describe('toFeedTeacher (the feed-row pick)', () => {
     expect(row?.isTeacher).toBe(false);
   });
 
-  it('drops tobedeleted and nameless rows entirely', () => {
+  it('drops tobedeleted, nameless, and unkeyable rows entirely', () => {
     expect(
       toFeedTeacher({ sourcedId: 'x', givenName: 'A', familyName: 'B', status: 'tobedeleted' }),
     ).toBeNull();
     expect(toFeedTeacher({ sourcedId: 'x', identifier: '11_TCH_1' })).toBeNull();
+    // A blank sourcedId can never become a teachers.sis_id.
+    expect(toFeedTeacher({ sourcedId: '   ', givenName: 'A', familyName: 'B' })).toBeNull();
+  });
+
+  it('degrades a non-array orgs value to no schools instead of throwing', () => {
+    const row = toFeedTeacher({
+      sourcedId: 'x',
+      givenName: 'A',
+      familyName: 'B',
+      identifier: '11_TCH_1',
+      orgs: { href: 'not-an-array' } as never,
+    });
+    expect(row?.orgIds).toEqual([]);
   });
 
   it('keeps only the fields the pick names — vendor extras cannot ride along', () => {
@@ -374,10 +387,46 @@ describe('the reconcile ladder', () => {
     );
     const elem = schoolPlan(plan, SCHOOL_ELEM.id);
     expect(elem.reviews).toEqual([
-      expect.objectContaining({ existingTeacherId: 'row-1', feedName: 'JORDAN RIVERA' }),
+      expect.objectContaining({
+        existingTeacherId: 'row-1',
+        feedName: 'JORDAN RIVERA',
+        reason: 'name-match',
+      }),
     ]);
     expect(elem.adopts).toHaveLength(0);
     expect(elem.creates).toHaveLength(0);
+  });
+
+  it('an email carried by SEVERAL unkeyed rows goes to review — adopting one would be a guess', () => {
+    const t = teacher({ email: 'shared@example.org' });
+    const plan = planTeacherDirectorySync(
+      input({
+        feedTeachers: [t],
+        existingTeachers: [
+          {
+            ...EXISTING_BASE,
+            id: 'row-1',
+            first_name: 'First',
+            last_name: 'Holder',
+            email: 'shared@example.org',
+          },
+          {
+            ...EXISTING_BASE,
+            id: 'row-2',
+            first_name: 'Second',
+            last_name: 'Holder',
+            email: 'SHARED@example.org',
+          },
+        ],
+      }),
+    );
+    const elem = schoolPlan(plan, SCHOOL_ELEM.id);
+    expect(elem.adopts).toHaveLength(0);
+    expect(elem.creates).toHaveLength(0);
+    expect(elem.reviews).toEqual([
+      expect.objectContaining({ existingTeacherId: 'row-1', reason: 'ambiguous-email' }),
+      expect.objectContaining({ existingTeacherId: 'row-2', reason: 'ambiguous-email' }),
+    ]);
   });
 
   it('no match → create', () => {
@@ -463,6 +512,51 @@ describe('feed anomalies', () => {
     expect(schoolPlan(plan, SCHOOL_ELEM.id).creates).toHaveLength(1);
     expect(plan.duplicateEmailAnomalies).toBe(1);
   });
+
+  it('the dedup tie goes to the row an existing teacher is KEYED to, never orphaning the key', () => {
+    // 'aaa' sorts first, but the existing row is keyed to 'bbb': dropping
+    // 'bbb' would create a duplicate and report the real teacher as missing
+    // (Codex P1, PR #831).
+    const a = teacher({ sourcedId: 'aaa', email: 'twin@example.org', grades: [] });
+    const b = teacher({ sourcedId: 'bbb', email: 'twin@example.org', grades: [] });
+    const plan = planTeacherDirectorySync(
+      input({
+        feedTeachers: [a, b],
+        existingTeachers: [
+          {
+            ...EXISTING_BASE,
+            id: 'row-keyed',
+            first_name: b.firstName,
+            last_name: b.lastName,
+            email: b.email,
+            sis_source: 'oneroster',
+            sis_id: 'bbb',
+          },
+        ],
+      }),
+    );
+    const elem = schoolPlan(plan, SCHOOL_ELEM.id);
+    expect(elem.unchanged).toBe(1);
+    expect(elem.creates).toHaveLength(0);
+    expect(elem.missingFromSis).toHaveLength(0);
+    expect(plan.duplicateEmailAnomalies).toBe(1);
+  });
+
+  it('a feed school whose name normalizes to nothing matches NO school', () => {
+    const plan = planTeacherDirectorySync(
+      input({
+        feedSchools: [FEED_ELEM, FEED_HIGH, { sourcedId: 'org-junk', name: '—***—' }],
+        feedTeachers: [teacher()],
+        // Students only where the feed has teachers, so the only refusal this
+        // fixture could produce is the ambiguity one under test.
+        studentCounts: { [SCHOOL_ELEM.id]: 10, [SCHOOL_HIGH.id]: 0 },
+      }),
+    );
+    // Neither poisoned into ambiguity nor matched: both real schools map.
+    expect(schoolPlan(plan, SCHOOL_ELEM.id).refusal).toBeNull();
+    expect(schoolPlan(plan, SCHOOL_HIGH.id).refusal).toBeNull();
+    expect(plan.unmappedSisSchools).toEqual([{ name: '—***—', teacherRows: 0 }]);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -483,6 +577,30 @@ describe('the zero-teachers guard', () => {
     expect(elem.refusal).toMatch(/2 staff row\(s\)/);
     expect(elem.refusal).toMatch(/none with a real staff ID/);
     expect(elem.creates).toHaveLength(0);
+  });
+
+  it('does NOT refuse a school whose qualifying rows all await review — and shows them', () => {
+    // The false-refusal bug both review bots flagged on PR #831: review rows
+    // ARE qualifying rows, and a refusal here would claim "none with a real
+    // staff ID" about rows that have one — while hiding the review list.
+    const t = teacher({ firstName: 'JORDAN', lastName: 'RIVERA', email: 'jr-new@example.org' });
+    const plan = planTeacherDirectorySync(
+      input({
+        feedTeachers: [t],
+        existingTeachers: [
+          {
+            ...EXISTING_BASE,
+            id: 'row-1',
+            first_name: 'Jordan',
+            last_name: 'Rivera',
+            email: 'jr-old@example.org',
+          },
+        ],
+      }),
+    );
+    const elem = schoolPlan(plan, SCHOOL_ELEM.id);
+    expect(elem.refusal).toBeNull();
+    expect(elem.reviews).toHaveLength(1);
   });
 
   it('does NOT refuse an empty school with no students — nothing to protect', () => {

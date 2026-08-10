@@ -50,8 +50,19 @@ jest.mock('@/lib/supabase/server', () => ({
         };
       }
       if (table === 'teachers') {
+        // Mimics PostgREST paging: .range(from, to) slices the fixture, so
+        // the loader's page-to-completion loop is exercised for real.
         return {
-          select: () => ({ in: async () => ({ data: mockDb.teachers, error: null }) }),
+          select: () => ({
+            in: () => ({
+              order: () => ({
+                range: async (from: number, to: number) => ({
+                  data: mockDb.teachers.slice(from, to + 1),
+                  error: null,
+                }),
+              }),
+            }),
+          }),
         };
       }
       if (table === 'students') {
@@ -73,6 +84,7 @@ import {
   loadTeacherSyncInput,
   planTeacherDirectorySync,
 } from '@/lib/sis/teacher-directory-sync';
+import { ONEROSTER_DEFAULT_PAGE_SIZE } from '@/lib/integrations/oneroster';
 
 const CLIENT_ID = 'sync-consumer-id';
 const CLIENT_SECRET = 'sync-consumer-secret';
@@ -123,8 +135,12 @@ beforeAll(async () => {
       });
     }
     if (url.includes('/teachers')) {
-      const offset = Number(new URL(url, origin).searchParams.get('offset') ?? '0');
-      if (offset === 0) return respond({ users: fillerTeachers(1000) });
+      const params = new URL(url, origin).searchParams;
+      const offset = Number(params.get('offset') ?? '0');
+      // A full first page at whatever limit the client asked for — so the
+      // fixture keeps proving pagination even if the client's page size moves.
+      const limit = Number(params.get('limit') ?? '1000');
+      if (offset === 0) return respond({ users: fillerTeachers(limit) });
       return respond({
         users: [
           {
@@ -183,11 +199,11 @@ const load = () =>
   });
 
 describe('loadTeacherSyncInput', () => {
-  it('walks /teachers to completion — 1003 rows across two pages, minus the dropped', async () => {
+  it('walks /teachers to completion — a full page plus the tail, minus the dropped', async () => {
     const input = await load();
 
-    // 1000 filler + real + sentinel; the tobedeleted row is dropped.
-    expect(input.feedTeachers).toHaveLength(1002);
+    // One full page of filler + real + sentinel; the tobedeleted row is dropped.
+    expect(input.feedTeachers).toHaveLength(ONEROSTER_DEFAULT_PAGE_SIZE + 2);
     const teacherPages = requests.filter((u) => u.includes('/teachers'));
     expect(teacherPages.length).toBe(2);
 
@@ -225,9 +241,34 @@ describe('loadTeacherSyncInput', () => {
     }
   });
 
+  it('reads the existing-teachers table past the 1000-row PostgREST cap', async () => {
+    // 1500 DB rows: an unpaginated read would return 1000 and the planner
+    // would re-create teachers 1001–1500 (the max_rows trap, PR #831 review).
+    mockDb.teachers = Array.from({ length: 1500 }, (_, i) => ({
+      id: `db-${String(i).padStart(4, '0')}`,
+      school_id: 'sch-elem',
+      first_name: 'Db',
+      last_name: `Row${i}`,
+      email: null,
+      grade_level: null,
+      sis_source: null,
+      sis_id: null,
+    }));
+    try {
+      const input = await load();
+      expect(input.existingTeachers).toHaveLength(1500);
+    } finally {
+      mockDb.teachers = [];
+    }
+  });
+
   it('logs nothing a fixture row carries — no names, emails, or planted values', async () => {
     await load();
     const logged = JSON.stringify(logCalls);
+    // Non-vacuous: the load path DOES log (the client's token-granted line),
+    // so an empty capture would mean the capture broke, not that logs are
+    // clean (CodeRabbit, PR #831).
+    expect(logCalls.length).toBeGreaterThan(0);
     for (const value of [
       'WHITFIELD',
       'OFFICESTAFF',
