@@ -4,7 +4,11 @@ import { useState, useEffect } from 'react';
 import { Button } from '../ui/button';
 import { updateTeacher, deleteTeacher, type UpdateTeacherData } from '@/lib/supabase/queries/admin-accounts';
 
-const GRADES = ['TK', 'K', '1', '2', '3', '4', '5'];
+// PK included (SPE-437 follow-up): preschool classes are real — Rodeo Hills
+// runs one — and the SIS sync writes 'PK'. A stored grade outside this list
+// survives a save but renders as nothing checked, which reads as "no grade
+// set" about a teacher who has one.
+const GRADES = ['PK', 'TK', 'K', '1', '2', '3', '4', '5'];
 
 interface Teacher {
   id: string;

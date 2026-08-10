@@ -207,16 +207,32 @@ const isNonTeachingSentinel = (identifier: string | null): boolean =>
   identifier !== null && identifier.replace(/\s+/g, ' ').trim().toLowerCase() === NON_TEACHING_SENTINEL;
 
 /**
- * The grade rule from the owner's JSUSD review: `KG` alone is the feed's
- * filler value (it appears on every sentinel row and on obvious non-K staff),
- * so it is stored only where the school context corroborates it — an
- * elementary school. Multi-grade lists and non-KG values are stored verbatim.
+ * OneRoster's grade dialect → Speddy's (owner decision, 2026-08-10). The feed
+ * says `KG` and `01`; every Speddy screen says `K` and `1`, and the teacher
+ * editor offers a fixed list. Translating at this write boundary keeps synced
+ * rows speaking the same language as hand-entered ones. Values Speddy has no
+ * different spelling for (PK, TK, and anything unrecognized) pass through
+ * verbatim rather than being guessed at.
+ */
+function normalizeGrade(grade: string): string {
+  const g = grade.trim().toUpperCase();
+  if (g === 'KG') return 'K';
+  if (/^\d+$/.test(g)) return String(Number(g)); // 01 → 1, 10 → 10
+  return g;
+}
+
+/**
+ * The grade rule from the owner's JSUSD review: kindergarten alone is the
+ * feed's filler value (it appears on every sentinel row and on obvious non-K
+ * staff), so it is stored only where the school context corroborates it — an
+ * elementary school. Multi-grade lists and other values are kept.
  */
 function gradeLevelFor(grades: string[], speddySchoolName: string): string | null {
-  if (grades.length === 0) return null;
-  const kgOnly = grades.length === 1 && grades[0].trim().toUpperCase() === 'KG';
-  if (kgOnly && !/elementary/i.test(speddySchoolName)) return null;
-  return grades.join(', ');
+  const normalized = [...new Set(grades.map(normalizeGrade).filter((g) => g !== ''))];
+  if (normalized.length === 0) return null;
+  const kOnly = normalized.length === 1 && normalized[0] === 'K';
+  if (kOnly && !/elementary/i.test(speddySchoolName)) return null;
+  return normalized.join(', ');
 }
 
 // ---------------------------------------------------------------------------
