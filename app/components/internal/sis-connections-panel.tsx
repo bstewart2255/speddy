@@ -11,6 +11,8 @@ import { useCallback, useEffect, useState } from 'react';
  */
 import type { SisKeySelfTest } from '@/lib/sis/credential-crypto';
 
+import TeacherSyncCard from './teacher-sync-card';
+
 /**
  * The verdict plus which build produced it. Extends the shared union rather
  * than restating it, so the ok/problem contract still has exactly one owner.
@@ -616,6 +618,16 @@ export default function SisConnectionsPanel({ districtId }: { districtId: string
                     </div>
                   )}
                 </div>
+
+                {/* SPE-437: the concierge teacher sync. Only where it can run —
+                    an OneRoster connection with a recorded DPA and a stored
+                    credential; anything else would be a button whose only
+                    outcome is a 409. */}
+                {connection.sis_type === 'oneroster' &&
+                  dpaCleared &&
+                  connection.credential_hint && (
+                    <TeacherSyncCard connectionId={connection.id} />
+                  )}
               </li>
             );
           })}
