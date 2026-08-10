@@ -207,16 +207,67 @@ const isNonTeachingSentinel = (identifier: string | null): boolean =>
   identifier !== null && identifier.replace(/\s+/g, ' ').trim().toLowerCase() === NON_TEACHING_SENTINEL;
 
 /**
- * The grade rule from the owner's JSUSD review: `KG` alone is the feed's
- * filler value (it appears on every sentinel row and on obvious non-K staff),
- * so it is stored only where the school context corroborates it — an
- * elementary school. Multi-grade lists and non-KG values are stored verbatim.
+ * OneRoster's grade dialect → Speddy's (owner decision, 2026-08-10). The feed
+ * says `KG` and `01`; every Speddy screen says `K` and `1`, and the teacher
+ * editor offers a fixed list. Translating at this write boundary keeps synced
+ * rows speaking the same language as hand-entered ones. Values Speddy has no
+ * different spelling for (PK, TK, and anything unrecognized) pass through
+ * as sent, apart from a whitespace trim — recognition compares uppercased,
+ * but the STORED value keeps the feed's casing (PR #832 review: `Other`
+ * must not become `OTHER`).
+ */
+function normalizeGrade(grade: string): string {
+  const trimmed = grade.trim();
+  const g = trimmed.toUpperCase();
+  if (g === 'KG') return 'K';
+  if (/^\d+$/.test(g)) return String(Number(g)); // 01 → 1, 10 → 10
+  return trimmed;
+}
+
+/**
+ * One display order for grade lists, matching the teacher editor's. Shared
+ * ORDER matters more than shared members: the editor saves its selection
+ * sorted-by-list and joined with a bare comma, so the sync writing the same
+ * grades in a different order or format would (a) render hand-entered and
+ * synced rows differently and (b) make the keyed-update diff report a
+ * "change" that is only formatting, every run, forever.
+ */
+const GRADE_DISPLAY_ORDER = [
+  'PK', 'TK', 'K', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13',
+];
+
+/**
+ * The grade rule from the owner's JSUSD review: kindergarten alone is the
+ * feed's filler value (it appears on every sentinel row and on obvious non-K
+ * staff), so it is stored only where the school context corroborates it — an
+ * elementary school. That deliberately covers BOTH spellings post-translation:
+ * a lone `K` from a feed is as unverifiable as a lone `KG`. Multi-grade lists
+ * and other values are kept.
  */
 function gradeLevelFor(grades: string[], speddySchoolName: string): string | null {
-  if (grades.length === 0) return null;
-  const kgOnly = grades.length === 1 && grades[0].trim().toUpperCase() === 'KG';
-  if (kgOnly && !/elementary/i.test(speddySchoolName)) return null;
-  return grades.join(', ');
+  // Dedupe case-insensitively AFTER translation ('KG' and 'K' are one grade),
+  // keeping the first spelling seen.
+  const seen = new Set<string>();
+  const normalized: string[] = [];
+  for (const raw of grades) {
+    const g = normalizeGrade(raw);
+    if (!g) continue;
+    const key = g.toUpperCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    normalized.push(g);
+  }
+  if (normalized.length === 0) return null;
+  const kOnly = normalized.length === 1 && normalized[0] === 'K';
+  if (kOnly && !/elementary/i.test(speddySchoolName)) return null;
+
+  const rank = (g: string) => {
+    const i = GRADE_DISPLAY_ORDER.indexOf(g.toUpperCase());
+    return i === -1 ? GRADE_DISPLAY_ORDER.length : i;
+  };
+  normalized.sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
+  // Bare-comma join: the exact format the teacher editor saves.
+  return normalized.join(',');
 }
 
 // ---------------------------------------------------------------------------
