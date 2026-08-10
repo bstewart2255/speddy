@@ -183,27 +183,46 @@ describe('the grade rules: Speddy dialect + KG-is-filler', () => {
     expect(schoolPlan(plan, SCHOOL_HIGH.id).creates[0].gradeLevel).toBeNull();
   });
 
+  it('treats a lone literal K the same as a lone KG — filler outside an elementary school', () => {
+    // Deliberate widening with the translation: after KG→K, a feed sending
+    // 'K' directly is the same unverifiable claim (PR #832 review).
+    const plan = planTeacherDirectorySync(
+      input({ feedTeachers: [teacher({ grades: ['K'], orgIds: [FEED_HIGH.sourcedId] })] }),
+    );
+    expect(schoolPlan(plan, SCHOOL_HIGH.id).creates[0].gradeLevel).toBeNull();
+  });
+
   it('strips leading zeros — the feed says 09, Speddy says 9', () => {
     const plan = planTeacherDirectorySync(
       input({
         feedTeachers: [teacher({ grades: ['09', '10', '11', '12'], orgIds: [FEED_HIGH.sourcedId] })],
       }),
     );
-    expect(schoolPlan(plan, SCHOOL_HIGH.id).creates[0].gradeLevel).toBe('9, 10, 11, 12');
+    expect(schoolPlan(plan, SCHOOL_HIGH.id).creates[0].gradeLevel).toBe('9,10,11,12');
   });
 
-  it('passes PK and TK through verbatim — Speddy has no different spelling', () => {
+  it("writes the editor's exact format: its order, bare-comma joined", () => {
+    // 'KG, PK, TK' in feed order must store as 'PK,TK,K' — the same string
+    // the teacher editor would save for the same selection, so the two
+    // writers can never ping-pong formatting "changes" at each other.
     const plan = planTeacherDirectorySync(
       input({ feedTeachers: [teacher({ grades: ['KG', 'PK', 'TK'] })] }),
     );
-    expect(schoolPlan(plan, SCHOOL_ELEM.id).creates[0].gradeLevel).toBe('K, PK, TK');
+    expect(schoolPlan(plan, SCHOOL_ELEM.id).creates[0].gradeLevel).toBe('PK,TK,K');
   });
 
   it('dedupes grades that collapse to the same Speddy value', () => {
     const plan = planTeacherDirectorySync(
       input({ feedTeachers: [teacher({ grades: ['KG', 'K', '01', '1'] })] }),
     );
-    expect(schoolPlan(plan, SCHOOL_ELEM.id).creates[0].gradeLevel).toBe('K, 1');
+    expect(schoolPlan(plan, SCHOOL_ELEM.id).creates[0].gradeLevel).toBe('K,1');
+  });
+
+  it('passes an unrecognized grade through with its casing intact', () => {
+    const plan = planTeacherDirectorySync(
+      input({ feedTeachers: [teacher({ grades: [' Other '] })] }),
+    );
+    expect(schoolPlan(plan, SCHOOL_ELEM.id).creates[0].gradeLevel).toBe('Other');
   });
 });
 
