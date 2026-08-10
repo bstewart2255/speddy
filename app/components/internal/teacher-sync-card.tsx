@@ -216,7 +216,8 @@ export default function TeacherSyncCard({ connectionId }: { connectionId: string
       expectedChanges = writableCount(plan);
       const confirmed = window.confirm(
         `Apply the teacher sync?\n\nThis writes ${expectedChanges} change(s) to the live ` +
-          'teacher directory (creates, adoptions, and updates shown in the preview). ' +
+          'teacher directory, and created teachers with an email get a sign-in account in the ' +
+          'same step (no emails sent; Google SSO / forgot-password access). ' +
           'Review rows and refused schools are not touched.',
       );
       if (!confirmed) return;
@@ -323,8 +324,21 @@ export default function TeacherSyncCard({ connectionId }: { connectionId: string
               <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">
                 Applied.{' '}
                 {result.written
-                  .map((w) => `${w.schoolName}: ${w.created} created, ${w.adopted} adopted, ${w.updated} updated`)
+                  .map(
+                    (w) =>
+                      `${w.schoolName}: ${w.created} created (${w.accountsCreated} with sign-in), ` +
+                      `${w.adopted} adopted, ${w.updated} updated`,
+                  )
                   .join(' · ') || 'Nothing was writable.'}
+                {result.written.some((w) => w.accountConflicts.length > 0) && (
+                  <span className="mt-1 block text-amber-200">
+                    Sign-in skipped (email already has a Speddy account):{' '}
+                    {result.written
+                      .flatMap((w) => w.accountConflicts)
+                      .map((c) => `${c.name} · ${c.email}`)
+                      .join(' · ')}
+                  </span>
+                )}
               </div>
             )}
 

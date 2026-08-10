@@ -1,11 +1,14 @@
 /**
- * SPE-437 · `applyTeacherSyncPlan` — what the writes actually carry, and what
- * is never written at all.
+ * SPE-437/438 · `applyTeacherSyncPlan` — what the writes actually carry, and
+ * what is never written at all.
  *
  * The supabase stub records every query-builder call, so the assertions are
- * about the WRITE SHAPE: creates carry the SIS key and school placement,
- * adoption re-checks `sis_id IS NULL` in its WHERE, keyed updates filter on
- * the full key, refused schools see no writes, and counts come from what the
+ * about the WRITE SHAPE: creates carry the SIS key, school placement, and —
+ * when the feed has an email — a freshly provisioned sign-in account (auth
+ * user + profile RPC + linked row, mirroring the admin creation route);
+ * adoption re-checks `sis_id IS NULL`; keyed updates filter on the full key;
+ * refused schools see no writes; an already-registered email lands the row
+ * accountless in the conflicts bucket; and counts come from what the
  * database says happened rather than what the plan hoped.
  */
 
@@ -34,25 +37,43 @@ const recorded: RecordedQuery[] = [];
 /** Set per-test to control what a chain resolves to. */
 let nextResult: (q: RecordedQuery) => { data: unknown; error: unknown };
 
-jest.mock('@/lib/supabase/server', () => ({
-  createServiceClient: () => ({
-    from: (table: string) => {
-      const record: RecordedQuery = { table, calls: [], result: { data: [], error: null } };
-      recorded.push(record);
-      const chain: Record<string, unknown> = {};
-      for (const method of ['insert', 'update', 'select', 'eq', 'is', 'in']) {
-        chain[method] = (...args: unknown[]) => {
-          record.calls.push({ method, args });
-          return chain;
-        };
-      }
-      // Thenable, like the real builder: awaiting the chain resolves it.
-      chain.then = (resolve: (v: unknown) => unknown) => {
-        record.result = nextResult(record);
-        return Promise.resolve(record.result).then(resolve);
-      };
+function makeFrom(table: string): Record<string, unknown> {
+  const record: RecordedQuery = { table, calls: [], result: { data: [], error: null } };
+  recorded.push(record);
+  const chain: Record<string, unknown> = {};
+  for (const method of ['insert', 'update', 'select', 'eq', 'is', 'in']) {
+    chain[method] = (...args: unknown[]) => {
+      record.calls.push({ method, args });
       return chain;
+    };
+  }
+  // Thenable, like the real builder: awaiting the chain resolves it.
+  chain.then = (resolve: (v: unknown) => unknown) => {
+    record.result = nextResult(record);
+    return Promise.resolve(record.result).then(resolve);
+  };
+  return chain;
+}
+
+jest.mock('@/lib/supabase/server', () => ({
+  createServiceClient: () => ({ from: (table: string) => makeFrom(table) }),
+}));
+
+// The raw admin client the module builds for auth work — same recording
+// approach so "who got an account" is an assertion, not an assumption.
+const mockCreateUser = jest.fn();
+const mockDeleteUser = jest.fn();
+const mockRpc = jest.fn();
+jest.mock('@supabase/supabase-js', () => ({
+  createClient: () => ({
+    auth: {
+      admin: {
+        createUser: (...a: unknown[]) => mockCreateUser(...a),
+        deleteUser: (...a: unknown[]) => mockDeleteUser(...a),
+      },
     },
+    rpc: (...a: unknown[]) => mockRpc(...a),
+    from: (table: string) => makeFrom(`admin:${table}`),
   }),
 }));
 
@@ -61,6 +82,11 @@ import {
   type SchoolPlan,
   type TeacherSyncPlan,
 } from '@/lib/sis/teacher-directory-sync';
+
+beforeAll(() => {
+  process.env.NEXT_PUBLIC_SUPABASE_URL = 'http://supabase.test';
+  process.env.SUPABASE_SERVICE_ROLE_KEY = 'service-role-test-key';
+});
 
 const emptySchool: Omit<
   SchoolPlan,
@@ -141,10 +167,18 @@ const run = () =>
     districtId: 'district-1',
   });
 
+let nextUserId = 0;
 beforeEach(() => {
   recorded.length = 0;
   logCalls.length = 0;
+  nextUserId = 0;
   mockAudit.mockClear();
+  mockCreateUser.mockReset().mockImplementation(async () => {
+    nextUserId += 1;
+    return { data: { user: { id: `auth-${nextUserId}`, email: 'x' } }, error: null };
+  });
+  mockDeleteUser.mockReset().mockResolvedValue({ data: null, error: null });
+  mockRpc.mockReset().mockResolvedValue({ error: null });
   // Default: every write succeeds and reports as many rows as were sent.
   nextResult = (q) => {
     const insert = q.calls.find((c) => c.method === 'insert');
@@ -157,7 +191,7 @@ beforeEach(() => {
 });
 
 describe('applyTeacherSyncPlan', () => {
-  it('writes creates with the SIS key, school placement, and verbatim names', async () => {
+  it('writes creates with the SIS key, school placement, verbatim names — and a linked account', async () => {
     const results = await run();
 
     const insert = recorded.find((q) => q.calls.some((c) => c.method === 'insert'));
@@ -177,18 +211,110 @@ describe('applyTeacherSyncPlan', () => {
         created_by_admin: false,
         sis_source: 'oneroster',
         sis_id: 'sid-1',
+        account_id: 'auth-1',
       },
     ]);
+    // The account mirrored the admin-creation route: pre-verified email, a
+    // random password that is never surfaced, teacher-role metadata, and the
+    // profile RPC + school stamp.
+    expect(mockCreateUser).toHaveBeenCalledWith(
+      expect.objectContaining({
+        email: 'comalley@example.org',
+        email_confirm: true,
+        user_metadata: expect.objectContaining({ role: 'teacher' }),
+      }),
+    );
+    expect(mockRpc).toHaveBeenCalledWith(
+      'create_profile_for_new_user',
+      expect.objectContaining({ user_id: 'auth-1' }),
+    );
     expect(results).toEqual([
-      { schoolId: 'sch-elem', schoolName: 'Rodeo Vista Elementary', created: 1, adopted: 1, updated: 1 },
+      {
+        schoolId: 'sch-elem',
+        schoolName: 'Rodeo Vista Elementary',
+        created: 1,
+        adopted: 1,
+        updated: 1,
+        accountsCreated: 1,
+        directoryOnly: 0,
+        accountConflicts: [],
+      },
     ]);
   });
 
-  it('never writes anything for a refused school', async () => {
+  it('an already-registered email lands the row ACCOUNTLESS in the conflicts bucket', async () => {
+    mockCreateUser.mockResolvedValue({
+      data: { user: null },
+      error: { message: 'A user with this email address has already been registered' },
+    });
+
+    const results = await run();
+
+    expect(results[0].accountsCreated).toBe(0);
+    expect(results[0].accountConflicts).toEqual([
+      { name: 'CHARLI OMALLEY', email: 'comalley@example.org' },
+    ]);
+    // The directory row still landed — accountless.
+    const insert = recorded.find((q) => q.calls.some((c) => c.method === 'insert'));
+    const rows = insert!.calls.find((c) => c.method === 'insert')!.args[0] as Record<
+      string,
+      unknown
+    >[];
+    expect(rows[0].account_id).toBeNull();
+    // And nothing was touched on the existing identity.
+    expect(mockRpc).not.toHaveBeenCalled();
+    expect(mockDeleteUser).not.toHaveBeenCalled();
+  });
+
+  it('a create without an email is directory-only — no account attempt at all', async () => {
+    const emaillessPlan: TeacherSyncPlan = {
+      ...plan,
+      schools: [
+        {
+          ...plan.schools[0],
+          adopts: [],
+          updates: [],
+          creates: [
+            {
+              sisId: 'sid-noemail',
+              firstName: 'NO',
+              lastName: 'EMAIL',
+              email: null,
+              staffId: '11_TCH_9',
+              gradeLevel: null,
+            },
+          ],
+        },
+      ],
+    };
+    const results = await applyTeacherSyncPlan({
+      plan: emaillessPlan,
+      actorId: 'staff-1',
+      connectionId: 'conn-1',
+      districtId: 'district-1',
+    });
+
+    expect(mockCreateUser).not.toHaveBeenCalled();
+    expect(results[0]).toMatchObject({ created: 1, accountsCreated: 0, directoryOnly: 1 });
+  });
+
+  it('a profile failure rolls back ITS auth user and stops', async () => {
+    mockRpc.mockResolvedValue({ error: { message: 'rpc exploded' } });
+    await expect(run()).rejects.toThrow(/Profile creation failed/);
+    expect(mockDeleteUser).toHaveBeenCalledWith('auth-1');
+    // Partial outcome still audited (nothing written yet for this school).
+    expect(mockAudit).toHaveBeenCalledWith(
+      expect.objectContaining({ metadata: expect.objectContaining({ partial: true }) }),
+    );
+  });
+
+  it('never writes anything for a refused school — and provisions no account', async () => {
     await run();
     const serialized = JSON.stringify(recorded.map((q) => q.calls));
     expect(serialized).not.toContain('sid-refused');
     expect(serialized).not.toContain('NEVER');
+    const accountEmails = JSON.stringify(mockCreateUser.mock.calls);
+    expect(accountEmails).not.toContain('nw@example.org');
   });
 
   it('adoption re-checks sis_id IS NULL, and reports an honest zero when the row moved on', async () => {
@@ -240,16 +366,18 @@ describe('applyTeacherSyncPlan', () => {
     }
   });
 
-  it('a failed insert throws with the school named — and the partial outcome is STILL audited', async () => {
+  it('a failed insert throws with the school named — partial outcome audited, orphan account removed', async () => {
     // Writes that landed before the failure are real; a staff-gated
     // service-role write path must never leave them unrecorded
-    // (CodeRabbit, PR #831).
+    // (CodeRabbit, PR #831). And an account whose directory row never landed
+    // must not survive — a re-run only reads `teachers` and would try again.
     nextResult = (q) => {
       const insert = q.calls.find((c) => c.method === 'insert');
       if (insert) return { data: null, error: { message: 'unique violation' } };
       return { data: [{ id: 'touched' }], error: null };
     };
     await expect(run()).rejects.toThrow(/Rodeo Vista Elementary failed: unique violation/);
+    expect(mockDeleteUser).toHaveBeenCalledWith('auth-1');
     expect(mockAudit).toHaveBeenCalledWith(
       expect.objectContaining({
         action: 'sis_teacher_sync_applied',

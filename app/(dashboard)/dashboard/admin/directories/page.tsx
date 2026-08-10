@@ -14,6 +14,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Card } from '@/app/components/ui/card';
+import DistrictTeacherSyncPanel from '@/app/components/admin/district-teacher-sync-panel';
 import type {
   DirectoryArea,
   DirectoryClassRow,
@@ -150,10 +151,15 @@ export default function DirectoriesPage() {
       <div>
         <h1 className="text-2xl font-semibold text-slate-900">Directories</h1>
         <p className="text-sm text-slate-500 mt-1">
-          What your district&apos;s SIS shares with Speddy, read live — nothing here is saved into
-          Speddy yet.
+          What your district&apos;s SIS shares with Speddy, read live. The tabs below save
+          nothing; the teacher sync writes only when you apply a preview.
         </p>
       </div>
+
+      {/* SPE-438: the action counterpart to the read-only tabs — the district
+          admin's own Preview → Apply, moved here from /internal per the
+          owner's direction. */}
+      <DistrictTeacherSyncPanel />
 
       <div className="flex gap-2" role="tablist" aria-label="Directory areas">
         {AREAS.map((a) => (
