@@ -26,10 +26,22 @@ interface TeacherSyncResponse {
  */
 function isTeacherSyncResponse(value: unknown): value is TeacherSyncResponse {
   if (typeof value !== 'object' || value === null) return false;
-  const body = value as { mode?: unknown; plan?: unknown };
+  const body = value as { mode?: unknown; plan?: unknown; written?: unknown };
   if (body.mode !== 'dry-run' && body.mode !== 'apply') return false;
   if (typeof body.plan !== 'object' || body.plan === null) return false;
-  return Array.isArray((body.plan as { schools?: unknown }).schools);
+  if (!Array.isArray((body.plan as { schools?: unknown }).schools)) return false;
+  // `written` renders its new fields directly — a malformed 200 must land in
+  // the "unreadable response" branch, not throw mid-render.
+  if (body.written !== undefined) {
+    if (!Array.isArray(body.written)) return false;
+    for (const entry of body.written) {
+      const w = entry as { accountsCreated?: unknown; accountConflicts?: unknown };
+      if (typeof w?.accountsCreated !== 'number' || !Array.isArray(w?.accountConflicts)) {
+        return false;
+      }
+    }
+  }
+  return true;
 }
 
 function writableCount(plan: TeacherSyncPlan): number {
@@ -216,7 +228,8 @@ export default function TeacherSyncCard({ connectionId }: { connectionId: string
       expectedChanges = writableCount(plan);
       const confirmed = window.confirm(
         `Apply the teacher sync?\n\nThis writes ${expectedChanges} change(s) to the live ` +
-          'teacher directory (creates, adoptions, and updates shown in the preview). ' +
+          'teacher directory, and created teachers with an email get a sign-in account in the ' +
+          'same step (no emails sent; Google SSO / forgot-password access). ' +
           'Review rows and refused schools are not touched.',
       );
       if (!confirmed) return;
@@ -251,18 +264,24 @@ export default function TeacherSyncCard({ connectionId }: { connectionId: string
         return;
       }
       if (!isTeacherSyncResponse(json)) {
-        setError('The sync returned an unreadable response. Nothing was written.');
+        setError(
+          mode === 'apply'
+            ? 'The response could not be read, so the outcome is unknown. Re-run the preview — it shows the current state.'
+            : 'The preview returned an unreadable response. Nothing was written.',
+        );
         return;
       }
       setResult(json);
     } catch (err) {
       const timedOut = err instanceof DOMException && err.name === 'AbortError';
+      // An apply that left the browser may have finished on the server —
+      // "nothing was written" is only claimable for a preview.
       setError(
-        timedOut
-          ? mode === 'apply'
-            ? 'Gave up waiting for the district’s SIS. The apply may still be running — re-run the preview before trying again.'
-            : 'Gave up waiting for the district’s SIS. Try the preview again in a moment.'
-          : 'Could not reach the sync. Nothing was written.',
+        mode === 'apply'
+          ? 'The connection dropped mid-run, so the outcome is unknown — the apply may have finished. Re-run the preview; it shows the current state.'
+          : timedOut
+            ? 'Gave up waiting for the district’s SIS. Try the preview again in a moment.'
+            : 'Could not reach the sync. Nothing was written.',
       );
     } finally {
       clearTimeout(timer);
@@ -323,8 +342,21 @@ export default function TeacherSyncCard({ connectionId }: { connectionId: string
               <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">
                 Applied.{' '}
                 {result.written
-                  .map((w) => `${w.schoolName}: ${w.created} created, ${w.adopted} adopted, ${w.updated} updated`)
+                  .map(
+                    (w) =>
+                      `${w.schoolName}: ${w.created} created (${w.accountsCreated} with sign-in), ` +
+                      `${w.adopted} adopted, ${w.updated} updated`,
+                  )
                   .join(' · ') || 'Nothing was writable.'}
+                {result.written.some((w) => w.accountConflicts.length > 0) && (
+                  <span className="mt-1 block text-amber-200">
+                    Sign-in skipped (email already has a Speddy account):{' '}
+                    {result.written
+                      .flatMap((w) => w.accountConflicts)
+                      .map((c) => `${c.name} · ${c.email}`)
+                      .join(' · ')}
+                  </span>
+                )}
               </div>
             )}
 

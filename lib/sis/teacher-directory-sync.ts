@@ -34,9 +34,11 @@
  *
  * Server-only: dials an external SIS with a decrypted credential.
  */
+import { createClient as createSupabaseAdminClient, type SupabaseClient } from '@supabase/supabase-js';
 import { logger } from '@/lib/logger';
 import { createServiceClient } from '@/lib/supabase/server';
 import { logServerAuditEvent } from '@/lib/supabase/audit-log-server';
+import { generateTemporaryPassword } from '@/lib/utils/password-generator';
 import { OneRosterClient, type RawOneRosterUser } from '@/lib/integrations/oneroster';
 import { ONEROSTER_URL_LABELS, assertSafeSisUrl } from './ssrf-guard';
 import { oneRosterTokenUrlCandidates } from './oneroster-setup';
@@ -191,6 +193,27 @@ export interface TeacherSyncPlan {
 
 const trimOrNull = (v: unknown): string | null =>
   typeof v === 'string' && v.trim() ? v.trim() : null;
+
+/**
+ * The same deliberately-simple shape check the admin creation route uses
+ * (no regex — ReDoS posture). Applied in the feed pick so an unusable email
+ * behaves as NO email everywhere at once: the preview's "with sign-in"
+ * count, the dedupe, the adopt rung, and the apply all agree — instead of
+ * GoTrue rejecting it mid-apply and wedging the run on the same row forever
+ * (PR #833 review).
+ */
+function isPlausibleEmail(email: string): boolean {
+  const atIndex = email.indexOf('@');
+  const lastDotIndex = email.lastIndexOf('.');
+  return (
+    atIndex > 0 &&
+    atIndex < email.length - 1 &&
+    lastDotIndex > atIndex &&
+    lastDotIndex < email.length - 1 &&
+    !email.includes(' ') &&
+    email.length <= 254
+  );
+}
 
 /** Lowercased alphanumerics only — the school-name matching alphabet. */
 const normName = (v: string): string => v.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -614,11 +637,12 @@ export function toFeedTeacher(raw: RawOneRosterUser): FeedTeacher | null {
   // A row with no name at all cannot become a picker entry anyone recognizes.
   if (!firstName && !lastName) return null;
   const identifier = trimOrNull(raw.identifier);
+  const email = trimOrNull(raw.email);
   return {
     sourcedId,
     firstName,
     lastName,
-    email: trimOrNull(raw.email),
+    email: email !== null && isPlausibleEmail(email) ? email : null,
     identifier,
     grades: Array.isArray(raw.grades)
       ? raw.grades.filter((g): g is string => typeof g === 'string' && g.trim() !== '')
@@ -729,6 +753,19 @@ export async function loadTeacherSyncInput(
   return { feedSchools, feedTeachers, speddySchools, existingTeachers, studentCounts };
 }
 
+/**
+ * The count Apply binds to: every write the plan would make, refused schools
+ * excluded. One definition for both routes so the 409 drift check can never
+ * disagree with itself. (The two client panels carry local copies — this
+ * module is server-only and cannot enter their bundles — with comments
+ * pointing here; a drifted copy fails the count-binding loudly, not silently.)
+ */
+export function writableChangeCount(plan: TeacherSyncPlan): number {
+  return plan.schools
+    .filter((s) => !s.refusal)
+    .reduce((sum, s) => sum + s.creates.length + s.adopts.length + s.updates.length, 0);
+}
+
 /** Counts-only view of a plan — the ONLY shape this module ever logs. */
 export function planCounts(plan: TeacherSyncPlan) {
   return {
@@ -757,6 +794,17 @@ export interface SchoolWriteResult {
   created: number;
   adopted: number;
   updated: number;
+  /** Of `created`, how many got a sign-in account in the same step. */
+  accountsCreated: number;
+  /** Created as directory-only because the feed carried no email. */
+  directoryOnly: number;
+  /**
+   * The email already belongs to SOME Speddy account (plausibly a provider —
+   * special-ed staff can appear in the teacher feed too). The directory row
+   * is still created, accountless; attaching a login to an existing identity
+   * is a human decision, never a sync's (owner decision, 2026-08-10).
+   */
+  accountConflicts: { name: string; email: string }[];
 }
 
 /**
@@ -764,9 +812,20 @@ export interface SchoolWriteResult {
  * Review candidates and missing-from-SIS rows are never written — the first
  * needs a human's "same person", the second is a delete this sync does not do.
  *
- * Writes run through the service role: this is the staff-gated concierge
- * path (SPE-427 pattern), not a district session. Adoption re-checks
- * `sis_id IS NULL` in the WHERE so a concurrent apply cannot double-stamp.
+ * CREATES ALSO PROVISION SIGN-IN (owner decision, 2026-08-10): a created
+ * teacher with an email gets a real account in the same step — auth user
+ * (random password, never shown to anyone), teacher-role profile, and the
+ * directory row linked — mirroring /api/admin/create-teacher-account minus
+ * the temp-password ceremony. Nothing is emailed; the teacher signs in via
+ * Google SSO or "Forgot password", both of which ride on owning the district
+ * inbox. An email already registered to ANY Speddy account is a conflict:
+ * the row lands accountless and a human decides — the sync never attaches a
+ * login to an existing identity.
+ *
+ * Writes run through the service role behind an authorized route (Speddy
+ * staff via /internal, or a district admin for their own district). Adoption
+ * re-checks `sis_id IS NULL` in the WHERE so a concurrent apply cannot
+ * double-stamp.
  */
 export async function applyTeacherSyncPlan(params: {
   plan: TeacherSyncPlan;
@@ -780,14 +839,20 @@ export async function applyTeacherSyncPlan(params: {
   // Written in BOTH outcomes. Stop-on-failure means a school can fail after
   // earlier schools committed, and service-role writes that happened must
   // never go unrecorded because a later school threw (CodeRabbit, PR #831).
-  // Counts only, per the module's logging rule.
+  // Counts only, per the module's logging rule — conflicts as a NUMBER here;
+  // the names live only in the response for the reviewing human.
   const recordOutcome = async (partial: boolean) => {
-    const written = results.map(({ schoolId, created, adopted, updated }) => ({
-      schoolId,
-      created,
-      adopted,
-      updated,
-    }));
+    const written = results.map(
+      ({ schoolId, created, adopted, updated, accountsCreated, directoryOnly, accountConflicts }) => ({
+        schoolId,
+        created,
+        adopted,
+        updated,
+        accountsCreated,
+        directoryOnly,
+        accountConflicts: accountConflicts.length,
+      }),
+    );
     await logServerAuditEvent({
       user_id: params.actorId,
       action: 'sis_teacher_sync_applied',
@@ -814,11 +879,131 @@ export async function applyTeacherSyncPlan(params: {
   return results;
 }
 
+/**
+ * Undo a provisioned account: profile row FIRST, then the auth user.
+ *
+ * The order is load-bearing and was verified against the live schema:
+ * `profiles.id` references `auth.users(id)` with NO cascade, so deleting the
+ * auth user while its profile exists fails on the FK — the exact path the
+ * first version swallowed with an empty catch (PR #833 review, confirmed
+ * live). Both steps inspect their returned error (the admin API RESOLVES
+ * with `{ error }`, it does not reject) and a failed rollback is logged
+ * loudly by id — our own UUID, no PII — because an orphaned sign-in-capable
+ * account that nothing will retry is exactly what an operator must hear
+ * about. Never throws: rollback failing must not mask the original error.
+ */
+async function rollbackAccount(admin: SupabaseClient, accountId: string): Promise<void> {
+  try {
+    const { error: profileError } = await admin.from('profiles').delete().eq('id', accountId);
+    if (profileError) {
+      log.error('Rollback could not remove the profile of an orphaned account', undefined, {
+        accountId,
+        reason: profileError.message,
+      });
+    }
+    const { error: authError } = await admin.auth.admin.deleteUser(accountId);
+    if (authError) {
+      log.error('Rollback could not remove an orphaned auth account', undefined, {
+        accountId,
+        reason: authError.message,
+      });
+    }
+  } catch (err) {
+    log.error('Rollback of an orphaned account threw', err, { accountId });
+  }
+}
+
+/**
+ * One login account for one planned create — the account half of the
+ * create-teacher-account route, minus the temp-password relay. Returns
+ * 'conflict' when the email is already registered to any Speddy account.
+ * Cleans up after itself (profile then auth user) if a later step fails,
+ * then rethrows.
+ */
+async function createLoginAccount(
+  admin: SupabaseClient,
+  create: PlannedCreate,
+  school: { schoolId: string; schoolName: string },
+): Promise<{ accountId: string } | 'conflict'> {
+  const email = (create.email as string).toLowerCase().trim();
+  const fullName = `${create.firstName} ${create.lastName}`.trim();
+
+  const { data, error } = await admin.auth.admin.createUser({
+    email,
+    // Random and immediately discarded: access rides on the district inbox
+    // ("Forgot password") or Google SSO, never on a relayed secret.
+    password: generateTemporaryPassword(),
+    email_confirm: true,
+    user_metadata: { full_name: fullName, role: 'teacher', created_by_admin: true },
+  });
+  if (error || !data?.user) {
+    // The stable GoTrue code first; the prose match stays as a fallback for
+    // older gateway shapes — message wording is not a contract (PR #833).
+    const code = (error as { code?: string } | null)?.code;
+    const message = (error?.message ?? '').toLowerCase();
+    if (
+      code === 'email_exists' ||
+      (message.includes('already') && (message.includes('registered') || message.includes('exists')))
+    ) {
+      return 'conflict';
+    }
+    throw new Error(
+      `Creating a sign-in account at ${school.schoolName} failed: ${error?.message ?? 'no user returned'}`,
+    );
+  }
+
+  try {
+    // Same RPC + school_id fix-up as the admin route, so a sync-provisioned
+    // teacher is indistinguishable from a hand-provisioned one.
+    const { error: profileError } = await admin.rpc('create_profile_for_new_user', {
+      user_id: data.user.id,
+      user_email: email,
+      user_metadata: {
+        full_name: fullName,
+        role: 'teacher',
+        school_site: school.schoolName,
+        school_district: '',
+        state: '',
+        works_at_multiple_schools: false,
+        additional_schools: [],
+      },
+    });
+    if (profileError) throw new Error(`Profile creation failed: ${profileError.message}`);
+
+    const { error: updateError } = await admin
+      .from('profiles')
+      .update({ school_id: school.schoolId })
+      .eq('id', data.user.id);
+    if (updateError) throw new Error(`Profile school update failed: ${updateError.message}`);
+
+    return { accountId: data.user.id };
+  } catch (err) {
+    await rollbackAccount(admin, data.user.id);
+    throw err;
+  }
+}
+
 async function applySchools(
   supabase: ReturnType<typeof createServiceClient>,
   plan: TeacherSyncPlan,
   results: SchoolWriteResult[],
 ): Promise<void> {
+  // The raw admin client, exactly as /api/admin/create-teacher-account builds
+  // it: auth.admin lives here, not on the SSR service client.
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !serviceRoleKey) {
+    throw new Error('Supabase URL and service role key are required to provision accounts.');
+  }
+  const admin = createSupabaseAdminClient(supabaseUrl, serviceRoleKey);
+
+  // Accounts provisioned in THIS run, by email. A multi-school teacher plans
+  // one create per school with the same email; the second school must link
+  // the account the first just made — reporting our own minutes-old account
+  // as "already uses Speddy in another role" would be false, and the row
+  // would stay unlinked (PR #833 review).
+  const provisionedThisRun = new Map<string, string>();
+
   for (const school of plan.schools) {
     if (school.refusal) continue;
     const result: SchoolWriteResult = {
@@ -827,34 +1012,84 @@ async function applySchools(
       created: 0,
       adopted: 0,
       updated: 0,
+      accountsCreated: 0,
+      directoryOnly: 0,
+      accountConflicts: [],
     };
     // Pushed BEFORE the writes, counts accumulating on the shared reference:
     // a school that fails halfway must still contribute what it DID write to
     // the partial-outcome audit record, not vanish from it.
     results.push(result);
 
-    if (school.creates.length > 0) {
-      const rows = school.creates.map((c) => ({
-        first_name: c.firstName,
-        last_name: c.lastName,
-        email: c.email,
-        school_id: school.schoolId,
-        school_site: school.schoolName,
-        grade_level: c.gradeLevel,
-        created_by_admin: false,
-        sis_source: TEACHER_SIS_SOURCE,
-        sis_id: c.sisId,
-      }));
+    // One teacher at a time, account first, so each directory row is born
+    // already linked — no window where a teacher exists accountless and a
+    // parallel process could half-see them. Stop-on-failure posture holds:
+    // a failed teacher stops the run (rolling back their own auth user);
+    // completed teachers stay and are audited. Outcome counters move ONLY
+    // after the row lands, so a partial audit never reports a teacher the
+    // database does not have (Codex/self-review, PR #833).
+    for (const c of school.creates) {
+      let accountId: string | null = null;
+      let outcome: 'account' | 'account-reused' | 'conflict' | 'directory-only';
+      const emailKey = c.email ? c.email.toLowerCase().trim() : null;
+      if (emailKey && provisionedThisRun.has(emailKey)) {
+        accountId = provisionedThisRun.get(emailKey) as string;
+        outcome = 'account-reused';
+      } else if (c.email) {
+        const provisioned = await createLoginAccount(admin, c, school);
+        if (provisioned === 'conflict') {
+          outcome = 'conflict';
+        } else {
+          accountId = provisioned.accountId;
+          outcome = 'account';
+        }
+      } else {
+        outcome = 'directory-only';
+      }
+
       const { data, error } = await supabase
         .from('teachers')
-        .insert(rows)
+        .insert([
+          {
+            first_name: c.firstName,
+            last_name: c.lastName,
+            email: c.email,
+            school_id: school.schoolId,
+            school_site: school.schoolName,
+            grade_level: c.gradeLevel,
+            created_by_admin: false,
+            sis_source: TEACHER_SIS_SOURCE,
+            sis_id: c.sisId,
+            account_id: accountId,
+          },
+        ])
         .select('id');
       if (error) {
+        // A freshly minted account whose directory row never landed must not
+        // survive: a re-run's plan reads only `teachers` and would report its
+        // own orphan as a conflict forever. A REUSED account belongs to an
+        // earlier, committed row — it stays.
+        if (accountId && outcome === 'account') {
+          await rollbackAccount(admin, accountId);
+        }
         // Stop rather than continue past a failed school: a partial apply that
         // keeps going reports success about a state it does not know.
         throw new Error(`Creating teachers for ${school.schoolName} failed: ${error.message}`);
       }
-      result.created = (data ?? []).length;
+      if ((data ?? []).length > 0) {
+        result.created += (data ?? []).length;
+        if (outcome === 'account' && emailKey && accountId) {
+          result.accountsCreated += 1;
+          provisionedThisRun.set(emailKey, accountId);
+        } else if (outcome === 'conflict' && c.email) {
+          result.accountConflicts.push({
+            name: `${c.firstName} ${c.lastName}`.trim(),
+            email: c.email,
+          });
+        } else if (outcome === 'directory-only') {
+          result.directoryOnly += 1;
+        }
+      }
     }
 
     for (const adopt of school.adopts) {
