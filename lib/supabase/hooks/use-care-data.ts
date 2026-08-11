@@ -95,7 +95,7 @@ export function useCareData(options?: UseCareDataOptions): UseCareDataReturn {
       setState(prev => ({
         ...prev,
         loading: false,
-        error: err instanceof Error ? err.message : 'Failed to load CARE data',
+        error: err instanceof Error ? err.message : 'Failed to load referral data',
       }));
     }
   }, [currentSchool?.school_id, teacherId, skip]);

@@ -110,7 +110,7 @@ export default function Navbar() {
         { name: 'Schools', href: '/dashboard/admin/schools' },
         { name: 'Directories', href: '/dashboard/admin/directories' },
         { name: 'Curriculums', href: '/dashboard/admin/curriculums' },
-        { name: 'CARE', href: '/dashboard/admin/care' },
+        { name: 'Referrals', href: '/dashboard/admin/care' },
       ];
     } else if (role === 'district_tech') {
       // District Tech Admins only ever see the integrations portal (SPE-393).
@@ -132,7 +132,7 @@ export default function Navbar() {
         { name: 'Staff', href: '/dashboard/admin/staff' },
         { name: 'Students', href: '/dashboard/admin/students' },
         { name: 'Chat', href: '/dashboard/chat' },
-        { name: 'CARE', href: '/dashboard/care' },
+        { name: 'Referrals', href: '/dashboard/care' },
       ];
     } else if (role === 'teacher') {
       // Teachers see their dashboard, students in resource, and special activities
@@ -167,7 +167,7 @@ export default function Navbar() {
         { name: 'Meetings', href: '/dashboard/meetings' },
         { name: 'Plan', href: '/dashboard/plan' },
         { name: 'Chat', href: '/dashboard/chat' },
-        { name: 'CARE', href: '/dashboard/care' },
+        { name: 'Referrals', href: '/dashboard/care' },
       ];
     } else if (role === 'speech' || role === 'ot' || role === 'counseling' || role === 'psychologist') {
       // Speech, OT, Counseling, Psychologist providers see standard navigation WITHOUT Tools

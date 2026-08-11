@@ -742,7 +742,7 @@ export default function CreateAccountPage() {
                 <p>
                   A District Tech Admin only sees the Integrations area, where they
                   connect your student information system. They cannot see students,
-                  schedules, CARE, or any other part of Speddy.
+                  schedules, referrals, or any other part of Speddy.
                 </p>
                 <p className="mt-2">
                   They&apos;ll be asked to choose a new password the first time they sign in.

@@ -527,7 +527,7 @@ export default function AdminDashboardPage() {
                 </svg>
               </div>
               <div className="ml-4">
-                <h3 className="text-sm font-semibold text-gray-900">CARE Referrals</h3>
+                <h3 className="text-sm font-semibold text-gray-900">Referrals</h3>
                 <p className="text-sm text-gray-600">View student support referrals</p>
               </div>
             </Link>

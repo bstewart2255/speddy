@@ -31,13 +31,13 @@ export const DELETE = withRoute<{ referralId: string }>({}, async ({ userId, par
     .single();
 
   if (error || !referral) {
-    return NextResponse.json({ error: 'CARE referral not found' }, { status: 404 });
+    return NextResponse.json({ error: 'Referral not found' }, { status: 404 });
   }
 
   const rls = await createClient();
   if (!referral.school_id || !(await isAdminForSchool(rls, userId, referral.school_id))) {
     return NextResponse.json(
-      { error: 'You do not have permission to delete this CARE referral' },
+      { error: 'You do not have permission to delete this referral' },
       { status: 403 }
     );
   }
@@ -45,7 +45,7 @@ export const DELETE = withRoute<{ referralId: string }>({}, async ({ userId, par
   const { error: delErr } = await service.from('care_referrals').delete().eq('id', referralId);
   if (delErr) {
     log.error('Failed to delete CARE referral', delErr);
-    return NextResponse.json({ error: 'Failed to delete CARE referral' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to delete referral' }, { status: 500 });
   }
 
   log.info('CARE referral deleted by admin', { referralId, deletedBy: userId });

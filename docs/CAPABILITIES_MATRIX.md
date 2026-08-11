@@ -97,7 +97,7 @@ person using it.
 | 1 | Schedule building — provider | Provider | ✅ |
 | 2 | Schedule building — site admin (Master Schedule) | Site admin | ✅ |
 | 3 | IEP meeting calendaring (Meetings) | Site admin + Provider | 🗓️ rolling out |
-| 4 | Referral tracking (CARE) | All roles | ✅ |
+| 4 | Referral tracking | All roles | ✅ |
 | 5 | Student & caseload management | Provider | ✅ |
 | 6 | Lesson planning & materials | Provider | 🔶 (AI features flag-gated) |
 | 7 | Progress monitoring & assessment | Provider | ✅ |
@@ -178,7 +178,7 @@ chain. The organizer sees everyone's availability without asking anyone.
 watch the dashboard; teachers just receive accurate calendar invites; parents
 confirm by link or phone.
 
-### 2.4 Referral tracking (CARE)
+### 2.4 Referral tracking
 
 The front door for student concerns, before and around the IEP: a shared
 queue instead of sticky notes and hallway conversations.
@@ -193,7 +193,7 @@ queue instead of sticky notes and hallway conversations.
     referral starts the legal clock immediately: the case opens on arrival
     with the assessment-plan due date pre-calculated (15 days, CA Ed. Code).
 - Cases carry meeting notes, action items with owners and due dates, current
-  disposition, and follow-up dates — the whole SST/CARE-meeting paper trail
+  disposition, and follow-up dates — the whole SST-meeting paper trail
   in one place.
 - School-scoped: the team sees their school's queue; district admins see
   across schools.
@@ -314,7 +314,7 @@ in charter networks and private-school learning-support teams.
 | Provider schedule building | 👁 | 👁 | ✅ | 👁 (their students) | 👁 (assigned sessions) | — |
 | Master Schedule (bells, specials, yard duty) | 👁 | ✅ | ✏️ (can enter site data; consumes it) | ✏️ (own class activities) | — | — |
 | IEP meeting calendaring 🗓️ | 👁 (planned) | 🔶 rules setup shipped; dashboard planned | 🗓️ planner in review; reschedule planned | ✏️ one-time availability (shipped) | — | — |
-| Referral tracking (CARE) | 👁 across schools | ✅ oversight | ✅ works the queue | ✏️ submits + follows | 👁 | — |
+| Referral tracking | 👁 across schools | ✅ oversight | ✅ works the queue | ✏️ submits + follows | 👁 | — |
 | Student & caseload management | 👁 across schools | 👁 school-wide | ✅ | 👁 (their students) | 👁 (their students) | — |
 | Lesson planning & materials | — | — | ✅ | — | 👁 view-only | — |
 | Progress monitoring & assessment | 👁 | 👁 | ✅ | — | ✏️ (curriculum progress) | — |
@@ -348,7 +348,7 @@ never change with level.
 | Provider schedule building | ✅ | 🗓️ hidden today; period-based scheduling is the Middle/High module roadmap | 🗓️ same as middle |
 | Master Schedule (site admin) | ✅ | ✅ | ✅ |
 | IEP meeting calendaring | 🗓️ auto-assembles the team (single classroom teacher) | 🗓️ case manager picks the gen-ed teacher(s) | 🗓️ same as middle |
-| Referral tracking (CARE) | ✅ | ✅ | ✅ |
+| Referral tracking | ✅ | ✅ | ✅ |
 | Student & caseload management | ✅ full, incl. sessions/minutes and attendance | 🔶 caseload-first: goals, accommodations, assessments; session/attendance fields hidden | 🔶 same as middle |
 | Lesson planning & materials | ✅ (Plan calendar + materials) | 🔶 materials are grade-driven and work; the Plan calendar is hidden | 🔶 same as middle |
 | Progress monitoring & assessment | ✅ | 🔶 goal-driven tools work; attendance widgets hidden | 🔶 same as middle |
@@ -378,7 +378,7 @@ type-by-type read below (today every school must sit under a district).
 | Provider schedule building | ✅ | ✅ as-is | ✅ mechanics transfer directly to learning-support sessions |
 | Master Schedule (site admin) | ✅ | ✅ as-is | ✅ as-is (bell schedules and specials exist everywhere) |
 | IEP meeting calendaring | 🗓️ | 🗓️ as-is (charters run IEPs) | 🗓️ reframed: support-plan / family meetings — same engine, no IDEA clock |
-| Referral tracking (CARE) | ✅ both lanes, incl. the private-school referral intake **received by the district** | ✅ both lanes | 🔶 discussion lane fits (internal concern → learning-support review); the statutory compliance lane doesn't apply |
+| Referral tracking | ✅ both lanes, incl. the private-school referral intake **received by the district** | ✅ both lanes | 🔶 discussion lane fits (internal concern → learning-support review); the statutory compliance lane doesn't apply |
 | Student & caseload management | ✅ IEP-organized | ✅ IEP-organized | 🔶 the goal/accommodation/minutes mechanics fit **support plans**; IEP-specific fields (triennials, IDEA categories) don't apply |
 | Lesson planning & materials | 🔶 (AI flag) | 🔶 same | 🔶 same — grade-driven, not school-type-driven |
 | Progress monitoring & assessment | ✅ | ✅ | ✅ goal-indexed progress works for any plan's goals |
@@ -389,8 +389,8 @@ type-by-type read below (today every school must sit under a district).
 **Type-by-type read:**
 
 - **Public district.** The built-for environment. District hierarchy, admin
-  oversight, SEIS import, CARE's statutory clocks, and the IEP data model all
-  assume it.
+  oversight, SEIS import, the referral module's statutory clocks, and the IEP
+  data model all assume it.
 - **Charter.** Same product in practice — charters are public schools running
   IEPs — with the *buyer* being the school or network rather than a district
   office. In California, Speddy runs **alongside SEIS** (SEIS writes the IEP
@@ -408,8 +408,8 @@ type-by-type read below (today every school must sit under a district).
   (a private school currently has to be attached to a district record) and
   IEP-centric labels in the UX. Both are bounded adaptations, identified in
   the market research, not rebuilds. Until then, private schools appear in
-  Speddy mainly from the **district side** — as a referral source in CARE's
-  compliance lane.
+  Speddy mainly from the **district side** — as a referral source in the
+  referral module's compliance lane.
 
 ---
 
@@ -446,8 +446,8 @@ What this document supports deciding (kept as observations, not a design):
 
 ## Sources
 
-- `docs/ARCHITECTURE.md` — roles, portals, elementary/secondary split, CARE
-  model, scheduling model.
+- `docs/ARCHITECTURE.md` — roles, portals, elementary/secondary split, the
+  referral (`care_*`) model, scheduling model.
 - [Feature Overview for School Districts](https://linear.app/speddy/document/speddy-feature-overview-for-school-districts-81737db18ac1)
   (Linear) — provider feature inventory.
 - `docs/IEP_MEETING_SCHEDULING_SPEC.md` + PRs #684/#685 (merged), #686 (in

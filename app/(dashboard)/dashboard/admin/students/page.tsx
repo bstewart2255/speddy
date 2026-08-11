@@ -203,16 +203,16 @@ export default function AdminStudentsPage() {
           });
           if (!res.ok) {
             const body = await res.json().catch(() => ({}));
-            throw new Error(body?.error || 'Failed to delete CARE referral');
+            throw new Error(body?.error || 'Failed to delete referral');
           }
         })
       );
       // Clear only after success, so a partial failure keeps the modal open to retry.
       setCareMatches([]);
-      showToast('Related CARE records deleted', 'success');
+      showToast('Related referral records deleted', 'success');
     } catch (err) {
       console.error('Error deleting CARE records:', err);
-      showToast(err instanceof Error ? err.message : 'Failed to delete CARE records', 'error');
+      showToast(err instanceof Error ? err.message : 'Failed to delete referral records', 'error');
     }
   };
 
@@ -467,15 +467,15 @@ export default function AdminStudentsPage() {
         isOpen={careMatches.length > 0}
         onClose={() => setCareMatches([])}
         onConfirm={deleteCareMatches}
-        title="Delete related CARE records?"
+        title="Delete related referral records?"
         message={
           careMatches.length > 0
-            ? `We found ${careMatches.length} CARE referral(s) matching this student's name (${careMatches
+            ? `We found ${careMatches.length} referral(s) matching this student's name (${careMatches
                 .map(m => m.student_name)
                 .join(', ')}). These hold special-education referral data and are not removed automatically. Delete them too? This cannot be undone.`
             : ''
         }
-        confirmLabel="Delete CARE records"
+        confirmLabel="Delete referral records"
         variant="danger"
       />
     </div>

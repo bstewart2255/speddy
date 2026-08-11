@@ -335,7 +335,7 @@ export default function CaseDetailPage() {
                 href="/dashboard/admin/care"
                 className="mt-2 inline-block text-sm font-medium text-purple-600 hover:text-purple-500"
               >
-                Back to CARE Referrals
+                Back to District Referrals
               </Link>
             </div>
           </div>

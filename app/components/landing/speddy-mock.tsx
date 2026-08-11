@@ -916,7 +916,7 @@ function CareMock({ type }: { type: SchoolType }) {
       >
         <div>
           <div style={{ fontSize: 13, color: 'rgba(15,23,42,0.55)', fontWeight: 500 }}>
-            CARE · referral queue
+            Referral queue
           </div>
           <div style={{ fontSize: 18, color: '#0F172A', fontWeight: 700, marginTop: 2 }}>
             4 active cases
