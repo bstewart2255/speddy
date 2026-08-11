@@ -90,6 +90,33 @@ describe('restoreStudentInitials', () => {
     expect(response.lesson.teacherLessonPlan.studentInitials).toEqual(['JB']);
   });
 
+  // Regression: stripping punctuation would collapse "Student 1-2" to
+  // "student12" and attribute the problems to Student 12 on a large roster.
+  it('does not resolve a multi-student reference to a single student', () => {
+    const bigRoster = buildStudentLabelMap(
+      Array.from({ length: 12 }, (_, i) => ({ id: `id-${i}`, initials: `S${i + 1}` }))
+    );
+    const response = {
+      lesson: { teacherLessonPlan: { studentInitials: ['Student 1-2'] } },
+    };
+    restoreStudentInitials(response, bigRoster);
+
+    expect(response.lesson.teacherLessonPlan.studentInitials).toEqual(['Student 1-2']);
+    expect(bigRoster.toInitials.get('Student 12')).toBe('S12');
+  });
+
+  it.each(['Students 1 and 2', 'Student 1 & 2', 'Student One', 'the group'])(
+    'leaves an unparseable reference alone (%s)',
+    echoed => {
+      const response = {
+        lesson: { teacherLessonPlan: { studentInitials: [echoed] } },
+      };
+      restoreStudentInitials(response, map);
+
+      expect(response.lesson.teacherLessonPlan.studentInitials).toEqual([echoed]);
+    }
+  );
+
   it('preserves a label the map does not know', () => {
     const response = {
       lesson: {

@@ -18,7 +18,7 @@ export interface StudentLabelMap {
   /** Label -> real initials, used to restore the model's response. */
   toInitials: Map<string, string>;
   /**
-   * Normalized label -> real initials. Models routinely echo a label back with
+   * Canonical label -> real initials. Models routinely echo a label back with
    * different casing or punctuation ("student 1", "Student #1"); without this
    * the restore would miss and a teacher would see the placeholder on their
    * printout instead of the student's initials.
@@ -26,9 +26,19 @@ export interface StudentLabelMap {
   toInitialsNormalized: Map<string, string>;
 }
 
-/** Collapses formatting drift so "Student #1" and "student 1" both match. */
-function normalizeLabel(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9]/g, '');
+/**
+ * Canonicalizes an echoed label, tolerating casing and punctuation drift but
+ * accepting only a single numbered student. Returns null for anything else.
+ *
+ * The strictness is load-bearing: simply stripping punctuation would collapse
+ * a compact multi-student reference like "Student 1-2" to "student12", which
+ * on a roster of twelve or more silently resolves to Student 12 and prints a
+ * problem set under the wrong student's initials. Refusing to match is the
+ * safe outcome — an odd-looking label on the page beats a wrong attribution.
+ */
+function canonicalLabel(value: string): string | null {
+  const match = /^\s*students?\s*#?\s*(\d+)\s*$/i.exec(value);
+  return match ? `student${match[1]}` : null;
 }
 
 /** The student fields this module needs; a structural subset of `Student`. */
@@ -55,7 +65,8 @@ export function buildStudentLabelMap(students: LabelableStudent[]): StudentLabel
     // Mirrors the previous prompt behaviour: initials when present, id otherwise.
     const initials = student.initials || student.id;
     toInitials.set(label, initials);
-    toInitialsNormalized.set(normalizeLabel(label), initials);
+    // Always non-null for labels we generate ourselves.
+    toInitialsNormalized.set(canonicalLabel(label) as string, initials);
   });
 
   return { labels, toInitials, toInitialsNormalized };
@@ -63,11 +74,13 @@ export function buildStudentLabelMap(students: LabelableStudent[]): StudentLabel
 
 /** Exact match first, then formatting-tolerant; unknown values pass through. */
 function lookup(value: string, map: StudentLabelMap): string {
-  return (
-    map.toInitials.get(value) ??
-    map.toInitialsNormalized.get(normalizeLabel(value)) ??
-    value
-  );
+  const exact = map.toInitials.get(value);
+  if (exact !== undefined) return exact;
+
+  const canonical = canonicalLabel(value);
+  if (canonical === null) return value;
+
+  return map.toInitialsNormalized.get(canonical) ?? value;
 }
 
 /**
