@@ -113,7 +113,6 @@ CONTENT VARIETY REQUIREMENTS (for reading passages):
 
 OUTPUT FORMAT (valid JSON):
 {
-  "studentInitials": "J.D.",
   "iepGoals": [
     {
       "goal": "[exact IEP goal text - for internal tracking only, NOT shown to student]",
@@ -155,7 +154,6 @@ You must respond with ONLY a valid JSON object. No other text.`;
   // Create user prompt (only for regular goals, fluency handled separately)
   const userPrompt = `Create a progress check assessment for:
 
-Student: ${request.studentInitials}
 Grade: ${request.gradeLevel}
 
 IEP Goals:

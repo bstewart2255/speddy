@@ -150,7 +150,8 @@ Speddy's codebase includes optional AI-assisted features (lesson, exit-ticket, a
 
 - These features are **disabled platform-wide** by a server-side feature gate; the AI routes return 404 and make **zero** calls to AI providers
 - Data-processing agreements with both AI providers are executed and on file; both prohibit training on customer data
-- Before any AI feature is enabled, Speddy will apply prompt de-identification, request zero-data-retention handling from the AI providers, and provide advance notice to districts as required by the executed CA-NDPA (Exhibit G)
+- **Prompt de-identification is implemented.** Prompts carry no student identifier: lesson prompts reference students only by positional labels ("Student 1", "Student 2") that are mapped back to initials inside Speddy before anything is displayed or printed, and the exit-ticket and progress-check prompts carry only a grade level and IEP goal text. No student initials, names, or record identifiers are included in any prompt
+- Two commitments remain outstanding before any AI feature is enabled: Speddy will request zero-data-retention handling from the AI providers, and will provide advance notice to districts with an updated AI Schedule of Data as required by the executed CA-NDPA (Exhibit G §§ 4.1–4.2)
 
 ---
 
