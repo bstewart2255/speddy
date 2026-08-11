@@ -1216,7 +1216,21 @@ Two properties worth knowing before relying on it:
 
 ## 8. CARE / Referrals Model
 
-CARE (the student-support / referral workflow) is a self-contained set of four
+> **Naming — read this before you grep.** The module is called **"Referrals"**
+> everywhere a user can see it (nav label, page headings, modal titles, toasts,
+> API error messages, landing-page copy). Everything *underneath* still carries
+> the original **CARE** name and was deliberately left alone: the five `care_*`
+> tables, their RLS policies, indexes and constraints, `get_care_assignable_users`,
+> the `/dashboard/care` routes, the `Care*` TypeScript types, and the
+> `lib/supabase/queries/care-*.ts` files. That mismatch is intentional, not drift
+> — renaming the schema would invalidate the district data-privacy paperwork in
+> `docs/ndpa/`, which cites `care_referrals.student_name`,
+> `care_referrals.referral_reason`, `care_referrals.requested_by`,
+> `care_meeting_notes` and `care_action_items` by exact table/column name as the
+> inventory of what Speddy collects. Code comments and server logs keep saying
+> "CARE" on purpose, so they still point at the tables they describe.
+
+CARE (the student-support / referral workflow) is a self-contained set of five
 tables. Crucially, a referral identifies the student by **free-text name** — it
 is **not** foreign-keyed to `students` (which is why student deletion can only
 surface CARE by name match; see §7).
@@ -1226,6 +1240,7 @@ erDiagram
     CARE_REFERRALS    ||--o| CARE_CASES         : "case (immediate for Lane B)"
     CARE_CASES        ||--o{ CARE_MEETING_NOTES : "notes"
     CARE_CASES        ||--o{ CARE_ACTION_ITEMS  : "action items"
+    CARE_CASES        ||--o{ CARE_CASE_STATUS_HISTORY : "status audit trail"
 
     CARE_REFERRALS {
         uuid id PK
@@ -1261,6 +1276,13 @@ erDiagram
         date due_date
         timestamptz completed_at
     }
+    CARE_CASE_STATUS_HISTORY {
+        uuid id PK
+        uuid case_id FK
+        text status
+        uuid changed_by FK
+        timestamptz created_at
+    }
 ```
 
 - **Two intake lanes**, chosen at submit time by `referral_source`
@@ -1280,7 +1302,8 @@ erDiagram
   notes/action-items reach scope via the `case → referral` join; insert policies
   require `referring_user_id` / `created_by = auth.uid()`.
 - **Cascade & soft delete:** `care_cases`, `care_meeting_notes`,
-  `care_action_items` are all `ON DELETE CASCADE` from their parents — deleting a
+  `care_action_items`, `care_case_status_history` are all `ON DELETE CASCADE`
+  from their parents — deleting a
   referral removes its entire tree. Referrals also support **soft delete**
   (`deleted_at`, `softDeleteReferral`). Admin hard-delete goes through
   `app/api/admin/care-referrals/[referralId]` (service role after a school-scope

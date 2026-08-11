@@ -190,7 +190,7 @@ function resolve(sel: Sel): Resolved {
         note: '',
       },
       {
-        name: 'Referral tracking (CARE)',
+        name: 'Referral tracking',
         status: 'live',
         graphic: 'care',
         benefit: isPriv
@@ -294,7 +294,7 @@ function resolve(sel: Sel): Resolved {
         note: '',
       },
       {
-        name: 'Referral oversight (CARE)',
+        name: 'Referral oversight',
         status: 'live',
         graphic: 'care',
         benefit:
@@ -397,9 +397,9 @@ function resolve(sel: Sel): Resolved {
         benefit:
           'The whole ' +
           (isCharter ? 'network' : 'district') +
-          '’s CARE queue in one place — including the private-school referrals your district receives.',
+          '’s referral queue in one place — including the private-school referrals your district receives.',
         points: [
-          'Every school’s CARE queue in one place',
+          'Every school’s referral queue in one place',
           'Includes private-school referrals you receive',
           'Spot bottlenecks before they grow',
         ],

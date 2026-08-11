@@ -305,7 +305,7 @@ export default function CreateAdminPage() {
             {adminType === 'district_admin'
               ? 'Can manage all schools in the district'
               : adminType === 'district_tech'
-                ? 'SIS integrations only — no students, schedules or CARE'
+                ? 'SIS integrations only — no students, schedules or referrals'
                 : 'Can manage a single school'}
           </p>
         </div>

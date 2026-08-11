@@ -167,7 +167,7 @@ export function AddReferralModal({ isOpen, onClose, onSubmit, lockedTeacher }: A
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={handleClose} title="Add CARE Referral">
+    <Modal isOpen={isOpen} onClose={handleClose} title="Add Referral">
       <form onSubmit={handleSubmit} className="space-y-4">
         {error && (
           <div className="p-3 bg-red-50 border border-red-200 rounded-md text-red-700 text-sm">

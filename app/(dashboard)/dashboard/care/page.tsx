@@ -215,7 +215,7 @@ export default function CareDashboardPage() {
     return (
       <div className="max-w-4xl mx-auto py-8 px-4">
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-yellow-800">
-          Please select a school to view CARE referrals.
+          Please select a school to view referrals.
         </div>
       </div>
     );
@@ -237,9 +237,9 @@ export default function CareDashboardPage() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">CARE Dashboard</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Referrals</h1>
           <p className="text-sm text-gray-500 mt-1">
-            Child Assistance Response in Education
+            Student support referrals and cases
           </p>
         </div>
         <button

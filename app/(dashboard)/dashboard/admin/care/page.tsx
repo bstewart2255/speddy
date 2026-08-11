@@ -62,7 +62,7 @@ export default function DistrictCarePage() {
         setReferrals(referralsData);
       } catch (err) {
         console.error('Error loading CARE data:', err);
-        setError(err instanceof Error ? err.message : 'Failed to load CARE data');
+        setError(err instanceof Error ? err.message : 'Failed to load referral data');
       } finally {
         setLoading(false);
       }
@@ -98,7 +98,7 @@ export default function DistrictCarePage() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center py-12">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-2 text-gray-600">Loading CARE referrals...</p>
+          <p className="mt-2 text-gray-600">Loading referrals...</p>
         </div>
       </div>
     );
@@ -139,11 +139,11 @@ export default function DistrictCarePage() {
             Admin Dashboard
           </Link>
           <span>/</span>
-          <span className="text-gray-900">CARE Referrals</span>
+          <span className="text-gray-900">Referrals</span>
         </div>
-        <h1 className="text-2xl font-bold text-gray-900">CARE Referrals</h1>
+        <h1 className="text-2xl font-bold text-gray-900">Referrals</h1>
         <p className="mt-1 text-sm text-gray-600">
-          View all CARE referrals across your district
+          View all referrals across your district
         </p>
       </div>
 

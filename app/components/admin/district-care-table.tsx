@@ -54,7 +54,7 @@ export function DistrictCareTable({ referrals, isLoading }: DistrictCareTablePro
   if (referrals.length === 0) {
     return (
       <div className="bg-white border border-gray-200 rounded-lg p-8 text-center text-gray-500">
-        No CARE referrals found.
+        No referrals found.
       </div>
     );
   }

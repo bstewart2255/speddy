@@ -99,9 +99,9 @@ export const DELETE = withRoute<{ providerId: string }>({}, async ({ userId, par
 
   // --- Preflight: NOT NULL references that do not cascade would hard-block the delete. ---
   const blockerSpecs: Array<{ label: string; table: string; column: string }> = [
-    { label: 'CARE referral(s) created', table: 'care_referrals', column: 'referring_user_id' },
-    { label: 'CARE meeting note(s)', table: 'care_meeting_notes', column: 'created_by' },
-    { label: 'CARE case status change(s)', table: 'care_case_status_history', column: 'changed_by' },
+    { label: 'referral(s) created', table: 'care_referrals', column: 'referring_user_id' },
+    { label: 'referral meeting note(s)', table: 'care_meeting_notes', column: 'created_by' },
+    { label: 'referral case status change(s)', table: 'care_case_status_history', column: 'changed_by' },
     { label: 'school year activation(s)', table: 'activated_school_years', column: 'activated_by' },
   ];
 
