@@ -13,10 +13,11 @@ import { log } from '@/lib/monitoring/logger';
  *
  * Student-data scope (CA-NDPA, see SPE-61 / `lib/lessons/student-labels.ts`):
  * what these tools return is sent to Anthropic as tool results, so they are
- * limited to the disclosed subprocessor scope — student initials and IEP goal
- * text (plus grade and session times). Full names and free-text session notes
- * are deliberately never selected here; widening this requires a disclosure
- * update first, not just a code change.
+ * limited to the disclosed subprocessor scope — student initials, IEP goal
+ * text, IEP/triennial meeting dates, grade, session times, and session group
+ * labels. Full names and free-text session notes are deliberately never
+ * selected here; widening this requires a disclosure update in
+ * `docs/subprocessors.md` in the same PR, not just a code change.
  */
 
 export const MAX_SCHEDULE_RANGE_DAYS = 31;
@@ -26,7 +27,7 @@ export const assistantTools: Anthropic.Tool[] = [
   {
     name: 'get_caseload',
     description:
-      "List the students whose services the signed-in provider owns (their caseload): student id, initials, grade, IEP goals, and service level (sessions per week, minutes per session, total weekly minutes). Use this for questions about students, goals, or service minutes, and to find a student_id for get_student_info. Students the provider only delivers delegated sessions for are not caseload — they appear in get_schedule instead.",
+      "List the students whose services the signed-in provider owns (their caseload): student id, initials, grade, IEP goals, upcoming annual IEP meeting date and triennial review date (if recorded), and service level (sessions per week, minutes per session, total weekly minutes). Note: dates written inside goal text are goal target dates, not IEP meeting dates. Use this for questions about students, goals, IEP dates, or service minutes, and to find a student_id for get_student_info. Students the provider only delivers delegated sessions for are not caseload — they appear in get_schedule instead.",
     input_schema: {
       type: 'object',
       properties: {},
@@ -36,7 +37,7 @@ export const assistantTools: Anthropic.Tool[] = [
   {
     name: 'get_schedule',
     description:
-      "List the provider's dated session instances between start_date and end_date (inclusive) — both sessions they own and sessions delegated to them (delegated_to_me: true) — each with date, start/end time, student id/initials/grade, service type, who delivers it, and completion status. Dates are YYYY-MM-DD and the range may span at most 31 days. Use for questions about their calendar, a specific day or week, or completed/upcoming sessions.",
+      "List the provider's dated session instances between start_date and end_date (inclusive) — both sessions they own and sessions delegated to them (delegated_to_me: true) — each with date, start/end time, student id/initials/grade, service type, group name (if the session belongs to a named group; students sharing the same time slot are seen together as a group either way), who delivers it, and completion status. Dates are YYYY-MM-DD and the range may span at most 31 days. Use for questions about their calendar, a specific day or week, groups, or completed/upcoming sessions.",
     input_schema: {
       type: 'object',
       properties: {
@@ -56,7 +57,7 @@ export const assistantTools: Anthropic.Tool[] = [
   {
     name: 'get_student_info',
     description:
-      'Get one student the provider works with, by student_id (from get_caseload or get_schedule): initials, grade, IEP goals, service level, and the recurring weekly session slots this provider owns or delivers for them (day_of_week 1=Monday … 5=Friday).',
+      "Get one student the provider works with, by student_id (from get_caseload or get_schedule): initials, grade, IEP goals, upcoming annual IEP meeting date and triennial review date (if recorded), service level, and the recurring weekly session slots this provider owns or delivers for them (day_of_week 1=Monday … 5=Friday), each with its group name if the slot is part of a named group. When on_my_caseload is false (a student only delegated to this provider), IEP goals and meeting dates are held by the caseload owner and are not visible here — say that, never that they are missing.",
     input_schema: {
       type: 'object',
       properties: {
@@ -80,6 +81,8 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 interface StudentDetailsRow {
   iep_goals?: string[] | string | null;
+  upcoming_iep_date?: string | null;
+  upcoming_triennial_date?: string | null;
 }
 
 // Relationship columns come back as an object or a one-element array depending
@@ -127,7 +130,9 @@ function parseDateRange(input: Record<string, unknown>):
 async function getCaseload(supabase: SupabaseClient, userId: string): Promise<AssistantToolResult> {
   const { data, error } = await supabase
     .from('students')
-    .select('id, initials, grade_level, sessions_per_week, minutes_per_session, student_details(iep_goals)')
+    .select(
+      'id, initials, grade_level, sessions_per_week, minutes_per_session, student_details(iep_goals, upcoming_iep_date, upcoming_triennial_date)'
+    )
     .eq('provider_id', userId)
     .order('grade_level', { ascending: true });
 
@@ -151,6 +156,8 @@ async function getCaseload(supabase: SupabaseClient, userId: string): Promise<As
       weekly_minutes:
         sessionsPerWeek != null && minutesPerSession != null ? sessionsPerWeek * minutesPerSession : null,
       iep_goals: normalizeGoals(details?.iep_goals),
+      upcoming_iep_date: details?.upcoming_iep_date ?? null,
+      upcoming_triennial_date: details?.upcoming_triennial_date ?? null,
     };
   });
 
@@ -171,7 +178,7 @@ async function getSchedule(
   const { data, error } = await supabase
     .from('schedule_sessions')
     .select(
-      'session_date, start_time, end_time, service_type, delivered_by, is_completed, provider_id, student_id, students(initials, grade_level)'
+      'session_date, start_time, end_time, service_type, delivered_by, is_completed, provider_id, student_id, group_name, students(initials, grade_level)'
     )
     .or(`provider_id.eq.${userId},assigned_to_specialist_id.eq.${userId}`)
     .not('session_date', 'is', null)
@@ -197,6 +204,7 @@ async function getSchedule(
       student_initials: student?.initials ?? null,
       student_grade: student?.grade_level ?? null,
       service_type: row.service_type,
+      group_name: row.group_name ?? null,
       delivered_by: row.delivered_by,
       delegated_to_me: row.provider_id !== userId,
       completed: row.is_completed === true,
@@ -228,10 +236,17 @@ async function getStudentInfo(
   // No provider_id pin here: RLS already scopes reads to students this user
   // works with (owned caseload OR assigned via delegated sessions), and the
   // schedule surface exposes delegated students too — pinning to ownership
-  // would wrongly refuse them.
+  // would wrongly refuse them. provider_id is selected only to compute
+  // on_my_caseload below; it is never emitted to the model.
+  // Note (verified against live pg_policies): student_details' SELECT policy
+  // covers owner/SEA/teacher paths but NOT delegated specialists, so for a
+  // delegated student the details join comes back empty — on_my_caseload lets
+  // the model report "held by the caseload owner" instead of "missing".
   const { data, error } = await supabase
     .from('students')
-    .select('id, initials, grade_level, sessions_per_week, minutes_per_session, student_details(iep_goals)')
+    .select(
+      'id, initials, grade_level, sessions_per_week, minutes_per_session, provider_id, student_details(iep_goals, upcoming_iep_date, upcoming_triennial_date)'
+    )
     .eq('id', studentId)
     .maybeSingle();
 
@@ -243,7 +258,7 @@ async function getStudentInfo(
 
   const { data: slots, error: slotsError } = await supabase
     .from('schedule_sessions')
-    .select('day_of_week, start_time, end_time, service_type')
+    .select('day_of_week, start_time, end_time, service_type, group_name')
     .eq('student_id', studentId)
     .or(`provider_id.eq.${userId},assigned_to_specialist_id.eq.${userId}`)
     .eq('is_template', true)
@@ -266,16 +281,20 @@ async function getStudentInfo(
       student_id: data.id,
       initials: data.initials,
       grade: data.grade_level,
+      on_my_caseload: data.provider_id === userId,
       sessions_per_week: sessionsPerWeek,
       minutes_per_session: minutesPerSession,
       weekly_minutes:
         sessionsPerWeek != null && minutesPerSession != null ? sessionsPerWeek * minutesPerSession : null,
       iep_goals: normalizeGoals(details?.iep_goals),
+      upcoming_iep_date: details?.upcoming_iep_date ?? null,
+      upcoming_triennial_date: details?.upcoming_triennial_date ?? null,
       weekly_slots: (slots ?? []).map((s) => ({
         day_of_week: s.day_of_week,
         start_time: s.start_time,
         end_time: s.end_time,
         service_type: s.service_type,
+        group_name: s.group_name ?? null,
       })),
     },
   };

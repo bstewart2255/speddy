@@ -151,8 +151,19 @@ describe('POST /api/assistant/chat', () => {
     expect(mockCreate).toHaveBeenCalledTimes(1);
     const call = mockCreate.mock.calls[0][0];
     expect(call.model).toBe('claude-haiku-4-5');
-    expect(call.system).toContain('2026-08-11');
-    expect(call.system).toContain('Pat Provider');
+    // System rides as a cache-marked content block (tools + system cache
+    // together across the loop's rounds once the model's minimum is met).
+    expect(call.system).toHaveLength(1);
+    expect(call.system[0].cache_control).toEqual({ type: 'ephemeral' });
+    const systemText = call.system[0].text;
+    expect(systemText).toContain('2026-08-11');
+    expect(systemText).toContain('Pat Provider');
+    // SPE-455: the assistant teaches the product and answers general sped
+    // questions (with a verify-locally nudge) instead of refusing them.
+    expect(systemText).toContain('How Speddy works');
+    expect(systemText).toContain('General special-education guidance');
+    expect(systemText).toContain('vary by state and district');
+    expect(systemText).toContain('Need a human? Contact support');
     expect(call.tools.map((t: { name: string }) => t.name)).toEqual([
       'get_caseload',
       'get_schedule',

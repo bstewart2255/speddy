@@ -177,7 +177,8 @@ connection becomes §A student data and is disclosed there.
 - **Supabase** — system of record for everything above; **Storage** holds worksheet images and uploaded documents (private buckets).
 - **Vercel** — hosting/network: all traffic transits Vercel compute in transit, and request-scoped data may appear in console/runtime logs (not every element is always logged).
 - **Sentry** — incidental error context only, minimized (no logs/replay; SPE-167).
-- **OpenAI / Anthropic** — *only when AI is enabled* (currently hard-gated off, SPE-162 — gated routes 404 with **zero** provider calls): student **initials + IEP goal text** (lessons / exit-tickets / progress-checks), worksheet **images** (vision grading), and uploaded-document text. De-identification tracked in SPE-61.
+- **Anthropic** — the **AI assistant** ("Ask AI", SPE-450/452/455, enabled via `ASSISTANT_ENABLED`): student **initials + IEP goal text + upcoming IEP/triennial meeting dates + grade + session times and group names**, plus whatever the provider types into the chat (sent verbatim; the UI nudges toward initials). No full names, no session notes.
+- **OpenAI / Anthropic (other AI features)** — *only when `AI_FEATURES_ENABLED` is on* (currently hard-gated off, SPE-162 — gated routes 404 with **zero** provider calls): student **initials + IEP goal text** (lessons / exit-tickets / progress-checks), worksheet **images** (vision grading), and uploaded-document text. De-identification tracked in SPE-61.
 - **Help Scout** — support help desk + chat (Beacon widget). Receives the signed-in **provider's** email, full name, **role, school district, school site, and user ID** (pushed as Beacon identify attributes); no student data by design (though a provider could paste it into a chat message).
 - **Google Calendar** — *only when a provider connects it* (SPE-205): meeting events written to the provider's own calendar; event titles use initials, not full names.
 
