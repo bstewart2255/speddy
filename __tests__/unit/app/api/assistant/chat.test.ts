@@ -101,7 +101,10 @@ describe('POST /api/assistant/chat', () => {
     expect(mockCreate).not.toHaveBeenCalled();
   });
 
-  it('refuses non-provider roles before any model call', async () => {
+  it('refuses non-provider roles before any model call — even when the key is unconfigured', async () => {
+    // Gate-first ordering: unauthorized roles see the same 403 regardless of
+    // provider configuration, so the response never reveals config state.
+    delete process.env.ANTHROPIC_API_KEY;
     for (const role of ['teacher', 'sea', 'site_admin', 'district_admin', 'district_tech']) {
       mockCreate.mockClear();
       profileResult = { data: { role, full_name: 'Terry' }, error: null };

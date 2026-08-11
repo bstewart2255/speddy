@@ -61,11 +61,6 @@ export const POST = withRoute<Record<string, string>, z.infer<typeof bodySchema>
     rateLimit: { requests: 40, windowSeconds: 3600, name: 'assistant/chat', failClosed: true },
   },
   async ({ userId, body }) => {
-    if (!process.env.ANTHROPIC_API_KEY) {
-      log.error('Assistant chat: ANTHROPIC_API_KEY not configured', null);
-      return NextResponse.json({ error: 'Assistant is not configured' }, { status: 500 });
-    }
-
     const supabase = await createClient();
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
@@ -78,11 +73,18 @@ export const POST = withRoute<Record<string, string>, z.infer<typeof bodySchema>
       return NextResponse.json({ error: 'Could not verify your account' }, { status: 500 });
     }
 
+    // Role gate before the config check: unauthorized roles get the same 403
+    // whether or not the provider key is configured.
     if (!canUseAssistant(profile.role)) {
       return NextResponse.json(
         { error: 'The assistant is currently available to service providers only' },
         { status: 403 }
       );
+    }
+
+    if (!process.env.ANTHROPIC_API_KEY) {
+      log.error('Assistant chat: ANTHROPIC_API_KEY not configured', null);
+      return NextResponse.json({ error: 'Assistant is not configured' }, { status: 500 });
     }
 
     try {
