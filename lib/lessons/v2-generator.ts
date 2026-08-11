@@ -18,7 +18,6 @@ export interface V2GenerationRequest {
   grade?: string;  // Optional when students are provided
   duration: 15 | 30 | 45 | 60;
   studentIds?: string[];
-  studentInitials?: string[];
   students?: Student[];  // Optional: for IEP-aware generation
 }
 
@@ -154,7 +153,6 @@ async function generateV2WorksheetAttempt(
       grade: request.grade,
       duration: request.duration,
       problemCount,
-      studentInitials: request.studentInitials,
       abilityProfile,  // Pass ability profile to prompt builder
     };
 

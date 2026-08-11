@@ -3,7 +3,8 @@ import { isReadingFluencyGoal } from '@/lib/shared/question-types';
 import { generateFallbackFluencyPassage } from '@/lib/shared/fallback-passages';
 
 interface ExitTicketRequest {
-  studentInitials: string;
+  // Deliberately no student identifier: the prompt is built from grade level
+  // and goal text alone, so no student reference reaches the provider (SPE-61).
   gradeLevel: number;
   iepGoal: string;
 }
@@ -45,7 +46,6 @@ export async function generateExitTicket(request: ExitTicketRequest): Promise<Ex
   const prompt = `Generate an exit ticket assessment for a student. This should be completable in 3-5 minutes and fit on ONE page.
 
 Student Information:
-- Initials: ${request.studentInitials}
 - Grade Level: ${request.gradeLevel}
 
 Target IEP Goal:

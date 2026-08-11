@@ -126,7 +126,6 @@ export const POST = withRoute(
         try {
           // Generate exit ticket content using AI
           const ticketContent = await generateExitTicket({
-            studentInitials: student.initials,
             gradeLevel: student.grade_level,
             iepGoal: selectedGoal,
           });

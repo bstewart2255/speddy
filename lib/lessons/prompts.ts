@@ -6,6 +6,7 @@ import {
   getBaseMinimum,
   getBaseMaximum
 } from './duration-constants';
+import { buildStudentLabelMap } from './student-labels';
 
 export class PromptBuilder {
   /**
@@ -63,10 +64,10 @@ WORKSHEET CONTENT:
 ${this.getSubjectSpecificRequirements(subjectType)}
 
 TEACHER LESSON PLAN:
-- Student initials: Use actual initials from student data
+- Student labels: Use the exact student labels listed in GROUP INFORMATION ("Student 1", "Student 2", ...). Do not invent names or initials.
 - Teacher script: 2-3 sentence introduction
 - Whiteboard examples: Must have title, problem, steps array, and teachingPoint
-- Student problems: List which students will work on these problems (use initials)
+- Student problems: List which students will work on these problems (use the same labels)
 - Each problem needs: number, question, answer (and choices for multiple-choice)
 
 JSON STRUCTURE (REQUIRED - MUST HAVE ALL THREE TOP-LEVEL FIELDS):
@@ -93,7 +94,7 @@ JSON STRUCTURE (REQUIRED - MUST HAVE ALL THREE TOP-LEVEL FIELDS):
       ],
       "studentProblems": [
         {
-          "studentInitials": "AB",
+          "studentInitials": "Student 1",
           "problems": [
             { "number": "1", "question": "problem text", "answer": "answer", "choices": ["optional for MC"] }
           ]
@@ -190,9 +191,10 @@ KEY RULES:
     const gradeRange = grades.length === 1 ? `Grade ${grades[0]}` : `Grades ${Math.min(...grades)}-${Math.max(...grades)}`;
     prompt += `Grade Range: ${gradeRange}\n`;
 
-    // List student initials for reference
-    const studentInitials = request.students.map(s => s.initials || s.id).join(', ');
-    prompt += `Students: ${studentInitials}\n\n`;
+    // De-identified labels, never real initials (SPE-61). The response's labels
+    // are mapped back to initials in LessonGenerator before anything renders.
+    const { labels } = buildStudentLabelMap(request.students);
+    prompt += `Students: ${labels.join(', ')}\n\n`;
     
     // Add subject-specific reminders with emphasis on story inclusion
     const subjectReminder = request.subjectType === 'ela'

@@ -197,7 +197,6 @@ export const POST = withRoute(
       grade: body.grade,
       duration: body.duration,
       studentIds: body.studentIds,
-      studentInitials: body.studentInitials,
       students,  // Pass student data for IEP-aware generation
     };
 

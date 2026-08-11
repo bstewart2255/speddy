@@ -13,7 +13,8 @@ export interface V2ContentRequest {
   grade?: string;  // Optional when students with IEP goals are provided
   duration: number;
   problemCount: number;  // Already calculated by template
-  studentInitials?: string[];
+  // No student identifiers by design — this object is what reaches the prompt
+  // builder, so nothing on it may identify a student (SPE-61).
   abilityProfile?: AbilityProfile;  // Optional: IEP-derived ability profile
 }
 

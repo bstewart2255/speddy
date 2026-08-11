@@ -4,6 +4,7 @@ import { createAIProvider, AIProvider, GenerationMetadata } from './providers';
 import { promptBuilder } from './prompts';
 import { materialsValidator, ValidationResult } from './validator';
 import { getDurationMultiplier, getBaseMinimum, getBaseMaximum } from './duration-constants';
+import { buildStudentLabelMap, restoreStudentInitials } from './student-labels';
 
 // Configuration constants
 const CHUNK_THRESHOLD = parseInt(process.env.LESSON_CHUNK_THRESHOLD || '10');
@@ -181,6 +182,10 @@ export class LessonGenerator {
       try {
         const rawResponse = await this.getProvider().generateLesson(enrichedRequest, systemPrompt, userPrompt);
 
+        // The prompt carried de-identified labels (SPE-61); swap the real
+        // initials back in before validation, conversion, or rendering sees it.
+        restoreStudentInitials(rawResponse, buildStudentLabelMap(request.students));
+
         // Convert single worksheet response to expected format
         const lesson = this.convertToLessonFormat(rawResponse, request);
         const validation = materialsValidator.validateLesson(lesson);
@@ -325,6 +330,13 @@ ${promptBuilder.buildUserPrompt(lessonPlanRequest)}`;
 
       // Generate base lesson with separated prompts
       const baseLesson = await this.getProvider().generateLesson(lessonPlanRequest, systemPrompt, lessonPlanUserPrompt);
+
+      // Inert today: `gradeGroups` above is hardcoded empty, so this path
+      // generates no representative students and the restore is a no-op. Kept
+      // so that reviving chunked generation cannot silently ship labels to
+      // teachers — the map must be built from whatever subset the prompt used
+      // (`lessonPlanRequest.students`), not the full roster.
+      restoreStudentInitials(baseLesson, buildStudentLabelMap(lessonPlanRequest.students));
       
       // Now generate student materials in chunks by grade group
       const studentMaterials: StudentMaterial[] = [];
