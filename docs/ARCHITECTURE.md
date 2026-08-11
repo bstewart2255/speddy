@@ -16,8 +16,8 @@
 > `qkcruccytmmdajfavpgb`), `supabase/migrations/`, and the files cited in each
 > section. Diagrams use [Mermaid](https://mermaid.js.org/) and render on GitHub.
 >
-> **Not** a quality review — see `docs/2025-09-18-architecture-review.md` for
-> that. This describes how the system behaves today.
+> **Not** a quality review — see the [September 2025 architecture review](https://linear.app/speddy/document/architecture-review-september-18-2025-historical-06b074c25082)
+> in Linear for that (historical). This describes how the system behaves today.
 >
 > ## Keeping this current
 > Each section ends with a **Source of truth** list (the files/migrations the

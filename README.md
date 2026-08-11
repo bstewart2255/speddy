@@ -42,7 +42,7 @@ Speddy is a scheduling and caseload management tool for special education provid
 
 ## Onboarding and workflows
 - New contributors should start with the [onboarding guide](docs/onboarding.md) for step-by-step local setup, Replit tips, and testing expectations.
-- See `speddy-dev-workflow-v3.md` for branch strategy, PR expectations, and background on how the team uses Supabase and Replit.
+- Branch strategy and PR expectations live in `.claude/CLAUDE.md`.
 
 ## Project structure
 - `app/` – Next.js app router pages and UI components

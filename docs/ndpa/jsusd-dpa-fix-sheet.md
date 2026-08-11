@@ -5,7 +5,8 @@ Corrections to the Claude-chat-drafted **CA-NDPA Standard v1.5** fill for
 reviewed 2026-07-28). Cross-checked field-by-field against the repo's legal
 corpus: `ca-ndpa-execution-packet.md` (the source of truth for every fill),
 `data-inventory.md`, `security-framework-mapping.md`,
-`attorney-review-brief.md`, and `docs/pilots/john-swett-unified.md`.
+`attorney-review-brief.md`, and the [JSUSD pilot onboarding package](https://linear.app/speddy/document/john-swett-unified-pilot-onboarding-and-vendor-review-package-08acbff0ba71)
+in Linear.
 
 > **Internal doc — do not send to the district.** Not legal advice; items
 > marked **[ATTORNEY]** go to counsel with the attorney review brief.
