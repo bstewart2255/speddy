@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Loader2, Send, Sparkles, X } from 'lucide-react';
 import { formatDateLocal } from '@/lib/utils/date-helpers';
 
@@ -42,6 +42,21 @@ export default function AssistantPanel({ open, onClose }: AssistantPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  // The panel is fixed-positioned (so it stays put while the page scrolls)
+  // but PLACED under the Ask AI button on open: left edge aligned to the
+  // button's, clamped so the whole panel is always inside the viewport.
+  // Dragging the header updates the same position; reopening re-anchors.
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const dragState = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    baseLeft: number;
+    baseTop: number;
+    width: number;
+    height: number;
+  } | null>(null);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -64,6 +79,79 @@ export default function AssistantPanel({ open, onClose }: AssistantPanelProps) {
 
   // Abandon any in-flight request when the panel unmounts.
   useEffect(() => () => abortRef.current?.abort(), []);
+
+  // Clamp a candidate position so the whole panel stays inside the viewport
+  // (8px margin), using the panel's real rendered size.
+  const clampToViewport = useCallback((top: number, left: number, width: number, height: number) => ({
+    left: Math.min(Math.max(left, 8), Math.max(window.innerWidth - width - 8, 8)),
+    top: Math.min(Math.max(top, 8), Math.max(window.innerHeight - height - 8, 8)),
+  }), []);
+
+  // On open (before paint, so there is no misplaced first frame): place the
+  // panel just below the Ask AI button, left edges aligned, clamped on-screen.
+  // On close: drop the position and any in-flight drag state, so reopening
+  // always re-anchors — and a drag interrupted by Escape can't go stale.
+  useLayoutEffect(() => {
+    if (!open) {
+      setPos(null);
+      dragState.current = null;
+      return;
+    }
+    const panel = panelRef.current;
+    const anchor = panel?.parentElement?.getBoundingClientRect();
+    if (!panel || !anchor) return;
+    const rect = panel.getBoundingClientRect();
+    setPos(clampToViewport(anchor.bottom + 8, anchor.left, rect.width, rect.height));
+  }, [open, clampToViewport]);
+
+  // Keep the panel reachable if the window is resized while open.
+  useEffect(() => {
+    if (!open) return;
+    const onResize = () => {
+      const rect = panelRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      setPos((p) => (p ? clampToViewport(p.top, p.left, rect.width, rect.height) : p));
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, [open, clampToViewport]);
+
+  const onHeaderPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    // The close button lives in the header; clicking it should not start a drag.
+    if ((e.target as HTMLElement).closest('button')) return;
+    const rect = panelRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    dragState.current = {
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
+      baseLeft: rect.left,
+      baseTop: rect.top,
+      width: rect.width,
+      height: rect.height,
+    };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  }, []);
+
+  const onHeaderPointerMove = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      const s = dragState.current;
+      if (!s || e.pointerId !== s.pointerId) return;
+      setPos(
+        clampToViewport(
+          s.baseTop + (e.clientY - s.startY),
+          s.baseLeft + (e.clientX - s.startX),
+          s.width,
+          s.height
+        )
+      );
+    },
+    [clampToViewport]
+  );
+
+  const onHeaderPointerEnd = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (dragState.current?.pointerId === e.pointerId) dragState.current = null;
+  }, []);
 
   const send = useCallback(
     async (text: string) => {
@@ -136,16 +224,30 @@ export default function AssistantPanel({ open, onClose }: AssistantPanelProps) {
   if (!open) return null;
 
   return (
-    // bottom-24 keeps the Help Scout beacon launcher (bottom-right corner)
-    // reachable while the panel is open.
+    // Opens just below the Ask AI button (left edges aligned, clamped fully
+    // on-screen), pinned to the viewport so it stays put while the page
+    // scrolls; draggable anywhere by the header.
     <div
+      ref={panelRef}
       id="speddy-assistant-panel"
-      className="fixed bottom-24 right-5 z-40 flex w-[380px] max-w-[calc(100vw-2.5rem)] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl"
-      style={{ height: 'min(560px, calc(100vh - 10rem))' }}
+      className="fixed z-40 flex w-[380px] max-w-[calc(100vw-2.5rem)] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl"
+      style={{
+        height: 'min(560px, calc(100vh - 7rem))',
+        top: pos?.top ?? 0,
+        left: pos?.left ?? 0,
+        visibility: pos ? 'visible' : 'hidden',
+      }}
       role="dialog"
       aria-label="Speddy Assistant"
     >
-      <div className="flex items-center justify-between border-b border-gray-200 bg-blue-600 px-4 py-3 text-white">
+      <div
+        className="flex cursor-move touch-none select-none items-center justify-between border-b border-gray-200 bg-blue-600 px-4 py-3 text-white"
+        onPointerDown={onHeaderPointerDown}
+        onPointerMove={onHeaderPointerMove}
+        onPointerUp={onHeaderPointerEnd}
+        onPointerCancel={onHeaderPointerEnd}
+        title="Drag to move"
+      >
         <div className="flex items-center gap-2">
           <Sparkles className="h-4 w-4" aria-hidden="true" />
           <span className="text-sm font-semibold">Speddy Assistant</span>
