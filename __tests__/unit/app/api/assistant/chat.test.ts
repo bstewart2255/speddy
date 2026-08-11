@@ -35,7 +35,7 @@ let studentsResult: { data: unknown; error: unknown } = { data: [], error: null 
 // One client serves both withRoute (auth.getUser) and the handler/tools.
 function makeQuery(result: { data: unknown; error: unknown }) {
   const q: any = {};
-  for (const m of ['select', 'eq', 'is', 'not', 'gte', 'lte', 'order', 'limit']) {
+  for (const m of ['select', 'eq', 'is', 'not', 'gte', 'lte', 'or', 'order', 'limit']) {
     q[m] = () => q;
   }
   q.single = async () => profileResult;

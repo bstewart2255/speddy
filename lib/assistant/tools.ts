@@ -25,7 +25,7 @@ export const assistantTools: Anthropic.Tool[] = [
   {
     name: 'get_caseload',
     description:
-      "List the signed-in provider's student caseload: student id, initials, grade, IEP goals, and service level (sessions per week, minutes per session, total weekly minutes). Use this for questions about students, goals, or service minutes, and to find a student_id for get_student_info.",
+      "List the students whose services the signed-in provider owns (their caseload): student id, initials, grade, IEP goals, and service level (sessions per week, minutes per session, total weekly minutes). Use this for questions about students, goals, or service minutes, and to find a student_id for get_student_info. Students the provider only delivers delegated sessions for are not caseload — they appear in get_schedule instead.",
     input_schema: {
       type: 'object',
       properties: {},
@@ -35,7 +35,7 @@ export const assistantTools: Anthropic.Tool[] = [
   {
     name: 'get_schedule',
     description:
-      "List the provider's dated session instances between start_date and end_date (inclusive), each with date, start/end time, student initials and grade, service type, who delivers it, and completion status. Dates are YYYY-MM-DD and the range may span at most 31 days. Use for questions about their calendar, a specific day or week, or completed/upcoming sessions.",
+      "List the provider's dated session instances between start_date and end_date (inclusive) — both sessions they own and sessions delegated to them (delegated_to_me: true) — each with date, start/end time, student id/initials/grade, service type, who delivers it, and completion status. Dates are YYYY-MM-DD and the range may span at most 31 days. Use for questions about their calendar, a specific day or week, or completed/upcoming sessions.",
     input_schema: {
       type: 'object',
       properties: {
@@ -55,7 +55,7 @@ export const assistantTools: Anthropic.Tool[] = [
   {
     name: 'get_student_info',
     description:
-      'Get one student from the caseload by student_id (find ids via get_caseload): initials, grade, IEP goals, service level, and their recurring weekly session slots (day_of_week 1=Monday … 5=Friday).',
+      'Get one student the provider works with, by student_id (from get_caseload or get_schedule): initials, grade, IEP goals, service level, and the recurring weekly session slots this provider owns or delivers for them (day_of_week 1=Monday … 5=Friday).',
     input_schema: {
       type: 'object',
       properties: {
@@ -159,12 +159,15 @@ async function getSchedule(
   const range = parseDateRange(input);
   if (!range.ok) return range;
 
+  // Owned sessions plus sessions delegated to this user — the same access
+  // paths the schedule surface uses (use-schedule-data.ts), so the assistant's
+  // answer matches the calendar an assigned specialist actually sees.
   const { data, error } = await supabase
     .from('schedule_sessions')
     .select(
-      'session_date, start_time, end_time, service_type, delivered_by, is_completed, students(initials, grade_level)'
+      'session_date, start_time, end_time, service_type, delivered_by, is_completed, provider_id, student_id, students(initials, grade_level)'
     )
-    .eq('provider_id', userId)
+    .or(`provider_id.eq.${userId},assigned_to_specialist_id.eq.${userId}`)
     .not('session_date', 'is', null)
     .gte('session_date', range.start)
     .lte('session_date', range.end)
@@ -181,10 +184,12 @@ async function getSchedule(
       date: row.session_date,
       start_time: row.start_time,
       end_time: row.end_time,
+      student_id: row.student_id,
       student_initials: student?.initials ?? null,
       student_grade: student?.grade_level ?? null,
       service_type: row.service_type,
       delivered_by: row.delivered_by,
+      delegated_to_me: row.provider_id !== userId,
       completed: row.is_completed === true,
     };
   });
@@ -211,21 +216,24 @@ async function getStudentInfo(
     return { ok: false, error: 'student_id must be an id returned by get_caseload.' };
   }
 
+  // No provider_id pin here: RLS already scopes reads to students this user
+  // works with (owned caseload OR assigned via delegated sessions), and the
+  // schedule surface exposes delegated students too — pinning to ownership
+  // would wrongly refuse them.
   const { data, error } = await supabase
     .from('students')
     .select('id, initials, grade_level, sessions_per_week, minutes_per_session, student_details(iep_goals)')
     .eq('id', studentId)
-    .eq('provider_id', userId)
     .maybeSingle();
 
   if (error) return { ok: false, error: `Could not load the student: ${error.message}` };
-  if (!data) return { ok: false, error: 'No student with that id is on your caseload.' };
+  if (!data) return { ok: false, error: 'No student with that id is visible to you.' };
 
   const { data: slots, error: slotsError } = await supabase
     .from('schedule_sessions')
     .select('day_of_week, start_time, end_time, service_type')
     .eq('student_id', studentId)
-    .eq('provider_id', userId)
+    .or(`provider_id.eq.${userId},assigned_to_specialist_id.eq.${userId}`)
     .eq('is_template', true)
     .is('deleted_at', null)
     .order('day_of_week', { ascending: true })

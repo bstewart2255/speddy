@@ -26,7 +26,7 @@ function makeQuery(result: QueryResult) {
   const q: any = {
     calls: [] as Array<[string, unknown[]]>,
   };
-  for (const m of ['select', 'eq', 'is', 'not', 'gte', 'lte', 'order', 'limit']) {
+  for (const m of ['select', 'eq', 'is', 'not', 'gte', 'lte', 'or', 'order', 'limit']) {
     q[m] = jest.fn((...args: unknown[]) => {
       q.calls.push([m, args]);
       return q;
@@ -164,7 +164,7 @@ describe('get_schedule', () => {
     if (!result.ok) expect(result.error).toContain('at most');
   });
 
-  it('maps sessions and scopes the query to the provider and range', async () => {
+  it('maps owned and delegated sessions and scopes the query to the user and range', async () => {
     const { client, queries } = makeSupabase({
       schedule_sessions: [
         {
@@ -176,15 +176,20 @@ describe('get_schedule', () => {
               service_type: 'speech',
               delivered_by: 'provider',
               is_completed: true,
+              provider_id: USER_ID,
+              student_id: STUDENT_ID,
               students: { initials: 'AB', grade_level: '3' },
             },
             {
+              // Delegated: owned by another provider, assigned to this user.
               session_date: '2026-08-11',
               start_time: '10:00:00',
               end_time: '10:30:00',
               service_type: 'speech',
-              delivered_by: 'sea',
+              delivered_by: 'specialist',
               is_completed: false,
+              provider_id: '99999999-9999-4999-8999-999999999999',
+              student_id: null,
               students: null,
             },
           ],
@@ -201,11 +206,17 @@ describe('get_schedule', () => {
       expect(data.truncated).toBe(false);
       expect(data.sessions[0].completed).toBe(true);
       expect(data.sessions[0].student_initials).toBe('AB');
+      expect(data.sessions[0].student_id).toBe(STUDENT_ID);
+      expect(data.sessions[0].delegated_to_me).toBe(false);
       expect(data.sessions[1].student_initials).toBeNull();
+      expect(data.sessions[1].delegated_to_me).toBe(true);
     }
 
+    // Owned OR delegated-to-me — the same access paths the schedule UI uses.
     const q = queries.schedule_sessions[0];
-    expect(calledWith(q, 'eq')).toContainEqual(['provider_id', USER_ID]);
+    expect(calledWith(q, 'or')).toContainEqual([
+      `provider_id.eq.${USER_ID},assigned_to_specialist_id.eq.${USER_ID}`,
+    ]);
     expect(calledWith(q, 'gte')).toContainEqual(['session_date', '2026-08-10']);
     expect(calledWith(q, 'lte')).toContainEqual(['session_date', '2026-08-14']);
     expect(calledWith(q, 'is')).toContainEqual(['deleted_at', null]);
@@ -230,12 +241,12 @@ describe('get_student_info', () => {
     expect(from).not.toHaveBeenCalled();
   });
 
-  it('reports a student that is not on the caseload', async () => {
+  it('reports a student that RLS does not make visible to this user', async () => {
     const { client } = makeSupabase({ students: [{ data: null, error: null }] });
     const result = await executeAssistantTool(client, USER_ID, 'get_student_info', {
       student_id: STUDENT_ID,
     });
-    expect(result).toEqual({ ok: false, error: 'No student with that id is on your caseload.' });
+    expect(result).toEqual({ ok: false, error: 'No student with that id is visible to you.' });
   });
 
   it('returns the student with goals and weekly slots, scoped to the provider', async () => {
@@ -284,8 +295,12 @@ describe('get_student_info', () => {
       },
     });
 
-    expect(calledWith(queries.students[0], 'eq')).toContainEqual(['provider_id', USER_ID]);
-    expect(calledWith(queries.schedule_sessions[0], 'eq')).toContainEqual(['provider_id', USER_ID]);
+    // The student read relies on RLS (owned or delegated students are both
+    // legitimate); the slots read is scoped to slots this user owns or delivers.
+    expect(calledWith(queries.students[0], 'eq')).toContainEqual(['id', STUDENT_ID]);
+    expect(calledWith(queries.schedule_sessions[0], 'or')).toContainEqual([
+      `provider_id.eq.${USER_ID},assigned_to_specialist_id.eq.${USER_ID}`,
+    ]);
     expect(calledWith(queries.schedule_sessions[0], 'eq')).toContainEqual(['is_template', true]);
   });
 });
