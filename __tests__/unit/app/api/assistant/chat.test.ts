@@ -86,7 +86,11 @@ const textResponse = (text: string) => ({
 
 beforeEach(() => {
   jest.clearAllMocks();
-  process.env.AI_FEATURES_ENABLED = 'true';
+  // The suite runs on the assistant's OWN switch with the master AI switch
+  // off — the launch configuration (SPE-452). One test below covers the
+  // master switch enabling the route on its own.
+  delete process.env.AI_FEATURES_ENABLED;
+  process.env.ASSISTANT_ENABLED = 'true';
   process.env.ANTHROPIC_API_KEY = 'test-key';
   delete process.env.ASSISTANT_MODEL;
   profileResult = { data: { role: 'resource', full_name: 'Pat Provider' }, error: null };
@@ -94,11 +98,20 @@ beforeEach(() => {
 });
 
 describe('POST /api/assistant/chat', () => {
-  it('404s while the AI kill switch is off, without calling Anthropic', async () => {
+  it('404s while both the master switch and ASSISTANT_ENABLED are off, without calling Anthropic', async () => {
     delete process.env.AI_FEATURES_ENABLED;
+    delete process.env.ASSISTANT_ENABLED;
     const res = await POST(req());
     expect(res.status).toBe(404);
     expect(mockCreate).not.toHaveBeenCalled();
+  });
+
+  it('the master AI switch alone also enables the route', async () => {
+    delete process.env.ASSISTANT_ENABLED;
+    process.env.AI_FEATURES_ENABLED = 'true';
+    mockCreate.mockResolvedValueOnce(textResponse('Hi!'));
+    const res = await POST(req());
+    expect(res.status).toBe(200);
   });
 
   it('refuses non-provider roles before any model call — even when the key is unconfigured', async () => {

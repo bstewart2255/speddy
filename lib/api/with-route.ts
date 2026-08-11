@@ -26,6 +26,14 @@ interface WithRouteConfig<TBody, TQuery> {
    * OpenAI / Anthropic / document-processing providers.
    */
   aiGated?: boolean;
+  /**
+   * Optional per-feature enable flag for an aiGated route: the name of an env
+   * var that turns THIS route on even while the master AI_FEATURES_ENABLED
+   * switch is off (e.g. ASSISTANT_ENABLED for the Speddy Assistant, SPE-452).
+   * The master switch still enables everything; this only adds a narrower
+   * "just this feature" path. Checked with the same pre-auth 404 semantics.
+   */
+  aiEnableFlag?: string;
 }
 
 interface RouteHandlerArgs<TBody, TQuery, TParams> {
@@ -77,9 +85,16 @@ export function withRoute<
     try {
       // AI kill-switch: gated routes do not exist while AI features are off.
       // Checked before auth so the feature is fully hidden and makes no
-      // provider calls regardless of who calls it.
-      if (config.aiGated && process.env.AI_FEATURES_ENABLED !== 'true') {
-        return NextResponse.json({ error: 'Not found' }, { status: 404 });
+      // provider calls regardless of who calls it. A route may declare its own
+      // enable flag (aiEnableFlag) that turns it on independently of the
+      // master switch.
+      if (config.aiGated) {
+        const enabled =
+          process.env.AI_FEATURES_ENABLED === 'true' ||
+          (config.aiEnableFlag != null && process.env[config.aiEnableFlag] === 'true');
+        if (!enabled) {
+          return NextResponse.json({ error: 'Not found' }, { status: 404 });
+        }
       }
 
       let userId = '';

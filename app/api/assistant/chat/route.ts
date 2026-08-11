@@ -69,6 +69,9 @@ const bodySchema = z.object({
 export const POST = withRoute<Record<string, string>, z.infer<typeof bodySchema>>(
   {
     aiGated: true,
+    // The assistant can launch on its own switch while the master AI switch
+    // (and with it the lesson/exit-ticket features) stays off (SPE-452).
+    aiEnableFlag: 'ASSISTANT_ENABLED',
     body: bodySchema,
     rateLimit: { requests: 40, windowSeconds: 3600, name: 'assistant/chat', failClosed: true },
   },
