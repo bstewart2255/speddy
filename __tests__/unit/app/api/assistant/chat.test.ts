@@ -1,0 +1,243 @@
+/**
+ * POST /api/assistant/chat (SPE-450) — the Speddy Assistant endpoint.
+ *
+ * What these tests pin, in order of how much they matter:
+ *   - the route does not exist while the AI kill switch is off (404, no
+ *     provider call) — same contract as every other AI route;
+ *   - non-provider roles are refused (403) before any model call, so SEA /
+ *     teacher / admin accounts can't reach the assistant by hitting the API
+ *     directly;
+ *   - a full tool round-trip works: the model asks for a tool, the tool result
+ *     is fed back, and the final text lands in { reply };
+ *   - malformed bodies are refused by validation (400);
+ *   - an Anthropic failure returns a friendly 502 and never leaks provider
+ *     error text to the browser.
+ */
+import { NextRequest } from 'next/server';
+
+const USER_ID = '11111111-1111-4111-8111-111111111111';
+
+const mockCreate = jest.fn();
+jest.mock('@anthropic-ai/sdk', () => ({
+  __esModule: true,
+  default: class MockAnthropic {
+    messages = { create: (...args: unknown[]) => mockCreate(...args) };
+    constructor(_opts: unknown) {}
+  },
+}));
+
+let profileResult: { data: unknown; error: unknown } = {
+  data: { role: 'resource', full_name: 'Pat Provider' },
+  error: null,
+};
+let studentsResult: { data: unknown; error: unknown } = { data: [], error: null };
+
+// One client serves both withRoute (auth.getUser) and the handler/tools.
+function makeQuery(result: { data: unknown; error: unknown }) {
+  const q: any = {};
+  for (const m of ['select', 'eq', 'is', 'not', 'gte', 'lte', 'or', 'order', 'limit']) {
+    q[m] = () => q;
+  }
+  q.single = async () => result;
+  q.maybeSingle = async () => result;
+  q.then = (resolve: any, reject: any) => Promise.resolve(result).then(resolve, reject);
+  return q;
+}
+
+jest.mock('@/lib/supabase/server', () => ({
+  createClient: async () => ({
+    auth: {
+      getUser: async () => ({ data: { user: { id: USER_ID } }, error: null }),
+    },
+    from: (table: string) =>
+      table === 'profiles' ? makeQuery(profileResult) : makeQuery(studentsResult),
+  }),
+}));
+
+jest.mock('@/lib/api/rate-limit-user', () => ({
+  checkUserRateLimit: async () => ({ allowed: true, remaining: 10, resetSeconds: 3600 }),
+}));
+
+const mockLogError = jest.fn();
+jest.mock('@/lib/monitoring/logger', () => ({
+  log: { info: jest.fn(), warn: jest.fn(), error: (...a: unknown[]) => mockLogError(...a) },
+}));
+
+import { POST } from '@/app/api/assistant/chat/route';
+
+const validBody = {
+  messages: [{ role: 'user', content: 'What does my Tuesday look like?' }],
+  clientDate: '2026-08-11',
+  clientTimezone: 'America/Los_Angeles',
+};
+
+const req = (body: unknown = validBody) =>
+  new NextRequest('http://localhost/api/assistant/chat', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+const textResponse = (text: string) => ({
+  stop_reason: 'end_turn',
+  content: [{ type: 'text', text }],
+  usage: { input_tokens: 100, output_tokens: 20 },
+});
+
+beforeEach(() => {
+  jest.clearAllMocks();
+  process.env.AI_FEATURES_ENABLED = 'true';
+  process.env.ANTHROPIC_API_KEY = 'test-key';
+  delete process.env.ASSISTANT_MODEL;
+  profileResult = { data: { role: 'resource', full_name: 'Pat Provider' }, error: null };
+  studentsResult = { data: [], error: null };
+});
+
+describe('POST /api/assistant/chat', () => {
+  it('404s while the AI kill switch is off, without calling Anthropic', async () => {
+    delete process.env.AI_FEATURES_ENABLED;
+    const res = await POST(req());
+    expect(res.status).toBe(404);
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+
+  it('refuses non-provider roles before any model call — even when the key is unconfigured', async () => {
+    // Gate-first ordering: unauthorized roles see the same 403 regardless of
+    // provider configuration, so the response never reveals config state.
+    delete process.env.ANTHROPIC_API_KEY;
+    for (const role of ['teacher', 'sea', 'site_admin', 'district_admin', 'district_tech']) {
+      mockCreate.mockClear();
+      profileResult = { data: { role, full_name: 'Terry' }, error: null };
+      const res = await POST(req());
+      expect(res.status).toBe(403);
+      expect(mockCreate).not.toHaveBeenCalled();
+    }
+  });
+
+  it('answers a simple question with the configured defaults', async () => {
+    mockCreate.mockResolvedValueOnce(textResponse('You have 3 sessions on Tuesday.'));
+
+    const res = await POST(req());
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ reply: 'You have 3 sessions on Tuesday.' });
+
+    expect(mockCreate).toHaveBeenCalledTimes(1);
+    const call = mockCreate.mock.calls[0][0];
+    expect(call.model).toBe('claude-haiku-4-5');
+    expect(call.system).toContain('2026-08-11');
+    expect(call.system).toContain('Pat Provider');
+    expect(call.tools.map((t: { name: string }) => t.name)).toEqual([
+      'get_caseload',
+      'get_schedule',
+      'get_student_info',
+    ]);
+    // First round must not forbid tool use.
+    expect(call.tool_choice).toBeUndefined();
+  });
+
+  it('completes a tool round-trip and feeds the result back to the model', async () => {
+    studentsResult = {
+      data: [
+        {
+          id: '33333333-3333-4333-8333-333333333333',
+          initials: 'AB',
+          grade_level: '3',
+          sessions_per_week: 2,
+          minutes_per_session: 30,
+          student_details: { iep_goals: ['reading'] },
+        },
+      ],
+      error: null,
+    };
+    mockCreate
+      .mockResolvedValueOnce({
+        stop_reason: 'tool_use',
+        content: [
+          { type: 'text', text: 'Let me check.' },
+          { type: 'tool_use', id: 'tu_1', name: 'get_caseload', input: {} },
+        ],
+        usage: { input_tokens: 100, output_tokens: 30 },
+      })
+      .mockResolvedValueOnce(textResponse('You have 1 student: AB (grade 3).'));
+
+    const res = await POST(req());
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ reply: 'You have 1 student: AB (grade 3).' });
+
+    expect(mockCreate).toHaveBeenCalledTimes(2);
+    const second = mockCreate.mock.calls[1][0];
+    const lastMessage = second.messages[second.messages.length - 1];
+    expect(lastMessage.role).toBe('user');
+    expect(lastMessage.content[0].type).toBe('tool_result');
+    expect(lastMessage.content[0].tool_use_id).toBe('tu_1');
+    expect(lastMessage.content[0].is_error).toBe(false);
+    expect(lastMessage.content[0].content).toContain('"initials":"AB"');
+  });
+
+  it('refuses a transcript that does not end with a user message', async () => {
+    const res = await POST(
+      req({ ...validBody, messages: [{ role: 'assistant', content: 'Hello!' }] })
+    );
+    expect(res.status).toBe(400);
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+
+  it('refuses a transcript that starts with an assistant message', async () => {
+    const res = await POST(
+      req({
+        ...validBody,
+        messages: [
+          { role: 'assistant', content: 'Earlier reply' },
+          { role: 'user', content: 'Follow-up question' },
+        ],
+      })
+    );
+    expect(res.status).toBe(400);
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+
+  it('accepts a long echoed assistant turn but refuses an oversized user turn', async () => {
+    // A 6,000-char assistant reply is a normal model output (~1,500 tokens);
+    // rejecting it would permanently break the conversation that produced it.
+    mockCreate.mockResolvedValueOnce(textResponse('Got it.'));
+    const longAssistant = {
+      ...validBody,
+      messages: [
+        { role: 'user', content: 'Summarize everything' },
+        { role: 'assistant', content: 'a'.repeat(6000) },
+        { role: 'user', content: 'Now shorten it' },
+      ],
+    };
+    expect((await POST(req(longAssistant))).status).toBe(200);
+
+    const longUser = {
+      ...validBody,
+      messages: [{ role: 'user', content: 'a'.repeat(6000) }],
+    };
+    expect((await POST(req(longUser))).status).toBe(400);
+  });
+
+  it('refuses a malformed clientDate', async () => {
+    const res = await POST(req({ ...validBody, clientDate: 'today' }));
+    expect(res.status).toBe(400);
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+
+  it('returns a friendly 502 when Anthropic fails, without leaking details', async () => {
+    mockCreate.mockRejectedValueOnce(new Error('overloaded_error: capacity'));
+    const res = await POST(req());
+    expect(res.status).toBe(502);
+    const body = await res.json();
+    expect(body.error).toBe('The assistant had a problem answering. Please try again.');
+    expect(JSON.stringify(body)).not.toContain('overloaded_error');
+    expect(mockLogError).toHaveBeenCalled();
+  });
+
+  it('500s with a config message when the API key is missing', async () => {
+    delete process.env.ANTHROPIC_API_KEY;
+    const res = await POST(req());
+    expect(res.status).toBe(500);
+    expect((await res.json()).error).toBe('Assistant is not configured');
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+});

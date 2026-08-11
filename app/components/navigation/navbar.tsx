@@ -5,10 +5,13 @@ import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import type { User } from '@supabase/supabase-js';
+import { Sparkles } from 'lucide-react';
 import UserProfileDropdown from './user-profile-dropdown';
 import { SchoolSwitcher } from '../school-switcher';
 import { useSchool } from '../providers/school-context';
 import { LongHoverTooltip } from '../ui/long-hover-tooltip';
+import AssistantPanel from '../assistant/assistant-panel';
+import { canUseAssistant } from '@/lib/assistant/roles';
 
 // Type for Supabase error with status property
 interface PostgrestErrorWithStatus {
@@ -42,6 +45,10 @@ export default function Navbar() {
   const [user, setUser] = useState<User | null>(null);
   const supabase = createClient();
   const [userRole, setUserRole] = useState<string>("");
+  // Tracked separately from userRole so a failed profile fetch still falls
+  // back to the Help button instead of leaving the slot empty forever.
+  const [roleLoaded, setRoleLoaded] = useState(false);
+  const [assistantOpen, setAssistantOpen] = useState(false);
   const { isSecondary } = useSchool();
 
   useEffect(() => {
@@ -73,6 +80,7 @@ export default function Navbar() {
           setUserRole(profile.role);
           console.log('[Navbar] User role:', profile.role);
         }
+        setRoleLoaded(true);
       }
     };
     getUser();
@@ -282,21 +290,38 @@ export default function Navbar() {
           
           {/* User Section */}
           <div className="flex items-center gap-4">
-            <LongHoverTooltip content="Open the help chat to get assistance with using Speddy. Our support team typically responds within a few hours.">
-              <button
-                onClick={() => {
-                  if (window.Beacon) {
-                    window.Beacon('open');
-                  }
-                }}
-                className="text-sm font-medium text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md hover:bg-gray-100 transition-colors flex items-center gap-2"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                Help
-              </button>
-            </LongHoverTooltip>
+            {/* Hold the slot only while the role is loading (no Help→Ask AI
+                flash); after that, a missing/failed role falls back to Help. */}
+            {!roleLoaded ? null : canUseAssistant(userRole) ? (
+              <LongHoverTooltip content="Ask the Speddy Assistant about your schedule, caseload, or students, or have it draft notes and parent updates. It only sees your own data and never changes anything.">
+                <button
+                  type="button"
+                  onClick={() => setAssistantOpen((v) => !v)}
+                  aria-expanded={assistantOpen}
+                  aria-controls="speddy-assistant-panel"
+                  className="flex items-center gap-1.5 rounded-full bg-blue-600 px-4 py-1.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-blue-700"
+                >
+                  <Sparkles className="h-4 w-4" aria-hidden="true" />
+                  Ask AI
+                </button>
+              </LongHoverTooltip>
+            ) : (
+              <LongHoverTooltip content="Open the help chat to get assistance with using Speddy. Our support team typically responds within a few hours.">
+                <button
+                  onClick={() => {
+                    if (window.Beacon) {
+                      window.Beacon('open');
+                    }
+                  }}
+                  className="text-sm font-medium text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md hover:bg-gray-100 transition-colors flex items-center gap-2"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  Help
+                </button>
+              </LongHoverTooltip>
+            )}
             <SchoolSwitcher />
             {user && <UserProfileDropdown user={user} />}
           </div>
@@ -328,6 +353,7 @@ export default function Navbar() {
           )}
         </div>
       </div>
+      <AssistantPanel open={assistantOpen} onClose={() => setAssistantOpen(false)} />
     </nav>
   );
 }
