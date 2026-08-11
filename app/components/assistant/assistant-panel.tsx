@@ -41,6 +41,7 @@ export default function AssistantPanel({ open, onClose }: AssistantPanelProps) {
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -51,6 +52,18 @@ export default function AssistantPanel({ open, onClose }: AssistantPanelProps) {
   useEffect(() => {
     if (open) inputRef.current?.focus();
   }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
+
+  // Abandon any in-flight request when the panel unmounts.
+  useEffect(() => () => abortRef.current?.abort(), []);
 
   const send = useCallback(
     async (text: string) => {
@@ -69,10 +82,17 @@ export default function AssistantPanel({ open, onClose }: AssistantPanelProps) {
       const sent = nextTurns.slice(-MAX_SENT_TURNS);
       while (sent.length > 0 && sent[0].role === 'assistant') sent.shift();
 
+      // Client-side ceiling just above the route's 120s budget, so a hung
+      // request can't leave the composer disabled forever.
+      const controller = new AbortController();
+      abortRef.current = controller;
+      const timer = setTimeout(() => controller.abort(), 125_000);
+
       try {
         const res = await fetch('/api/assistant/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          signal: controller.signal,
           body: JSON.stringify({
             messages: sent,
             clientDate: formatDateLocal(new Date()),
@@ -99,9 +119,14 @@ export default function AssistantPanel({ open, onClose }: AssistantPanelProps) {
           return;
         }
         setTurns((current) => [...current, { role: 'assistant', content: data.reply as string }]);
-      } catch {
-        setError('Could not reach the assistant. Check your connection and try again.');
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') {
+          setError('The request took too long and was cancelled. Please try again.');
+        } else {
+          setError('Could not reach the assistant. Check your connection and try again.');
+        }
       } finally {
+        clearTimeout(timer);
         setBusy(false);
       }
     },
@@ -114,6 +139,7 @@ export default function AssistantPanel({ open, onClose }: AssistantPanelProps) {
     // bottom-24 keeps the Help Scout beacon launcher (bottom-right corner)
     // reachable while the panel is open.
     <div
+      id="speddy-assistant-panel"
       className="fixed bottom-24 right-5 z-40 flex w-[380px] max-w-[calc(100vw-2.5rem)] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl"
       style={{ height: 'min(560px, calc(100vh - 10rem))' }}
       role="dialog"
@@ -134,7 +160,7 @@ export default function AssistantPanel({ open, onClose }: AssistantPanelProps) {
         </button>
       </div>
 
-      <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto px-4 py-3">
+      <div ref={scrollRef} aria-live="polite" className="flex-1 space-y-3 overflow-y-auto px-4 py-3">
         {turns.length === 0 && (
           <div className="space-y-3">
             <p className="text-sm text-gray-600">
@@ -178,7 +204,7 @@ export default function AssistantPanel({ open, onClose }: AssistantPanelProps) {
         )}
 
         {error && (
-          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          <div role="alert" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
             {error}
           </div>
         )}
@@ -197,7 +223,9 @@ export default function AssistantPanel({ open, onClose }: AssistantPanelProps) {
             value={input}
             onChange={(e) => setInput(e.target.value.slice(0, MAX_INPUT_CHARS))}
             onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
+              // isComposing: don't submit while an IME (Japanese, Chinese,
+              // Korean input) is confirming a candidate with Enter.
+              if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
                 e.preventDefault();
                 send(input);
               }

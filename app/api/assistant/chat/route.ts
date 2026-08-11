@@ -50,8 +50,20 @@ const bodySchema = z.object({
       (msgs) => msgs.every((m) => m.role === 'assistant' || m.content.length <= MAX_USER_TURN_CHARS),
       { message: `User messages are limited to ${MAX_USER_TURN_CHARS} characters` }
     ),
-  clientDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'clientDate must be YYYY-MM-DD'),
-  clientTimezone: z.string().max(64).optional(),
+  // Both fields are interpolated into the system prompt, so they are pinned to
+  // their expected value shapes — free text here would be a prompt-injection
+  // channel.
+  clientDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'clientDate must be YYYY-MM-DD')
+    .refine((d) => !Number.isNaN(Date.parse(`${d}T00:00:00Z`)), {
+      message: 'clientDate must be a real calendar date',
+    }),
+  clientTimezone: z
+    .string()
+    .max(64)
+    .regex(/^[A-Za-z0-9+_/-]+$/, 'clientTimezone must be an IANA zone id')
+    .optional(),
 });
 
 export const POST = withRoute<Record<string, string>, z.infer<typeof bodySchema>>(

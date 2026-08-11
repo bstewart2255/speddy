@@ -14,7 +14,12 @@
  * RLS itself is NOT visible here (the client is mocked) — that is exercised
  * separately against the sim district with a real signed-in session.
  */
+jest.mock('@/lib/monitoring/logger', () => ({
+  log: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
+}));
+
 import { executeAssistantTool, MAX_SCHEDULE_RANGE_DAYS } from '@/lib/assistant/tools';
+import { log } from '@/lib/monitoring/logger';
 
 const USER_ID = '22222222-2222-4222-8222-222222222222';
 const STUDENT_ID = '33333333-3333-4333-8333-333333333333';
@@ -123,11 +128,13 @@ describe('get_caseload', () => {
     expect(selectArg).not.toContain('last_name');
   });
 
-  it('surfaces a database error as ok:false', async () => {
-    const { client } = makeSupabase({ students: [{ data: null, error: { message: 'boom' } }] });
+  it('sanitizes database errors: fixed message to the model, detail to the server log', async () => {
+    const { client } = makeSupabase({
+      students: [{ data: null, error: { message: 'column students.secret does not exist' } }],
+    });
     const result = await executeAssistantTool(client, USER_ID, 'get_caseload', {});
-    expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.error).toContain('boom');
+    expect(result).toEqual({ ok: false, error: 'Could not load the caseload right now.' });
+    expect(log.error).toHaveBeenCalled();
   });
 });
 
@@ -222,6 +229,37 @@ describe('get_schedule', () => {
     expect(calledWith(q, 'is')).toContainEqual(['deleted_at', null]);
   });
 
+  it(`accepts a range of exactly ${MAX_SCHEDULE_RANGE_DAYS} days`, async () => {
+    const { client } = makeSupabase({ schedule_sessions: [{ data: [], error: null }] });
+    // 2026-08-01 .. 2026-08-31 inclusive = 31 days.
+    const result = await executeAssistantTool(client, USER_ID, 'get_schedule', {
+      start_date: '2026-08-01',
+      end_date: '2026-08-31',
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it('flags truncation at the row cap and applies the query limit', async () => {
+    const row = {
+      session_date: '2026-08-10',
+      start_time: '09:00:00',
+      end_time: '09:30:00',
+      service_type: 'speech',
+      delivered_by: 'provider',
+      is_completed: false,
+      provider_id: USER_ID,
+      student_id: STUDENT_ID,
+      students: { initials: 'AB', grade_level: '3' },
+    };
+    const { client, queries } = makeSupabase({
+      schedule_sessions: [{ data: Array.from({ length: 300 }, () => ({ ...row })), error: null }],
+    });
+    const result = await executeAssistantTool(client, USER_ID, 'get_schedule', input);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect((result.data as any).truncated).toBe(true);
+    expect(calledWith(queries.schedule_sessions[0], 'limit')).toContainEqual([300]);
+  });
+
   it('never selects free-text session notes — they are outside the disclosed AI data scope', async () => {
     const { client, queries } = makeSupabase({ schedule_sessions: [{ data: [], error: null }] });
     await executeAssistantTool(client, USER_ID, 'get_schedule', input);
@@ -312,13 +350,17 @@ describe('executeAssistantTool', () => {
     expect(result).toEqual({ ok: false, error: 'Unknown tool: delete_everything' });
   });
 
-  it('contains a thrown error into ok:false', async () => {
+  it('contains a thrown error into ok:false without leaking its message', async () => {
     const client = {
       from: () => {
-        throw new Error('connection reset');
+        throw new Error('connection reset at 10.0.0.5:5432');
       },
     } as any;
     const result = await executeAssistantTool(client, USER_ID, 'get_caseload', {});
-    expect(result).toEqual({ ok: false, error: 'Tool failed: connection reset' });
+    expect(result).toEqual({
+      ok: false,
+      error: 'The tool failed unexpectedly — try again or ask differently.',
+    });
+    expect(log.error).toHaveBeenCalled();
   });
 });

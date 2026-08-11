@@ -16,11 +16,12 @@ const DEFAULT_MODEL = 'claude-haiku-4-5';
 const MAX_TOOL_ROUNDS = 6;
 const MAX_RESPONSE_TOKENS = 1500;
 // Per-Anthropic-call timeout. Separately, LOOP_DEADLINE_MS bounds the whole
-// exchange: once past it, the next round is forced to answer without tools, so
-// worst case stays under the route's 120s maxDuration (deadline + one final
-// call + retry headroom).
+// exchange: once past it, the next round is forced to answer without tools.
+// Worst case: a tool round starts just under the deadline (~45s), runs to its
+// timeout with one retry (~65s including backoff), and still lands under the
+// route's 120s maxDuration.
 const REQUEST_TIMEOUT_MS = 30_000;
-const LOOP_DEADLINE_MS = 80_000;
+const LOOP_DEADLINE_MS = 45_000;
 
 export interface AssistantTurn {
   role: 'user' | 'assistant';

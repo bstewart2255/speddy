@@ -45,6 +45,9 @@ export default function Navbar() {
   const [user, setUser] = useState<User | null>(null);
   const supabase = createClient();
   const [userRole, setUserRole] = useState<string>("");
+  // Tracked separately from userRole so a failed profile fetch still falls
+  // back to the Help button instead of leaving the slot empty forever.
+  const [roleLoaded, setRoleLoaded] = useState(false);
   const [assistantOpen, setAssistantOpen] = useState(false);
   const { isSecondary } = useSchool();
 
@@ -77,6 +80,7 @@ export default function Navbar() {
           setUserRole(profile.role);
           console.log('[Navbar] User role:', profile.role);
         }
+        setRoleLoaded(true);
       }
     };
     getUser();
@@ -286,12 +290,15 @@ export default function Navbar() {
           
           {/* User Section */}
           <div className="flex items-center gap-4">
-            {/* Hold the slot until the role loads so Help doesn't flash and
-                then swap to Ask AI on every page load. */}
-            {!userRole ? null : canUseAssistant(userRole) ? (
+            {/* Hold the slot only while the role is loading (no Help→Ask AI
+                flash); after that, a missing/failed role falls back to Help. */}
+            {!roleLoaded ? null : canUseAssistant(userRole) ? (
               <LongHoverTooltip content="Ask the Speddy Assistant about your schedule, caseload, or students, or have it draft notes and parent updates. It only sees your own data and never changes anything.">
                 <button
+                  type="button"
                   onClick={() => setAssistantOpen((v) => !v)}
+                  aria-expanded={assistantOpen}
+                  aria-controls="speddy-assistant-panel"
                   className="flex items-center gap-1.5 rounded-full bg-blue-600 px-4 py-1.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-blue-700"
                 >
                   <Sparkles className="h-4 w-4" aria-hidden="true" />

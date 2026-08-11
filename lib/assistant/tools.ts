@@ -1,5 +1,6 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { log } from '@/lib/monitoring/logger';
 
 /**
  * Read-only tools the Speddy Assistant can call (SPE-450).
@@ -130,7 +131,12 @@ async function getCaseload(supabase: SupabaseClient, userId: string): Promise<As
     .eq('provider_id', userId)
     .order('grade_level', { ascending: true });
 
-  if (error) return { ok: false, error: `Could not load the caseload: ${error.message}` };
+  // DB error text can carry schema details and would reach the model (and
+  // potentially the browser) as a tool result — log it, return a fixed message.
+  if (error) {
+    log.error('Assistant tool get_caseload failed', error, { userId });
+    return { ok: false, error: 'Could not load the caseload right now.' };
+  }
 
   const students = (data ?? []).map((row) => {
     const details = normalizeRelation<StudentDetailsRow>(row.student_details);
@@ -176,7 +182,10 @@ async function getSchedule(
     .order('start_time', { ascending: true })
     .limit(MAX_SCHEDULE_ROWS);
 
-  if (error) return { ok: false, error: `Could not load the schedule: ${error.message}` };
+  if (error) {
+    log.error('Assistant tool get_schedule failed', error, { userId });
+    return { ok: false, error: 'Could not load the schedule right now.' };
+  }
 
   const sessions = (data ?? []).map((row) => {
     const student = normalizeRelation<{ initials?: string; grade_level?: string }>(row.students);
@@ -226,7 +235,10 @@ async function getStudentInfo(
     .eq('id', studentId)
     .maybeSingle();
 
-  if (error) return { ok: false, error: `Could not load the student: ${error.message}` };
+  if (error) {
+    log.error('Assistant tool get_student_info failed', error, { userId });
+    return { ok: false, error: 'Could not load the student right now.' };
+  }
   if (!data) return { ok: false, error: 'No student with that id is visible to you.' };
 
   const { data: slots, error: slotsError } = await supabase
@@ -239,7 +251,10 @@ async function getStudentInfo(
     .order('day_of_week', { ascending: true })
     .order('start_time', { ascending: true });
 
-  if (slotsError) return { ok: false, error: `Could not load the student's schedule: ${slotsError.message}` };
+  if (slotsError) {
+    log.error('Assistant tool get_student_info slots failed', slotsError, { userId });
+    return { ok: false, error: "Could not load the student's schedule right now." };
+  }
 
   const details = normalizeRelation<StudentDetailsRow>(data.student_details);
   const sessionsPerWeek = data.sessions_per_week ?? null;
@@ -284,9 +299,7 @@ export async function executeAssistantTool(
         return { ok: false, error: `Unknown tool: ${name}` };
     }
   } catch (err) {
-    return {
-      ok: false,
-      error: `Tool failed: ${err instanceof Error ? err.message : 'unknown error'}`,
-    };
+    log.error('Assistant tool threw', err, { userId, tool: name });
+    return { ok: false, error: 'The tool failed unexpectedly — try again or ask differently.' };
   }
 }

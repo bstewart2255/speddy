@@ -38,7 +38,7 @@ function makeQuery(result: { data: unknown; error: unknown }) {
   for (const m of ['select', 'eq', 'is', 'not', 'gte', 'lte', 'or', 'order', 'limit']) {
     q[m] = () => q;
   }
-  q.single = async () => profileResult;
+  q.single = async () => result;
   q.maybeSingle = async () => result;
   q.then = (resolve: any, reject: any) => Promise.resolve(result).then(resolve, reject);
   return q;
