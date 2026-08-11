@@ -82,4 +82,68 @@ describe('withRoute AI kill-switch (aiGated)', () => {
     expect(res.status).toBe(200);
     expect(handler).toHaveBeenCalledTimes(1);
   });
+
+  // Per-feature enable flag (SPE-452): a gated route may name an env var that
+  // enables just that route while the master switch stays off.
+  describe('aiEnableFlag', () => {
+    const FLAG = 'TEST_FEATURE_ENABLED';
+    const originalFlag = process.env[FLAG];
+
+    afterEach(() => {
+      if (originalFlag === undefined) delete process.env[FLAG];
+      else process.env[FLAG] = originalFlag;
+    });
+
+    it('enables the route on its own while the master switch is off', async () => {
+      delete process.env.AI_FEATURES_ENABLED;
+      process.env[FLAG] = 'true';
+      const handler = jest.fn(async () => NextResponse.json({ ok: true }));
+      const route = withRoute({ aiGated: true, aiEnableFlag: FLAG }, handler as any);
+
+      const res = await route(makeRequest());
+
+      expect(res.status).toBe(200);
+      expect(mockCreateClient).toHaveBeenCalledTimes(1); // auth still runs
+      expect(handler).toHaveBeenCalledTimes(1);
+    });
+
+    it('treats any flag value other than exactly "true" as disabled', async () => {
+      delete process.env.AI_FEATURES_ENABLED;
+      for (const value of ['false', 'TRUE', '1', '']) {
+        process.env[FLAG] = value;
+        const handler = jest.fn();
+        const route = withRoute({ aiGated: true, aiEnableFlag: FLAG }, handler as any);
+
+        const res = await route(makeRequest());
+
+        expect(res.status).toBe(404);
+        expect(handler).not.toHaveBeenCalled();
+      }
+    });
+
+    it('still 404s before auth when neither switch is set', async () => {
+      delete process.env.AI_FEATURES_ENABLED;
+      delete process.env[FLAG];
+      const handler = jest.fn();
+      const route = withRoute({ aiGated: true, aiEnableFlag: FLAG }, handler as any);
+
+      const res = await route(makeRequest());
+
+      expect(res.status).toBe(404);
+      expect(handler).not.toHaveBeenCalled();
+      expect(mockCreateClient).not.toHaveBeenCalled();
+    });
+
+    it('the master switch still enables a route that declares its own flag', async () => {
+      process.env.AI_FEATURES_ENABLED = 'true';
+      delete process.env[FLAG];
+      const handler = jest.fn(async () => NextResponse.json({ ok: true }));
+      const route = withRoute({ aiGated: true, aiEnableFlag: FLAG }, handler as any);
+
+      const res = await route(makeRequest());
+
+      expect(res.status).toBe(200);
+      expect(handler).toHaveBeenCalledTimes(1);
+    });
+  });
 });

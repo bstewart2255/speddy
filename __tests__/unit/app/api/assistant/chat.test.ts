@@ -84,6 +84,20 @@ const textResponse = (text: string) => ({
   usage: { input_tokens: 100, output_tokens: 20 },
 });
 
+// Snapshot the env vars this suite mutates so later suites in the same Jest
+// worker see the original values (same convention as with-route.test.ts).
+const ENV_KEYS = ['AI_FEATURES_ENABLED', 'ASSISTANT_ENABLED', 'ANTHROPIC_API_KEY', 'ASSISTANT_MODEL'] as const;
+const originalEnv: Record<string, string | undefined> = {};
+beforeAll(() => {
+  for (const key of ENV_KEYS) originalEnv[key] = process.env[key];
+});
+afterAll(() => {
+  for (const key of ENV_KEYS) {
+    if (originalEnv[key] === undefined) delete process.env[key];
+    else process.env[key] = originalEnv[key];
+  }
+});
+
 beforeEach(() => {
   jest.clearAllMocks();
   // The suite runs on the assistant's OWN switch with the master AI switch

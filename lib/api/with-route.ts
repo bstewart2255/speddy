@@ -6,8 +6,10 @@ import { checkUserRateLimit, type RateLimitRule } from './rate-limit-user';
 
 // Server-side AI kill-switch. AI features are disabled by default; any route
 // that reaches an external LLM / document-processing provider opts in via
-// `aiGated` (see below) and 404s unless AI_FEATURES_ENABLED === 'true'. The flag
-// is read per request (not cached at module load) so a change takes effect on
+// `aiGated` (see below) and 404s unless AI_FEATURES_ENABLED === 'true' — or,
+// when the route declares its own `aiEnableFlag`, unless that env var is
+// 'true' (per-feature launches, e.g. ASSISTANT_ENABLED — SPE-452). Flags are
+// read per request (not cached at module load) so a change takes effect on
 // the next request rather than requiring a fresh process.
 
 interface WithRouteConfig<TBody, TQuery> {

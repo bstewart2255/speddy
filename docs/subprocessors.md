@@ -28,17 +28,21 @@ _Last reviewed: 2026-07-16._
 | **Vercel** | Production hosting (Next.js app, API routes, cron). All request/response traffic and runtime logs transit Vercel compute. | **Yes — in transit + logs.** | Deploy target; `next.config.js` (Vercel cron monitors, `maxDuration`) | Function region configurable |
 | **Sentry** | Error monitoring (exceptions + source-mapped stack traces). Sentry Logs and Session Replay are **disabled**, `sendDefaultPii: false`, and logger `meta`/`context` are no longer forwarded (SPE-167). Emails are scrubbed via `beforeSend`. | **Incidental only** — operational error data, minimized per SPE-167. | `sentry.server.config.ts`, `sentry.edge.config.ts`, `instrumentation-client.ts`, `lib/monitoring/sentry-scrub.ts`, `lib/monitoring/sentry-options.ts`; org `chicken-scratch-backend` / project `speddy`; US ingest | Org region (currently US) |
 | **Help Scout** | Support help desk + in-app chat widget (Beacon, `beacon-v2.helpscout.net`), loaded via a `<Script>` tag (not an npm package). | **Provider PII** — pushes the signed-in provider's name, email, and session metadata (role, school district/site, user ID) to Beacon; **no student data by design** (a provider could paste it into a chat message). | `app/layout.tsx`, `app/components/helpscout-beacon-identifier.tsx` | US (Help Scout PBC); DPA v2 incorporated via ToS; EU/UK via DPF + SCCs (SPE-170) |
+| **Anthropic (Claude)** | **AI assistant ("Ask AI", SPE-450/452)** for service-provider roles: answers questions about the signed-in provider's own caseload/schedule and drafts text. Model `claude-haiku-4-5`. Enabled by its own `ASSISTANT_ENABLED` flag (the master `AI_FEATURES_ENABLED` also enables it). | **Yes — student initials + IEP goal text + grade + session times.** Never full names or free-text session notes (excluded from the AI-bound queries and pinned by unit tests). Initials-based scope approved by the founder 2026-08-11 (recorded on SPE-450). Conversations are not stored server-side. | `lib/assistant/*`, `app/api/assistant/chat/route.ts` | US (standard tier); DPA via Commercial Terms, copy on file (SPE-163) |
 
 ## Planned — disclosed but NOT currently enabled
 
-Both providers are hard-gated off by `AI_FEATURES_ENABLED` (default off; see
-SPE-162): the AI routes return 404 (before auth or handler logic) and make
-**zero** provider calls unless the env var is set to exactly the string `'true'`.
+The remaining AI features (lessons, exit tickets, progress checks, worksheet
+vision) stay hard-gated off by `AI_FEATURES_ENABLED` (default off; see
+SPE-162): those routes return 404 (before auth or handler logic) and make
+**zero** provider calls unless the env var is set to exactly the string
+`'true'`. The assistant above is the one AI feature enabled independently, via
+`ASSISTANT_ENABLED` (SPE-452).
 
 **DPAs executed and on file (2026-06-12):** OpenAI signed (self-serve), Anthropic
 incorporated via Commercial Terms + dated copy saved; both US-processed on standard
-tiers (SPE-163). **Still do not enable AI** until Zero Data Retention is requested
-(SPE-163) and prompt de-identification lands (SPE-61).
+tiers. The enable-gate preconditions have since been met: the DPA/ZDR work closed
+via SPE-163 (2026-07-18) and prompt de-identification landed via SPE-61.
 
 | Service | Role (when enabled) | Student data (when enabled) | Where (code) |
 |---|---|---|---|
