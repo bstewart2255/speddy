@@ -17,6 +17,18 @@ export interface StudentLabelMap {
   labels: string[];
   /** Label -> real initials, used to restore the model's response. */
   toInitials: Map<string, string>;
+  /**
+   * Normalized label -> real initials. Models routinely echo a label back with
+   * different casing or punctuation ("student 1", "Student #1"); without this
+   * the restore would miss and a teacher would see the placeholder on their
+   * printout instead of the student's initials.
+   */
+  toInitialsNormalized: Map<string, string>;
+}
+
+/** Collapses formatting drift so "Student #1" and "student 1" both match. */
+function normalizeLabel(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
 /** The student fields this module needs; a structural subset of `Student`. */
@@ -35,15 +47,27 @@ interface LabelableStudent {
 export function buildStudentLabelMap(students: LabelableStudent[]): StudentLabelMap {
   const labels: string[] = [];
   const toInitials = new Map<string, string>();
+  const toInitialsNormalized = new Map<string, string>();
 
   students.forEach((student, index) => {
     const label = `Student ${index + 1}`;
     labels.push(label);
     // Mirrors the previous prompt behaviour: initials when present, id otherwise.
-    toInitials.set(label, student.initials || student.id);
+    const initials = student.initials || student.id;
+    toInitials.set(label, initials);
+    toInitialsNormalized.set(normalizeLabel(label), initials);
   });
 
-  return { labels, toInitials };
+  return { labels, toInitials, toInitialsNormalized };
+}
+
+/** Exact match first, then formatting-tolerant; unknown values pass through. */
+function lookup(value: string, map: StudentLabelMap): string {
+  return (
+    map.toInitials.get(value) ??
+    map.toInitialsNormalized.get(normalizeLabel(value)) ??
+    value
+  );
 }
 
 /**
@@ -63,14 +87,14 @@ export function restoreStudentInitials(response: unknown, map: StudentLabelMap):
 
   if (Array.isArray(studentInitials)) {
     teacherLessonPlan.studentInitials = studentInitials.map(value =>
-      typeof value === 'string' ? map.toInitials.get(value) ?? value : value
+      typeof value === 'string' ? lookup(value, map) : value
     );
   }
 
   if (Array.isArray(studentProblems)) {
     for (const entry of studentProblems) {
       if (entry && typeof entry === 'object' && typeof entry.studentInitials === 'string') {
-        entry.studentInitials = map.toInitials.get(entry.studentInitials) ?? entry.studentInitials;
+        entry.studentInitials = lookup(entry.studentInitials, map);
       }
     }
   }

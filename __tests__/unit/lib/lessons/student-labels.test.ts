@@ -76,6 +76,20 @@ describe('restoreStudentInitials', () => {
     ).toEqual(['JB', 'MS']);
   });
 
+  it.each([
+    ['lowercased', 'student 1'],
+    ['hash-prefixed', 'Student #1'],
+    ['extra whitespace', 'Student  1'],
+    ['uppercased', 'STUDENT 1'],
+  ])('restores a label the model reformatted (%s)', (_case, echoed) => {
+    const response = {
+      lesson: { teacherLessonPlan: { studentInitials: [echoed] } },
+    };
+    restoreStudentInitials(response, map);
+
+    expect(response.lesson.teacherLessonPlan.studentInitials).toEqual(['JB']);
+  });
+
   it('preserves a label the map does not know', () => {
     const response = {
       lesson: {

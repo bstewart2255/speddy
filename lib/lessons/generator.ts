@@ -331,8 +331,11 @@ ${promptBuilder.buildUserPrompt(lessonPlanRequest)}`;
       // Generate base lesson with separated prompts
       const baseLesson = await this.getProvider().generateLesson(lessonPlanRequest, systemPrompt, lessonPlanUserPrompt);
 
-      // Labels here are numbered against the representative subset the prompt
-      // was built from, not the full roster — map back with the same list.
+      // Inert today: `gradeGroups` above is hardcoded empty, so this path
+      // generates no representative students and the restore is a no-op. Kept
+      // so that reviving chunked generation cannot silently ship labels to
+      // teachers — the map must be built from whatever subset the prompt used
+      // (`lessonPlanRequest.students`), not the full roster.
       restoreStudentInitials(baseLesson, buildStudentLabelMap(lessonPlanRequest.students));
       
       // Now generate student materials in chunks by grade group
