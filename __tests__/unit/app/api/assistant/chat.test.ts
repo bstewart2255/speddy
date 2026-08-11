@@ -141,7 +141,7 @@ describe('POST /api/assistant/chat', () => {
           grade_level: '3',
           sessions_per_week: 2,
           minutes_per_session: 30,
-          student_details: { first_name: 'Ana', last_name: 'Best', iep_goals: ['reading'] },
+          student_details: { iep_goals: ['reading'] },
         },
       ],
       error: null,
@@ -177,6 +177,41 @@ describe('POST /api/assistant/chat', () => {
     );
     expect(res.status).toBe(400);
     expect(mockCreate).not.toHaveBeenCalled();
+  });
+
+  it('refuses a transcript that starts with an assistant message', async () => {
+    const res = await POST(
+      req({
+        ...validBody,
+        messages: [
+          { role: 'assistant', content: 'Earlier reply' },
+          { role: 'user', content: 'Follow-up question' },
+        ],
+      })
+    );
+    expect(res.status).toBe(400);
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+
+  it('accepts a long echoed assistant turn but refuses an oversized user turn', async () => {
+    // A 6,000-char assistant reply is a normal model output (~1,500 tokens);
+    // rejecting it would permanently break the conversation that produced it.
+    mockCreate.mockResolvedValueOnce(textResponse('Got it.'));
+    const longAssistant = {
+      ...validBody,
+      messages: [
+        { role: 'user', content: 'Summarize everything' },
+        { role: 'assistant', content: 'a'.repeat(6000) },
+        { role: 'user', content: 'Now shorten it' },
+      ],
+    };
+    expect((await POST(req(longAssistant))).status).toBe(200);
+
+    const longUser = {
+      ...validBody,
+      messages: [{ role: 'user', content: 'a'.repeat(6000) }],
+    };
+    expect((await POST(req(longUser))).status).toBe(400);
   });
 
   it('refuses a malformed clientDate', async () => {

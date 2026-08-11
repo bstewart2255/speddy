@@ -9,17 +9,23 @@ import type { SupabaseClient } from '@supabase/supabase-js';
  * answers strictly about the user's own caseload and schedule — it can never
  * read rows the signed-in user couldn't read themselves, and it has no write
  * path at all.
+ *
+ * Student-data scope (CA-NDPA, see SPE-61 / `lib/lessons/student-labels.ts`):
+ * what these tools return is sent to Anthropic as tool results, so they are
+ * limited to the disclosed subprocessor scope — student initials and IEP goal
+ * text (plus grade and session times). Full names and free-text session notes
+ * are deliberately never selected here; widening this requires a disclosure
+ * update first, not just a code change.
  */
 
 export const MAX_SCHEDULE_RANGE_DAYS = 31;
 const MAX_SCHEDULE_ROWS = 300;
-const MAX_NOTE_CHARS = 500;
 
 export const assistantTools: Anthropic.Tool[] = [
   {
     name: 'get_caseload',
     description:
-      "List the signed-in provider's student caseload: student id, initials, name (when recorded), grade, IEP goals, and service level (sessions per week, minutes per session, total weekly minutes). Use this for questions about students, goals, or service minutes, and to find a student_id for get_student_info.",
+      "List the signed-in provider's student caseload: student id, initials, grade, IEP goals, and service level (sessions per week, minutes per session, total weekly minutes). Use this for questions about students, goals, or service minutes, and to find a student_id for get_student_info.",
     input_schema: {
       type: 'object',
       properties: {},
@@ -29,7 +35,7 @@ export const assistantTools: Anthropic.Tool[] = [
   {
     name: 'get_schedule',
     description:
-      "List the provider's dated session instances between start_date and end_date (inclusive), each with date, start/end time, student initials and grade, service type, who delivers it, completion status, and any session notes. Dates are YYYY-MM-DD and the range may span at most 31 days. Use for questions about their calendar, a specific day or week, or completed/upcoming sessions.",
+      "List the provider's dated session instances between start_date and end_date (inclusive), each with date, start/end time, student initials and grade, service type, who delivers it, and completion status. Dates are YYYY-MM-DD and the range may span at most 31 days. Use for questions about their calendar, a specific day or week, or completed/upcoming sessions.",
     input_schema: {
       type: 'object',
       properties: {
@@ -49,7 +55,7 @@ export const assistantTools: Anthropic.Tool[] = [
   {
     name: 'get_student_info',
     description:
-      'Get one student from the caseload by student_id (find ids via get_caseload): initials, name, grade, IEP goals, service level, and their recurring weekly session slots (day_of_week 1=Monday … 5=Friday).',
+      'Get one student from the caseload by student_id (find ids via get_caseload): initials, grade, IEP goals, service level, and their recurring weekly session slots (day_of_week 1=Monday … 5=Friday).',
     input_schema: {
       type: 'object',
       properties: {
@@ -72,17 +78,15 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 interface StudentDetailsRow {
-  first_name?: string | null;
-  last_name?: string | null;
   iep_goals?: string[] | string | null;
 }
 
-// student_details comes back as an object or a one-element array depending on
-// how PostgREST resolves the relationship; normalize both shapes.
-function normalizeDetails(raw: unknown): StudentDetailsRow | null {
+// Relationship columns come back as an object or a one-element array depending
+// on how PostgREST resolves them; normalize both shapes.
+function normalizeRelation<T>(raw: unknown): T | null {
   if (!raw) return null;
   const row = Array.isArray(raw) ? raw[0] : raw;
-  return (row as StudentDetailsRow) ?? null;
+  return (row as T) ?? null;
 }
 
 function normalizeGoals(goals: StudentDetailsRow['iep_goals']): string[] {
@@ -94,11 +98,6 @@ function normalizeGoals(goals: StudentDetailsRow['iep_goals']): string[] {
     return goals.includes(';') ? goals.split(';').map((g) => g.trim()).filter(Boolean) : [goals];
   }
   return [];
-}
-
-function studentName(details: StudentDetailsRow | null): string | null {
-  const name = [details?.first_name, details?.last_name].filter(Boolean).join(' ').trim();
-  return name || null;
 }
 
 function parseDateRange(input: Record<string, unknown>):
@@ -127,20 +126,19 @@ function parseDateRange(input: Record<string, unknown>):
 async function getCaseload(supabase: SupabaseClient, userId: string): Promise<AssistantToolResult> {
   const { data, error } = await supabase
     .from('students')
-    .select('id, initials, grade_level, sessions_per_week, minutes_per_session, student_details(first_name, last_name, iep_goals)')
+    .select('id, initials, grade_level, sessions_per_week, minutes_per_session, student_details(iep_goals)')
     .eq('provider_id', userId)
     .order('grade_level', { ascending: true });
 
   if (error) return { ok: false, error: `Could not load the caseload: ${error.message}` };
 
   const students = (data ?? []).map((row) => {
-    const details = normalizeDetails(row.student_details);
+    const details = normalizeRelation<StudentDetailsRow>(row.student_details);
     const sessionsPerWeek = row.sessions_per_week ?? null;
     const minutesPerSession = row.minutes_per_session ?? null;
     return {
       student_id: row.id,
       initials: row.initials,
-      name: studentName(details),
       grade: row.grade_level,
       sessions_per_week: sessionsPerWeek,
       minutes_per_session: minutesPerSession,
@@ -164,7 +162,7 @@ async function getSchedule(
   const { data, error } = await supabase
     .from('schedule_sessions')
     .select(
-      'session_date, start_time, end_time, service_type, delivered_by, is_completed, session_notes, students(initials, grade_level)'
+      'session_date, start_time, end_time, service_type, delivered_by, is_completed, students(initials, grade_level)'
     )
     .eq('provider_id', userId)
     .not('session_date', 'is', null)
@@ -178,8 +176,7 @@ async function getSchedule(
   if (error) return { ok: false, error: `Could not load the schedule: ${error.message}` };
 
   const sessions = (data ?? []).map((row) => {
-    const student = normalizeDetails(row.students) as { initials?: string; grade_level?: string } | null;
-    const notes = typeof row.session_notes === 'string' ? row.session_notes : null;
+    const student = normalizeRelation<{ initials?: string; grade_level?: string }>(row.students);
     return {
       date: row.session_date,
       start_time: row.start_time,
@@ -189,7 +186,6 @@ async function getSchedule(
       service_type: row.service_type,
       delivered_by: row.delivered_by,
       completed: row.is_completed === true,
-      notes: notes && notes.length > MAX_NOTE_CHARS ? `${notes.slice(0, MAX_NOTE_CHARS)}…` : notes,
     };
   });
 
@@ -217,7 +213,7 @@ async function getStudentInfo(
 
   const { data, error } = await supabase
     .from('students')
-    .select('id, initials, grade_level, sessions_per_week, minutes_per_session, student_details(first_name, last_name, iep_goals)')
+    .select('id, initials, grade_level, sessions_per_week, minutes_per_session, student_details(iep_goals)')
     .eq('id', studentId)
     .eq('provider_id', userId)
     .maybeSingle();
@@ -237,7 +233,7 @@ async function getStudentInfo(
 
   if (slotsError) return { ok: false, error: `Could not load the student's schedule: ${slotsError.message}` };
 
-  const details = normalizeDetails(data.student_details);
+  const details = normalizeRelation<StudentDetailsRow>(data.student_details);
   const sessionsPerWeek = data.sessions_per_week ?? null;
   const minutesPerSession = data.minutes_per_session ?? null;
 
@@ -246,7 +242,6 @@ async function getStudentInfo(
     data: {
       student_id: data.id,
       initials: data.initials,
-      name: studentName(details),
       grade: data.grade_level,
       sessions_per_week: sessionsPerWeek,
       minutes_per_session: minutesPerSession,

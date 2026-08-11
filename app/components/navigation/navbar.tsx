@@ -286,7 +286,9 @@ export default function Navbar() {
           
           {/* User Section */}
           <div className="flex items-center gap-4">
-            {canUseAssistant(userRole) ? (
+            {/* Hold the slot until the role loads so Help doesn't flash and
+                then swap to Ask AI on every page load. */}
+            {!userRole ? null : canUseAssistant(userRole) ? (
               <LongHoverTooltip content="Ask the Speddy Assistant about your schedule, caseload, or students, or have it draft notes and parent updates. It only sees your own data and never changes anything.">
                 <button
                   onClick={() => setAssistantOpen((v) => !v)}

@@ -15,8 +15,12 @@ import { assistantTools, executeAssistantTool } from './tools';
 const DEFAULT_MODEL = 'claude-haiku-4-5';
 const MAX_TOOL_ROUNDS = 6;
 const MAX_RESPONSE_TOKENS = 1500;
-// Leave headroom under the route's 60s maxDuration for a final response.
-const REQUEST_TIMEOUT_MS = 50_000;
+// Per-Anthropic-call timeout. Separately, LOOP_DEADLINE_MS bounds the whole
+// exchange: once past it, the next round is forced to answer without tools, so
+// worst case stays under the route's 120s maxDuration (deadline + one final
+// call + retry headroom).
+const REQUEST_TIMEOUT_MS = 30_000;
+const LOOP_DEADLINE_MS = 80_000;
 
 export interface AssistantTurn {
   role: 'user' | 'assistant';
@@ -52,8 +56,8 @@ Data rules:
 - In schedule data, day_of_week runs 1 = Monday through 5 = Friday, and the school week is Monday to Friday. Resolve relative dates ("today", "this week") from today's date above.
 
 Sensitive-data care:
-- This is student education data. Refer to students the way the data does (initials, or first names when recorded). Do not speculate about diagnoses or eligibility, and do not give medical or legal advice — clinical and compliance judgments belong to the provider.
-- When drafting parent-facing text, keep a warm, professional tone and include only facts from the data or from what the user told you.
+- This is student education data. The data identifies students by initials only, by design — refer to them the same way, and never guess at full names. Do not speculate about diagnoses or eligibility, and do not give medical or legal advice — clinical and compliance judgments belong to the provider.
+- When drafting parent-facing text, keep a warm, professional tone, use the student's initials where the name would go (the provider will fill it in), and include only facts from the data or from what the user told you.
 
 Style:
 - Be concise and practical. Plain text only — no markdown headers or tables; short dash lists are fine.
@@ -77,7 +81,7 @@ export async function runAssistantChat(args: AssistantChatArgs): Promise<{ reply
   }));
 
   for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
-    const isLastRound = round === MAX_TOOL_ROUNDS;
+    const isLastRound = round === MAX_TOOL_ROUNDS || Date.now() - startTime > LOOP_DEADLINE_MS;
     const response = await anthropic.messages.create({
       model,
       max_tokens: MAX_RESPONSE_TOKENS,

@@ -63,12 +63,18 @@ export default function AssistantPanel({ open, onClose }: AssistantPanelProps) {
       setBusy(true);
       setError(null);
 
+      // Window the transcript, then trim any leading assistant turn — the
+      // Anthropic API requires the first message to be from the user, and a
+      // plain slice can land the window on an assistant reply.
+      const sent = nextTurns.slice(-MAX_SENT_TURNS);
+      while (sent.length > 0 && sent[0].role === 'assistant') sent.shift();
+
       try {
         const res = await fetch('/api/assistant/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            messages: nextTurns.slice(-MAX_SENT_TURNS),
+            messages: sent,
             clientDate: formatDateLocal(new Date()),
             clientTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
           }),
@@ -105,9 +111,11 @@ export default function AssistantPanel({ open, onClose }: AssistantPanelProps) {
   if (!open) return null;
 
   return (
+    // bottom-24 keeps the Help Scout beacon launcher (bottom-right corner)
+    // reachable while the panel is open.
     <div
-      className="fixed bottom-6 right-5 z-40 flex w-[380px] max-w-[calc(100vw-2.5rem)] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl"
-      style={{ height: 'min(560px, calc(100vh - 8rem))' }}
+      className="fixed bottom-24 right-5 z-40 flex w-[380px] max-w-[calc(100vw-2.5rem)] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl"
+      style={{ height: 'min(560px, calc(100vh - 10rem))' }}
       role="dialog"
       aria-label="Speddy Assistant"
     >
@@ -208,7 +216,14 @@ export default function AssistantPanel({ open, onClose }: AssistantPanelProps) {
           </button>
         </form>
         <p className="mt-1 px-1 text-[11px] text-gray-400">
-          AI can make mistakes — verify important details. Read-only: it never changes your data.
+          AI can make mistakes — verify important details. It never changes your data.{' '}
+          <button
+            type="button"
+            onClick={() => window.Beacon?.('open')}
+            className="underline hover:text-gray-600"
+          >
+            Need a human? Contact support
+          </button>
         </p>
       </div>
     </div>

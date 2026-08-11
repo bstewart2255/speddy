@@ -9,8 +9,10 @@ import { runAssistantChat, type AssistantTurn } from '@/lib/assistant/chat';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-// A single exchange can include a few Anthropic round-trips for tool calls.
-export const maxDuration = 60;
+// A single exchange can include several Anthropic round-trips for tool calls;
+// the chat loop's internal deadline (LOOP_DEADLINE_MS) keeps worst cases well
+// under this ceiling.
+export const maxDuration = 120;
 
 /**
  * POST /api/assistant/chat — the Speddy Assistant (SPE-450).
@@ -21,21 +23,33 @@ export const maxDuration = 60;
  */
 
 const MAX_TURNS = 30;
-const MAX_TURN_CHARS = 4000;
+// User turns are what a person types; assistant turns are echoed back model
+// replies, which can legitimately run longer (MAX_RESPONSE_TOKENS ≈ 6,000
+// chars) — capping both at the user limit would break a conversation after
+// one long reply.
+const MAX_USER_TURN_CHARS = 4000;
+const MAX_ASSISTANT_TURN_CHARS = 10_000;
 
 const bodySchema = z.object({
   messages: z
     .array(
       z.object({
         role: z.enum(['user', 'assistant']),
-        content: z.string().trim().min(1).max(MAX_TURN_CHARS),
+        content: z.string().trim().min(1).max(MAX_ASSISTANT_TURN_CHARS),
       })
     )
     .min(1)
     .max(MAX_TURNS)
+    .refine((msgs) => msgs[0].role === 'user', {
+      message: 'The first message must be from the user',
+    })
     .refine((msgs) => msgs[msgs.length - 1].role === 'user', {
       message: 'The last message must be from the user',
-    }),
+    })
+    .refine(
+      (msgs) => msgs.every((m) => m.role === 'assistant' || m.content.length <= MAX_USER_TURN_CHARS),
+      { message: `User messages are limited to ${MAX_USER_TURN_CHARS} characters` }
+    ),
   clientDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'clientDate must be YYYY-MM-DD'),
   clientTimezone: z.string().max(64).optional(),
 });

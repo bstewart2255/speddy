@@ -66,7 +66,7 @@ describe('get_caseload', () => {
               sessions_per_week: 2,
               minutes_per_session: 30,
               // details as one-element array, goals as ';'-separated string
-              student_details: [{ first_name: 'Ana', last_name: 'Best', iep_goals: 'reading fluency; math facts' }],
+              student_details: [{ iep_goals: 'reading fluency; math facts' }],
             },
             {
               id: '44444444-4444-4444-8444-444444444444',
@@ -75,7 +75,7 @@ describe('get_caseload', () => {
               sessions_per_week: null,
               minutes_per_session: 30,
               // details as object, goals as array
-              student_details: { first_name: null, last_name: null, iep_goals: ['articulation'] },
+              student_details: { iep_goals: ['articulation'] },
             },
           ],
           error: null,
@@ -92,7 +92,6 @@ describe('get_caseload', () => {
           {
             student_id: STUDENT_ID,
             initials: 'AB',
-            name: 'Ana Best',
             grade: '3',
             sessions_per_week: 2,
             minutes_per_session: 30,
@@ -102,7 +101,6 @@ describe('get_caseload', () => {
           {
             student_id: '44444444-4444-4444-8444-444444444444',
             initials: 'CD',
-            name: null,
             grade: 'K',
             sessions_per_week: null,
             minutes_per_session: 30,
@@ -115,6 +113,14 @@ describe('get_caseload', () => {
 
     // The load-bearing filter: scoped to the signed-in provider.
     expect(calledWith(queries.students[0], 'eq')).toContainEqual(['provider_id', USER_ID]);
+  });
+
+  it('never selects student names — AI-bound data is capped at initials + goals (CA-NDPA / SPE-61)', async () => {
+    const { client, queries } = makeSupabase({ students: [{ data: [], error: null }] });
+    await executeAssistantTool(client, USER_ID, 'get_caseload', {});
+    const selectArg = String(calledWith(queries.students[0], 'select')[0][0]);
+    expect(selectArg).not.toContain('first_name');
+    expect(selectArg).not.toContain('last_name');
   });
 
   it('surfaces a database error as ok:false', async () => {
@@ -158,8 +164,7 @@ describe('get_schedule', () => {
     if (!result.ok) expect(result.error).toContain('at most');
   });
 
-  it('maps sessions, truncates long notes, and scopes the query to the provider and range', async () => {
-    const longNote = 'x'.repeat(600);
+  it('maps sessions and scopes the query to the provider and range', async () => {
     const { client, queries } = makeSupabase({
       schedule_sessions: [
         {
@@ -171,7 +176,6 @@ describe('get_schedule', () => {
               service_type: 'speech',
               delivered_by: 'provider',
               is_completed: true,
-              session_notes: longNote,
               students: { initials: 'AB', grade_level: '3' },
             },
             {
@@ -181,7 +185,6 @@ describe('get_schedule', () => {
               service_type: 'speech',
               delivered_by: 'sea',
               is_completed: false,
-              session_notes: null,
               students: null,
             },
           ],
@@ -196,8 +199,8 @@ describe('get_schedule', () => {
       const data = result.data as any;
       expect(data.session_count).toBe(2);
       expect(data.truncated).toBe(false);
-      expect(data.sessions[0].notes).toHaveLength(501); // 500 chars + ellipsis
       expect(data.sessions[0].completed).toBe(true);
+      expect(data.sessions[0].student_initials).toBe('AB');
       expect(data.sessions[1].student_initials).toBeNull();
     }
 
@@ -206,6 +209,14 @@ describe('get_schedule', () => {
     expect(calledWith(q, 'gte')).toContainEqual(['session_date', '2026-08-10']);
     expect(calledWith(q, 'lte')).toContainEqual(['session_date', '2026-08-14']);
     expect(calledWith(q, 'is')).toContainEqual(['deleted_at', null]);
+  });
+
+  it('never selects free-text session notes — they are outside the disclosed AI data scope', async () => {
+    const { client, queries } = makeSupabase({ schedule_sessions: [{ data: [], error: null }] });
+    await executeAssistantTool(client, USER_ID, 'get_schedule', input);
+    const selectArg = String(calledWith(queries.schedule_sessions[0], 'select')[0][0]);
+    expect(selectArg).not.toContain('session_notes');
+    expect(selectArg).not.toContain('first_name');
   });
 });
 
@@ -237,7 +248,7 @@ describe('get_student_info', () => {
             grade_level: '3',
             sessions_per_week: 2,
             minutes_per_session: 30,
-            student_details: { first_name: 'Ana', last_name: 'Best', iep_goals: ['reading fluency'] },
+            student_details: { iep_goals: ['reading fluency'] },
           },
           error: null,
         },
@@ -261,7 +272,6 @@ describe('get_student_info', () => {
       data: {
         student_id: STUDENT_ID,
         initials: 'AB',
-        name: 'Ana Best',
         grade: '3',
         sessions_per_week: 2,
         minutes_per_session: 30,
