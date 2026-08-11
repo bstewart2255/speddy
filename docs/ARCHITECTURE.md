@@ -196,8 +196,10 @@ flowchart TD
 2. **`withRoute`** (`lib/api/with-route.ts`) — composable wrapper offering
    `auth` (via `getUser()`), zod `body`/`query` validation, per-user
    `rateLimit`, and `aiGated` (404s every gated route while
-   `AI_FEATURES_ENABLED !== 'true'`). **There is no `role` option** — see the
-   known gap below.
+   `AI_FEATURES_ENABLED !== 'true'`). A gated route may also declare its own
+   `aiEnableFlag` env var that enables just that route while the master switch
+   stays off — the assistant uses `ASSISTANT_ENABLED` this way (SPE-450/452).
+   **There is no `role` option** — see the known gap below.
 3. **RLS** — the authoritative layer. Domain tables (students, sessions, CARE,
    etc.) carry policies scoped to the user's school(s) and/or ownership. Admin
    scope is granted via `admin_permissions` (§3).

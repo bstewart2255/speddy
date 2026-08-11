@@ -6,8 +6,10 @@ import { checkUserRateLimit, type RateLimitRule } from './rate-limit-user';
 
 // Server-side AI kill-switch. AI features are disabled by default; any route
 // that reaches an external LLM / document-processing provider opts in via
-// `aiGated` (see below) and 404s unless AI_FEATURES_ENABLED === 'true'. The flag
-// is read per request (not cached at module load) so a change takes effect on
+// `aiGated` (see below) and 404s unless AI_FEATURES_ENABLED === 'true' — or,
+// when the route declares its own `aiEnableFlag`, unless that env var is
+// 'true' (per-feature launches, e.g. ASSISTANT_ENABLED — SPE-452). Flags are
+// read per request (not cached at module load) so a change takes effect on
 // the next request rather than requiring a fresh process.
 
 interface WithRouteConfig<TBody, TQuery> {
@@ -26,6 +28,14 @@ interface WithRouteConfig<TBody, TQuery> {
    * OpenAI / Anthropic / document-processing providers.
    */
   aiGated?: boolean;
+  /**
+   * Optional per-feature enable flag for an aiGated route: the name of an env
+   * var that turns THIS route on even while the master AI_FEATURES_ENABLED
+   * switch is off (e.g. ASSISTANT_ENABLED for the Speddy Assistant, SPE-452).
+   * The master switch still enables everything; this only adds a narrower
+   * "just this feature" path. Checked with the same pre-auth 404 semantics.
+   */
+  aiEnableFlag?: string;
 }
 
 interface RouteHandlerArgs<TBody, TQuery, TParams> {
@@ -77,9 +87,16 @@ export function withRoute<
     try {
       // AI kill-switch: gated routes do not exist while AI features are off.
       // Checked before auth so the feature is fully hidden and makes no
-      // provider calls regardless of who calls it.
-      if (config.aiGated && process.env.AI_FEATURES_ENABLED !== 'true') {
-        return NextResponse.json({ error: 'Not found' }, { status: 404 });
+      // provider calls regardless of who calls it. A route may declare its own
+      // enable flag (aiEnableFlag) that turns it on independently of the
+      // master switch.
+      if (config.aiGated) {
+        const enabled =
+          process.env.AI_FEATURES_ENABLED === 'true' ||
+          (config.aiEnableFlag != null && process.env[config.aiEnableFlag] === 'true');
+        if (!enabled) {
+          return NextResponse.json({ error: 'Not found' }, { status: 404 });
+        }
       }
 
       let userId = '';

@@ -165,7 +165,8 @@ export default function AssistantPanel({ open, onClose }: AssistantPanelProps) {
           <div className="space-y-3">
             <p className="text-sm text-gray-600">
               Ask about your schedule, caseload, or students&apos; goals — or ask for a draft
-              (session notes, a parent email, a progress summary).
+              (session notes, a parent email, a progress summary). Please refer to students
+              by their initials, not full names.
             </p>
             <div className="space-y-2">
               {SUGGESTIONS.map((s) => (

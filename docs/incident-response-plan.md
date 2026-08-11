@@ -77,7 +77,7 @@ Actions are chosen per incident from this playbook:
 - Force password reset / sign-out for affected provider accounts (Supabase Auth)
 - Revoke affected Chrome-extension API keys (`api_keys`) — this also force-clears the extension's on-device cache on next use
 - Disable affected routes or roll back to a known-good deployment (Vercel instant rollback)
-- Verify the AI feature gate remains off (`AI_FEATURES_ENABLED`), and that the inbound email webhook remains disabled
+- Verify the AI feature gates are in their intended state — the master `AI_FEATURES_ENABLED` (all AI routes) **and** `ASSISTANT_ENABLED` (the Ask AI assistant route, which calls Anthropic independently of the master switch) — and that the inbound email webhook remains disabled
 - Engage the relevant subprocessor's security channel if the issue originates upstream
 
 ### Phase 2 — Investigate
