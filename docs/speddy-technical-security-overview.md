@@ -151,7 +151,7 @@ Disposition of student data upon district request is completed within the contra
 One AI feature is live: an in-app **AI assistant** ("Ask AI") available only to service-provider roles, powered by Anthropic (Claude), behind its own server-side enable flag.
 
 - **Read-only.** The assistant answers questions about the signed-in provider's own caseload and schedule, explains how to use Speddy, offers general special-education guidance, and drafts text. It has no write path into Speddy data
-- **Data sent is minimized and pinned by tests**: student initials, IEP goal text, upcoming IEP/triennial meeting dates, grade level, and session times/group names — never full names, never free-text session notes. Provider-typed chat messages are sent verbatim (the UI directs providers to use initials)
+- **Data sent is minimized and pinned by tests**: student initials, IEP goal text, upcoming IEP/triennial meeting dates, grade level, and session times/group names — never student full-name columns, never free-text session notes. IEP goal text and session-group names are provider-authored fields sent as typed (groups auto-name from student initials but are editable). The signed-in provider's display name and role are included in the prompt for personalization. Provider-typed chat messages are sent verbatim (the UI directs providers to use initials)
 - **Scoped by the same row-level security as the signed-in user**: queries run under the provider's own session, so the assistant can never read data the provider couldn't
 - **Conversations are not stored server-side**; the data-processing agreement with Anthropic is executed and on file (see `subprocessors.md`), and Anthropic does not train on this data
 - The assistant can be disabled platform-wide at any time by unsetting its flag (documented in the incident-response plan)
@@ -207,7 +207,7 @@ The authoritative list is maintained in `subprocessors.md`. Districts are notifi
 ### Anthropic (AI assistant)
 
 - **Purpose**: In-app AI assistant for service-provider roles (see Section 5.1)
-- **Data processed**: Student initials, IEP goal text, IEP/triennial meeting dates, grade, session times/group names, and provider-typed chat messages. No full names, no session notes. Conversations not stored server-side
+- **Data processed**: Student initials, IEP goal text, IEP/triennial meeting dates, grade, session times/group names (provider-authored labels), the signed-in provider's display name and role, and provider-typed chat messages. No student full-name columns, no session notes. Conversations not stored server-side
 - **Location**: United States (standard tier); DPA executed and on file
 - **Website**: https://www.anthropic.com
 
