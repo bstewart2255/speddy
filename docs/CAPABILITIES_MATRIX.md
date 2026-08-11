@@ -12,7 +12,7 @@
 >
 > **Last verified:** 2026-07-09, against the live app navigation, the
 > IEP-meeting spec (`docs/IEP_MEETING_SCHEDULING_SPEC.md`), and the
-> private/charter market research (`docs/research/2026-07-private-charter-school-market.md`,
+> private/charter market research ([Linear doc](https://linear.app/speddy/document/market-research-private-and-charter-schools-as-a-speddy-target-market-02337f58b269),
 > PR #677).
 
 **Status legend used throughout:**
@@ -448,11 +448,12 @@ What this document supports deciding (kept as observations, not a design):
 
 - `docs/ARCHITECTURE.md` — roles, portals, elementary/secondary split, CARE
   model, scheduling model.
-- `docs/speddy-feature-overview.md` — provider feature inventory.
+- [Feature Overview for School Districts](https://linear.app/speddy/document/speddy-feature-overview-for-school-districts-81737db18ac1)
+  (Linear) — provider feature inventory.
 - `docs/IEP_MEETING_SCHEDULING_SPEC.md` + PRs #684/#685 (merged), #686 (in
   review) — Meetings status and personas.
-- `docs/research/2026-07-private-charter-school-market.md` (PR #677, in
-  review) — charter/private fit-gap and structural analysis.
+- [Private & charter market research](https://linear.app/speddy/document/market-research-private-and-charter-schools-as-a-speddy-target-market-02337f58b269)
+  (Linear; PR #677) — charter/private fit-gap and structural analysis.
 - `app/components/navigation/navbar.tsx` — per-role navigation;
   `app/(dashboard)/dashboard/admin/master-schedule/` — Master Schedule scope
   (bells, specials, yard-duty zones, rotations, year toggle);
