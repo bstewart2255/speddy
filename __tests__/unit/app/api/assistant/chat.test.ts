@@ -173,8 +173,15 @@ describe('POST /api/assistant/chat', () => {
     expect(systemText).toContain('written request to review');
     expect(systemText).toContain('meeting held within 30 days');
     expect(systemText).toContain('the annual and three-year cycles do not pause');
-    expect(systemText).toContain('Do NOT quote other statutory deadlines');
+    expect(systemText).toContain('Do NOT quote statutory deadlines or legal numbers that are not in the reference');
     expect(systemText).toContain('one short verification nudge');
+    // SPE-466: founder-approved CA reference pack rides in the prompt —
+    // spot-pin one entry per section so a trim can't silently drop a block.
+    expect(systemText).toContain('5 business days');
+    expect(systemText).toContain('audio-record with 24 hours');
+    expect(systemText).toContain('turns 16');
+    expect(systemText).toContain('manifestation determination review');
+    expect(systemText).toContain('56329(b)');
     expect(call.tools.map((t: { name: string }) => t.name)).toEqual([
       'get_caseload',
       'get_schedule',
