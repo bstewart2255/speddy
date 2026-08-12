@@ -49,14 +49,21 @@ jest.mock('@/lib/supabase/client', () => ({
       chain.then = (resolve: (v: unknown) => unknown) => {
         reads.push(record);
         let rows = table === 'schedule_sessions' ? sessionRows : [];
-        // Apply the equality/null filters the component asked for, so the test
-        // measures the query's real selectivity rather than trusting it.
-        for (const [column, value] of record.filters) {
+        // Apply every filter the component asked for, so the test measures the
+        // query's real selectivity rather than trusting it. Honouring the
+        // `.not(col,'is',null)` links matters as much as the equality ones:
+        // without them, dropping the day_of_week filter would let unscheduled
+        // placeholder rows count as scheduled and no test would notice.
+        for (const filter of record.filters) {
+          const [column, value, extra] = filter as [string, unknown, unknown];
           if (column === 'is_template' && value === true) {
             rows = rows.filter(r => r.is_template === true);
-          }
-          if (column === 'deleted_at' && value === null) {
-            rows = rows.filter(r => r.deleted_at == null);
+          } else if (value === null && extra === undefined) {
+            // .is(column, null)
+            rows = rows.filter(r => r[column] == null);
+          } else if (value === 'is' && extra === null) {
+            // .not(column, 'is', null)
+            rows = rows.filter(r => r[column] != null);
           }
         }
         return Promise.resolve(resolve({ data: rows, error: null }));
@@ -113,21 +120,40 @@ const STUDENTS = [
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { ScheduleSessions } = require('@/app/components/schedule/schedule-sessions');
 
-/** One scheduled template plus a pile of dated instances from that template. */
-function stageRows({ templates, instances }: { templates: number; instances: number }) {
+/** A row shaped like a real one: scheduled rows carry day/time, unscheduled don't. */
+function row(over: Record<string, unknown>) {
+  return {
+    student_id: 'student-1',
+    is_template: true,
+    deleted_at: null,
+    day_of_week: 1,
+    start_time: '09:00:00',
+    end_time: '09:30:00',
+    ...over,
+  };
+}
+
+/** Scheduled templates plus a pile of dated instances from those templates. */
+function stageRows({
+  templates,
+  instances,
+  unscheduled = 0,
+}: {
+  templates: number;
+  instances: number;
+  unscheduled?: number;
+}) {
   sessionRows = [
-    ...Array.from({ length: templates }, (_, i) => ({
-      id: `t${i}`,
-      student_id: 'student-1',
-      is_template: true,
-      deleted_at: null,
-    })),
-    ...Array.from({ length: instances }, (_, i) => ({
-      id: `i${i}`,
-      student_id: 'student-1',
-      is_template: false,
-      deleted_at: null,
-    })),
+    ...Array.from({ length: templates }, (_, i) => row({ id: `t${i}` })),
+    // Instances differ from their template only by is_template + session_date.
+    ...Array.from({ length: instances }, (_, i) =>
+      row({ id: `i${i}`, is_template: false, session_date: '2026-08-12' })
+    ),
+    // Unscheduled placeholders: templates with no day or time yet. These are
+    // exactly what the run exists to place, so they must never count.
+    ...Array.from({ length: unscheduled }, (_, i) =>
+      row({ id: `u${i}`, day_of_week: null, start_time: null, end_time: null })
+    ),
   ];
 }
 
@@ -187,11 +213,21 @@ describe('Auto-Schedule session counting (SPE-474)', () => {
     expect((window.alert as jest.Mock).mock.calls[0][0]).toMatch(/fully scheduled/i);
   });
 
+  it('does not count an unscheduled placeholder as already scheduled', async () => {
+    // 1 scheduled template + 1 unscheduled placeholder against
+    // sessions_per_week = 2. Counting the placeholder would read as 2 >= 2 and
+    // skip the student — the same "All students are fully scheduled!" symptom,
+    // from the opposite direction.
+    stageRows({ templates: 1, instances: 0, unscheduled: 1 });
+    await runAutoSchedule();
+
+    await waitFor(() => expect(scheduleBatchStudents).toHaveBeenCalled());
+    const [batch] = scheduleBatchStudents.mock.calls[0] as unknown as [Array<{ id: string }>];
+    expect(batch.map(s => s.id)).toEqual(['student-1']);
+  });
+
   it('does not count a soft-deleted template as scheduled time', async () => {
-    sessionRows = [
-      { id: 't0', student_id: 'student-1', is_template: true, deleted_at: null },
-      { id: 't1', student_id: 'student-1', is_template: true, deleted_at: '2026-01-01' },
-    ];
+    sessionRows = [row({ id: 't0' }), row({ id: 't1', deleted_at: '2026-01-01' })];
     await runAutoSchedule();
 
     await waitFor(() => expect(scheduleBatchStudents).toHaveBeenCalled());
