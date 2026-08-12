@@ -7,12 +7,12 @@ import {
 } from '@/lib/scheduling/scheduling-strategy';
 
 /**
- * SPE-472: grouping keys decide which students the auto-scheduler will try to
+ * SPE-473: grouping keys decide which students the auto-scheduler will try to
  * stack into a shared slot. Getting one wrong doesn't produce an invalid
  * schedule — every placement is still validated — but it does produce a
  * nonsense group, so the "never guess" cases below are the ones that matter.
  */
-describe('scheduling strategy grouping keys (SPE-472)', () => {
+describe('scheduling strategy grouping keys (SPE-473)', () => {
   describe('grade-grouped', () => {
     it('groups students who share a grade', () => {
       const a = getGroupingKey({ grade_level: '3' }, 'grade-grouped');
@@ -94,7 +94,7 @@ describe('scheduling strategy grouping keys (SPE-472)', () => {
   });
 });
 
-describe('scheduling strategy options (SPE-472)', () => {
+describe('scheduling strategy options (SPE-473)', () => {
   it('defaults to balanced, so an unchanged run behaves as it did before', () => {
     expect(DEFAULT_SCHEDULING_STRATEGY).toBe('balanced');
   });

@@ -74,7 +74,7 @@ interface SchedulingContext {
   }>;
   studentGradeMap: Map<string, string>; // Map student ID to grade level
   /**
-   * Map student ID to the grouping key of the active strategy (SPE-472), for
+   * Map student ID to the grouping key of the active strategy (SPE-473), for
    * every student known at this school — not just the ones in the current run.
    * Empty for strategies that don't group.
    */
@@ -185,7 +185,7 @@ export class OptimizedScheduler {
      */
     private worksAtMultipleSchools: boolean = false,
     /**
-     * SPE-472: which placement strategy this run uses. Defaults to the previous
+     * SPE-473: which placement strategy this run uses. Defaults to the previous
      * fixed behaviour, so callers that don't pass one are unaffected.
      */
     private strategy: SchedulingStrategy = DEFAULT_SCHEDULING_STRATEGY
@@ -527,7 +527,7 @@ export class OptimizedScheduler {
   async scheduleBatch(
     students: Student[],
     /**
-     * SPE-472: every student at this school, including ones already fully
+     * SPE-473: every student at this school, including ones already fully
      * scheduled. Grouping and the grade tiebreak read this to recognise the
      * peers already sitting in a slot — without it they can only see students
      * in the current run, so adding one new 3rd grader would never join the
@@ -594,7 +594,7 @@ export class OptimizedScheduler {
     });
 
     // Grouping keys, by contrast, cover every student known at this school
-    // (SPE-472). Without the roster a grouping run can only see the students in
+    // (SPE-473). Without the roster a grouping run can only see the students in
     // this batch, so adding one new 3rd grader would never join the 3rd grade
     // group already on the calendar. Non-grouping strategies produce no keys, so
     // this map stays empty for them and cannot affect their placements.
@@ -903,7 +903,7 @@ export class OptimizedScheduler {
   }
 
   /**
-   * Order students for placement (SPE-472).
+   * Order students for placement (SPE-473).
    *
    * Hardest-first (most total minutes) is the base rule everywhere: the students
    * with the least room to move get first pick of the calendar.
@@ -948,7 +948,7 @@ export class OptimizedScheduler {
   }
 
   /**
-   * Capacity ceilings to try, in order, when placing a student (SPE-472).
+   * Capacity ceilings to try, in order, when placing a student (SPE-473).
    *
    * The default two passes deliberately hold slots to 3 before allowing the full
    * group ceiling, which keeps a run from stacking students who have no reason
@@ -1000,7 +1000,7 @@ export class OptimizedScheduler {
     const sessionsOnDay = (day: number) =>
       this.context!.existingSessions.filter(s => s.day_of_week === day).length;
 
-    // SPE-472: how many of this student's group are already on this day.
+    // SPE-473: how many of this student's group are already on this day.
     //
     // Grouping has to be decided at the DAY level as well as the slot level.
     // Sorting days by emptiest alone actively defeats it: each peer placed makes
@@ -1036,7 +1036,7 @@ export class OptimizedScheduler {
     // CAPACITY-LADDER DISTRIBUTION STRATEGY
     // Each pass retries the days at a higher per-slot ceiling, so sessions only
     // stack once the roomier options are exhausted. Which ceilings apply depends
-    // on the strategy (SPE-472).
+    // on the strategy (SPE-473).
     for (const maxCapacity of this.getPassCapacities(student)) {
       if (foundSlots.length >= slotsNeeded) break;
 
@@ -1660,7 +1660,7 @@ export class OptimizedScheduler {
   
   /**
    * Order a day's candidate slots by how well each one serves the active
-   * strategy (SPE-472). Every slot in `slots` is already legal for this student;
+   * strategy (SPE-473). Every slot in `slots` is already legal for this student;
    * this only decides which is tried first.
    */
   private sortSlotsForStrategy(
@@ -1700,7 +1700,7 @@ export class OptimizedScheduler {
         }
       }
 
-      // Peers this student would actually be grouped WITH (SPE-472).
+      // Peers this student would actually be grouped WITH (SPE-473).
       //
       // Deliberately exact start-time alignment, not overlap. Membership in this
       // product derives from the schedule: same day + same start time + same

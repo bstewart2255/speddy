@@ -10,7 +10,7 @@ import { OptimizedScheduler } from '@/lib/scheduling/optimized-scheduler';
 import { getGroupingKey, type SchedulingStrategy } from '@/lib/scheduling/scheduling-strategy';
 
 /**
- * SPE-472: end-to-end placement, across days.
+ * SPE-473: end-to-end placement, across days.
  *
  * The sibling suite pins the ordering helpers in isolation, which is exactly how
  * the first cut of this feature shipped broken: `sortSlotsForStrategy` was
@@ -104,7 +104,7 @@ async function place(
 const distinctSlots = (placements: Placement[]) =>
   new Set(placements.map(p => `${p.day}-${p.startTime}`));
 
-describe('grade-grouped placement (SPE-472)', () => {
+describe('grade-grouped placement (SPE-473)', () => {
   const third = [
     student({ id: 'a', grade_level: '3' }),
     student({ id: 'b', grade_level: '3' }),
@@ -193,7 +193,7 @@ describe('grade-grouped placement (SPE-472)', () => {
   });
 });
 
-describe('teacher-grouped placement (SPE-472)', () => {
+describe('teacher-grouped placement (SPE-473)', () => {
   it('lands one teacher\'s students in a shared slot, across grades', async () => {
     const students = [
       student({ id: 'chen-a', teacher_id: 't-chen', grade_level: '3' }),
@@ -234,7 +234,7 @@ describe('teacher-grouped placement (SPE-472)', () => {
   });
 });
 
-describe('morning-first placement (SPE-472)', () => {
+describe('morning-first placement (SPE-473)', () => {
   it('takes a busier early slot where balanced takes an emptier later one', async () => {
     // On an empty calendar both strategies start at 08:00, so a contrast test
     // there proves nothing. The strategies only diverge once an earlier slot is
@@ -266,7 +266,7 @@ describe('morning-first placement (SPE-472)', () => {
   });
 });
 
-describe('balanced placement is unchanged (SPE-472)', () => {
+describe('balanced placement is unchanged (SPE-473)', () => {
   it('distributes students across days rather than stacking them', async () => {
     const students = Array.from({ length: 5 }, (_, i) => student({ id: `s${i}` }));
     const placements = await place('balanced', students);

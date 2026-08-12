@@ -1076,14 +1076,14 @@ erDiagram
   calendar's client-side virtual layer renders slots beyond the horizon and
   persists them on first touch (`lib/services/session-persistence.ts`).
 
-### Auto-Schedule strategies (SPE-472)
+### Auto-Schedule strategies (SPE-473)
 
 Clicking **Auto-Schedule Sessions** on the Main Schedule opens a picker before
 the run (replacing the old native `confirm()`), offering four strategies:
 
 | Strategy | What it optimizes for |
 |---|---|
-| `balanced` (default) | Even distribution — the emptiest slot wins, same-grade company breaks ties. The pre-SPE-472 behavior, unchanged. |
+| `balanced` (default) | Even distribution — the emptiest slot wins, same-grade company breaks ties. The pre-SPE-473 behavior, unchanged. |
 | `grade-grouped` | Slots already holding a same-grade student win, so a grade can be run as one group. |
 | `teacher-grouped` | Slots already holding a classmate win (keyed by `teacher_id`, falling back to a normalized `teacher_name`), so each teacher is interrupted once. |
 | `morning-first` | Earliest slot wins, leaving afternoons freer. |

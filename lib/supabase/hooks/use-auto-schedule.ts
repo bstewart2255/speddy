@@ -11,7 +11,7 @@ import type { Database } from '../../../src/types/database';
 type Student = Database['public']['Tables']['students']['Row'];
 
 export interface ScheduleBatchOptions {
-  /** Placement strategy for this run (SPE-472). Defaults to 'balanced'. */
+  /** Placement strategy for this run (SPE-473). Defaults to 'balanced'. */
   strategy?: SchedulingStrategy;
   /**
    * Every student at the schools being scheduled, including ones already fully

@@ -13,7 +13,7 @@ import { DEFAULT_SCHEDULING_CONFIG } from '@/lib/scheduling/scheduling-config';
 import type { SchedulingStrategy } from '@/lib/scheduling/scheduling-strategy';
 
 /**
- * SPE-472: the auto-scheduler used to run one fixed recipe — spread students
+ * SPE-473: the auto-scheduler used to run one fixed recipe — spread students
  * into the emptiest slots, with same-grade company as a third-place tiebreaker
  * that only applied on an exact tie. These tests pin what each strategy changes,
  * and (just as importantly) that 'balanced' still behaves as it always did.
@@ -71,7 +71,7 @@ function withContext(
 const slots = (...times: string[]) =>
   times.map(startTime => ({ startTime, dayOfWeek: 1, endTime: '', available: true, capacity: 8, conflicts: [] }));
 
-describe('student ordering by strategy (SPE-472)', () => {
+describe('student ordering by strategy (SPE-473)', () => {
   const hard = student({ id: 'hard', sessions_per_week: 5, minutes_per_session: 60, grade_level: '5' });
   const medium = student({ id: 'medium', sessions_per_week: 3, minutes_per_session: 30, grade_level: '3' });
   const easy = student({ id: 'easy', sessions_per_week: 1, minutes_per_session: 20, grade_level: '5' });
@@ -144,7 +144,7 @@ describe('student ordering by strategy (SPE-472)', () => {
   });
 });
 
-describe('slot ordering by strategy (SPE-472)', () => {
+describe('slot ordering by strategy (SPE-473)', () => {
   const target = student({ id: 'target', grade_level: '3', teacher_id: 't-chen' });
   const peer = student({ id: 'peer', grade_level: '3', teacher_id: 't-chen' });
   const stranger1 = student({ id: 's1', grade_level: '5', teacher_id: 't-ruiz' });
@@ -159,7 +159,7 @@ describe('slot ordering by strategy (SPE-472)', () => {
   const known = [target, peer, stranger1, stranger2];
 
   it('balanced prefers the emptiest slot, even when a same-grade peer sits elsewhere', () => {
-    // This is the behaviour that made grade grouping ineffective before SPE-472:
+    // This is the behaviour that made grade grouping ineffective before SPE-473:
     // spreading always outranked joining. Pinned deliberately — 'balanced' must
     // not change.
     const scheduler = withContext(makeScheduler('balanced'), existing, known);
@@ -220,7 +220,7 @@ describe('slot ordering by strategy (SPE-472)', () => {
   });
 
   it('counts peers who are already scheduled and not part of this run', () => {
-    // The pre-SPE-472 grade map was seeded only from the students being
+    // The pre-SPE-473 grade map was seeded only from the students being
     // scheduled, so anyone already on the calendar registered as neither
     // same-grade nor other-grade and grouping could never join them.
     const scheduler = withContext(makeScheduler('grade-grouped'), existing, known);
@@ -238,7 +238,7 @@ describe('slot ordering by strategy (SPE-472)', () => {
   });
 });
 
-describe('capacity passes by strategy (SPE-472)', () => {
+describe('capacity passes by strategy (SPE-473)', () => {
   const ceiling = DEFAULT_SCHEDULING_CONFIG.maxConcurrentSessions;
   const groupable = student({ id: 'g', grade_level: '3', teacher_id: 't-1' });
 
@@ -274,7 +274,7 @@ describe('capacity passes by strategy (SPE-472)', () => {
   });
 });
 
-describe('strategy defaults (SPE-472)', () => {
+describe('strategy defaults (SPE-473)', () => {
   it('a scheduler built without a strategy behaves as balanced', () => {
     const scheduler = new OptimizedScheduler('provider-1', 'resource') as any;
     expect(scheduler.strategy).toBe('balanced');

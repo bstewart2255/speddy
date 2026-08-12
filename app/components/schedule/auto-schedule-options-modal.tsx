@@ -18,7 +18,7 @@ interface AutoScheduleOptionsModalProps {
 }
 
 /**
- * Strategy picker shown when the provider clicks Auto-Schedule (SPE-472).
+ * Strategy picker shown when the provider clicks Auto-Schedule (SPE-473).
  *
  * Replaces the native `confirm()` this flow used to open: it keeps the same
  * "this will schedule N sessions, continue?" checkpoint before a bulk write,

@@ -1,7 +1,7 @@
 // lib/scheduling/scheduling-strategy.ts
 
 /**
- * Auto-Schedule strategies (SPE-472).
+ * Auto-Schedule strategies (SPE-473).
  *
  * The auto-scheduler always honored the same fixed recipe: spread students into
  * the emptiest slots, preferring same-grade company only as a tiebreaker. Those
