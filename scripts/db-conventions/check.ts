@@ -32,6 +32,25 @@
  *       between SPE-8 being filed and the 2026-08-12 grooming pass, with no sweep
  *       in between — every new one arrived with a newly shipped feature.
  *
+ * ## What it reads
+ *
+ * `CREATE POLICY` / `CREATE FUNCTION`, and — since SPE-472 — `ALTER POLICY` and
+ * `ALTER FUNCTION`. The ALTER forms matter more than they look: a convention is
+ * usually un-done rather than never applied, and every one of the incidents
+ * above was a later migration re-writing something an earlier sweep had already
+ * fixed. Reading only CREATE would have scored the SPE-8 rollback as clean.
+ *
+ * Two asymmetries between the forms are deliberate:
+ *
+ *   - `policy-explicit-role` applies to CREATE only when the `TO` clause is
+ *     absent, because an absent `TO` means `public` there. On ALTER an absent
+ *     `TO` leaves the existing roles alone, so only an ALTER that *names* an
+ *     unsafe role is flagged. Otherwise every USING-only ALTER would fire.
+ *   - `search-path-pg-temp` flags any ALTER that pins a search_path without
+ *     `pg_temp` last, without checking whether the target is SECURITY DEFINER —
+ *     that is unknowable from the ALTER alone, and a migration deliberate enough
+ *     to set the path should set it the house way.
+ *
  * ## How it fails
  *
  * A ratchet, not a cliff. `baseline.json` records the violations that already
@@ -244,12 +263,19 @@ function policyRoleRegion(text: string): string {
   return region.replace(/"[^"]*"/g, ' ');
 }
 
-function checkPolicy(text: string, file: string, line: number): Finding[] {
+/**
+ * @param kind `alter` relaxes only the role rule. `ALTER POLICY … USING (…)` with
+ * no `TO` clause legitimately leaves the existing roles alone — unlike CREATE,
+ * where an absent `TO` silently means `public`. Flagging those would fire on
+ * every USING-only ALTER, including the SPE-8 migration itself, and a gate that
+ * cries wolf gets switched off. The inlined-auth rule applies to both kinds.
+ */
+function checkPolicy(text: string, file: string, line: number, kind: 'create' | 'alter'): Finding[] {
   const findings: Finding[] = [];
   // Identifiers may be quoted and contain spaces — this repo has policies named
   // "Admins can view staff hours". Matching only the leading word would collapse
   // several distinct policies onto one baseline key and mask a new violation.
-  const name = /\bcreate\s+policy\s+(?:if\s+not\s+exists\s+)?(?:"([^"]+)"|([A-Za-z_][A-Za-z0-9_]*))/i.exec(text);
+  const name = /\b(?:create|alter)\s+policy\s+(?:if\s+not\s+exists\s+)?(?:"([^"]+)"|([A-Za-z_][A-Za-z0-9_]*))/i.exec(text);
   const table = /\bon\s+(?:public\s*\.\s*)?(?:"([^"]+)"|([A-Za-z_][A-Za-z0-9_]*))/i.exec(text);
   const identifier = `${table ? (table[1] ?? table[2]) : '?'}.${name ? (name[1] ?? name[2]) : '<unnamed>'}`;
 
@@ -259,13 +285,17 @@ function checkPolicy(text: string, file: string, line: number): Finding[] {
   // reachable without signing in.
   const toClause = /\bto\s+([\s\S]+)$/i.exec(policyRoleRegion(text));
   if (!toClause) {
-    findings.push({
-      rule: 'policy-explicit-role',
-      file,
-      identifier,
-      line,
-      detail: `Policy "${identifier}" names no role, so it defaults to TO public (which includes anon). Add: TO authenticated`,
-    });
+    // Absent TO means "public" on CREATE, but "leave the roles as they are" on
+    // ALTER — only the first is a violation.
+    if (kind === 'create') {
+      findings.push({
+        rule: 'policy-explicit-role',
+        file,
+        identifier,
+        line,
+        detail: `Policy "${identifier}" names no role, so it defaults to TO public (which includes anon). Add: TO authenticated`,
+      });
+    }
   } else {
     const roles = toClause[1].split(',').map((r) => r.trim().replace(/["']/g, '')).filter(Boolean);
     const unsafe = roles.filter((r) => /^(public|anon)$/i.test(r));
@@ -312,18 +342,47 @@ function checkPolicy(text: string, file: string, line: number): Finding[] {
  * for any later violation, and let a compliant first policy launder every
  * violating one behind it.
  */
-function policySlices(text: string): string[] {
-  const re = /\bcreate\s+policy\b/gi;
-  const starts: number[] = [];
+function policySlices(text: string): { text: string; kind: 'create' | 'alter' }[] {
+  const re = /\b(create|alter)\s+policy\b/gi;
+  const starts: { index: number; kind: 'create' | 'alter' }[] = [];
   let m: RegExpExecArray | null;
-  while ((m = re.exec(text)) !== null) starts.push(m.index);
-  return starts.map((start, i) => {
-    const slice = text.slice(start, i + 1 < starts.length ? starts[i + 1] : text.length);
+  while ((m = re.exec(text)) !== null) {
+    starts.push({ index: m.index, kind: m[1].toLowerCase() === 'alter' ? 'alter' : 'create' });
+  }
+  return starts.map(({ index, kind }, i) => {
+    const slice = text.slice(index, i + 1 < starts.length ? starts[i + 1].index : text.length);
     // Inside a DO block each EXECUTE ends at a semicolon; at top level the
     // splitter already removed them, so this is a no-op there.
     const end = slice.indexOf(';');
-    return end === -1 ? slice : slice.slice(0, end);
+    return { text: end === -1 ? slice : slice.slice(0, end), kind };
   });
+}
+
+/**
+ * An ALTER that re-pins a function's search_path without `pg_temp` last.
+ *
+ * This is how the convention gets un-done rather than never applied: SPE-289
+ * swept every SECURITY DEFINER function, and a later migration only has to
+ * re-pin one of them carelessly to undo it. Whether the target is SECURITY
+ * DEFINER cannot be known from the ALTER alone, so this flags any ALTER that
+ * pins a search_path without pg_temp last — if a migration is deliberate enough
+ * to set the path, it should set it the house way.
+ */
+function checkAlterFunction(text: string, file: string, line: number): Finding[] {
+  const sp = SEARCH_PATH_RE.exec(text);
+  if (!sp) return []; // an ALTER doing something else entirely (OWNER TO, RENAME, …)
+
+  const parts = sp[1].split(',').map((p) => p.trim().replace(/["']/g, '')).filter(Boolean);
+  if (parts[parts.length - 1]?.toLowerCase() === 'pg_temp') return [];
+
+  const name = /\bfunction\s+(?:public\s*\.\s*)?(?:"([^"]+)"|([A-Za-z_][A-Za-z0-9_]*))/i.exec(text);
+  return [{
+    rule: 'search-path-pg-temp',
+    file,
+    identifier: name ? (name[1] ?? name[2]) : '<unnamed>',
+    line,
+    detail: `ALTER FUNCTION sets search_path = ${parts.join(', ')} — pg_temp must be listed LAST, or this un-pins a function the SPE-289 sweep hardened`,
+  }];
 }
 
 export function scanFile(sql: string, file: string): Finding[] {
@@ -336,9 +395,11 @@ export function scanFile(sql: string, file: string): Finding[] {
       // A CREATE POLICY inside a function body defines what a later *call* does,
       // not a policy this migration creates — so it is deliberately not checked.
       findings.push(...checkFunction(stmt.text, file, line));
+    } else if (/^\s*alter\s+function\b/i.test(stmt.text)) {
+      findings.push(...checkAlterFunction(stmt.text, file, line));
     } else {
       for (const slice of policySlices(stmt.text)) {
-        findings.push(...checkPolicy(slice, file, line));
+        findings.push(...checkPolicy(slice.text, file, line, slice.kind));
       }
     }
   }

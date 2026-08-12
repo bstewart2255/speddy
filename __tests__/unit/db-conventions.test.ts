@@ -109,6 +109,58 @@ describe('rule: policy-inlined-auth-fn', () => {
   });
 });
 
+describe('ALTER statements (SPE-472)', () => {
+  // The gate originally sliced on CREATE only, so an ALTER could reintroduce any
+  // of the three conventions unnoticed — including the rollback documented in
+  // the SPE-8 migration, which is an ALTER POLICY restoring a bare auth.uid().
+
+  it('flags a bare auth.uid() reintroduced by ALTER POLICY', () => {
+    const sql = `ALTER POLICY p ON public.students USING (provider_id = auth.uid());`;
+    const found = scanFile(sql, 'm.sql');
+    expect(found.map((f) => f.rule)).toEqual(['policy-inlined-auth-fn']);
+    expect(found[0].identifier).toBe('students.p');
+  });
+
+  it('flags an ALTER POLICY that widens the role to public or anon', () => {
+    for (const role of ['public', 'anon']) {
+      const sql = `ALTER POLICY p ON public.students TO ${role};`;
+      expect(scanFile(sql, 'm.sql').map((f) => f.rule)).toContain('policy-explicit-role');
+    }
+  });
+
+  it('does NOT flag a USING-only ALTER POLICY for naming no role', () => {
+    // An ALTER without TO leaves the existing roles alone — unlike CREATE, where
+    // an absent TO silently means public. This is the SPE-8 migration's shape;
+    // flagging it would fire on every legitimate USING-only ALTER.
+    const sql = `ALTER POLICY p ON public.students USING (provider_id = (SELECT auth.uid()));`;
+    expect(scanFile(sql, 'm.sql')).toHaveLength(0);
+  });
+
+  it('flags an ALTER FUNCTION that un-pins a hardened search_path', () => {
+    const sql = `ALTER FUNCTION public.f() SET search_path = public;`;
+    const found = scanFile(sql, 'm.sql');
+    expect(found.map((f) => f.rule)).toEqual(['search-path-pg-temp']);
+    expect(found[0].identifier).toBe('f');
+  });
+
+  it('accepts an ALTER FUNCTION that pins pg_temp last', () => {
+    const sql = `ALTER FUNCTION public.f(uuid) SET search_path = public, pg_temp;`;
+    expect(scanFile(sql, 'm.sql')).toHaveLength(0);
+  });
+
+  it('ignores an ALTER FUNCTION that does not touch search_path', () => {
+    expect(scanFile(`ALTER FUNCTION public.f() OWNER TO postgres;`, 'm.sql')).toHaveLength(0);
+    expect(scanFile(`ALTER FUNCTION public.f() RENAME TO g;`, 'm.sql')).toHaveLength(0);
+  });
+
+  it('catches the SPE-8 rollback, which the CREATE-only gate scored clean', () => {
+    const rollback = `ALTER POLICY "District admins can view schedule sessions in their district"
+      ON public.schedule_sessions
+      USING (EXISTS (SELECT 1 FROM admin_permissions ap WHERE ap.admin_id = auth.uid()));`;
+    expect(scanFile(rollback, 'm.sql').map((f) => f.rule)).toEqual(['policy-inlined-auth-fn']);
+  });
+});
+
 describe('parsing hazards', () => {
   it('is not fooled by SQL comments that quote the conventions', () => {
     // This shape is real: 20260806_spe394_profiles_select_district_scope.sql has
