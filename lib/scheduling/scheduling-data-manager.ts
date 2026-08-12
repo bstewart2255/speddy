@@ -115,12 +115,20 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
   }
 
   /**
-   * Check if the data manager is initialized for a specific school
+   * Check if the data manager is initialized for a specific school.
+   *
+   * SPE-463: schoolId participates in the check. This singleton is shared
+   * between the interactive schedule page and the auto-scheduler, and a cache
+   * populated without a school_id filters bell schedules by school_site
+   * instead — which finds nothing for schools migrated to school_id. Without
+   * this, a caller that HAS the school_id would reuse that weaker cache and
+   * silently keep the old behaviour.
    */
-  public isInitializedForSchool(schoolSite: string, schoolDistrict?: string): boolean {
+  public isInitializedForSchool(schoolSite: string, schoolDistrict?: string, schoolId?: string): boolean {
     return this.initialized &&
            this.schoolSite === schoolSite &&
-           this.schoolDistrict === (schoolDistrict || this.schoolDistrict);
+           this.schoolDistrict === (schoolDistrict || this.schoolDistrict) &&
+           (schoolId === undefined || this.schoolId === schoolId);
   }
   
   /**
@@ -131,12 +139,27 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
     this.cacheMetadata.fetchErrors = [];
     
     try {
-      // Try to use the batch RPC if available
+      // Try to use the batch RPC if available.
+      //
+      // SPE-463 — READ BEFORE "FIXING" THIS RPC. `get_scheduling_data_batch`
+      // currently throws on EVERY call, for every provider at every school:
+      // its work_schedule CTE compares `uss.site_id = p_school_site`, and
+      // site_id is uuid while p_school_site is text, so Postgres rejects the
+      // statement at plan time (42883). The batch path has therefore never
+      // returned data — the parallel path below is what actually runs.
+      //
+      // Repairing only that type error would make the RPC start succeeding,
+      // and its bell_schedules / special_activities CTEs filter on
+      // `provider_id = p_provider_id AND school_site = p_school_site`. Both
+      // columns are NULL on site-admin-created rows, so it would return an
+      // empty set, processBatchData would cache that, and the auto-scheduler
+      // would go back to ignoring every bell schedule — the exact bug SPE-463
+      // fixed. Key those CTEs on school_id at the same time, or drop the RPC.
       const { data, error } = await this.supabase.rpc('get_scheduling_data_batch', {
         p_provider_id: this.providerId!,
         p_school_site: this.schoolSite!
       }).single();
-      
+
       if (error) {
         console.log('[DataManager] Batch RPC not available, using parallel queries');
         await this.loadDataParallel();
@@ -243,53 +266,83 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
   }
   
   /**
+   * Fetch rows for the current school from a table keyed by school_id, with a
+   * fallback for rows the school_id migration never reached.
+   *
+   * SPE-463: this used to be either/or — school_id when we had one, otherwise
+   * school_site. That is a trap in both directions, because production holds
+   * both shapes at once:
+   *
+   *   - Bancroft / Mt. Diablo / Rodeo Hills: school_id set, school_site NULL
+   *   - Walnut Acres: school_site set, school_id NULL (60 bell schedule rows,
+   *     17 special activities) while its students all carry a school_id
+   *
+   * So filtering by only one key silently loads nothing for whichever set it
+   * skips — and "nothing" here means the auto-scheduler happily books over
+   * lunch. Match both: rows carrying this school_id, plus legacy rows that
+   * carry no school_id but name this school.
+   *
+   * Two queries rather than a single `.or(...)`, deliberately: school names
+   * contain characters that are significant in PostgREST's filter grammar
+   * ("Mt. Diablo Elementary"), and a mis-escaped filter fails into an empty
+   * result — reintroducing exactly this bug, silently.
+   */
+  private async fetchForSchool<T>(
+    table: 'bell_schedules' | 'special_activities',
+    label: string,
+  ): Promise<T[]> {
+    const rows: T[] = [];
+
+    if (this.schoolId) {
+      const { data, error } = await this.supabase
+        .from(table)
+        .select('*')
+        .eq('school_id', this.schoolId);
+
+      if (error) {
+        this.cacheMetadata.fetchErrors.push(`${label}: ${error.message}`);
+      } else if (data) {
+        rows.push(...(data as T[]));
+      }
+    }
+
+    if (this.schoolSite) {
+      let query = this.supabase
+        .from(table)
+        .select('*')
+        .eq('school_site', this.schoolSite);
+
+      // When we already matched by school_id, this pass is only for strays the
+      // migration missed — without this the two passes would double-count any
+      // row carrying both.
+      if (this.schoolId) {
+        query = query.is('school_id', null);
+      }
+
+      const { data, error } = await query;
+
+      if (error) {
+        this.cacheMetadata.fetchErrors.push(`${label} (legacy school_site): ${error.message}`);
+      } else if (data) {
+        rows.push(...(data as T[]));
+      }
+    }
+
+    return rows;
+  }
+
+  /**
    * Fetch bell schedules
    */
   private async fetchBellSchedules(): Promise<BellSchedule[]> {
-    let query = this.supabase
-      .from('bell_schedules')
-      .select('*');
-    
-    // Use school_id if available, otherwise fall back to school_site
-    if (this.schoolId) {
-      query = query.eq('school_id', this.schoolId);
-    } else {
-      query = query.eq('school_site', this.schoolSite!);
-    }
-    
-    const { data, error } = await query;
-    
-    if (error) {
-      this.cacheMetadata.fetchErrors.push(`Bell schedules: ${error.message}`);
-      return [];
-    }
-    
-    return data || [];
+    return this.fetchForSchool<BellSchedule>('bell_schedules', 'Bell schedules');
   }
   
   /**
    * Fetch special activities
    */
   private async fetchSpecialActivities(): Promise<SpecialActivity[]> {
-    let query = this.supabase
-      .from('special_activities')
-      .select('*');
-    
-    // Use school_id if available, otherwise fall back to school_site
-    if (this.schoolId) {
-      query = query.eq('school_id', this.schoolId);
-    } else {
-      query = query.eq('school_site', this.schoolSite!);
-    }
-    
-    const { data, error } = await query;
-    
-    if (error) {
-      this.cacheMetadata.fetchErrors.push(`Special activities: ${error.message}`);
-      return [];
-    }
-    
-    return data || [];
+    return this.fetchForSchool<SpecialActivity>('special_activities', 'Special activities');
   }
   
   /**

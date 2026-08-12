@@ -270,15 +270,39 @@ export class OptimizedScheduler {
    * Pre-compute all valid time slots for the school
    * This runs ONCE per scheduling session, not per student
    */
-  async initializeContext(schoolSite: string, schoolDistrict?: string): Promise<SchedulingContext> {
+  async initializeContext(
+    schoolSite: string,
+    schoolDistrict?: string,
+    schoolId?: string
+  ): Promise<SchedulingContext> {
     this.log(`Initializing scheduling context for ${schoolSite}...`);
     this.log('[PERFORMANCE] Query count before initialization:', this.performanceMetrics.totalQueries);
 
     // Initialize the data manager if not already initialized for this school
     // This ensures we reload data when switching between schools
-    if (!this.dataManager.isInitializedForSchool(schoolSite, schoolDistrict)) {
-      // Use empty string as fallback for backward compatibility
-      await this.dataManager.initialize(this.providerId, schoolSite, schoolDistrict || '', undefined);
+    //
+    // SPE-463: schoolId used to be hardcoded `undefined` here, which left the
+    // data manager filtering bell schedules and special activities by
+    // `school_site`. Those columns are NULL on every row written since the
+    // school_id migration, so the auto-scheduler loaded ZERO blocks at Bancroft,
+    // Mt. Diablo and Rodeo Hills and would happily place a session through a
+    // grade's lunch. The interactive drag path already passed school_id
+    // (use-scheduling-data.ts) and was unaffected.
+    if (!this.dataManager.isInitializedForSchool(schoolSite, schoolDistrict, schoolId)) {
+      // Use empty string as fallback for backward compatibility.
+      //
+      // providerRole matters: the data manager gates the specialist branch of
+      // fetchExistingSessions on it, so initializing without a role hides
+      // sessions assigned to this user on other providers' students — and the
+      // manager is a singleton shared with the schedule page, so omitting it
+      // here also wiped the role that page had set.
+      await this.dataManager.initialize(
+        this.providerId,
+        schoolSite,
+        schoolDistrict || '',
+        schoolId,
+        this.providerRole,
+      );
     }
 
     // Use data manager instead of direct queries
