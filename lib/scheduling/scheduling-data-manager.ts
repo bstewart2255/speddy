@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/client';
+import { getCurrentSchoolYear } from '@/lib/school-year';
 import type { Database } from '@/src/types';
 import type {
   Student,
@@ -35,7 +36,16 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
   private schoolSite: string | null = null;
   private schoolDistrict: string | null = null;
   private schoolId: string | null = null;
-  
+
+  // SPE-458: the school year this cache holds. Set from getCurrentSchoolYear()
+  // at initialize() rather than passed in — no scheduling caller has a year
+  // selector (the provider Bell Schedules and Special Activities pages both pin
+  // to the current year, and scheduling only ever happens in the year you are
+  // in). Seeded here as well so it is never null if a fetch runs before
+  // initialize(): an unset year would silently mean "every year", which is the
+  // bug this field exists to close.
+  private schoolYear: string = getCurrentSchoolYear();
+
   // Core data structures
   private data: VersionedSchedulingData = {
     data: {
@@ -101,6 +111,7 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
     this.schoolSite = schoolSite;
     this.schoolDistrict = schoolDistrict;
     this.schoolId = schoolId || null;
+    this.schoolYear = getCurrentSchoolYear();
     this.data.version.modifiedBy = providerId;
 
     await this.loadAllData();
@@ -123,12 +134,21 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
    * instead — which finds nothing for schools migrated to school_id. Without
    * this, a caller that HAS the school_id would reuse that weaker cache and
    * silently keep the old behaviour.
+   *
+   * SPE-458: the cached school year is checked against the current one too.
+   * This singleton outlives any one page, so a tab left open across the Aug 1
+   * rollover would otherwise keep serving last year's bell schedules from
+   * memory — the same "invisible but active" failure the school_year filter
+   * closes at the query. No parameter for it: callers have no year to pass,
+   * the only correct value is the current one, so this asks "is this cache
+   * still for the year we are in?".
    */
   public isInitializedForSchool(schoolSite: string, schoolDistrict?: string, schoolId?: string): boolean {
     return this.initialized &&
            this.schoolSite === schoolSite &&
            this.schoolDistrict === (schoolDistrict || this.schoolDistrict) &&
-           (schoolId === undefined || this.schoolId === schoolId);
+           (schoolId === undefined || this.schoolId === schoolId) &&
+           this.schoolYear === getCurrentSchoolYear();
   }
   
   /**
@@ -155,6 +175,11 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
       // empty set, processBatchData would cache that, and the auto-scheduler
       // would go back to ignoring every bell schedule — the exact bug SPE-463
       // fixed. Key those CTEs on school_id at the same time, or drop the RPC.
+      //
+      // SPE-458: those same CTEs also select every school_year at once, which
+      // the parallel path below no longer does. Repairing the RPC without
+      // adding a school_year filter would reintroduce that bug on this path
+      // only — visible just at schools holding two years of data.
       const { data, error } = await this.supabase.rpc('get_scheduling_data_batch', {
         p_provider_id: this.providerId!,
         p_school_site: this.schoolSite!
@@ -286,6 +311,16 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
    * contain characters that are significant in PostgREST's filter grammar
    * ("Mt. Diablo Elementary"), and a mis-escaped filter fails into an empty
    * result — reintroducing exactly this bug, silently.
+   *
+   * SPE-458: both passes are also scoped to the current school year. Without
+   * it, conflict detection unioned every year a school had ever stored, so a
+   * period retimed or removed for the new year kept blocking slots from last
+   * year's row. Every other reader is year-scoped — the provider Bell
+   * Schedules and Special Activities pages both pin to getCurrentSchoolYear()
+   * — which made the scheduler the one place a schedule nobody can see in the
+   * app could still block scheduling. Safe to filter unconditionally: the
+   * column is NOT NULL on both tables, defaulted to current_school_year(),
+   * so there are no unlabelled rows for an .eq() to strand.
    */
   private async fetchForSchool<T>(
     table: 'bell_schedules' | 'special_activities',
@@ -297,6 +332,7 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
       const { data, error } = await this.supabase
         .from(table)
         .select('*')
+        .eq('school_year', this.schoolYear)
         .eq('school_id', this.schoolId);
 
       if (error) {
@@ -310,6 +346,7 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
       let query = this.supabase
         .from(table)
         .select('*')
+        .eq('school_year', this.schoolYear)
         .eq('school_site', this.schoolSite);
 
       // When we already matched by school_id, this pass is only for strays the

@@ -41,6 +41,7 @@
     "sim:verify-teacher-link-writes": "tsx scripts/sim-district/verify-teacher-link-writes.ts",
     "sim:verify-special-activities-rls": "tsx scripts/sim-district/verify-special-activities-rls.ts",
     "sim:verify-multi-school-rls": "tsx scripts/sim-district/verify-multi-school-rls.ts",
+    "sim:verify-scheduler-year-scope": "tsx scripts/sim-district/verify-scheduler-year-scope.ts",
     "sim:verify-provider-schools-rls": "tsx scripts/sim-district/verify-provider-schools-rls.ts",
     "sim:verify-sis-rls": "tsx scripts/sim-district/verify-sis-connections-rls.ts",
     "sim:verify-sis-lifecycle": "tsx scripts/sim-district/verify-sis-lifecycle.ts",
