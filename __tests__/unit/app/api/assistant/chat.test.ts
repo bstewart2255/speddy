@@ -164,6 +164,12 @@ describe('POST /api/assistant/chat', () => {
     expect(systemText).toContain('General special-education guidance');
     expect(systemText).toContain('vary by state and district');
     expect(systemText).toContain('Need a human? Contact support');
+    // Founder feedback 2026-08-12: no markdown asterisks, no raw column names,
+    // and California timelines are stated from the verified list — not memory.
+    expect(systemText).toContain('never use markdown formatting');
+    expect(systemText).toContain('Never show internal field or column names');
+    expect(systemText).toContain('meeting held within 30 days');
+    expect(systemText).toContain('Do NOT quote other statutory deadlines');
     expect(call.tools.map((t: { name: string }) => t.name)).toEqual([
       'get_caseload',
       'get_schedule',
