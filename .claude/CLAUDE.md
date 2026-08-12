@@ -99,6 +99,15 @@ standing rule for the work at hand (then merge on green without checking back).
 The purely-internal, non-UX, all-gates-green case above is the standing
 exception where that go-ahead is already granted.
 
+**Standing merge approval — prompt-only assistant tunings (granted 2026-08-12).**
+Changes that only adjust the AI assistant's system-prompt wording in
+`lib/assistant/chat.ts` (plus their test pins in the matching test file) may
+merge on green without asking, like auto-deployable work — report each one
+after it ships. This covers wording, style rules, and the in-prompt product
+guide/reference content. It does NOT cover: the assistant's data scope (tool
+selects in `lib/assistant/tools.ts`), its UI, the API route, disclosures, or
+any other code — those still wait for my merge call.
+
 **Tracked in Linear via the `auto-deployable` label.** A ticket carries this
 label only if it meets the bar above: purely internal/technical, no user-facing
 or UX change, no schema/data migration, no dependency/security/auth/infra
