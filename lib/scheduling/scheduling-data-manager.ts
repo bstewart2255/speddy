@@ -111,7 +111,6 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
     this.schoolSite = schoolSite;
     this.schoolDistrict = schoolDistrict;
     this.schoolId = schoolId || null;
-    this.schoolYear = getCurrentSchoolYear();
     this.data.version.modifiedBy = providerId;
 
     await this.loadAllData();
@@ -157,7 +156,14 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
   private async loadAllData(): Promise<void> {
     const startTime = performance.now();
     this.cacheMetadata.fetchErrors = [];
-    
+
+    // SPE-458: re-derived on every load, not once at initialize(). refresh()
+    // comes through here too — it fires whenever the 15-minute cache goes
+    // stale — so pinning the year at initialize() would leave a page open
+    // across the Aug 1 rollover reloading against last year forever, which
+    // reads back as zero rows with no error.
+    this.schoolYear = getCurrentSchoolYear();
+
     try {
       // Try to use the batch RPC if available.
       //
@@ -315,12 +321,25 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
    * SPE-458: both passes are also scoped to the current school year. Without
    * it, conflict detection unioned every year a school had ever stored, so a
    * period retimed or removed for the new year kept blocking slots from last
-   * year's row. Every other reader is year-scoped — the provider Bell
-   * Schedules and Special Activities pages both pin to getCurrentSchoolYear()
-   * — which made the scheduler the one place a schedule nobody can see in the
-   * app could still block scheduling. Safe to filter unconditionally: the
-   * column is NOT NULL on both tables, defaulted to current_school_year(),
-   * so there are no unlabelled rows for an .eq() to strand.
+   * year's row — a schedule nobody can see in the app still blocking
+   * scheduling. Safe to filter unconditionally: the column is NOT NULL on both
+   * tables, defaulted to current_school_year(), so there are no unlabelled
+   * rows for an .eq() to strand.
+   *
+   * Two things this does NOT cover, both tracked separately — do not read this
+   * filter as meaning the whole app is year-scoped:
+   *
+   *   - The provider Bell Schedules / Special Activities settings pages pin to
+   *     getCurrentSchoolYear(), but the schedule GRID
+   *     (use-schedule-data.ts) and the drag-time conflict checks in
+   *     session-update-service.ts both still read every year at once. Until
+   *     those are scoped too, a school holding two years can see the grid
+   *     shade a slot this scheduler considers free.
+   *   - A school whose rows were never carried forward into the new year now
+   *     loads ZERO periods rather than last year's. That is the honest
+   *     reading of the data, and it matches what the settings pages already
+   *     show — but "no bell schedules" means nothing is protected, so the
+   *     empty case is logged below rather than passing silently.
    */
   private async fetchForSchool<T>(
     table: 'bell_schedules' | 'special_activities',
@@ -363,6 +382,19 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
       } else if (data) {
         rows.push(...(data as T[]));
       }
+    }
+
+    // SPE-458: an empty year-scoped read is not an error, but it is the shape
+    // of a school whose schedules were never carried into the new year — and
+    // "no periods" means the auto-scheduler protects nothing, the same end
+    // state as SPE-463. Loud in the log rather than silent, since no query
+    // failed and fetchErrors would stay clean.
+    if (rows.length === 0) {
+      console.warn(
+        `[DataManager] No ${label.toLowerCase()} found for ${this.schoolSite ?? this.schoolId} ` +
+        `in ${this.schoolYear}. Nothing will be protected for this school — check the ` +
+        `schedules were carried forward into the current school year.`,
+      );
     }
 
     return rows;

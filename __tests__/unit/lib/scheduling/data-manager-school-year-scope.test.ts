@@ -22,6 +22,9 @@ const mockState: { rows: Record<string, Row[]> } = { rows: {} };
 
 jest.mock('@/lib/supabase/client', () => ({
   createClient: () => ({
+    // The batch RPC throws for every provider at every school today (see the
+    // SPE-463 note in the data manager), so the parallel path is what runs.
+    rpc: () => ({ single: async () => ({ data: null, error: { message: 'unavailable' } }) }),
     from: (table: string) => {
       const filters: Array<[string, string, unknown]> = [];
 
@@ -35,6 +38,10 @@ jest.mock('@/lib/supabase/client', () => ({
           filters.push(['is', col, val]);
           return query;
         },
+        or: () => query,
+        in: () => query,
+        limit: () => query,
+        single: async () => ({ data: null, error: { message: 'no row' } }),
         then: (resolve: (r: unknown) => unknown) => {
           const data = (mockState.rows[table] || []).filter((row) =>
             filters.every(([op, col, val]) =>
@@ -165,5 +172,27 @@ describe('SchedulingDataManager cache reuse across the Aug 1 rollover (SPE-458)'
     mgr.schoolYear = THIS_YEAR;
 
     expect(mgr.isInitializedForSchool(SCHOOL_SITE, 'John Swett Unified', SCHOOL_ID)).toBe(true);
+  });
+
+  // The cache-key guard above only fires when a caller asks. refresh() does
+  // not ask — it reloads in place whenever the 15-minute cache goes stale.
+  // Deriving the year once at initialize() therefore left a page open across
+  // the rollover reloading against last year indefinitely, reading back as
+  // zero rows with no error. Re-deriving on every load closes both doors.
+  it('re-derives the year on every load, so a refresh after the rollover moves to the new year', async () => {
+    mockState.rows.bell_schedules = [{ id: 'a', school_id: SCHOOL_ID, school_year: THIS_YEAR }];
+
+    const mgr = manager();
+    mgr.providerId = 'provider-1';
+    mgr.schoolSite = SCHOOL_SITE;
+    mgr.schoolDistrict = 'John Swett Unified';
+    mgr.schoolId = SCHOOL_ID;
+    mgr.schoolYear = LAST_YEAR; // cache built before Aug 1
+
+    await mgr.refresh();
+
+    expect(mgr.schoolYear).toBe(THIS_YEAR);
+    // And the reload actually picked up the current year's rows.
+    expect(mgr.data.data.bellSchedules.size).toBeGreaterThan(0);
   });
 });

@@ -139,17 +139,39 @@ async function signIn(personaKey: string): Promise<SupabaseClient> {
     'exclusion is a real filter, not a query error',
     mgr.cacheMetadata.fetchErrors.join('; ') || 'none');
 
+  // Special activities get the same treatment, ground truth included. Asserting
+  // only "prior year is empty" here would go green on a query error, which is
+  // the trap this script exists to avoid.
+  let actTruth = admin
+    .from('special_activities')
+    .select('id', { count: 'exact', head: true })
+    .eq('school_year', thisYear);
+  actTruth = school.school_id
+    ? actTruth.eq('school_id', school.school_id)
+    : actTruth.eq('school_site', school.school_site!);
+  const { count: expectedActivities } = await actTruth;
+  check((expectedActivities ?? 0) > 0, 'fixture actually HAS current-year special activities',
+    `service-client count=${expectedActivities}`);
+
   mgr.schoolYear = thisYear;
+  mgr.cacheMetadata.fetchErrors = [];
   const activities = await mgr.fetchForSchool('special_activities', 'Special activities');
-  check(activities.length > 0, 'special activities: current year returns rows',
-    `rows=${activities.length}`);
+  check(activities.length === expectedActivities,
+    'special activities: current year returns ALL rows',
+    `got=${activities.length} expected=${expectedActivities}`);
+  check(mgr.cacheMetadata.fetchErrors.length === 0,
+    'special activities: no query errors', mgr.cacheMetadata.fetchErrors.join('; ') || 'none');
   check(activities.every((r) => r.school_year === thisYear),
     'special activities: every row is the current year');
 
   mgr.schoolYear = priorYear;
+  mgr.cacheMetadata.fetchErrors = [];
   const priorActivities = await mgr.fetchForSchool('special_activities', 'Special activities');
   check(priorActivities.length === 0, 'special activities: prior year is excluded',
     `rows=${priorActivities.length}`);
+  check(mgr.cacheMetadata.fetchErrors.length === 0,
+    'special activities: exclusion is a real filter, not a query error',
+    mgr.cacheMetadata.fetchErrors.join('; ') || 'none');
 
   await session.auth.signOut();
 
