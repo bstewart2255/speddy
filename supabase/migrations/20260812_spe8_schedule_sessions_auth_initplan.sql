@@ -25,8 +25,10 @@
 --     CREATE POLICY only, so it scored this file — and the rollback below — as
 --     clean either way, and the safety came from ALTER POLICY's semantics rather
 --     than from the gate. SPE-472 has since closed that: the gate now reads
---     ALTER POLICY and ALTER FUNCTION too, and the rollback below is covered by
---     a test pinning exactly that statement.
+--     ALTER POLICY and ALTER FUNCTION too, so the rollback below no longer
+--     passes silently. (The gate's test suite pins a shortened form of that
+--     rollback, not this file's verbatim predicate — it exercises the rule, it
+--     does not assert on this file.)
 --   * The USING expressions below are the live definitions reproduced verbatim
 --     (pulled from pg_policies on 2026-08-12), with the single change of
 --     auth.uid() -> (SELECT auth.uid()). No predicate logic is altered, so the
