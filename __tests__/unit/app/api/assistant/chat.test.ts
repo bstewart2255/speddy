@@ -167,9 +167,14 @@ describe('POST /api/assistant/chat', () => {
     // Founder feedback 2026-08-12: no markdown asterisks, no raw column names,
     // and California timelines are stated from the verified list — not memory.
     expect(systemText).toContain('never use markdown formatting');
+    expect(systemText).toContain('no asterisks');
     expect(systemText).toContain('Never show internal field or column names');
+    expect(systemText).toContain('attribute them to California');
+    expect(systemText).toContain('written request to review');
     expect(systemText).toContain('meeting held within 30 days');
+    expect(systemText).toContain('the annual and three-year cycles do not pause');
     expect(systemText).toContain('Do NOT quote other statutory deadlines');
+    expect(systemText).toContain('one short verification nudge');
     expect(call.tools.map((t: { name: string }) => t.name)).toEqual([
       'get_caseload',
       'get_schedule',
