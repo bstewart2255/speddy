@@ -109,6 +109,151 @@ describe('rule: policy-inlined-auth-fn', () => {
   });
 });
 
+describe('ALTER statements (SPE-472)', () => {
+  // The gate originally sliced on CREATE only, so an ALTER could reintroduce any
+  // of the three conventions unnoticed — including the rollback documented in
+  // the SPE-8 migration, which is an ALTER POLICY restoring a bare auth.uid().
+
+  it('flags a bare auth.uid() reintroduced by ALTER POLICY', () => {
+    const sql = `ALTER POLICY p ON public.students USING (provider_id = auth.uid());`;
+    const found = scanFile(sql, 'm.sql');
+    expect(found.map((f) => f.rule)).toEqual(['policy-inlined-auth-fn']);
+    expect(found[0].identifier).toBe('students.p');
+  });
+
+  it('flags an ALTER POLICY that widens the role to public or anon', () => {
+    for (const role of ['public', 'anon']) {
+      const sql = `ALTER POLICY p ON public.students TO ${role};`;
+      expect(scanFile(sql, 'm.sql').map((f) => f.rule)).toContain('policy-explicit-role');
+    }
+  });
+
+  it('does NOT flag a USING-only ALTER POLICY for naming no role', () => {
+    // An ALTER without TO leaves the existing roles alone — unlike CREATE, where
+    // an absent TO silently means public. This is the SPE-8 migration's shape;
+    // flagging it would fire on every legitimate USING-only ALTER.
+    const sql = `ALTER POLICY p ON public.students USING (provider_id = (SELECT auth.uid()));`;
+    expect(scanFile(sql, 'm.sql')).toHaveLength(0);
+  });
+
+  it('flags an ALTER FUNCTION that un-pins a hardened search_path', () => {
+    const sql = `ALTER FUNCTION public.f() SET search_path = public;`;
+    const found = scanFile(sql, 'm.sql');
+    expect(found.map((f) => f.rule)).toEqual(['search-path-pg-temp']);
+    expect(found[0].identifier).toBe('f');
+  });
+
+  it('accepts an ALTER FUNCTION that pins pg_temp last', () => {
+    const sql = `ALTER FUNCTION public.f(uuid) SET search_path = public, pg_temp;`;
+    expect(scanFile(sql, 'm.sql')).toHaveLength(0);
+  });
+
+  it('ignores an ALTER FUNCTION that does not touch search_path', () => {
+    expect(scanFile(`ALTER FUNCTION public.f() OWNER TO postgres;`, 'm.sql')).toHaveLength(0);
+    expect(scanFile(`ALTER FUNCTION public.f() RENAME TO g;`, 'm.sql')).toHaveLength(0);
+  });
+
+  it('reads an ALTER FUNCTION inside a DO block', () => {
+    // The policy rules already scan into DO blocks; anchoring the function
+    // dispatch at the statement start left this half blind, and the repo's own
+    // SPE-289 sweep applies its pin exactly this way.
+    const sql = `DO $$
+      BEGIN
+        EXECUTE 'ALTER FUNCTION public.unpinned() SET search_path = public';
+      END $$;`;
+    const found = scanFile(sql, 'm.sql');
+    expect(found.map((f) => f.rule)).toEqual(['search-path-pg-temp']);
+    expect(found[0].identifier).toBe('unpinned');
+  });
+
+  it('does not false-positive on the SPE-289 sweep\'s dynamic ALTER', () => {
+    // format()'s trailing arguments must not be read as search_path elements —
+    // terminating the slice at the next `;` instead of the string literal's end
+    // would make the last argument look like the final element and flag the
+    // sweep that established the convention.
+    const sql = `DO $$
+      BEGIN
+        EXECUTE format(
+          'ALTER FUNCTION public.%I(%s) SET search_path = %s, pg_temp',
+          r.proname, r.args, r.cur_path
+        );
+      END $$;`;
+    expect(scanFile(sql, 'm.sql')).toHaveLength(0);
+  });
+
+  it('still flags a top-level ALTER whose search_path value is quoted', () => {
+    // `SET search_path TO 'public'` is used in this repo. The slice must keep the
+    // quoted value rather than stopping at the quote.
+    const sql = `ALTER FUNCTION public.f() SET search_path TO 'public';`;
+    expect(scanFile(sql, 'm.sql').map((f) => f.rule)).toEqual(['search-path-pg-temp']);
+  });
+
+  it('flags RESET search_path and RESET ALL, which un-pin outright', () => {
+    for (const form of ['RESET search_path', 'RESET ALL']) {
+      const found = scanFile(`ALTER FUNCTION public.f() ${form};`, 'm.sql');
+      expect(found.map((f) => f.rule)).toEqual(['search-path-pg-temp']);
+      expect(found[0].detail).toMatch(/RESET/);
+    }
+  });
+
+  it('flags SET search_path FROM CURRENT', () => {
+    const found = scanFile(`ALTER FUNCTION public.f() SET search_path FROM CURRENT;`, 'm.sql');
+    expect(found.map((f) => f.rule)).toEqual(['search-path-pg-temp']);
+  });
+
+  it('names the function, not the schema, when the qualifier is quoted', () => {
+    // Returning "public" here would name the wrong function in CI and collapse
+    // every quoted-schema ALTER in a file onto one baseline key.
+    const a = scanFile(`ALTER FUNCTION "public"."alpha"() SET search_path = public;`, 'm.sql');
+    const b = scanFile(`ALTER FUNCTION "public"."beta"() SET search_path = public;`, 'm.sql');
+    expect(a[0].identifier).toBe('alpha');
+    expect(b[0].identifier).toBe('beta');
+    expect(keyOf(a[0])).not.toBe(keyOf(b[0]));
+  });
+
+  it('reads a dynamic ALTER assembled by concatenating literals', () => {
+    // Codex, PR #853: the action can land in a later fragment than the verb, so
+    // reading only the literal containing "ALTER FUNCTION" sees a no-op and lets
+    // the un-pin through.
+    const sql = `DO $$ BEGIN
+      EXECUTE 'ALTER FUNCTION ' || quote_ident(n) || '() SET search_path = public';
+    END $$;`;
+    expect(scanFile(sql, 'm.sql').map((f) => f.rule)).toEqual(['search-path-pg-temp']);
+  });
+
+  it('does not splice the next statement in a DO block into the command', () => {
+    // Rejoining fragments must stop at the semicolon, or a compliant ALTER would
+    // absorb whatever literal follows it and be judged on that instead.
+    const sql = `DO $$ BEGIN
+      EXECUTE 'ALTER FUNCTION public.a() SET search_path = public, pg_temp';
+      RAISE NOTICE 'search_path = public';
+    END $$;`;
+    expect(scanFile(sql, 'm.sql')).toHaveLength(0);
+  });
+
+  it('does not read ALTER POLICY ... RENAME TO as a role clause', () => {
+    // Codex, PR #853: a rename leaves roles untouched, and a policy may
+    // legitimately be named "anon" or "public".
+    expect(scanFile(`ALTER POLICY p ON public.t RENAME TO anon;`, 'm.sql')).toHaveLength(0);
+    expect(scanFile(`ALTER POLICY p ON public.t RENAME TO public;`, 'm.sql')).toHaveLength(0);
+    expect(scanFile(`ALTER POLICY p ON public.t RENAME TO p2;`, 'm.sql')).toHaveLength(0);
+  });
+
+  it('still flags a real role change on a policy whose name mentions rename', () => {
+    // The rename exemption keys on the RENAME TO clause, not on the word
+    // appearing in the policy name.
+    const sql = `ALTER POLICY "rename me later" ON public.t TO anon;`;
+    expect(scanFile(sql, 'm.sql').map((f) => f.rule)).toEqual(['policy-explicit-role']);
+  });
+
+  it('catches the SPE-8 rollback, which the CREATE-only gate scored clean', () => {
+    const rollback = `ALTER POLICY "District admins can view schedule sessions in their district"
+      ON public.schedule_sessions
+      USING (EXISTS (SELECT 1 FROM admin_permissions ap WHERE ap.admin_id = auth.uid()));`;
+    expect(scanFile(rollback, 'm.sql').map((f) => f.rule)).toEqual(['policy-inlined-auth-fn']);
+  });
+});
+
 describe('parsing hazards', () => {
   it('is not fooled by SQL comments that quote the conventions', () => {
     // This shape is real: 20260806_spe394_profiles_select_district_scope.sql has
