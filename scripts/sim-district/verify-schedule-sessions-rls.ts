@@ -26,6 +26,11 @@
  *
  * Requires a seeded sim district (`npm run sim:reset -- --yes`). Read-only: it
  * never writes, so it is safe to run against the fixture repeatedly.
+ *
+ * Do NOT re-seed between --save and --expect. Session ids are derived from the
+ * seed date, so a reset replaces all of them and every subject drifts wholesale.
+ * The comparison recognises that signature and says so rather than blaming the
+ * change under test, but the baseline is spent either way — capture a new one.
  */
 import { createHash } from 'crypto';
 import { readFileSync, writeFileSync } from 'fs';
@@ -61,7 +66,19 @@ async function signIn(emailLocal: string): Promise<Session> {
     headers: { apikey: anon, 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password: derivePassword(secret, email) }),
   });
-  const body = await res.json();
+  // Check the status before parsing: a proxy 502 or a rate-limit response is not
+  // JSON, and letting it fall through surfaces an opaque parse error instead of
+  // what actually went wrong.
+  const text = await res.text();
+  if (!res.ok) {
+    throw new Error(`sim login failed for ${emailLocal} (HTTP ${res.status}): ${text.slice(0, 200)}`);
+  }
+  let body: { access_token?: string } | null = null;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    throw new Error(`sim login for ${emailLocal} returned non-JSON: ${text.slice(0, 200)}`);
+  }
   if (!body?.access_token) {
     throw new Error(`sim login failed for ${emailLocal} — is the district seeded?`);
   }
@@ -125,7 +142,11 @@ async function main(): Promise<void> {
   // itself as a filename.
   const flagValue = (flag: string): string | undefined => {
     const i = args.indexOf(flag);
-    return i === -1 ? undefined : args[i + 1];
+    if (i === -1) return undefined;
+    const next = args[i + 1];
+    // Reject another flag as the value, or `--save --expect x` silently writes
+    // the baseline to a file literally named "--expect".
+    return next && !next.startsWith('--') ? next : undefined;
   };
   const saveTo = flagValue('--save');
   const expectFrom = flagValue('--expect');
@@ -146,15 +167,28 @@ async function main(): Promise<void> {
 
   // Invariants that must hold regardless of the rewrite. These encode intent, so
   // they would also catch a policy that is inert but was wrong to begin with.
-  if (result.dana.count === 0) {
-    failures.push('district_admin (dana) sees 0 sessions — the district admin policy returns nothing');
+  // Non-empty first. Every later invariant here is a containment or disjointness
+  // check, and all of those pass vacuously against an empty set — so without
+  // these, a policy that returned nothing at all would read as a clean run.
+  for (const key of ['dana', 'priya', 'elena', 'rachel'] as const) {
+    if (result[key].count === 0) {
+      failures.push(`${key} sees 0 sessions — their read path returns nothing (later checks pass vacuously on empty sets)`);
+    }
   }
-  if (result.priya.count === 0) {
-    failures.push('site_admin (priya) sees 0 sessions — the site admin policy returns nothing');
+
+  // The negative control, actually asserted. theo holds a real admin_permissions
+  // row, so the only thing keeping him out of schedule_sessions is the
+  // role = 'district_admin' / 'site_admin' predicate inside the two policies
+  // this migration rewrites. Drop that predicate and he sees all 1,282 — which
+  // is precisely the regression this subject exists to catch, and it went
+  // unasserted in the first cut of this script.
+  if (result.theo.count !== 0) {
+    failures.push(
+      `district_tech (theo) sees ${result.theo.count} sessions — he must see none; ` +
+        'an admin policy has stopped discriminating on role',
+    );
   }
-  if (result.rachel.count === 0) {
-    failures.push('provider (rachel) sees 0 sessions — the provider path regressed');
-  }
+
   if (!isSubset(result.priya.ids, result.dana.ids)) {
     failures.push("site_admin sees sessions the district_admin cannot — school scope escapes its district");
   }
@@ -164,6 +198,10 @@ async function main(): Promise<void> {
 
   if (expectFrom) {
     const before = JSON.parse(readFileSync(expectFrom, 'utf8')) as Record<string, Fingerprint>;
+    const drift: string[] = [];
+    let comparable = 0;
+    let whollyDisjoint = 0;
+
     for (const subject of SUBJECTS) {
       const a = before[subject.key];
       const b = result[subject.key];
@@ -171,14 +209,32 @@ async function main(): Promise<void> {
         failures.push(`${subject.key}: no baseline recorded`);
         continue;
       }
-      if (a.digest !== b.digest) {
-        const gained = b.ids.filter((id) => !a.ids.includes(id));
-        const lost = a.ids.filter((id) => !b.ids.includes(id));
-        failures.push(
-          `${subject.key}: visible set CHANGED (${a.count} -> ${b.count}); ` +
-            `gained ${gained.length}, lost ${lost.length}`,
-        );
+      if (a.digest === b.digest) continue;
+
+      const gained = b.ids.filter((id) => !a.ids.includes(id));
+      const lost = a.ids.filter((id) => !b.ids.includes(id));
+      drift.push(
+        `${subject.key}: visible set CHANGED (${a.count} -> ${b.count}); ` +
+          `gained ${gained.length}, lost ${lost.length}`,
+      );
+      if (a.count > 0 && b.count > 0) {
+        comparable++;
+        if (lost.length === a.count && gained.length === b.count) whollyDisjoint++;
       }
+    }
+
+    // Session ids are derived from the seed date, so a `sim:reset` between
+    // --save and --expect replaces every id and every subject drifts wholesale.
+    // That is a stale baseline, not a broken policy — reporting it as the latter
+    // would pin the blame on whatever migration happened to be under test.
+    if (drift.length > 0 && comparable > 0 && whollyDisjoint === comparable) {
+      failures.push(
+        'every subject\'s rows were replaced wholesale, with no overlap at all — ' +
+          'this is the signature of a re-seeded fixture, not a policy change. ' +
+          `Re-capture the baseline (--save) against the current fixture and re-run.\n      ${drift.join('\n      ')}`,
+      );
+    } else {
+      failures.push(...drift);
     }
     if (failures.length === 0) {
       console.log(`\nVisible sets identical to ${expectFrom} for all ${SUBJECTS.length} personas.`);

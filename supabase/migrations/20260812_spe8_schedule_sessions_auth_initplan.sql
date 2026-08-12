@@ -20,8 +20,12 @@
 --     expression: the role list ({authenticated}) and command (SELECT) are
 --     preserved by construction. That matters here — a DROP/CREATE rewrite is
 --     exactly how a previously-applied `TO authenticated` narrowing silently
---     reverted to `TO public` on `profiles` (caught by review on PR #805), and
---     it is one of the three conventions SPE-441 now gates.
+--     reverted to `TO public` on `profiles` (caught by review on PR #805).
+--   * Note the gap this exposes: the SPE-441 gate slices on CREATE POLICY only,
+--     so it scores this file — and the rollback below — as clean either way. The
+--     safety here comes from ALTER POLICY's own semantics, NOT from the gate.
+--     Extending the gate to ALTER POLICY is tracked separately; until it lands,
+--     an ALTER can reintroduce any of the three conventions unnoticed.
 --   * The USING expressions below are the live definitions reproduced verbatim
 --     (pulled from pg_policies on 2026-08-12), with the single change of
 --     auth.uid() -> (SELECT auth.uid()). No predicate logic is altered, so the
