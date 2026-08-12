@@ -5,6 +5,13 @@ import { SchedulingDataManager } from './scheduling-data-manager';
 import { ManualPlacementService } from '../services/manual-placement-service';
 import { filterScheduledSessions, type ScheduledSession } from '../utils/session-helpers';
 import { findOverlappingOtherProviderSession, type OtherProviderSessionLite } from '../services/session-update-service';
+import { DEFAULT_SCHEDULING_CONFIG } from './scheduling-config';
+import {
+  DEFAULT_SCHEDULING_STRATEGY,
+  getGroupingKey,
+  isGroupingStrategy,
+  type SchedulingStrategy,
+} from './scheduling-strategy';
 import type {
   Student,
   ScheduleSession,
@@ -66,6 +73,12 @@ interface SchedulingContext {
     end_time: string;
   }>;
   studentGradeMap: Map<string, string>; // Map student ID to grade level
+  /**
+   * Map student ID to the grouping key of the active strategy (SPE-473), for
+   * every student known at this school — not just the ones in the current run.
+   * Empty for strategies that don't group.
+   */
+  studentGroupKeyMap: Map<string, string>;
 
   // SPE-287: cross-provider template sessions per owned student (studentId -> the other
   // provider's sessions for the SAME shared child). Used to hard-avoid double-booking a
@@ -170,7 +183,12 @@ export class OptimizedScheduler {
      * guard in `initializeContext` is gated on this. Defaults to false, which
      * preserves the previous behaviour for any caller that doesn't pass it.
      */
-    private worksAtMultipleSchools: boolean = false
+    private worksAtMultipleSchools: boolean = false,
+    /**
+     * SPE-473: which placement strategy this run uses. Defaults to the previous
+     * fixed behaviour, so callers that don't pass one are unaffected.
+     */
+    private strategy: SchedulingStrategy = DEFAULT_SCHEDULING_STRATEGY
   ) {
     // Get or create the singleton data manager instance
     this.dataManager = SchedulingDataManager.getInstance();
@@ -385,6 +403,7 @@ export class OptimizedScheduler {
       validSlots: new Map(),
       schoolHours: preloadedData.schoolHours || [],
       studentGradeMap: new Map(),
+      studentGroupKeyMap: new Map(),
       crossProviderSessionsByStudent: preloadedData.crossProviderSessionsByStudent || new Map(),
 
       // Enhanced caching structures
@@ -505,7 +524,18 @@ export class OptimizedScheduler {
   /**
    * Schedule multiple students efficiently
    */
-  async scheduleBatch(students: Student[]): Promise<EnhancedSchedulingResult> {
+  async scheduleBatch(
+    students: Student[],
+    /**
+     * SPE-473: every student at this school, including ones already fully
+     * scheduled. Grouping and the grade tiebreak read this to recognise the
+     * peers already sitting in a slot — without it they can only see students
+     * in the current run, so adding one new 3rd grader would never join the
+     * existing 3rd grade group. Optional; defaults to the batch itself, which
+     * is the previous behaviour.
+     */
+    roster?: Student[]
+  ): Promise<EnhancedSchedulingResult> {
     if (!this.context) {
       throw new Error("Context not initialized. Call initializeContext first.");
     }
@@ -552,29 +582,32 @@ export class OptimizedScheduler {
       return results;
     }
 
-    // Populate student grade map for grade grouping optimization
+    // Populate student grade map for grade grouping optimization.
+    //
+    // Deliberately seeded from the batch only, as it always has been. This map
+    // feeds the balanced ordering's same-grade tiebreak; widening it to the
+    // roster would make that tiebreak start firing against already-scheduled
+    // students and quietly change where a default run places people. That is
+    // arguably a fix, but it is not this change's to make.
     studentsToSchedule.forEach(student => {
       this.context!.studentGradeMap.set(student.id, student.grade_level.trim());
     });
 
-    // Sort students by total minutes needed (descending) to handle harder cases first
-    const sortedStudents = [...studentsToSchedule].sort((a, b) => {
-      const sessionsA = a.sessions_per_week || 0;
-      const minutesA = a.minutes_per_session || 0;
-      const sessionsB = b.sessions_per_week || 0;
-      const minutesB = b.minutes_per_session || 0;
-      const totalMinutesA = sessionsA * minutesA;
-      const totalMinutesB = sessionsB * minutesB;
-
-      // First sort by total minutes
-      if (totalMinutesB !== totalMinutesA) {
-        return totalMinutesB - totalMinutesA;
+    // Grouping keys, by contrast, cover every student known at this school
+    // (SPE-473). Without the roster a grouping run can only see the students in
+    // this batch, so adding one new 3rd grader would never join the 3rd grade
+    // group already on the calendar. Non-grouping strategies produce no keys, so
+    // this map stays empty for them and cannot affect their placements.
+    [...(roster ?? []), ...studentsToSchedule].forEach(student => {
+      const groupKey = getGroupingKey(student, this.strategy);
+      if (groupKey) {
+        this.context!.studentGroupKeyMap.set(student.id, groupKey);
       }
-
-      // If total minutes are equal, sort by number of sessions (more sessions = harder to schedule)
-      return sessionsB - sessionsA;
     });
 
+    const sortedStudents = this.sortStudentsForStrategy(studentsToSchedule);
+
+    this.log(`Strategy: ${this.strategy}`);
     this.log('Student scheduling order:');
     sortedStudents.forEach(s => {
       const sessions = s.sessions_per_week || 0;
@@ -870,6 +903,70 @@ export class OptimizedScheduler {
   }
 
   /**
+   * Order students for placement (SPE-473).
+   *
+   * Hardest-first (most total minutes) is the base rule everywhere: the students
+   * with the least room to move get first pick of the calendar.
+   *
+   * Grouping strategies additionally place peers back to back, so each student
+   * is placed while the slot the previous peer landed in is the obvious choice.
+   * Interleaving them by minutes instead — the old order — meant the first
+   * student of each group landed in whatever slot was emptiest at that moment,
+   * scattering the group before it ever formed. Hardest-first is preserved both
+   * between groups (ranked by their hardest member) and inside each group.
+   */
+  private sortStudentsForStrategy(students: Student[]): Student[] {
+    const byDifficulty = (a: Student, b: Student) => {
+      const totalMinutesA = (a.sessions_per_week || 0) * (a.minutes_per_session || 0);
+      const totalMinutesB = (b.sessions_per_week || 0) * (b.minutes_per_session || 0);
+      if (totalMinutesB !== totalMinutesA) {
+        return totalMinutesB - totalMinutesA;
+      }
+      // Equal total minutes: more sessions is harder to fit, so it goes first.
+      return (b.sessions_per_week || 0) - (a.sessions_per_week || 0);
+    };
+
+    if (!isGroupingStrategy(this.strategy)) {
+      return [...students].sort(byDifficulty);
+    }
+
+    const groups = new Map<string, Student[]>();
+    for (const student of students) {
+      // Students with nothing to group on stay individuals rather than being
+      // pooled into one bogus "no teacher" group.
+      const key = getGroupingKey(student, this.strategy) ?? `ungrouped:${student.id}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(student);
+    }
+
+    return [...groups.entries()]
+      .map(([key, members]) => ({ key, members: [...members].sort(byDifficulty) }))
+      .sort((a, b) =>
+        byDifficulty(a.members[0], b.members[0]) || a.key.localeCompare(b.key)
+      )
+      .flatMap(group => group.members);
+  }
+
+  /**
+   * Capacity ceilings to try, in order, when placing a student (SPE-473).
+   *
+   * The default two passes deliberately hold slots to 3 before allowing the full
+   * group ceiling, which keeps a run from stacking students who have no reason
+   * to share a slot. A student the active strategy can group opens at the
+   * ceiling instead — otherwise a grade group would cap at 3 and the fourth
+   * student would be pushed off to start a second group.
+   *
+   * Decided per student, not per run: in a "Group by teacher" run, a student
+   * with no teacher recorded is placed by the balanced rules, so they should get
+   * the balanced ladder too rather than stack denser than default for no
+   * grouping benefit.
+   */
+  private getPassCapacities(student: Student): number[] {
+    const groupCeiling = DEFAULT_SCHEDULING_CONFIG.maxConcurrentSessions;
+    return getGroupingKey(student, this.strategy) ? [groupCeiling] : [3, groupCeiling];
+  }
+
+  /**
    * Find available slots for a specific student using two-pass distribution
    */
   private findStudentSlots(
@@ -898,34 +995,72 @@ export class OptimizedScheduler {
       return foundSlots;
     }
 
-    // Sort days to distribute sessions evenly when possible
-    const sortedDays = [...validWorkDays].sort((a, b) => {
-      const aCount = this.context!.existingSessions.filter(s => s.day_of_week === a).length;
-      const bCount = this.context!.existingSessions.filter(s => s.day_of_week === b).length;
-      return aCount - bCount;
-    });
+    const groupKey = getGroupingKey(student, this.strategy);
+
+    const sessionsOnDay = (day: number) =>
+      this.context!.existingSessions.filter(s => s.day_of_week === day).length;
+
+    // SPE-473: how many of this student's group are already on this day.
+    //
+    // Grouping has to be decided at the DAY level as well as the slot level.
+    // Sorting days by emptiest alone actively defeats it: each peer placed makes
+    // that day one session busier, so the next peer is pushed onto the next day
+    // and the group ends up spread across the week — precisely what balanced
+    // does. Ordering by peers first pulls the group back onto one day, where the
+    // slot sort can then land them in the same time.
+    //
+    // The student's own sessions are excluded: they are not company, and they
+    // are exactly the ones a later overlap check will reject.
+    const peersOnDay = (day: number) =>
+      !groupKey
+        ? 0
+        : this.context!.existingSessions.filter(
+            s =>
+              s.day_of_week === day &&
+              s.student_id &&
+              s.student_id !== student.id &&
+              this.context!.studentGroupKeyMap.get(s.student_id) === groupKey &&
+              // Same definition of "peer" the slot sort uses: a session someone
+              // else delivers is a different group.
+              this.isDeliveredByThisProvider(s)
+          ).length;
+
+    // Counted once per day rather than inside the comparator, which would
+    // rescan every session on each comparison, for every student in the batch.
+    const peerCounts = new Map(validWorkDays.map(day => [day, peersOnDay(day)]));
+    const sessionCounts = new Map(validWorkDays.map(day => [day, sessionsOnDay(day)]));
+
+    // Sort days to distribute sessions evenly when possible. With no grouping
+    // key every day scores 0 peers, so this reduces exactly to the previous
+    // emptiest-day-first ordering.
+    const sortedDays = [...validWorkDays].sort(
+      (a, b) =>
+        (peerCounts.get(b)! - peerCounts.get(a)!) ||
+        (sessionCounts.get(a)! - sessionCounts.get(b)!)
+    );
 
     this.log(`Work days from context: ${this.context!.workDays}`);
     this.log(`Valid work days: ${validWorkDays.join(', ')}`);
     this.log(`Sorted days for distribution: ${sortedDays.join(', ')}`);
 
-    // TWO-PASS DISTRIBUTION STRATEGY
-    // First pass: Try to distribute with max 3 sessions per slot
-    this.log("\n=== FIRST PASS: Distribute with max 3 sessions per slot ===");
-    foundSlots.push(...this.findSlotsWithCapacityLimit(student, duration, slotsNeeded, sortedDays, 3));
+    // CAPACITY-LADDER DISTRIBUTION STRATEGY
+    // Each pass retries the days at a higher per-slot ceiling, so sessions only
+    // stack once the roomier options are exhausted. Which ceilings apply depends
+    // on the strategy (SPE-473).
+    for (const maxCapacity of this.getPassCapacities(student)) {
+      if (foundSlots.length >= slotsNeeded) break;
 
-    // Second pass: If we need more slots, allow up to 8 sessions per slot
-    if (foundSlots.length < slotsNeeded) {
-      this.log(`\n=== SECOND PASS: Need ${slotsNeeded - foundSlots.length} more slots, allowing up to 8 per slot ===`);
-      const additionalSlots = this.findSlotsWithCapacityLimit(
-        student,
-        duration,
-        slotsNeeded - foundSlots.length,
-        sortedDays,
-        8,
-        foundSlots // Pass existing slots to avoid duplicates
+      this.log(`\n=== PASS: Need ${slotsNeeded - foundSlots.length} more slots, allowing up to ${maxCapacity} per slot ===`);
+      foundSlots.push(
+        ...this.findSlotsWithCapacityLimit(
+          student,
+          duration,
+          slotsNeeded - foundSlots.length,
+          sortedDays,
+          maxCapacity,
+          foundSlots // Pass existing slots to avoid duplicates
+        )
       );
-      foundSlots.push(...additionalSlots);
     }
 
     this.log(`\n=== RESULT: Found ${foundSlots.length}/${slotsNeeded} slots for ${student.initials} ===`);
@@ -957,7 +1092,7 @@ export class OptimizedScheduler {
         .map(([key, slot]) => ({ key, ...slot }));
 
       // Sort slots with grade-level grouping preference
-      const sortedDaySlots = this.sortSlotsWithGradePreference(daySlots, day, student.grade_level.trim());
+      const sortedDaySlots = this.sortSlotsForStrategy(daySlots, day, student);
 
       this.log(`Day ${day}: Found ${sortedDaySlots.length} potential slots`);
 
@@ -1533,13 +1668,55 @@ export class OptimizedScheduler {
     };
   }
   
-  private sortSlotsWithGradePreference(
+  /**
+   * Whether this session is one the person running the scheduler delivers
+   * themselves (SPE-473).
+   *
+   * A group is same day + same start time + **same deliverer** (Groups v2), so a
+   * session delegated to somebody else forms its own group and joining its slot
+   * would not group these students at all. The scheduler's caseload legitimately
+   * mixes the two: a provider's own sessions sit alongside ones handed to an SEA
+   * or another specialist.
+   *
+   * Decided from the assignment columns rather than the `delivered_by` label,
+   * because the label is not written consistently across the app — the
+   * auto-scheduler stamps a resource provider's own sessions `specialist` while
+   * every other write path stamps them `provider` (606 vs 7 rows in prod). The
+   * assignment ids do not have that ambiguity: they are set precisely when the
+   * session belongs to someone other than the owning provider.
+   */
+  private isDeliveredByThisProvider(session: {
+    assigned_to_sea_id?: string | null;
+    assigned_to_specialist_id?: string | null;
+    provider_id?: string | null;
+  }): boolean {
+    if (session.assigned_to_sea_id) return session.assigned_to_sea_id === this.providerId;
+    if (session.assigned_to_specialist_id) {
+      return session.assigned_to_specialist_id === this.providerId;
+    }
+    return session.provider_id === this.providerId;
+  }
+
+  /**
+   * Order a day's candidate slots by how well each one serves the active
+   * strategy (SPE-473). Every slot in `slots` is already legal for this student;
+   * this only decides which is tried first.
+   */
+  private sortSlotsForStrategy(
     slots: Array<any>,
     day: number,
-    targetGrade: string
+    student: Student
   ): Array<any> {
-    // For each slot, count how many sessions of the same grade are already there
+    const targetGrade = student.grade_level?.trim() ?? '';
+    // Null when the strategy doesn't group, or when this student is missing the
+    // field it groups on — either way they fall through to balanced placement.
+    const targetGroupKey = getGroupingKey(student, this.strategy);
+
+    // For each slot, count the company a session placed here would keep
     const slotsWithGradeCounts = slots.map(slot => {
+      // Crowding is measured over a fixed 30-minute probe, as it always has
+      // been. It is a coarse "how busy is this slot" proxy that feeds the
+      // balanced ordering; widening it here would shift default placements.
       const overlappingSessions = this.context!.existingSessions.filter(
         (session) =>
           session.day_of_week === day &&
@@ -1549,7 +1726,7 @@ export class OptimizedScheduler {
       // Count sessions with matching grade
       let sameGradeCount = 0;
       let otherGradeCount = 0;
-      
+
       for (const session of overlappingSessions) {
         if (!session.student_id) continue; // Skip sessions without student_id
         const sessionGrade = this.context!.studentGradeMap.get(session.student_id);
@@ -1562,14 +1739,64 @@ export class OptimizedScheduler {
         }
       }
 
+      // Peers this student would actually be grouped WITH (SPE-473).
+      //
+      // Deliberately exact start-time alignment, not overlap. Membership in this
+      // product derives from the schedule: same day + same start time + same
+      // deliverer is one group (Groups v2). A session merely overlapping the
+      // group — 08:35 against a group at 09:00 — is not in it, and scoring by
+      // overlap actively produces those near-misses, because an overlapping
+      // earlier slot ties on peer count and then wins the time tiebreak.
+      const slotStartMinutes = this.timeToMinutes(slot.startTime);
+      let sameGroupCount = 0;
+      if (targetGroupKey) {
+        for (const session of this.context!.existingSessions) {
+          if (session.day_of_week !== day) continue;
+          // A student's own sessions are not company, and a slot colliding with
+          // them is one a later overlap check will reject anyway.
+          if (!session.student_id || session.student_id === student.id) continue;
+          if (this.context!.studentGroupKeyMap.get(session.student_id) !== targetGroupKey) continue;
+          // A session delivered by someone else forms its own group, so joining
+          // its slot would not group these students at all.
+          if (!this.isDeliveredByThisProvider(session)) continue;
+          if (this.timeToMinutes(session.start_time) === slotStartMinutes) {
+            sameGroupCount++;
+          }
+        }
+      }
+
       return {
         ...slot,
         sameGradeCount,
         otherGradeCount,
+        sameGroupCount,
         totalSessions: overlappingSessions.length
       };
     });
 
+    const byTime = (a: any, b: any) =>
+      this.timeToMinutes(a.startTime) - this.timeToMinutes(b.startTime);
+
+    if (targetGroupKey) {
+      // Grouping: joining peers is the whole point, so it outranks spreading.
+      // Even distribution still breaks ties, which is what seeds the first
+      // member of a group into a roomy slot rather than a crowded one.
+      return slotsWithGradeCounts.sort((a, b) =>
+        (b.sameGroupCount - a.sameGroupCount) ||
+        (a.totalSessions - b.totalSessions) ||
+        byTime(a, b)
+      );
+    }
+
+    if (this.strategy === 'morning-first') {
+      // Earliest first; per-slot capacity and the per-day session cap are what
+      // stop everyone from landing on the same 8:00 AM slot.
+      return slotsWithGradeCounts.sort((a, b) =>
+        byTime(a, b) || (a.totalSessions - b.totalSessions)
+      );
+    }
+
+    // Balanced (and any grouping strategy for a student with nothing to group on).
     // Sort by:
     // 1. Prefer slots with same grade (but only as secondary criteria)
     // 2. Primary criteria is even distribution (fewer total sessions)

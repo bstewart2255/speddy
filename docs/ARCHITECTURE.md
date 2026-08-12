@@ -1076,6 +1076,65 @@ erDiagram
   calendar's client-side virtual layer renders slots beyond the horizon and
   persists them on first touch (`lib/services/session-persistence.ts`).
 
+### Auto-Schedule strategies (SPE-473)
+
+Clicking **Auto-Schedule Sessions** on the Main Schedule opens a picker before
+the run (replacing the old native `confirm()`), offering four strategies:
+
+| Strategy | What it optimizes for |
+|---|---|
+| `balanced` (default) | Even distribution — the emptiest slot wins, same-grade company breaks ties. The pre-SPE-473 behavior, unchanged. |
+| `grade-grouped` | Slots already holding a same-grade student win, so a grade can be run as one group. |
+| `teacher-grouped` | Slots already holding a classmate win (keyed by `teacher_id`, falling back to a normalized `teacher_name`), so each teacher is interrupted once. |
+| `morning-first` | Earliest slot wins, leaving afternoons freer. |
+
+Two things are worth knowing about the boundary here:
+
+- **A strategy never changes what is legal.** Bell schedules, work days, per-slot
+  capacity, consecutive/break rules and cross-provider conflicts are all
+  validated downstream and are identical for every strategy. A strategy only
+  reorders the candidate slots that get *tried*, plus the order students are
+  placed in (grouping strategies place peers consecutively so each one can join
+  the slot the previous peer landed in). Note this list does **not** include
+  special activities: `getDataFromManager` still hands the scheduler an empty
+  `specialActivities` array, so that check runs against an empty index and blocks
+  nothing (SPE-318). Strategies neither improve nor worsen that — it is the same
+  blind spot for all four, including the pre-existing `balanced` behavior.
+- **Grouping is decided at the day level as well as the slot level.** Days
+  holding same-group peers sort ahead of the emptiest day. Without that, grouping
+  is self-defeating: each peer placed makes its day one session busier, so the
+  emptiest-day rule pushes the next peer to the next day and the group ends up
+  spread across the week exactly as `balanced` would spread it.
+- **Slot-level grouping scores exact start-time alignment, not overlap** — group
+  membership derives from `day_of_week` + `start_time` (see Groups v2 below), so
+  a session merely overlapping the group is not in it. Scoring by overlap
+  actively produces those near-misses, since an overlapping earlier slot ties on
+  peer count and then wins the chronological tiebreak.
+- **A groupable student opens at the full group ceiling**
+  (`DEFAULT_SCHEDULING_CONFIG.maxConcurrentSessions`) rather than the
+  conservative first pass of 3 — otherwise a grade group would cap at three
+  students and the fourth would start a second group. Decided per student, not
+  per run: in a `teacher-grouped` run a student with no teacher recorded is
+  placed by the balanced rules and keeps the balanced ladder. The cap itself is
+  unchanged, and the DB soft guard still applies.
+
+Grouping keys are built from **every student at the school**, passed in as a
+roster, not just the students in the current run — otherwise a grouping run can
+only see its own batch, and a newly added 3rd grader could never join the 3rd
+grade group already on the calendar.
+
+`balanced` is deliberately untouched by all of this: it produces no grouping
+keys, so the day ordering, slot ordering and capacity ladder all reduce to their
+previous form, and its own same-grade tiebreak still reads a batch-only grade map
+(widening that to the roster would silently shift default placements — worth
+doing, but not as a side effect of adding options).
+
+**Source of truth:** `lib/scheduling/scheduling-strategy.ts` (strategies +
+grouping keys), `lib/scheduling/optimized-scheduler.ts`
+(`sortStudentsForStrategy` / `sortSlotsForStrategy` / `getPassCapacities`),
+`lib/supabase/hooks/use-auto-schedule.ts` (roster grouping per school),
+`app/components/schedule/auto-schedule-options-modal.tsx` (picker).
+
 ### Groups v2 — schedule-derived groups
 
 A **group is a durable record** (`session_groups`), not denormalized columns.

@@ -10,7 +10,7 @@ This document defines all action buttons in the app and their tooltip descriptio
 
 | Button                 | File                   | Tooltip                                                                                                                                        |
 | ---------------------- | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| Auto-Schedule Sessions | `schedule-header.tsx`  | Automatically schedule all unscheduled sessions based on student availability and scheduling constraints. This process may take a few moments. |
+| Auto-Schedule Sessions | `schedule-header.tsx`  | Automatically schedule all unscheduled sessions based on student availability and scheduling constraints. You'll be able to choose how sessions are arranged — grouped by grade or teacher, or weighted toward mornings. This process may take a few moments. |
 | Undo Schedule          | `undo-schedule.tsx`    | Revert the last scheduling action. This will restore sessions to their previous state before the most recent auto-schedule or manual change.   |
 | Clear Day              | `clear-day-button.tsx` | Remove all sessions from this day. Sessions will return to the unscheduled pool and can be rescheduled later.                                  |
 | Re-schedule All        | `_reschedule-all.tsx`  | Clear the entire schedule and rebuild from scratch using the auto-scheduler. You can undo this action if needed.                               |
