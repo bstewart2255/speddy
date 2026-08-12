@@ -24,7 +24,7 @@ This document provides technical details about Speddy's architecture, security i
 | Hosting          | Vercel                                              |
 | Error Monitoring | Sentry (minimized configuration — see Section 6)    |
 | Support / Chat   | Help Scout (Beacon widget)                          |
-| AI Services      | **None active.** OpenAI/Anthropic integrations exist in the codebase but are disabled platform-wide (see Section 5) |
+| AI Services      | **Anthropic (Claude)** powers the in-app AI assistant for service-provider roles (see Section 5). All other AI features remain disabled platform-wide |
 
 ### Deployment Model
 
@@ -144,9 +144,21 @@ Disposition of student data upon district request is completed within the contra
 
 ---
 
-## 5. AI Features (Currently Disabled)
+## 5. AI Features
 
-Speddy's codebase includes optional AI-assisted features (lesson, exit-ticket, and progress-check generation; worksheet-image grading; document parsing) that would use OpenAI and Anthropic as subprocessors. As of this document's date:
+### 5.1 AI assistant (enabled)
+
+One AI feature is live: an in-app **AI assistant** ("Ask AI") available only to service-provider roles, powered by Anthropic (Claude), behind its own server-side enable flag.
+
+- **Read-only.** The assistant answers questions about the signed-in provider's own caseload and schedule, explains how to use Speddy, offers general special-education guidance, and drafts text. It has no write path into Speddy data
+- **Data sent is minimized and pinned by tests**: student initials, IEP goal text, upcoming IEP/triennial meeting dates, grade level, and session times/group names — never student full-name columns, never free-text session notes. IEP goal text and session-group names are provider-authored fields sent as typed (groups auto-name from student initials but are editable). The signed-in provider's display name and role are included in the prompt for personalization. Provider-typed chat messages are sent verbatim (the UI directs providers to use initials)
+- **Scoped by the same row-level security as the signed-in user**: queries run under the provider's own session, so the assistant can never read data the provider couldn't
+- **Conversations are not stored server-side**; the data-processing agreement with Anthropic is executed and on file (see `subprocessors.md`), and Anthropic does not train on this data
+- The assistant can be disabled platform-wide at any time by unsetting its flag (documented in the incident-response plan)
+
+### 5.2 Other AI features (currently disabled)
+
+Speddy's codebase also includes optional AI-assisted features (lesson, exit-ticket, and progress-check generation; worksheet-image grading; document parsing) that would use OpenAI and Anthropic as subprocessors. As of this document's date:
 
 - These features are **disabled platform-wide** by a server-side feature gate; the AI routes return 404 and make **zero** calls to AI providers
 - Data-processing agreements with both AI providers are executed and on file; both prohibit training on customer data
@@ -155,7 +167,7 @@ Speddy's codebase includes optional AI-assisted features (lesson, exit-ticket, a
   - **IEP goal text** is sent verbatim to generate goal-aligned material. Goals are provider-authored or imported from the district's SIS, and a goal that names the student would carry that name into the prompt
   - **Custom lesson prompts.** The on-demand lesson feature sends the text a provider types as the lesson topic, and free-text focus skills the same way. A provider who types a student's name into that box sends that name to the provider
   - **Worksheet scanning** (when enabled) sends a photo of a completed worksheet to an AI vision model for grading. Printed worksheets carry the student's initials in the name field, so those initials are present in the image
-- Two commitments remain outstanding before any AI feature is enabled: Speddy will request zero-data-retention handling from the AI providers, and will provide advance notice to districts with an updated AI Schedule of Data as required by the executed CA-NDPA (Exhibit G §§ 4.1–4.2)
+- The enable-gate preconditions were met before the assistant launched: data-processing agreements executed with both providers (SPE-163, closed 2026-07-18) and prompt de-identification implemented (SPE-61). District notification of subprocessor changes runs through the maintained subprocessor list per the executed CA-NDPA (Exhibit G §§ 4.1–4.2); enabling any of the remaining features would trigger a fresh notification
 
 ---
 
@@ -192,9 +204,16 @@ The authoritative list is maintained in `subprocessors.md`. Districts are notifi
 - **Location**: United States
 - **Website**: https://www.helpscout.com
 
-### OpenAI / Anthropic (AI — planned, not enabled)
+### Anthropic (AI assistant)
 
-Disclosed as planned subprocessors; they receive **no data today** (see Section 5).
+- **Purpose**: In-app AI assistant for service-provider roles (see Section 5.1)
+- **Data processed**: Student initials, IEP goal text, IEP/triennial meeting dates, grade, session times/group names (provider-authored labels), the signed-in provider's display name and role, and provider-typed chat messages. No student full-name columns, no session notes. Conversations not stored server-side
+- **Location**: United States (standard tier); DPA executed and on file
+- **Website**: https://www.anthropic.com
+
+### OpenAI (AI — planned, not enabled)
+
+Disclosed as a planned subprocessor for the disabled AI features; receives **no data today** (see Section 5.2).
 
 ### SEIS (data source, not a subprocessor)
 

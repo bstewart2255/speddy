@@ -25,7 +25,8 @@ interface Turn {
 
 const SUGGESTIONS = [
   'What does my schedule look like today?',
-  'Which students are on my caseload?',
+  'Which of my students have an IEP coming up?',
+  'How do I add a student to my caseload?',
   'Draft a parent-friendly progress update',
 ];
 
@@ -266,9 +267,10 @@ export default function AssistantPanel({ open, onClose }: AssistantPanelProps) {
         {turns.length === 0 && (
           <div className="space-y-3">
             <p className="text-sm text-gray-600">
-              Ask about your schedule, caseload, or students&apos; goals — or ask for a draft
-              (session notes, a parent email, a progress summary). Please refer to students
-              by their initials, not full names.
+              Ask about your schedule, caseload, or students&apos; goals — or how to do
+              something in Speddy, or a general special-education question — or ask for a
+              draft (session notes, a parent email, a progress summary). Please refer to
+              students by their initials, not full names.
             </p>
             <div className="space-y-2">
               {SUGGESTIONS.map((s) => (

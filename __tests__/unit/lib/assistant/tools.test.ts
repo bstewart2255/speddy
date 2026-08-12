@@ -71,7 +71,13 @@ describe('get_caseload', () => {
               sessions_per_week: 2,
               minutes_per_session: 30,
               // details as one-element array, goals as ';'-separated string
-              student_details: [{ iep_goals: 'reading fluency; math facts' }],
+              student_details: [
+                {
+                  iep_goals: 'reading fluency; math facts',
+                  upcoming_iep_date: '2027-03-15',
+                  upcoming_triennial_date: '2028-09-01',
+                },
+              ],
             },
             {
               id: '44444444-4444-4444-8444-444444444444',
@@ -102,6 +108,8 @@ describe('get_caseload', () => {
             minutes_per_session: 30,
             weekly_minutes: 60,
             iep_goals: ['reading fluency', 'math facts'],
+            upcoming_iep_date: '2027-03-15',
+            upcoming_triennial_date: '2028-09-01',
           },
           {
             student_id: '44444444-4444-4444-8444-444444444444',
@@ -111,6 +119,8 @@ describe('get_caseload', () => {
             minutes_per_session: 30,
             weekly_minutes: null,
             iep_goals: ['articulation'],
+            upcoming_iep_date: null,
+            upcoming_triennial_date: null,
           },
         ],
       },
@@ -120,7 +130,7 @@ describe('get_caseload', () => {
     expect(calledWith(queries.students[0], 'eq')).toContainEqual(['provider_id', USER_ID]);
   });
 
-  it('never selects student names — AI-bound data is capped at initials + goals (CA-NDPA / SPE-61)', async () => {
+  it('never selects student names — AI-bound data is capped at initials + goals + IEP dates (CA-NDPA / SPE-61)', async () => {
     const { client, queries } = makeSupabase({ students: [{ data: [], error: null }] });
     await executeAssistantTool(client, USER_ID, 'get_caseload', {});
     const selectArg = String(calledWith(queries.students[0], 'select')[0][0]);
@@ -185,6 +195,7 @@ describe('get_schedule', () => {
               is_completed: true,
               provider_id: USER_ID,
               student_id: STUDENT_ID,
+              group_name: 'Reading Group A',
               students: { initials: 'AB', grade_level: '3' },
             },
             {
@@ -215,8 +226,10 @@ describe('get_schedule', () => {
       expect(data.sessions[0].student_initials).toBe('AB');
       expect(data.sessions[0].student_id).toBe(STUDENT_ID);
       expect(data.sessions[0].delegated_to_me).toBe(false);
+      expect(data.sessions[0].group_name).toBe('Reading Group A');
       expect(data.sessions[1].student_initials).toBeNull();
       expect(data.sessions[1].delegated_to_me).toBe(true);
+      expect(data.sessions[1].group_name).toBeNull();
     }
 
     // Owned OR delegated-to-me — the same access paths the schedule UI uses.
@@ -297,7 +310,12 @@ describe('get_student_info', () => {
             grade_level: '3',
             sessions_per_week: 2,
             minutes_per_session: 30,
-            student_details: { iep_goals: ['reading fluency'] },
+            provider_id: USER_ID,
+            student_details: {
+              iep_goals: ['reading fluency'],
+              upcoming_iep_date: '2027-01-20',
+              upcoming_triennial_date: null,
+            },
           },
           error: null,
         },
@@ -305,7 +323,13 @@ describe('get_student_info', () => {
       schedule_sessions: [
         {
           data: [
-            { day_of_week: 1, start_time: '09:00:00', end_time: '09:30:00', service_type: 'speech' },
+            {
+              day_of_week: 1,
+              start_time: '09:00:00',
+              end_time: '09:30:00',
+              service_type: 'speech',
+              group_name: 'Articulation Pair',
+            },
             { day_of_week: 3, start_time: '13:00:00', end_time: '13:30:00', service_type: 'speech' },
           ],
           error: null,
@@ -322,13 +346,28 @@ describe('get_student_info', () => {
         student_id: STUDENT_ID,
         initials: 'AB',
         grade: '3',
+        on_my_caseload: true,
         sessions_per_week: 2,
         minutes_per_session: 30,
         weekly_minutes: 60,
         iep_goals: ['reading fluency'],
+        upcoming_iep_date: '2027-01-20',
+        upcoming_triennial_date: null,
         weekly_slots: [
-          { day_of_week: 1, start_time: '09:00:00', end_time: '09:30:00', service_type: 'speech' },
-          { day_of_week: 3, start_time: '13:00:00', end_time: '13:30:00', service_type: 'speech' },
+          {
+            day_of_week: 1,
+            start_time: '09:00:00',
+            end_time: '09:30:00',
+            service_type: 'speech',
+            group_name: 'Articulation Pair',
+          },
+          {
+            day_of_week: 3,
+            start_time: '13:00:00',
+            end_time: '13:30:00',
+            service_type: 'speech',
+            group_name: null,
+          },
         ],
       },
     });
@@ -340,6 +379,53 @@ describe('get_student_info', () => {
       `provider_id.eq.${USER_ID},assigned_to_specialist_id.eq.${USER_ID}`,
     ]);
     expect(calledWith(queries.schedule_sessions[0], 'eq')).toContainEqual(['is_template', true]);
+  });
+
+  it('marks a delegated student and does not leak the owning provider id (RLS hides their details)', async () => {
+    // Live student_details RLS covers owner/SEA/teacher paths but not delegated
+    // specialists — the details join comes back empty. The tool must surface
+    // on_my_caseload: false (so the model says "held by the caseload owner",
+    // not "missing") and must never emit the owner's provider_id.
+    const { client } = makeSupabase({
+      students: [
+        {
+          data: {
+            id: STUDENT_ID,
+            initials: 'AB',
+            grade_level: '3',
+            sessions_per_week: 2,
+            minutes_per_session: 30,
+            provider_id: '99999999-9999-4999-8999-999999999999',
+            student_details: null,
+          },
+          error: null,
+        },
+      ],
+      schedule_sessions: [{ data: [], error: null }],
+    });
+
+    const result = await executeAssistantTool(client, USER_ID, 'get_student_info', {
+      student_id: STUDENT_ID,
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const d = result.data as any;
+      expect(d.on_my_caseload).toBe(false);
+      expect(d.iep_goals).toEqual([]);
+      expect(d.upcoming_iep_date).toBeNull();
+      expect(JSON.stringify(result.data)).not.toContain('99999999-9999-4999-8999-999999999999');
+    }
+  });
+
+  it('never selects student names or session notes — same AI data cap as the other tools', async () => {
+    const { client, queries } = makeSupabase({
+      students: [{ data: null, error: null }],
+    });
+    await executeAssistantTool(client, USER_ID, 'get_student_info', { student_id: STUDENT_ID });
+    const selectArg = String(calledWith(queries.students[0], 'select')[0][0]);
+    expect(selectArg).not.toContain('first_name');
+    expect(selectArg).not.toContain('last_name');
+    expect(selectArg).not.toContain('session_notes');
   });
 });
 
