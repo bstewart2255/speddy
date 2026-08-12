@@ -266,53 +266,83 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
   }
   
   /**
+   * Fetch rows for the current school from a table keyed by school_id, with a
+   * fallback for rows the school_id migration never reached.
+   *
+   * SPE-463: this used to be either/or — school_id when we had one, otherwise
+   * school_site. That is a trap in both directions, because production holds
+   * both shapes at once:
+   *
+   *   - Bancroft / Mt. Diablo / Rodeo Hills: school_id set, school_site NULL
+   *   - Walnut Acres: school_site set, school_id NULL (60 bell schedule rows,
+   *     17 special activities) while its students all carry a school_id
+   *
+   * So filtering by only one key silently loads nothing for whichever set it
+   * skips — and "nothing" here means the auto-scheduler happily books over
+   * lunch. Match both: rows carrying this school_id, plus legacy rows that
+   * carry no school_id but name this school.
+   *
+   * Two queries rather than a single `.or(...)`, deliberately: school names
+   * contain characters that are significant in PostgREST's filter grammar
+   * ("Mt. Diablo Elementary"), and a mis-escaped filter fails into an empty
+   * result — reintroducing exactly this bug, silently.
+   */
+  private async fetchForSchool<T>(
+    table: 'bell_schedules' | 'special_activities',
+    label: string,
+  ): Promise<T[]> {
+    const rows: T[] = [];
+
+    if (this.schoolId) {
+      const { data, error } = await this.supabase
+        .from(table)
+        .select('*')
+        .eq('school_id', this.schoolId);
+
+      if (error) {
+        this.cacheMetadata.fetchErrors.push(`${label}: ${error.message}`);
+      } else if (data) {
+        rows.push(...(data as T[]));
+      }
+    }
+
+    if (this.schoolSite) {
+      let query = this.supabase
+        .from(table)
+        .select('*')
+        .eq('school_site', this.schoolSite);
+
+      // When we already matched by school_id, this pass is only for strays the
+      // migration missed — without this the two passes would double-count any
+      // row carrying both.
+      if (this.schoolId) {
+        query = query.is('school_id', null);
+      }
+
+      const { data, error } = await query;
+
+      if (error) {
+        this.cacheMetadata.fetchErrors.push(`${label} (legacy school_site): ${error.message}`);
+      } else if (data) {
+        rows.push(...(data as T[]));
+      }
+    }
+
+    return rows;
+  }
+
+  /**
    * Fetch bell schedules
    */
   private async fetchBellSchedules(): Promise<BellSchedule[]> {
-    let query = this.supabase
-      .from('bell_schedules')
-      .select('*');
-    
-    // Use school_id if available, otherwise fall back to school_site
-    if (this.schoolId) {
-      query = query.eq('school_id', this.schoolId);
-    } else {
-      query = query.eq('school_site', this.schoolSite!);
-    }
-    
-    const { data, error } = await query;
-    
-    if (error) {
-      this.cacheMetadata.fetchErrors.push(`Bell schedules: ${error.message}`);
-      return [];
-    }
-    
-    return data || [];
+    return this.fetchForSchool<BellSchedule>('bell_schedules', 'Bell schedules');
   }
   
   /**
    * Fetch special activities
    */
   private async fetchSpecialActivities(): Promise<SpecialActivity[]> {
-    let query = this.supabase
-      .from('special_activities')
-      .select('*');
-    
-    // Use school_id if available, otherwise fall back to school_site
-    if (this.schoolId) {
-      query = query.eq('school_id', this.schoolId);
-    } else {
-      query = query.eq('school_site', this.schoolSite!);
-    }
-    
-    const { data, error } = await query;
-    
-    if (error) {
-      this.cacheMetadata.fetchErrors.push(`Special activities: ${error.message}`);
-      return [];
-    }
-    
-    return data || [];
+    return this.fetchForSchool<SpecialActivity>('special_activities', 'Special activities');
   }
   
   /**

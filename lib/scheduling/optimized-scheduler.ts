@@ -289,8 +289,20 @@ export class OptimizedScheduler {
     // grade's lunch. The interactive drag path already passed school_id
     // (use-scheduling-data.ts) and was unaffected.
     if (!this.dataManager.isInitializedForSchool(schoolSite, schoolDistrict, schoolId)) {
-      // Use empty string as fallback for backward compatibility
-      await this.dataManager.initialize(this.providerId, schoolSite, schoolDistrict || '', schoolId);
+      // Use empty string as fallback for backward compatibility.
+      //
+      // providerRole matters: the data manager gates the specialist branch of
+      // fetchExistingSessions on it, so initializing without a role hides
+      // sessions assigned to this user on other providers' students — and the
+      // manager is a singleton shared with the schedule page, so omitting it
+      // here also wiped the role that page had set.
+      await this.dataManager.initialize(
+        this.providerId,
+        schoolSite,
+        schoolDistrict || '',
+        schoolId,
+        this.providerRole,
+      );
     }
 
     // Use data manager instead of direct queries

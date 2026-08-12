@@ -127,11 +127,13 @@ export function useAutoSchedule(debug: boolean = false) {
         // Ensure data manager is initialized for this school
         // Get school_district from the first student in this school group
         const schoolDistrict = schoolStudents[0]?.school_district || '';
-        // SPE-463: students at one site all share a school_id; take it from the
-        // group so the manager filters by school_id rather than school_site.
-        const schoolId = schoolStudents[0]?.school_id || undefined;
+        // SPE-463: take the school_id from the first student that has one
+        // rather than from [0] — school_id is nullable, and a single
+        // unmigrated student at the head of the group would otherwise drop the
+        // whole school back to school_site-only matching.
+        const schoolId = schoolStudents.find(s => s.school_id)?.school_id || undefined;
         if (!dataManager.isInitialized() || schoolSite !== lastSchool) {
-          await dataManager.initialize(user.id, schoolSite, schoolDistrict, schoolId);
+          await dataManager.initialize(user.id, schoolSite, schoolDistrict, schoolId, profile.role);
           lastSchool = schoolSite;
         } else if (dataManager.isCacheStale()) {
           await dataManager.refresh();
@@ -228,7 +230,7 @@ export function useAutoSchedule(debug: boolean = false) {
       for (const [schoolSite, schoolStudents] of studentsBySchool) {
         const schoolDistrict = schoolStudents[0]?.school_district || '';
         // SPE-463: see the note on the auto-schedule path above.
-        const schoolId = schoolStudents[0]?.school_id || undefined;
+        const schoolId = schoolStudents.find(s => s.school_id)?.school_id || undefined;
 
         // Create scheduler and initialize context
         const scheduler = new OptimizedScheduler(user.id, profile.role, debug, !!profile.works_at_multiple_schools);
