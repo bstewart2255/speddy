@@ -22,7 +22,12 @@ import { OptimizedScheduler } from '@/lib/scheduling/optimized-scheduler';
  * prod under a real RLS-enforced session.
  */
 function makeScheduler() {
-  const initializeCalls: Array<{ schoolSite: string; schoolDistrict: string; schoolId?: string }> = [];
+  const initializeCalls: Array<{
+    schoolSite: string;
+    schoolDistrict: string;
+    schoolId?: string;
+    providerRole?: string;
+  }> = [];
   const isInitializedForSchoolCalls: Array<{ schoolSite: string; schoolDistrict?: string; schoolId?: string }> = [];
 
   const scheduler = new OptimizedScheduler('provider-1', 'resource', false, false) as any;
@@ -37,8 +42,9 @@ function makeScheduler() {
       schoolSite: string,
       schoolDistrict: string,
       schoolId?: string,
+      providerRole?: string,
     ) => {
-      initializeCalls.push({ schoolSite, schoolDistrict, schoolId });
+      initializeCalls.push({ schoolSite, schoolDistrict, schoolId, providerRole });
     },
   };
   scheduler.getDataFromManager = async () => ({
@@ -79,5 +85,20 @@ describe('OptimizedScheduler.initializeContext school_id handoff (SPE-463)', () 
 
     expect(initializeCalls).toHaveLength(1);
     expect(initializeCalls[0].schoolId).toBeUndefined();
+  });
+
+  /**
+   * The data manager gates the specialist branch of fetchExistingSessions on
+   * providerRole, so initializing without one hides sessions assigned to this
+   * user on other providers' students — which can double-book a specialist.
+   * The manager is a singleton shared with the schedule page, so dropping the
+   * role here also clears what that page set.
+   */
+  it('passes the provider role through, so specialist-assigned sessions load', async () => {
+    const { scheduler, initializeCalls } = makeScheduler();
+
+    await scheduler.initializeContext('Rodeo Hills Elementary', 'JSUSD', '061899002301');
+
+    expect(initializeCalls[0].providerRole).toBe('resource');
   });
 });
