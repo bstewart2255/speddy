@@ -216,7 +216,27 @@ export class OptimizedScheduler {
     const workDays = this.dataManager.getProviderWorkDays(schoolSite);
 
     // Get all existing sessions (filter to only scheduled sessions with non-null day/time fields)
-    const existingSessions = filterScheduledSessions(this.dataManager.getExistingSessions());
+    //
+    // SPE-474: also drop dated instances and soft-deleted rows. The data manager
+    // fetches `select('*')` with no such filter, and an instance carries
+    // day_of_week/start_time/end_time exactly like its template, so the weekly
+    // grid was seeing up to twelve weeks of copies of every session. Two things
+    // broke on that:
+    //
+    //   - `scheduleStudent` derives `sessionsNeeded` as
+    //     `sessions_per_week - existingSessionsForStudent`, which went to 0 for
+    //     anyone with instances. It then placed nothing and reported success,
+    //     because `scheduledSessions.length === sessionsNeeded` held at 0 === 0.
+    //   - `buildValidSlotsMap` subtracts overlapping sessions from a capacity of
+    //     8, so one weekly session backed by twelve instances drove the slot
+    //     negative and removed it from the grid entirely — a calendar with a
+    //     handful of sessions could present as having no room at all.
+    //
+    // Scoped to the scheduler's own context on purpose: the shared data manager
+    // still serves unfiltered rows to the calendar and conflict paths, which
+    // legitimately work in dated instances.
+    const existingSessions = filterScheduledSessions(this.dataManager.getExistingSessions())
+      .filter(session => session.is_template === true && session.deleted_at == null);
 
     // SPE-287: cross-provider sessions for shared students (loaded once by the DataManager).
     // Snapshot per run (mirrors the existingSessions copy) so a concurrent DataManager

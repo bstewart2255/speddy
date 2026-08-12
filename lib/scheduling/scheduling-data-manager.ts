@@ -444,6 +444,20 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
 
     const studentIds = students?.map(s => s.id) || [];
 
+    // SPE-474: the 10,000-row cap below has no ORDER BY, so which rows survive
+    // truncation is arbitrary — and dated instances outnumber templates roughly
+    // 40:1 (the largest provider in prod carries 203 templates against 7,868
+    // instances, 8,071 rows against a 10,000 cap). Once a provider crosses it,
+    // arbitrary truncation could drop the recurring templates while keeping
+    // their instances, and the auto-scheduler would then read a student as
+    // having FEWER weekly sessions than they do and create duplicates.
+    //
+    // Ordering templates first makes truncation deterministic and drops
+    // instances rather than templates. It does not shrink what any caller
+    // receives — same cap, same rows below it. The cap itself still needs
+    // raising or paginating (SPE-477).
+    const TEMPLATES_FIRST = { column: 'is_template', options: { ascending: false } } as const;
+
     // For specialist users, also fetch sessions assigned to them (even from other providers' students)
     let sessionsResult;
     if (this.providerRole && ['resource', 'speech', 'ot', 'counseling', 'specialist', 'intervention'].includes(this.providerRole)) {
@@ -456,6 +470,7 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
           .from('schedule_sessions')
           .select('*')
           .or(`student_id.in.(${studentIds.join(',')}),assigned_to_specialist_id.eq.${this.providerId}`)
+          .order(TEMPLATES_FIRST.column, TEMPLATES_FIRST.options)
           .limit(10000);
       } else {
         // No students, only fetch assigned sessions
@@ -463,6 +478,7 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
           .from('schedule_sessions')
           .select('*')
           .eq('assigned_to_specialist_id', this.providerId!)
+          .order(TEMPLATES_FIRST.column, TEMPLATES_FIRST.options)
           .limit(10000);
       }
 
@@ -511,6 +527,7 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
         .select('*')
         .eq('provider_id', this.providerId!)
         .in('student_id', studentIds)
+        .order(TEMPLATES_FIRST.column, TEMPLATES_FIRST.options)
         .limit(10000);
     }
 

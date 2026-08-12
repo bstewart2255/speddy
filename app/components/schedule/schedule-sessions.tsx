@@ -122,13 +122,26 @@ export function ScheduleSessions({ onComplete, currentSchool, unscheduledCount, 
       // Get student IDs for this school to filter sessions
       const studentIds = studentsForCurrentSchool.map(s => s.id);
 
-      // Get existing SCHEDULED sessions to determine which students need scheduling
-      // IMPORTANT: Only count sessions that are already scheduled (day_of_week IS NOT NULL)
-      // Unscheduled sessions (day_of_week IS NULL) don't count as "scheduled"
+      // Get existing SCHEDULED sessions to determine which students need scheduling.
+      //
+      // Two filters carry the weight here (SPE-474):
+      //   - is_template: `schedule_sessions` holds the recurring templates AND
+      //     the dated instances materialized to a rolling 12-week horizon
+      //     (SPE-291), and instances carry day_of_week/start_time/end_time too.
+      //     Without this, up to twelve weeks of instances were counted against a
+      //     PER-WEEK number, so any student with an existing schedule read as
+      //     over-scheduled and was silently skipped — 12,268 instances vs 559
+      //     scheduled templates in prod when this was found.
+      //   - deleted_at: a soft-deleted session is not scheduled time.
+      //
+      // Only day_of_week IS NOT NULL counts as scheduled; unscheduled templates
+      // (day_of_week IS NULL) are precisely the ones this run is here to place.
       const { data: existingSessions } = await supabase
         .from('schedule_sessions')
-        .select('*')
+        .select('student_id')
         .in('student_id', studentIds)
+        .eq('is_template', true)
+        .is('deleted_at', null)
         .not('day_of_week', 'is', null)
         .not('start_time', 'is', null)
         .not('end_time', 'is', null);
