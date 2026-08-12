@@ -888,6 +888,11 @@ export const DECLARED_UNSEEDED_TABLES: string[] = [
   // swept bespoke in teardown by district_id (same reasoning as
   // district_sis_connections above).
   'district_curriculums',
+  // SPE-459 recovery record. Not seeded and never sim-owned: it lists the exact
+  // prod rows whose school_year was re-tagged 2025-2026 -> 2026-2027 on
+  // 2026-08-12, so a reversal can be precise. RLS-enabled with no policies
+  // (service-role only). Drop it, and this entry, once the fix has held.
+  'backup_spe459_school_year_retag',
   // Personal / auxiliary:
   'documents', 'curriculum_tracking', 'calendar_connections', 'calendar_events',
   'api_keys', 'teams', 'team_members', 'material_constraints',
