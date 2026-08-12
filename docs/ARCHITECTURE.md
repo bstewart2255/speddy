@@ -1076,6 +1076,44 @@ erDiagram
   calendar's client-side virtual layer renders slots beyond the horizon and
   persists them on first touch (`lib/services/session-persistence.ts`).
 
+### Auto-Schedule strategies (SPE-472)
+
+Clicking **Auto-Schedule Sessions** on the Main Schedule opens a picker before
+the run (replacing the old native `confirm()`), offering four strategies:
+
+| Strategy | What it optimizes for |
+|---|---|
+| `balanced` (default) | Even distribution — the emptiest slot wins, same-grade company breaks ties. The pre-SPE-472 behavior, unchanged. |
+| `grade-grouped` | Slots already holding a same-grade student win, so a grade can be run as one group. |
+| `teacher-grouped` | Slots already holding a classmate win (keyed by `teacher_id`, falling back to a normalized `teacher_name`), so each teacher is interrupted once. |
+| `morning-first` | Earliest slot wins, leaving afternoons freer. |
+
+Two things are worth knowing about the boundary here:
+
+- **A strategy never changes what is legal.** Bell schedules, special activities,
+  work days, per-slot capacity, consecutive/break rules and cross-provider
+  conflicts are all validated downstream and are identical for every strategy. A
+  strategy only reorders the candidate slots that get *tried*, plus the order
+  students are placed in (grouping strategies place peers consecutively so each
+  one can join the slot the previous peer landed in).
+- **Grouping strategies open at the full group ceiling**
+  (`DEFAULT_SCHEDULING_CONFIG.maxConcurrentSessions`) rather than the
+  conservative first pass of 3 that `balanced` uses — otherwise a grade group
+  would cap at three students and the fourth would start a second group. The cap
+  itself is unchanged, and the DB soft guard still applies.
+
+Grouping and the grade tiebreak score against **every student at the school**,
+passed in as a roster, not just the students in the current run — before
+SPE-472 the grade map was seeded only from the batch, so students already on the
+calendar registered as neither same-grade nor other-grade and grade preference
+could never actually join them.
+
+**Source of truth:** `lib/scheduling/scheduling-strategy.ts` (strategies +
+grouping keys), `lib/scheduling/optimized-scheduler.ts`
+(`sortStudentsForStrategy` / `sortSlotsForStrategy` / `getPassCapacities`),
+`lib/supabase/hooks/use-auto-schedule.ts` (roster grouping per school),
+`app/components/schedule/auto-schedule-options-modal.tsx` (picker).
+
 ### Groups v2 — schedule-derived groups
 
 A **group is a durable record** (`session_groups`), not denormalized columns.

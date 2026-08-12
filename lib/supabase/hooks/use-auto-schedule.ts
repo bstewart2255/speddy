@@ -2,9 +2,24 @@ import { useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { OptimizedScheduler, MissingWorkdaysError, EnhancedSchedulingResult } from '../../scheduling/optimized-scheduler';
 import { SchedulingDataManager } from '../../scheduling/scheduling-data-manager';
+import {
+  DEFAULT_SCHEDULING_STRATEGY,
+  type SchedulingStrategy,
+} from '../../scheduling/scheduling-strategy';
 import type { Database } from '../../../src/types/database';
 
 type Student = Database['public']['Tables']['students']['Row'];
+
+export interface ScheduleBatchOptions {
+  /** Placement strategy for this run (SPE-472). Defaults to 'balanced'. */
+  strategy?: SchedulingStrategy;
+  /**
+   * Every student at the schools being scheduled, including ones already fully
+   * scheduled. Lets grouping recognise the peers already on the calendar
+   * instead of only seeing the students in this run. Defaults to `students`.
+   */
+  roster?: Student[];
+}
 
 export function useAutoSchedule(debug: boolean = false) {
   const [isScheduling, setIsScheduling] = useState(false);
@@ -74,7 +89,11 @@ export function useAutoSchedule(debug: boolean = false) {
       setIsScheduling(false);
     }
   };
-  const scheduleBatchStudents = async (students: Student[]): Promise<EnhancedSchedulingResult> => {
+  const scheduleBatchStudents = async (
+    students: Student[],
+    options: ScheduleBatchOptions = {}
+  ): Promise<EnhancedSchedulingResult> => {
+    const strategy = options.strategy ?? DEFAULT_SCHEDULING_STRATEGY;
     setIsScheduling(true);
     setSchedulingErrors([]);
 
@@ -115,6 +134,20 @@ export function useAutoSchedule(debug: boolean = false) {
         studentsBySchool.get(school)!.push(student);
       });
 
+      // Group the roster the same way, so each school's run can see the students
+      // already scheduled there. Roster entries with no school site are skipped
+      // rather than fatal — unlike the batch above, a student we merely can't
+      // group against costs nothing.
+      const rosterBySchool = new Map<string, Student[]>();
+      (options.roster ?? students).forEach(student => {
+        const school = student.school_site;
+        if (!school) return;
+        if (!rosterBySchool.has(school)) {
+          rosterBySchool.set(school, []);
+        }
+        rosterBySchool.get(school)!.push(student);
+      });
+
       // Get data manager instance
       const dataManager = SchedulingDataManager.getInstance();
       
@@ -140,14 +173,23 @@ export function useAutoSchedule(debug: boolean = false) {
         }
 
         // Create optimized scheduler instance (uses refactored version by default)
-        const scheduler = new OptimizedScheduler(user.id, profile.role, debug, !!profile.works_at_multiple_schools);
+        const scheduler = new OptimizedScheduler(
+          user.id,
+          profile.role,
+          debug,
+          !!profile.works_at_multiple_schools,
+          strategy
+        );
 
         try {
           // Initialize context once for the school (SPE-463: school_id included)
           await scheduler.initializeContext(schoolSite, schoolDistrict, schoolId);
 
           // Schedule all students at this school
-          const schoolResults = await scheduler.scheduleBatch(schoolStudents);
+          const schoolResults = await scheduler.scheduleBatch(
+            schoolStudents,
+            rosterBySchool.get(schoolSite)
+          );
 
           results.totalScheduled += schoolResults.totalScheduled;
           results.totalFailed += schoolResults.totalFailed;

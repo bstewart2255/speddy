@@ -8,6 +8,11 @@ import { Button } from '../ui/button';
 import { LongHoverTooltip } from '../ui/long-hover-tooltip';
 import { saveScheduleSnapshot, saveScheduledSessionIds } from './undo-schedule';
 import { ManualPlacementModal } from './manual-placement-modal';
+import { AutoScheduleOptionsModal } from './auto-schedule-options-modal';
+import {
+  DEFAULT_SCHEDULING_STRATEGY,
+  type SchedulingStrategy,
+} from '../../../lib/scheduling/scheduling-strategy';
 
 interface ScheduleSessionsProps {
   onComplete?: () => void;
@@ -21,6 +26,10 @@ interface ScheduleSessionsProps {
 
 export function ScheduleSessions({ onComplete, currentSchool, unscheduledCount, unscheduledPanelCount }: ScheduleSessionsProps) {
   const [isProcessing, setIsProcessing] = useState(false);
+  const [showOptionsModal, setShowOptionsModal] = useState(false);
+  // Kept across runs within the page session so a provider re-running the
+  // scheduler doesn't have to re-pick their strategy each time.
+  const [strategy, setStrategy] = useState<SchedulingStrategy>(DEFAULT_SCHEDULING_STRATEGY);
   const [showManualPlacementModal, setShowManualPlacementModal] = useState(false);
   const [unplacedStudents, setUnplacedStudents] = useState<any[]>([]);
   const [isPlacingManually, setIsPlacingManually] = useState(false);
@@ -80,16 +89,7 @@ export function ScheduleSessions({ onComplete, currentSchool, unscheduledCount, 
   const handleScheduleSessions = async () => {
     if (unscheduledCount === 0 && unscheduledPanelCount === 0) return;
 
-    const confirmMessage = `This will schedule ${unscheduledCount} new session${unscheduledCount !== 1 ? 's' : ''}.
-
-These are sessions that have never been scheduled before.
-
-Continue?`;
-
-    if (!confirm(confirmMessage)) {
-      return;
-    }
-
+    setShowOptionsModal(false);
     setIsProcessing(true);
 
     try {
@@ -174,8 +174,12 @@ Continue?`;
       // Save snapshot before making changes
       await saveScheduleSnapshot(user.id);
 
-      // Schedule only these students
-      const results = await scheduleBatchStudents(studentsNeedingScheduling);
+      // Schedule only these students, but let the scheduler see the whole
+      // roster so grouping can recognise peers who are already scheduled.
+      const results = await scheduleBatchStudents(studentsNeedingScheduling, {
+        strategy,
+        roster: studentsForCurrentSchool,
+      });
 
       // SPE-367: surface missing work days on its own, before the branching
       // below — the manual-placement branch never shows `results.errors`, and
@@ -241,9 +245,9 @@ Continue?`;
 
   return (
     <>
-      <LongHoverTooltip content="Automatically schedule all unscheduled sessions based on student availability and scheduling constraints. This process may take a few moments.">
+      <LongHoverTooltip content="Automatically schedule all unscheduled sessions based on student availability and scheduling constraints. You'll be able to choose how sessions are arranged — grouped by grade or teacher, or weighted toward mornings. This process may take a few moments.">
         <Button
-          onClick={handleScheduleSessions}
+          onClick={() => setShowOptionsModal(true)}
           disabled={isProcessing || (unscheduledCount === 0 && unscheduledPanelCount === 0)}
           variant={(unscheduledCount > 0 || unscheduledPanelCount > 0) ? "primary" : "secondary"}
           className={(unscheduledCount === 0 && unscheduledPanelCount === 0) ? "opacity-50 cursor-not-allowed" : ""}
@@ -268,6 +272,15 @@ Continue?`;
           </div>
         </div>
       )}
+
+      <AutoScheduleOptionsModal
+        isOpen={showOptionsModal}
+        onClose={() => setShowOptionsModal(false)}
+        sessionCount={unscheduledCount}
+        strategy={strategy}
+        onStrategyChange={setStrategy}
+        onConfirm={handleScheduleSessions}
+      />
 
       <ManualPlacementModal
         isOpen={showManualPlacementModal}
