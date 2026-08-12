@@ -162,22 +162,34 @@ function lineAt(sql: string, offset: number): number {
   return line;
 }
 
-/** Body of a CREATE FUNCTION starts at its first dollar quote; the header is what precedes it. */
-function functionHeader(text: string): string {
-  const tag = /\$[A-Za-z_0-9]*\$/.exec(text);
-  return tag ? text.slice(0, tag.index) : text;
+/**
+ * A function's attributes minus its body.
+ *
+ * Removes the dollar-quoted body rather than truncating at it: both
+ * `... SECURITY DEFINER SET search_path = x AS $$ body $$` and
+ * `... AS $$ body $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = x` are
+ * legal, and the second form is used by a dozen-odd migrations here. Truncating
+ * at the first dollar quote reports those as unpinned when they are pinned.
+ * Dropping the body also stops a `SET search_path` written *inside* a body from
+ * reading as the function's own pin.
+ */
+function functionAttributes(text: string): string {
+  return text.replace(/\$([A-Za-z_0-9]*)\$[\s\S]*?\$\1\$/g, ' ');
 }
 
 const SEARCH_PATH_RE =
   /\bset\s+search_path\s*(?:=|\bto\b)\s*([^;]*?)(?=\s+\bas\b|\s+\blanguage\b|\s+\bsecurity\b|\s+\bstable\b|\s+\bimmutable\b|\s+\bvolatile\b|\s+\bstrict\b|\s+\bparallel\b|\s+\bcost\b|\s+\brows\b|\s+\bset\b|\s*$)/i;
 
-function checkFunction(text: string, file: string, line: number): Finding[] {
-  if (!/\bsecurity\s+definer\b/i.test(text)) return [];
+function checkFunction(text: string, file: string, line: number, hardenedByAlter: Set<string>): Finding[] {
+  const attrs = functionAttributes(text);
+  if (!/\bsecurity\s+definer\b/i.test(attrs)) return [];
 
   const name = /\bfunction\s+(?:public\s*\.\s*)?(?:"([^"]+)"|([A-Za-z_][A-Za-z0-9_]*))/i.exec(text);
   const identifier = name ? (name[1] ?? name[2]) : '<unnamed>';
-  const header = functionHeader(text);
-  const sp = SEARCH_PATH_RE.exec(header);
+  // A later ALTER FUNCTION ... SET search_path in the same migration pins it just
+  // as well; flagging the CREATE would be a false positive on a legitimate shape.
+  if (hardenedByAlter.has(identifier.toLowerCase())) return [];
+  const sp = SEARCH_PATH_RE.exec(attrs);
 
   if (!sp) {
     return [{
@@ -202,10 +214,21 @@ function checkFunction(text: string, file: string, line: number): Finding[] {
   return [];
 }
 
-/** Everything before USING / WITH CHECK — where the TO clause must appear. */
-function policyHeader(text: string): string {
-  const m = /\b(using|with\s+check)\b/i.exec(text);
-  return m ? text.slice(0, m.index) : text;
+/**
+ * The region a TO clause can legally occupy: after `ON <table>`, before
+ * USING / WITH CHECK.
+ *
+ * Scoping matters more than it looks. Searching the whole header finds the "to"
+ * in the policy *name* — and "Allow authenticated users to read X" is this
+ * repo's dominant naming idiom, so a plain search reports dozens of TO-less
+ * policies as compliant. Quoted identifiers are stripped for the same reason.
+ */
+function policyRoleRegion(text: string): string {
+  const on = /\bon\s+(?:public\s*\.\s*)?(?:"[^"]+"|[A-Za-z_][A-Za-z0-9_]*)/i.exec(text);
+  const afterTable = on ? text.slice(on.index + on[0].length) : text;
+  const clause = /\b(using|with\s+check)\b/i.exec(afterTable);
+  const region = clause ? afterTable.slice(0, clause.index) : afterTable;
+  return region.replace(/"[^"]*"/g, ' ');
 }
 
 function checkPolicy(text: string, file: string, line: number): Finding[] {
@@ -217,7 +240,8 @@ function checkPolicy(text: string, file: string, line: number): Finding[] {
   const table = /\bon\s+(?:public\s*\.\s*)?(?:"([^"]+)"|([A-Za-z_][A-Za-z0-9_]*))/i.exec(text);
   const identifier = `${table ? (table[1] ?? table[2]) : '?'}.${name ? (name[1] ?? name[2]) : '<unnamed>'}`;
 
-  if (!/\bto\s+"?[A-Za-z_][A-Za-z0-9_]*"?/i.test(policyHeader(text))) {
+  const role = /\bto\s+([A-Za-z_][A-Za-z0-9_]*)/i.exec(policyRoleRegion(text));
+  if (!role) {
     findings.push({
       rule: 'policy-explicit-role',
       file,
@@ -225,10 +249,24 @@ function checkPolicy(text: string, file: string, line: number): Finding[] {
       line,
       detail: `Policy "${identifier}" names no role, so it defaults to TO public (which includes anon). Add: TO authenticated`,
     });
+  } else if (/^(public|anon)$/i.test(role[1])) {
+    // Naming the unsafe role explicitly is the same exposure as defaulting to it.
+    findings.push({
+      rule: 'policy-explicit-role',
+      file,
+      identifier,
+      line,
+      detail: `Policy "${identifier}" grants TO ${role[1].toLowerCase()}, which is reachable without signing in. Use TO authenticated (or narrower)`,
+    });
   }
 
-  // Strip the compliant form, then anything left is a bare per-row call.
-  const stripped = text.replace(/\(\s*select\s+auth\s*\.\s*(uid|role|jwt|email)\s*\(\s*\)\s*\)/gi, '');
+  // Strip the compliant form, then anything left is a bare per-row call. The
+  // optional alias covers `(select auth.uid() as uid)` — how Postgres deparses
+  // the compliant form, and so what anyone copying out of pg_policies will paste.
+  const stripped = text.replace(
+    /\(\s*select\s+auth\s*\.\s*(uid|role|jwt|email)\s*\(\s*\)(\s+as\s+[A-Za-z_][A-Za-z0-9_]*)?\s*\)/gi,
+    '',
+  );
   const bare = /\bauth\s*\.\s*(uid|role|jwt|email)\s*\(/i.exec(stripped);
   if (bare) {
     findings.push({
@@ -242,14 +280,59 @@ function checkPolicy(text: string, file: string, line: number): Finding[] {
   return findings;
 }
 
+/**
+ * One slice per CREATE POLICY in a statement.
+ *
+ * A DO block is a single dollar-quoted statement that can hold many policies —
+ * 20250715_add_missing_rls_policies.sql has 35 across 8 blocks. Checking the
+ * statement once would examine the first policy in each block, blame its name
+ * for any later violation, and let a compliant first policy launder every
+ * violating one behind it.
+ */
+function policySlices(text: string): string[] {
+  const re = /\bcreate\s+policy\b/gi;
+  const starts: number[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) starts.push(m.index);
+  return starts.map((start, i) => {
+    const slice = text.slice(start, i + 1 < starts.length ? starts[i + 1] : text.length);
+    // Inside a DO block each EXECUTE ends at a semicolon; at top level the
+    // splitter already removed them, so this is a no-op there.
+    const end = slice.indexOf(';');
+    return end === -1 ? slice : slice.slice(0, end);
+  });
+}
+
+/** Function names pinned by an explicit ALTER FUNCTION ... SET search_path ... pg_temp. */
+function altersPinningSearchPath(statements: Statement[]): Set<string> {
+  const pinned = new Set<string>();
+  for (const { text } of statements) {
+    if (!/^\s*alter\s+function\b/i.test(text)) continue;
+    const sp = SEARCH_PATH_RE.exec(text);
+    if (!sp) continue;
+    const parts = sp[1].split(',').map((p) => p.trim().replace(/["']/g, '')).filter(Boolean);
+    if (parts[parts.length - 1]?.toLowerCase() !== 'pg_temp') continue;
+    const name = /\bfunction\s+(?:public\s*\.\s*)?(?:"([^"]+)"|([A-Za-z_][A-Za-z0-9_]*))/i.exec(text);
+    if (name) pinned.add((name[1] ?? name[2]).toLowerCase());
+  }
+  return pinned;
+}
+
 export function scanFile(sql: string, file: string): Finding[] {
   const findings: Finding[] = [];
-  for (const stmt of splitStatements(sql)) {
+  const statements = splitStatements(sql);
+  const hardenedByAlter = altersPinningSearchPath(statements);
+
+  for (const stmt of statements) {
     const line = lineAt(sql, stmt.offset);
     if (/\bcreate\s+(or\s+replace\s+)?function\b/i.test(stmt.text)) {
-      findings.push(...checkFunction(stmt.text, file, line));
-    } else if (/\bcreate\s+policy\b/i.test(stmt.text)) {
-      findings.push(...checkPolicy(stmt.text, file, line));
+      // A CREATE POLICY inside a function body defines what a later *call* does,
+      // not a policy this migration creates — so it is deliberately not checked.
+      findings.push(...checkFunction(stmt.text, file, line, hardenedByAlter));
+    } else {
+      for (const slice of policySlices(stmt.text)) {
+        findings.push(...checkPolicy(slice, file, line));
+      }
     }
   }
   return findings;

@@ -137,6 +137,88 @@ describe('parsing hazards', () => {
     expect(scanFile(sql, 'm.sql')).toHaveLength(1);
   });
 
+  it('does not read the "to" in a policy NAME as the TO clause', () => {
+    // "Allow authenticated users to read X" is this repo's dominant naming
+    // idiom. Searching the whole header for /\bto\b/ marked ~20 TO-less
+    // policies compliant — the gate silently permitting what it exists to catch.
+    const sql = `CREATE POLICY "Allow authenticated users to read states" ON public.states
+      FOR SELECT USING (true);`;
+    expect(scanFile(sql, 'm.sql').map((f) => f.rule)).toContain('policy-explicit-role');
+  });
+
+  it('rejects an explicit TO public or TO anon', () => {
+    // Naming the unsafe role is the same exposure as defaulting to it.
+    for (const role of ['public', 'anon']) {
+      const sql = `CREATE POLICY p ON public.students FOR SELECT TO ${role}
+        USING (id = (SELECT auth.uid()));`;
+      const found = scanFile(sql, 'm.sql');
+      expect(found.map((f) => f.rule)).toContain('policy-explicit-role');
+      expect(found[0].detail).toMatch(/without signing in/);
+    }
+  });
+
+  it('accepts service_role and other named roles', () => {
+    const sql = `CREATE POLICY p ON public.students FOR SELECT TO service_role USING (true);`;
+    expect(scanFile(sql, 'm.sql')).toHaveLength(0);
+  });
+
+  it('checks every policy in a DO block, not just the first', () => {
+    // A compliant first policy used to launder every violating one behind it.
+    const sql = `DO $$
+      BEGIN
+        EXECUTE 'CREATE POLICY good_one ON public.t FOR SELECT TO authenticated USING (a = (SELECT auth.uid()))';
+        EXECUTE 'CREATE POLICY bad_one ON public.t FOR UPDATE USING (a = auth.uid())';
+        EXECUTE 'CREATE POLICY bad_two ON public.t FOR DELETE USING (a = auth.uid())';
+      END $$;`;
+    const found = scanFile(sql, 'm.sql');
+    const names = new Set(found.map((f) => f.identifier));
+    expect(names).toEqual(new Set(['t.bad_one', 't.bad_two']));
+    expect(found).toHaveLength(4); // each bad policy breaks both policy rules
+  });
+
+  it('accepts the deparsed (select auth.uid() as uid) form', () => {
+    // What pg_policies returns, so what anyone copying from it will paste.
+    const sql = `CREATE POLICY p ON public.students FOR SELECT TO authenticated
+      USING (provider_id = (SELECT auth.uid() AS uid));`;
+    expect(scanFile(sql, 'm.sql')).toHaveLength(0);
+  });
+
+  it('accepts attributes declared after the function body', () => {
+    // Both orderings are legal and both appear in this repo; truncating at the
+    // first dollar quote reported this correctly-pinned function as unpinned.
+    const sql = `CREATE OR REPLACE FUNCTION public.after_body() RETURNS void AS $$
+      BEGIN RAISE NOTICE 'x'; END;
+      $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp;`;
+    expect(scanFile(sql, 'm.sql')).toHaveLength(0);
+  });
+
+  it('still flags an after-body function that omits pg_temp', () => {
+    const sql = `CREATE OR REPLACE FUNCTION public.after_body_bad() RETURNS void AS $$
+      BEGIN END;
+      $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;`;
+    expect(scanFile(sql, 'm.sql')).toHaveLength(1);
+  });
+
+  it('does not read a SET search_path written inside a body as the pin', () => {
+    const sql = `CREATE FUNCTION public.decoy() RETURNS void LANGUAGE plpgsql SECURITY DEFINER AS $$
+      BEGIN EXECUTE 'SET search_path = public, pg_temp'; END; $$;`;
+    expect(scanFile(sql, 'm.sql')[0].detail).toMatch(/sets no search_path/);
+  });
+
+  it('accepts a function pinned by a following ALTER FUNCTION in the same migration', () => {
+    const sql = `CREATE FUNCTION public.later_pinned() RETURNS void LANGUAGE plpgsql SECURITY DEFINER AS $$
+      BEGIN END; $$;
+      ALTER FUNCTION public.later_pinned() SET search_path = public, pg_temp;`;
+    expect(scanFile(sql, 'm.sql')).toHaveLength(0);
+  });
+
+  it('does not accept an ALTER that omits pg_temp', () => {
+    const sql = `CREATE FUNCTION public.later_bad() RETURNS void LANGUAGE plpgsql SECURITY DEFINER AS $$
+      BEGIN END; $$;
+      ALTER FUNCTION public.later_bad() SET search_path = public;`;
+    expect(scanFile(sql, 'm.sql')).toHaveLength(1);
+  });
+
   it('keeps quoted identifiers containing spaces distinct', () => {
     // Collapsing these to a shared key would let one baseline entry mask the other.
     const sql = `CREATE POLICY "Admins can view staff hours" ON public.staff_hours FOR SELECT USING (a = auth.uid());
