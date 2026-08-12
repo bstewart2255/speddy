@@ -153,6 +153,64 @@ describe('ALTER statements (SPE-472)', () => {
     expect(scanFile(`ALTER FUNCTION public.f() RENAME TO g;`, 'm.sql')).toHaveLength(0);
   });
 
+  it('reads an ALTER FUNCTION inside a DO block', () => {
+    // The policy rules already scan into DO blocks; anchoring the function
+    // dispatch at the statement start left this half blind, and the repo's own
+    // SPE-289 sweep applies its pin exactly this way.
+    const sql = `DO $$
+      BEGIN
+        EXECUTE 'ALTER FUNCTION public.unpinned() SET search_path = public';
+      END $$;`;
+    const found = scanFile(sql, 'm.sql');
+    expect(found.map((f) => f.rule)).toEqual(['search-path-pg-temp']);
+    expect(found[0].identifier).toBe('unpinned');
+  });
+
+  it('does not false-positive on the SPE-289 sweep\'s dynamic ALTER', () => {
+    // format()'s trailing arguments must not be read as search_path elements —
+    // terminating the slice at the next `;` instead of the string literal's end
+    // would make the last argument look like the final element and flag the
+    // sweep that established the convention.
+    const sql = `DO $$
+      BEGIN
+        EXECUTE format(
+          'ALTER FUNCTION public.%I(%s) SET search_path = %s, pg_temp',
+          r.proname, r.args, r.cur_path
+        );
+      END $$;`;
+    expect(scanFile(sql, 'm.sql')).toHaveLength(0);
+  });
+
+  it('still flags a top-level ALTER whose search_path value is quoted', () => {
+    // `SET search_path TO 'public'` is used in this repo. The slice must keep the
+    // quoted value rather than stopping at the quote.
+    const sql = `ALTER FUNCTION public.f() SET search_path TO 'public';`;
+    expect(scanFile(sql, 'm.sql').map((f) => f.rule)).toEqual(['search-path-pg-temp']);
+  });
+
+  it('flags RESET search_path and RESET ALL, which un-pin outright', () => {
+    for (const form of ['RESET search_path', 'RESET ALL']) {
+      const found = scanFile(`ALTER FUNCTION public.f() ${form};`, 'm.sql');
+      expect(found.map((f) => f.rule)).toEqual(['search-path-pg-temp']);
+      expect(found[0].detail).toMatch(/RESET/);
+    }
+  });
+
+  it('flags SET search_path FROM CURRENT', () => {
+    const found = scanFile(`ALTER FUNCTION public.f() SET search_path FROM CURRENT;`, 'm.sql');
+    expect(found.map((f) => f.rule)).toEqual(['search-path-pg-temp']);
+  });
+
+  it('names the function, not the schema, when the qualifier is quoted', () => {
+    // Returning "public" here would name the wrong function in CI and collapse
+    // every quoted-schema ALTER in a file onto one baseline key.
+    const a = scanFile(`ALTER FUNCTION "public"."alpha"() SET search_path = public;`, 'm.sql');
+    const b = scanFile(`ALTER FUNCTION "public"."beta"() SET search_path = public;`, 'm.sql');
+    expect(a[0].identifier).toBe('alpha');
+    expect(b[0].identifier).toBe('beta');
+    expect(keyOf(a[0])).not.toBe(keyOf(b[0]));
+  });
+
   it('catches the SPE-8 rollback, which the CREATE-only gate scored clean', () => {
     const rollback = `ALTER POLICY "District admins can view schedule sessions in their district"
       ON public.schedule_sessions

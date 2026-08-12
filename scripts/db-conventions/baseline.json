@@ -929,8 +929,6 @@
     "search-path-pg-temp::20250830_fix_function_search_paths.sql::update_performance_metrics",
     "search-path-pg-temp::20250830_fix_function_search_paths.sql::update_updated_at_column",
     "search-path-pg-temp::20250830_fix_function_search_paths.sql::upsert_bell_schedule",
-    "search-path-pg-temp::20250830_fix_function_search_paths.sql::upsert_bell_schedule",
-    "search-path-pg-temp::20250830_fix_function_search_paths.sql::upsert_special_activity",
     "search-path-pg-temp::20250830_fix_function_search_paths.sql::upsert_special_activity",
     "search-path-pg-temp::20251003_fix_update_updated_at_search_path.sql::update_updated_at",
     "search-path-pg-temp::20251016_add_sea_students_function.sql::get_sea_students",

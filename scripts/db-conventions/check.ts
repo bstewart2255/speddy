@@ -196,6 +196,19 @@ function functionAttributes(text: string): string {
   return text.replace(/\$([A-Za-z_0-9]*)\$[\s\S]*?\$\1\$/g, ' ');
 }
 
+/**
+ * The function's own name, with any schema qualifier stripped.
+ *
+ * The qualifier may itself be quoted (`ALTER FUNCTION "public"."f"()`), and
+ * matching the first quoted token would return the SCHEMA — naming the wrong
+ * function in the CI message, and worse, collapsing every quoted-schema ALTER in
+ * a file onto the baseline key `public`, where one entry masks all the others.
+ */
+function functionNameIn(text: string): string {
+  const m = /\bfunction\s+(?:(?:"[^"]+"|[A-Za-z_][A-Za-z0-9_]*)\s*\.\s*)?(?:"([^"]+)"|([A-Za-z_][A-Za-z0-9_]*))/i.exec(text);
+  return m ? (m[1] ?? m[2]) : '<unnamed>';
+}
+
 const SEARCH_PATH_RE =
   /\bset\s+search_path\s*(?:=|\bto\b)\s*([^;]*?)(?=\s+\bas\b|\s+\blanguage\b|\s+\bsecurity\b|\s+\bstable\b|\s+\bimmutable\b|\s+\bvolatile\b|\s+\bstrict\b|\s+\bparallel\b|\s+\bcost\b|\s+\brows\b|\s+\bset\b|\s*$)/i;
 
@@ -219,8 +232,7 @@ function checkFunction(text: string, file: string, line: number): Finding[] {
   const attrs = functionAttributes(text);
   if (!/\bsecurity\s+definer\b/i.test(attrs)) return [];
 
-  const name = /\bfunction\s+(?:public\s*\.\s*)?(?:"([^"]+)"|([A-Za-z_][A-Za-z0-9_]*))/i.exec(text);
-  const identifier = name ? (name[1] ?? name[2]) : '<unnamed>';
+  const identifier = functionNameIn(text);
   const sp = SEARCH_PATH_RE.exec(attrs);
 
   if (!sp) {
@@ -358,6 +370,57 @@ function policySlices(text: string): { text: string; kind: 'create' | 'alter' }[
   });
 }
 
+/** Character ranges covered by single-quoted string literals in `text`. */
+function stringLiteralRanges(text: string): { start: number; end: number }[] {
+  const ranges: { start: number; end: number }[] = [];
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] !== "'") continue;
+    const start = i;
+    i++;
+    while (i < text.length) {
+      if (text[i] === "'" && text[i + 1] === "'") { i += 2; continue; }
+      if (text[i] === "'") break;
+      i++;
+    }
+    ranges.push({ start, end: Math.min(i, text.length) });
+  }
+  return ranges;
+}
+
+/**
+ * One slice per ALTER FUNCTION in a statement.
+ *
+ * Mirrors policySlices so the two halves of the gate behave alike — without it,
+ * an ALTER inside a `DO` block goes unread while the policy rules scan straight
+ * into one. The SPE-289 sweep applies its pin exactly that way, via
+ * `EXECUTE format('ALTER FUNCTION … SET search_path = %s, pg_temp', …)`.
+ *
+ * Termination is the fiddly part. An ALTER that *begins inside* a string literal
+ * is dynamic SQL, and its statement ends where that literal ends — running on to
+ * the next `;` would swallow `format()`'s trailing arguments and read the last
+ * one as the final search_path element, flagging the SPE-289 sweep itself. An
+ * ALTER at top level ends at the next `;`, and any quotes inside it are a quoted
+ * search_path value (`SET search_path TO 'public'`, which this repo does use)
+ * that must stay part of the slice.
+ */
+function alterFunctionSlices(text: string): string[] {
+  const re = /\balter\s+function\b/gi;
+  const literals = stringLiteralRanges(text);
+  const out: string[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    const start = m.index;
+    const enclosing = literals.find((r) => start > r.start && start < r.end);
+    if (enclosing) {
+      out.push(text.slice(start, enclosing.end));
+      continue;
+    }
+    const semi = text.indexOf(';', start);
+    out.push(text.slice(start, semi === -1 ? text.length : semi));
+  }
+  return out;
+}
+
 /**
  * An ALTER that re-pins a function's search_path without `pg_temp` last.
  *
@@ -369,20 +432,29 @@ function policySlices(text: string): { text: string; kind: 'create' | 'alter' }[
  * to set the path, it should set it the house way.
  */
 function checkAlterFunction(text: string, file: string, line: number): Finding[] {
+  const identifier = functionNameIn(text);
+  const flag = (detail: string): Finding[] => [
+    { rule: 'search-path-pg-temp', file, identifier, line, detail },
+  ];
+
+  // Removing the setting is the most direct un-pin there is, and none of these
+  // forms carry a search_path value for SEARCH_PATH_RE to find.
+  if (/\breset\s+(search_path|all)\b/i.test(text)) {
+    return flag(`ALTER FUNCTION "${identifier}" RESETs its search_path, un-pinning it. Re-pin it: SET search_path = public, pg_temp`);
+  }
+  if (/\bsearch_path\s+from\s+current\b/i.test(text)) {
+    return flag(`ALTER FUNCTION "${identifier}" takes search_path FROM CURRENT, which captures whatever the session happened to have. Pin it explicitly: SET search_path = public, pg_temp`);
+  }
+
   const sp = SEARCH_PATH_RE.exec(text);
   if (!sp) return []; // an ALTER doing something else entirely (OWNER TO, RENAME, …)
 
   const parts = sp[1].split(',').map((p) => p.trim().replace(/["']/g, '')).filter(Boolean);
   if (parts[parts.length - 1]?.toLowerCase() === 'pg_temp') return [];
 
-  const name = /\bfunction\s+(?:public\s*\.\s*)?(?:"([^"]+)"|([A-Za-z_][A-Za-z0-9_]*))/i.exec(text);
-  return [{
-    rule: 'search-path-pg-temp',
-    file,
-    identifier: name ? (name[1] ?? name[2]) : '<unnamed>',
-    line,
-    detail: `ALTER FUNCTION sets search_path = ${parts.join(', ')} — pg_temp must be listed LAST, or this un-pins a function the SPE-289 sweep hardened`,
-  }];
+  return flag(
+    `ALTER FUNCTION "${identifier}" sets search_path = ${parts.join(', ')} — pg_temp must be listed LAST, or this un-pins a function the SPE-289 sweep hardened`,
+  );
 }
 
 export function scanFile(sql: string, file: string): Finding[] {
@@ -395,9 +467,12 @@ export function scanFile(sql: string, file: string): Finding[] {
       // A CREATE POLICY inside a function body defines what a later *call* does,
       // not a policy this migration creates — so it is deliberately not checked.
       findings.push(...checkFunction(stmt.text, file, line));
-    } else if (/^\s*alter\s+function\b/i.test(stmt.text)) {
-      findings.push(...checkAlterFunction(stmt.text, file, line));
     } else {
+      // Not anchored at the statement start: an ALTER can be one of several
+      // inside a DO block, exactly as the policy rules already handle.
+      for (const slice of alterFunctionSlices(stmt.text)) {
+        findings.push(...checkAlterFunction(slice, file, line));
+      }
       for (const slice of policySlices(stmt.text)) {
         findings.push(...checkPolicy(slice.text, file, line, slice.kind));
       }
@@ -464,7 +539,11 @@ function main(): void {
   const { all, introduced, staleBaselineKeys } = runCheck();
 
   if (args.includes('--update-baseline')) {
-    const violations = all.map(keyOf).sort();
+    // De-duplicated: two findings can share a key (same rule, file and
+    // identifier — e.g. overloads, which collapse to a bare function name). A
+    // duplicated entry is not just noise, it is masking: one deliberately
+    // baselined violation would silently cover a second one added later.
+    const violations = [...new Set(all.map(keyOf))].sort();
     writeFileSync(
       BASELINE_PATH,
       `${JSON.stringify(
@@ -498,7 +577,13 @@ function main(): void {
   }
 
   if (introduced.length === 0) {
-    console.log(`db conventions OK — 0 new violations (${all.length} known, tracked in baseline.json).`);
+    // Findings and baseline keys are different counts — several findings can
+    // share one key. Reporting the former as the latter overstates the baseline.
+    const keys = new Set(all.map(keyOf)).size;
+    console.log(
+      `db conventions OK — 0 new violations (${all.length} finding${all.length === 1 ? '' : 's'} ` +
+        `across ${keys} baselined key${keys === 1 ? '' : 's'}).`,
+    );
     return;
   }
 
