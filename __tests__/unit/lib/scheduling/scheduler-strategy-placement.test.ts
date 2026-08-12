@@ -56,7 +56,7 @@ type Placement = { studentId: string; day: number; startTime: string };
 async function place(
   strategy: SchedulingStrategy,
   students: TestStudent[],
-  preScheduled: Array<{ student_id: string; day_of_week: number; start_time: string; end_time: string }> = [],
+  preScheduled: Array<{ student_id: string; day_of_week: number; start_time: string; end_time: string; provider_id?: string }> = [],
   roster: TestStudent[] = []
 ): Promise<Placement[]> {
   const scheduler = new OptimizedScheduler('provider-1', 'resource', false, false, strategy) as any;
@@ -69,7 +69,7 @@ async function place(
     workSchedule: [1, 2, 3, 4, 5].map(day_of_week => ({ day_of_week })),
     bellSchedules: [],
     specialActivities: [],
-    existingSessions: preScheduled,
+    existingSessions: preScheduled.map(s => ({ provider_id: 'provider-1', assigned_to_sea_id: null, assigned_to_specialist_id: null, ...s })),
     schoolHours: [],
     crossProviderSessionsByStudent: new Map(),
   });

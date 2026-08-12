@@ -49,10 +49,34 @@ function makeScheduler(strategy: SchedulingStrategy) {
   return new OptimizedScheduler('provider-1', 'resource', false, false, strategy) as any;
 }
 
+/**
+ * A session on the calendar. Delivery fields mirror real rows: `provider_id` is
+ * always set, and the assignment ids are set only when the session is delegated
+ * to someone other than the owning provider.
+ */
+function session(
+  student_id: string,
+  day_of_week: number,
+  start_time: string,
+  end_time: string,
+  delegation: { assigned_to_sea_id?: string; assigned_to_specialist_id?: string } = {}
+) {
+  return {
+    student_id,
+    day_of_week,
+    start_time,
+    end_time,
+    provider_id: 'provider-1',
+    assigned_to_sea_id: null,
+    assigned_to_specialist_id: null,
+    ...delegation,
+  };
+}
+
 /** Minimal context for the slot-ordering path. */
 function withContext(
   scheduler: any,
-  existingSessions: Array<{ student_id: string; day_of_week: number; start_time: string; end_time: string }>,
+  existingSessions: Array<ReturnType<typeof session>>,
   studentsKnown: TestStudent[]
 ) {
   const studentGradeMap = new Map<string, string>();
@@ -152,9 +176,9 @@ describe('slot ordering by strategy (SPE-473)', () => {
 
   // 09:00 holds one grade-3 peer; 10:00 is empty; 11:00 holds two unrelated students.
   const existing = [
-    { student_id: 'peer', day_of_week: 1, start_time: '09:00', end_time: '09:30' },
-    { student_id: 's1', day_of_week: 1, start_time: '11:00', end_time: '11:30' },
-    { student_id: 's2', day_of_week: 1, start_time: '11:00', end_time: '11:30' },
+    session('peer', 1, '09:00', '09:30'),
+    session('s1', 1, '11:00', '11:30'),
+    session('s2', 1, '11:00', '11:30'),
   ];
   const known = [target, peer, stranger1, stranger2];
 
@@ -200,6 +224,38 @@ describe('slot ordering by strategy (SPE-473)', () => {
       .sortSlotsForStrategy(slots('11:00', '09:00', '10:00'), 1, target)
       .map((s: any) => s.startTime);
     expect(order[0]).toBe('10:00');
+  });
+
+  it('does not treat a peer delegated to an SEA as groupable company', () => {
+    // A group is same slot AND same deliverer (Groups v2). The 09:00 peer here
+    // is run by an SEA, so placing this student there would sit them beside a
+    // session that forms its own group — no grouping achieved.
+    const delegated = [
+      session('peer', 1, '09:00', '09:30', { assigned_to_sea_id: 'sea-7' }),
+      session('s1', 1, '11:00', '11:30'),
+      session('s2', 1, '11:00', '11:30'),
+    ];
+    const scheduler = withContext(makeScheduler('grade-grouped'), delegated, known);
+    const order = scheduler
+      .sortSlotsForStrategy(slots('11:00', '09:00', '10:00'), 1, target)
+      .map((s: any) => s.startTime);
+    expect(order[0]).toBe('10:00');
+  });
+
+  it('still counts a peer the provider delivers themselves', () => {
+    // The label is unreliable across write paths, so this keys off the
+    // assignment ids: none set means the owning provider runs it.
+    const scheduler = withContext(makeScheduler('grade-grouped'), existing, known);
+    const [first] = scheduler.sortSlotsForStrategy(slots('09:00', '10:00'), 1, target);
+    expect(first.sameGroupCount).toBe(1);
+  });
+
+  it('counts a peer delegated to the SEA running this batch', () => {
+    // When the scheduler is being run BY that SEA, those sessions are theirs.
+    const delegated = [session('peer', 1, '09:00', '09:30', { assigned_to_sea_id: 'provider-1' })];
+    const scheduler = withContext(makeScheduler('grade-grouped'), delegated, known);
+    const [first] = scheduler.sortSlotsForStrategy(slots('09:00', '10:00'), 1, target);
+    expect(first.sameGroupCount).toBe(1);
   });
 
   it('a grouping strategy falls back to balanced for a student with nothing to group on', () => {

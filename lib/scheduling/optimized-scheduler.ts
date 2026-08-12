@@ -1019,7 +1019,10 @@ export class OptimizedScheduler {
               s.day_of_week === day &&
               s.student_id &&
               s.student_id !== student.id &&
-              this.context!.studentGroupKeyMap.get(s.student_id) === groupKey
+              this.context!.studentGroupKeyMap.get(s.student_id) === groupKey &&
+              // Same definition of "peer" the slot sort uses: a session someone
+              // else delivers is a different group.
+              this.isDeliveredByThisProvider(s)
           ).length;
 
     // Sort days to distribute sessions evenly when possible. With no grouping
@@ -1659,6 +1662,35 @@ export class OptimizedScheduler {
   }
   
   /**
+   * Whether this session is one the person running the scheduler delivers
+   * themselves (SPE-473).
+   *
+   * A group is same day + same start time + **same deliverer** (Groups v2), so a
+   * session delegated to somebody else forms its own group and joining its slot
+   * would not group these students at all. The scheduler's caseload legitimately
+   * mixes the two: a provider's own sessions sit alongside ones handed to an SEA
+   * or another specialist.
+   *
+   * Decided from the assignment columns rather than the `delivered_by` label,
+   * because the label is not written consistently across the app — the
+   * auto-scheduler stamps a resource provider's own sessions `specialist` while
+   * every other write path stamps them `provider` (606 vs 7 rows in prod). The
+   * assignment ids do not have that ambiguity: they are set precisely when the
+   * session belongs to someone other than the owning provider.
+   */
+  private isDeliveredByThisProvider(session: {
+    assigned_to_sea_id?: string | null;
+    assigned_to_specialist_id?: string | null;
+    provider_id?: string | null;
+  }): boolean {
+    if (session.assigned_to_sea_id) return session.assigned_to_sea_id === this.providerId;
+    if (session.assigned_to_specialist_id) {
+      return session.assigned_to_specialist_id === this.providerId;
+    }
+    return session.provider_id === this.providerId;
+  }
+
+  /**
    * Order a day's candidate slots by how well each one serves the active
    * strategy (SPE-473). Every slot in `slots` is already legal for this student;
    * this only decides which is tried first.
@@ -1717,6 +1749,9 @@ export class OptimizedScheduler {
           // them is one a later overlap check will reject anyway.
           if (!session.student_id || session.student_id === student.id) continue;
           if (this.context!.studentGroupKeyMap.get(session.student_id) !== targetGroupKey) continue;
+          // A session delivered by someone else forms its own group, so joining
+          // its slot would not group these students at all.
+          if (!this.isDeliveredByThisProvider(session)) continue;
           if (this.timeToMinutes(session.start_time) === slotStartMinutes) {
             sameGroupCount++;
           }
