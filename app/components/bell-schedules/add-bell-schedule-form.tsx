@@ -7,6 +7,7 @@ import { ConflictResolver } from '../../../lib/scheduling/conflict-resolver';
 import { useSchool } from '../../components/providers/school-context';
 import { generateActivityTimeOptions } from '../../../lib/utils/time-options';
 import { BELL_SCHEDULE_ACTIVITIES } from '../../../lib/constants/activity-types';
+import { getCurrentSchoolYear } from '../../../lib/school-year';
 
 type CreatorRole = 'provider' | 'site_admin';
 
@@ -142,6 +143,10 @@ export default function AddBellScheduleForm({
               school_id: effectiveSchoolId,
               created_by_id: user.id,
               created_by_role: creatorRole,
+              // SPE-460: set explicitly. Every read path filters on the current
+              // school year, so a row that falls back to the column default is
+              // invisible the moment it is saved.
+              school_year: getCurrentSchoolYear(),
             };
 
             const { error: insertError } = await supabase

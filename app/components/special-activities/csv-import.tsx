@@ -7,6 +7,7 @@ import type { Database } from "../../../src/types/database";
 import { useSchool } from "../../components/providers/school-context";
 import { dedupeSpecialActivities, normalizeSpecialActivity, createImportSummary } from '../../../lib/utils/dedupe-helpers';
 import { SPECIAL_ACTIVITY_TYPES } from '../../../lib/constants/activity-types';
+import { getCurrentSchoolYear } from '../../../lib/school-year';
 
 interface Teacher {
   id: string;
@@ -260,12 +261,16 @@ Lee,Garden,Tuesday,10:00,10:45`;
             summary.total = rawActivities.length;
             summary.skipped = rawActivities.length - dedupedActivities.length;
 
-            // Get existing activities
+            // Get existing activities. Scoped to the current school year (SPE-460)
+            // so the dedup map cannot match — and then overwrite — a row belonging
+            // to a different year.
+            const schoolYear = getCurrentSchoolYear();
             const { data: existingActivities } = await supabase
               .from('special_activities')
               .select('*')
               .eq('provider_id', user.user!.id)
-              .eq('school_id', currentSchool?.school_id || '');
+              .eq('school_id', currentSchool?.school_id || '')
+              .eq('school_year', schoolYear);
 
             // Create a map of existing activities by normalized key
             const existingMap = new Map();
@@ -287,7 +292,8 @@ Lee,Garden,Tuesday,10:00,10:45`;
                 start_time: activity.start_time,
                 end_time: activity.end_time,
                 school_id: currentSchool?.school_id,
-                content_hash: activity.content_hash
+                content_hash: activity.content_hash,
+                school_year: schoolYear
               };
 
               if (existingMap.has(activity.normalized_key)) {
