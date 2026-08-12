@@ -180,15 +180,28 @@ function functionAttributes(text: string): string {
 const SEARCH_PATH_RE =
   /\bset\s+search_path\s*(?:=|\bto\b)\s*([^;]*?)(?=\s+\bas\b|\s+\blanguage\b|\s+\bsecurity\b|\s+\bstable\b|\s+\bimmutable\b|\s+\bvolatile\b|\s+\bstrict\b|\s+\bparallel\b|\s+\bcost\b|\s+\brows\b|\s+\bset\b|\s*$)/i;
 
-function checkFunction(text: string, file: string, line: number, hardenedByAlter: Set<string>): Finding[] {
+/**
+ * Note on `CREATE` followed by `ALTER FUNCTION … SET search_path` in the same
+ * migration: that does pin the function, but this rule still reports the CREATE.
+ *
+ * Recognising it safely means matching the ALTER to the right function, and only
+ * the argument types can do that — `f(text)` and `f(integer)` share a name and an
+ * arity, so pinning one would otherwise suppress the finding on the other. That
+ * comparison needs type normalisation across two different syntaxes (CREATE
+ * carries parameter names, modes and defaults; ALTER carries bare types), which
+ * is more machinery than the case deserves and a bug source in its own right.
+ *
+ * So it fails closed instead: write the pin into the CREATE, or baseline the
+ * finding with a note. A missing suppression is visible and cheap; a wrong one
+ * silently hides an unpinned SECURITY DEFINER function, which is the failure
+ * this whole file exists to prevent.
+ */
+function checkFunction(text: string, file: string, line: number): Finding[] {
   const attrs = functionAttributes(text);
   if (!/\bsecurity\s+definer\b/i.test(attrs)) return [];
 
   const name = /\bfunction\s+(?:public\s*\.\s*)?(?:"([^"]+)"|([A-Za-z_][A-Za-z0-9_]*))/i.exec(text);
   const identifier = name ? (name[1] ?? name[2]) : '<unnamed>';
-  // A later ALTER FUNCTION ... SET search_path in the same migration pins it just
-  // as well; flagging the CREATE would be a false positive on a legitimate shape.
-  if (hardenedByAlter.has(identifier.toLowerCase())) return [];
   const sp = SEARCH_PATH_RE.exec(attrs);
 
   if (!sp) {
@@ -240,8 +253,12 @@ function checkPolicy(text: string, file: string, line: number): Finding[] {
   const table = /\bon\s+(?:public\s*\.\s*)?(?:"([^"]+)"|([A-Za-z_][A-Za-z0-9_]*))/i.exec(text);
   const identifier = `${table ? (table[1] ?? table[2]) : '?'}.${name ? (name[1] ?? name[2]) : '<unnamed>'}`;
 
-  const role = /\bto\s+([A-Za-z_][A-Za-z0-9_]*)/i.exec(policyRoleRegion(text));
-  if (!role) {
+  // TO takes a comma-separated list and is the last clause before USING, so
+  // everything after it is roles. Reading only the first would let a safe role
+  // in front hide an unsafe one behind it — `TO authenticated, anon` is still
+  // reachable without signing in.
+  const toClause = /\bto\s+([\s\S]+)$/i.exec(policyRoleRegion(text));
+  if (!toClause) {
     findings.push({
       rule: 'policy-explicit-role',
       file,
@@ -249,15 +266,21 @@ function checkPolicy(text: string, file: string, line: number): Finding[] {
       line,
       detail: `Policy "${identifier}" names no role, so it defaults to TO public (which includes anon). Add: TO authenticated`,
     });
-  } else if (/^(public|anon)$/i.test(role[1])) {
-    // Naming the unsafe role explicitly is the same exposure as defaulting to it.
-    findings.push({
-      rule: 'policy-explicit-role',
-      file,
-      identifier,
-      line,
-      detail: `Policy "${identifier}" grants TO ${role[1].toLowerCase()}, which is reachable without signing in. Use TO authenticated (or narrower)`,
-    });
+  } else {
+    const roles = toClause[1].split(',').map((r) => r.trim().replace(/["']/g, '')).filter(Boolean);
+    const unsafe = roles.filter((r) => /^(public|anon)$/i.test(r));
+    if (unsafe.length > 0) {
+      // Naming the unsafe role explicitly is the same exposure as defaulting to it.
+      findings.push({
+        rule: 'policy-explicit-role',
+        file,
+        identifier,
+        line,
+        detail: `Policy "${identifier}" grants TO ${unsafe.join(', ').toLowerCase()}${
+          roles.length > unsafe.length ? ` (in the list: ${roles.join(', ')})` : ''
+        }, which is reachable without signing in. Use TO authenticated (or narrower)`,
+      });
+    }
   }
 
   // Strip the compliant form, then anything left is a bare per-row call. The
@@ -303,32 +326,16 @@ function policySlices(text: string): string[] {
   });
 }
 
-/** Function names pinned by an explicit ALTER FUNCTION ... SET search_path ... pg_temp. */
-function altersPinningSearchPath(statements: Statement[]): Set<string> {
-  const pinned = new Set<string>();
-  for (const { text } of statements) {
-    if (!/^\s*alter\s+function\b/i.test(text)) continue;
-    const sp = SEARCH_PATH_RE.exec(text);
-    if (!sp) continue;
-    const parts = sp[1].split(',').map((p) => p.trim().replace(/["']/g, '')).filter(Boolean);
-    if (parts[parts.length - 1]?.toLowerCase() !== 'pg_temp') continue;
-    const name = /\bfunction\s+(?:public\s*\.\s*)?(?:"([^"]+)"|([A-Za-z_][A-Za-z0-9_]*))/i.exec(text);
-    if (name) pinned.add((name[1] ?? name[2]).toLowerCase());
-  }
-  return pinned;
-}
-
 export function scanFile(sql: string, file: string): Finding[] {
   const findings: Finding[] = [];
   const statements = splitStatements(sql);
-  const hardenedByAlter = altersPinningSearchPath(statements);
 
   for (const stmt of statements) {
     const line = lineAt(sql, stmt.offset);
     if (/\bcreate\s+(or\s+replace\s+)?function\b/i.test(stmt.text)) {
       // A CREATE POLICY inside a function body defines what a later *call* does,
       // not a policy this migration creates — so it is deliberately not checked.
-      findings.push(...checkFunction(stmt.text, file, line, hardenedByAlter));
+      findings.push(...checkFunction(stmt.text, file, line));
     } else {
       for (const slice of policySlices(stmt.text)) {
         findings.push(...checkPolicy(slice, file, line));

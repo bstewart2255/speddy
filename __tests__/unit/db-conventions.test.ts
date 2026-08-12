@@ -162,6 +162,22 @@ describe('parsing hazards', () => {
     expect(scanFile(sql, 'm.sql')).toHaveLength(0);
   });
 
+  it('inspects every role in the TO list, not just the first', () => {
+    // Codex, PR #849: a safe role in front must not hide an unsafe one behind
+    // it. `TO authenticated, anon` is still reachable without signing in.
+    const sql = `CREATE POLICY p ON public.students FOR SELECT TO authenticated, anon
+      USING (id = (SELECT auth.uid()));`;
+    const found = scanFile(sql, 'm.sql');
+    expect(found.map((f) => f.rule)).toContain('policy-explicit-role');
+    expect(found[0].detail).toMatch(/anon/);
+  });
+
+  it('accepts a multi-role list when every role is safe', () => {
+    const sql = `CREATE POLICY p ON public.students FOR SELECT TO authenticated, service_role
+      USING (id = (SELECT auth.uid()));`;
+    expect(scanFile(sql, 'm.sql')).toHaveLength(0);
+  });
+
   it('checks every policy in a DO block, not just the first', () => {
     // A compliant first policy used to launder every violating one behind it.
     const sql = `DO $$
@@ -205,17 +221,22 @@ describe('parsing hazards', () => {
     expect(scanFile(sql, 'm.sql')[0].detail).toMatch(/sets no search_path/);
   });
 
-  it('accepts a function pinned by a following ALTER FUNCTION in the same migration', () => {
+  it('does not let an ALTER on one overload launder a different unpinned one', () => {
+    // Codex, PR #849: f(text) is unpinned and f(integer) is pinned. Same name,
+    // same arity — only the argument types tell them apart. The rule fails
+    // closed rather than suppressing on a name match.
+    const sql = `CREATE FUNCTION public.f(a text) RETURNS void LANGUAGE plpgsql SECURITY DEFINER AS $$
+      BEGIN END; $$;
+      ALTER FUNCTION public.f(integer) SET search_path = public, pg_temp;`;
+    expect(scanFile(sql, 'm.sql')).toHaveLength(1);
+  });
+
+  it('reports a CREATE pinned only by a following ALTER (documented, fails closed)', () => {
+    // Deliberate: see the note on checkFunction. Write the pin into the CREATE,
+    // or baseline it. Pinned here so the trade-off is a decision, not a drift.
     const sql = `CREATE FUNCTION public.later_pinned() RETURNS void LANGUAGE plpgsql SECURITY DEFINER AS $$
       BEGIN END; $$;
       ALTER FUNCTION public.later_pinned() SET search_path = public, pg_temp;`;
-    expect(scanFile(sql, 'm.sql')).toHaveLength(0);
-  });
-
-  it('does not accept an ALTER that omits pg_temp', () => {
-    const sql = `CREATE FUNCTION public.later_bad() RETURNS void LANGUAGE plpgsql SECURITY DEFINER AS $$
-      BEGIN END; $$;
-      ALTER FUNCTION public.later_bad() SET search_path = public;`;
     expect(scanFile(sql, 'm.sql')).toHaveLength(1);
   });
 
