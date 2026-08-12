@@ -52,6 +52,7 @@ import {
 import type { ImportSupabaseClient } from '@/lib/import/preview-types';
 import { attachChildMatches } from '@/lib/import/child-match';
 import { createNormalizedKey } from '@/lib/parsers/name-utils';
+import { unreadableGradeNotes } from '@/lib/utils/grade-parser';
 
 type Perf = ReturnType<typeof measurePerformanceWithAlerts>;
 type Note = { row: number; message: string };
@@ -421,7 +422,13 @@ export async function runStudentsPreview(ctx: PipelineContext, file: File): Prom
     studentPreviews,
     studentsFileName: file.name,
     parsedStudentCount: filteredStudents.length,
-    parseWarnings: 'warnings' in parseResult ? parseResult.warnings || [] : [],
+    // SPE-467: grade notes are derived from filteredStudents, not emitted while
+    // parsing, so a note claiming the grade "was imported as-is" can only ever
+    // describe a student that survived school scoping.
+    parseWarnings: [
+      ...('warnings' in parseResult ? parseResult.warnings || [] : []),
+      ...unreadableGradeNotes(filteredStudents),
+    ],
     parseErrors: parseResult.errors,
     filteredOutCount: filter.filteredOutCount,
     filteredOutSchools: filter.filteredOutSchools,
@@ -489,7 +496,12 @@ async function runRosterTemplatePreview(
     studentPreviews,
     studentsFileName: file.name,
     parsedStudentCount: parseResult.students.length,
-    parseWarnings: parseResult.warnings || [],
+    // SPE-467: the roster path applies no school filter, so every parsed
+    // student is shown — but derive the notes the same way regardless.
+    parseWarnings: [
+      ...(parseResult.warnings || []),
+      ...unreadableGradeNotes(parseResult.students),
+    ],
   });
 
   return NextResponse.json({ success: true, data });
