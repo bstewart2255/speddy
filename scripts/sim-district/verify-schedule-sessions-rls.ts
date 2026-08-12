@@ -153,6 +153,14 @@ async function main(): Promise<void> {
   for (const [flag, value] of [['--save', saveTo], ['--expect', expectFrom]] as const) {
     if (args.includes(flag) && !value) throw new Error(`${flag} needs a file path`);
   }
+  // Capturing and comparing in one run is contradictory, and pointing both at
+  // the same path is actively destructive: the comparison fails, then the save
+  // overwrites the baseline with the very state that just failed, so the next
+  // --expect run passes against it. A verification tool that quietly rewrites
+  // its own expected value has stopped verifying anything.
+  if (saveTo && expectFrom) {
+    throw new Error('use either --save or --expect, not both — saving over the baseline you just compared against destroys it');
+  }
 
   const result: Record<string, Fingerprint> = {};
   for (const subject of SUBJECTS) {
