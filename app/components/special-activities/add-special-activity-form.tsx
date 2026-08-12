@@ -9,6 +9,7 @@ import { generateActivityTimeOptions } from '../../../lib/utils/time-options';
 import { TeacherAutocomplete } from '../teachers/teacher-autocomplete';
 import { SPECIAL_ACTIVITY_TYPES } from '../../../lib/constants/activity-types';
 import { updateSpecialActivity } from '../../../lib/supabase/queries/special-activities';
+import { getCurrentSchoolYear } from '../../../lib/school-year';
 
 interface EditActivity {
   id: string;
@@ -123,7 +124,11 @@ export default function AddSpecialActivityForm({ teacherId: initialTeacherId, te
             day_of_week: parseInt(dayOfWeek),
             start_time: startTime,
             end_time: endTime,
-            school_id: currentSchool!.school_id
+            school_id: currentSchool!.school_id,
+            // SPE-460: set explicitly. Every read path filters on the current
+            // school year, so a row that falls back to the column default is
+            // invisible the moment it is saved.
+            school_year: getCurrentSchoolYear()
           });
 
         if (insertError) throw insertError;

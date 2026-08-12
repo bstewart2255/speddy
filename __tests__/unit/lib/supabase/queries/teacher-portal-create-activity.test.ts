@@ -1,12 +1,17 @@
 /**
  * SPE-335: the teacher create path must stamp the CURRENT school year.
  *
- * `special_activities.school_year` is NOT NULL with a hardcoded default of
- * '2025-2026'. The provider Special Activities page filters on
- * getCurrentSchoolYear(), so a row that falls back to that default disappears
- * from the provider's view the moment the year rolls over on August 1 — the
- * teacher sees their activity, the resource specialist scheduling around it
- * does not.
+ * `special_activities.school_year` is NOT NULL. The provider Special Activities
+ * page filters on getCurrentSchoolYear(), so a row written for the wrong year
+ * disappears from the provider's view — the teacher sees their activity, the
+ * resource specialist scheduling around it does not.
+ *
+ * The column used to default to a hardcoded '2025-2026', which made "fell back
+ * to the default" and "invisible" the same thing once the year rolled over on
+ * August 1 (SPE-459 had to recover 819 such rows). SPE-460 replaced that
+ * default with public.current_school_year(), so the fallback is now correct —
+ * but stamping the year explicitly is still the contract this test pins, since
+ * the app should not depend on the database to know what year it is.
  *
  * This is a mock-level test on purpose: it pins the shape of the insert
  * payload, which is the part RLS cannot tell us anything about. Whether the

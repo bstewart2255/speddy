@@ -7,6 +7,7 @@ import type { Database } from "../../../src/types/database";
 import { useSchool } from "../../components/providers/school-context";
 import { dedupeBellSchedules, normalizeBellSchedule, createImportSummary } from '../../../lib/utils/dedupe-helpers';
 import { BELL_SCHEDULE_ACTIVITIES } from '../../../lib/constants/activity-types';
+import { getCurrentSchoolYear } from '../../../lib/school-year';
 
 interface Props {
   onSuccess: () => void;
@@ -174,12 +175,16 @@ K,Lunch,12:00,12:45
             summary.total = rawSchedules.length;
             summary.skipped = rawSchedules.length - dedupedSchedules.length;
 
-            // Get existing schedules
+            // Get existing schedules. Scoped to the current school year (SPE-460)
+            // so the dedup map cannot match — and then overwrite — a row belonging
+            // to a different year.
+            const schoolYear = getCurrentSchoolYear();
             const { data: existingSchedules } = await supabase
               .from('bell_schedules')
               .select('*')
               .eq('provider_id', user.user!.id)
-              .eq('school_id', currentSchool?.school_id || '');
+              .eq('school_id', currentSchool?.school_id || '')
+              .eq('school_year', schoolYear);
 
             // Create a map of existing schedules by normalized key
             const existingMap = new Map();
@@ -200,7 +205,8 @@ K,Lunch,12:00,12:45
                 start_time: schedule.start_time,
                 end_time: schedule.end_time,
                 school_id: currentSchool?.school_id,
-                content_hash: schedule.content_hash
+                content_hash: schedule.content_hash,
+                school_year: schoolYear
               };
 
               if (existingMap.has(schedule.normalized_key)) {
