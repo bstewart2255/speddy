@@ -659,3 +659,67 @@ describe('POST /api/import-students — suppress filtered-out deliveries from re
     expect(unmatchedNames).not.toContain('Bishop, Ben');
   });
 });
+
+/**
+ * SPE-467: the "couldn't read this grade" note says the grade "was imported
+ * as-is", so it must only ever describe a student that really is imported.
+ * School scoping drops students AFTER parsing, so a note emitted while parsing
+ * would describe a child who never reaches the preview. These pin that the note
+ * is derived from the students that survive scoping, end to end through the
+ * route.
+ */
+describe('POST /api/import-students — unreadable grade notes (SPE-467)', () => {
+  // SEIS column indices, per SEIS_HEADERS in the fixture builder.
+  const LAST = 2, FIRST = 3, GRADE = 5, SCHOOL = 6, AREA = 11, GOAL_NO = 12, GOAL = 14, PERSON = 17;
+
+  const seisRow = (over: Record<number, string>) => ({
+    [LAST]: 'Reyes', [FIRST]: 'Luis', [GRADE]: '03', [SCHOOL]: 'Mt Diablo Elementary',
+    [AREA]: 'Reading', [GOAL_NO]: 'Academic #1: 2026 - 2027',
+    [GOAL]: 'By 5/1/2027, given a grade-level passage, the student will read 90 wpm at 95% accuracy.',
+    [PERSON]: 'Resource Specialist',
+    ...over,
+  });
+
+  const gradeNotesIn = (body: unknown): string[] => {
+    const data = (body as { data?: { files?: Array<{ notes?: Array<{ message: string }> }> } }).data;
+    return (data?.files ?? [])
+      .flatMap((f) => f.notes ?? [])
+      .map((n) => n.message)
+      .filter((m) => m.startsWith('Could not read the grade'));
+  };
+
+  it('surfaces the note for an imported student whose grade could not be read', async () => {
+    const csv = buildSeisGoalsCsvFrom([seisRow({ [GRADE]: '17' })]);
+    const result = await runPost(
+      mainTables(),
+      requestWith({ studentsFile: fileFrom(csv, 'students.csv', 'text/csv') }, schoolCtx),
+    );
+
+    expect(result.status).toBe(200);
+    const notes = gradeNotesIn(result.body);
+    expect(notes).toHaveLength(1);
+    expect(notes[0]).toContain('"17"');
+    expect(notes[0]).toContain('LR');
+  });
+
+  it('says nothing about a student school scoping filtered out', async () => {
+    // Luis is at the selected school with a fine grade; Nadia is at another
+    // school with an unreadable one. Only Luis reaches the preview, so only
+    // Luis could earn a note — and his grade is readable, so there are none.
+    const csv = buildSeisGoalsCsvFrom([
+      seisRow({}),
+      seisRow({ [FIRST]: 'Nadia', [LAST]: 'Kaur', [GRADE]: '17', [SCHOOL]: 'Somewhere Else Elementary' }),
+    ]);
+    const result = await runPost(
+      mainTables(true), // works_at_multiple_schools → school scoping applies
+      requestWith({ studentsFile: fileFrom(csv, 'students.csv', 'text/csv') }, schoolCtx),
+    );
+
+    expect(result.status).toBe(200);
+    // Nadia really was filtered out — otherwise this passes for the wrong reason.
+    const data = (result.body as { data?: { students?: Array<{ lastName: string }> } }).data;
+    expect((data?.students ?? []).some((s) => s.lastName === 'Kaur')).toBe(false);
+
+    expect(gradeNotesIn(result.body)).toEqual([]);
+  });
+});

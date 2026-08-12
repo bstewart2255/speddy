@@ -8,7 +8,9 @@ import { ReviewSignalIcon } from './review-signal';
 /**
  * Zone 2 (SPE-227): the per-file receipt. One line per uploaded file — what was
  * read, matched, and filtered — so a problem can be located at the file level
- * (parse vs. match). Parse notes (skipped rows) demote to a tertiary disclosure.
+ * (parse vs. match). Parse notes demote to a tertiary disclosure. Notes are not
+ * all skipped rows — some rows import fine but carry something worth saying
+ * (an unroutable goal, a grade we couldn't read).
  */
 export function ReviewFileReceipts({ files }: { files: ReviewFileReceipt[] }) {
   if (files.length === 0) return null;
@@ -54,7 +56,10 @@ function FileReceiptRow({ file }: { file: ReviewFileReceipt }) {
                 className="inline-flex items-center gap-0.5 text-xs text-gray-500 underline hover:text-gray-700"
               >
                 {notesOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-                {file.notes.length} skipped row{file.notes.length !== 1 ? 's' : ''}
+                {/* SPE-467: "skipped rows" was already wrong for the unrouted-goal
+                    note, and is wrong for the unreadable-grade note, which imports
+                    the student rather than skipping them. "Note" covers both. */}
+                {file.notes.length} note{file.notes.length !== 1 ? 's' : ''}
               </button>
             </>
           )}

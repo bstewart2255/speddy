@@ -104,3 +104,61 @@ export function normalizeGradeLevel(grade: string): string {
   // Return trimmed original if we couldn't normalize
   return String(grade ?? '').trim();
 }
+
+/** The grade values the app understands. Everything keyed by grade — bell
+ *  schedules, school hours, the Add Student dropdown — uses exactly these. */
+export const CANONICAL_GRADES: readonly string[] = [
+  'TK', 'K', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12',
+];
+
+const CANONICAL_GRADE_SET = new Set(CANONICAL_GRADES);
+
+/**
+ * Whether `normalizeGradeLevel` actually recognised a value, as opposed to
+ * handing back the input untouched.
+ *
+ * SPE-467: SEIS exports grade as a numeric code and we only map the two we
+ * learned empirically (`18` → TK, `0` → K) plus `1`–`12`. Every other code
+ * falls through the normalizer verbatim and lands in `students.grade_level`,
+ * where nothing validates it — there is no CHECK constraint on that column,
+ * and the import preserves grade on purpose so confirm cannot clobber a good
+ * value. Three students reached production that way carrying grades of `'17'`
+ * and `'13'`.
+ *
+ * Callers use this to tell the user, rather than to reject: a grade we cannot
+ * read is still better imported than dropped, and the provider can fix it.
+ */
+export function isCanonicalGrade(grade: string | null | undefined): boolean {
+  return CANONICAL_GRADE_SET.has(String(grade ?? '').trim().toUpperCase());
+}
+
+/** Review-screen note for a grade the parser could not interpret (SPE-467). */
+export function unrecognizedGradeWarning(initials: string, rawGrade: string): string {
+  return (
+    `Could not read the grade "${String(rawGrade).trim()}" for ${initials} — it was imported as-is. ` +
+    `Speddy matches bell schedules and school hours to students by grade, so neither will apply to ` +
+    `this student until the grade is corrected on their record.`
+  );
+}
+
+/**
+ * Review-screen notes for students whose grade the parser could not interpret.
+ *
+ * Derived from the students rather than emitted while parsing, deliberately.
+ * The note says the grade "was imported as-is", so it must only ever describe a
+ * student who really is being imported — and the parser cannot know that. Rows
+ * are dropped after it runs, by school scoping in the import pipeline, and were
+ * a filter ever added downstream this would still hold. Call it with whatever
+ * set of students is actually about to be shown.
+ *
+ * The raw value is recoverable from the student: `normalizeGradeLevel` returns
+ * its input untouched precisely when it fails, so `gradeLevel` still carries
+ * what the file said.
+ */
+export function unreadableGradeNotes(
+  students: ReadonlyArray<{ initials: string; gradeLevel: string; rawRow: number }>,
+): Array<{ row: number; message: string }> {
+  return students
+    .filter((s) => !isCanonicalGrade(s.gradeLevel))
+    .map((s) => ({ row: s.rawRow, message: unrecognizedGradeWarning(s.initials, s.gradeLevel) }));
+}

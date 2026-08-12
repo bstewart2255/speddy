@@ -334,6 +334,19 @@ async function workbookToBuffer(workbook: ExcelJS.Workbook): Promise<Buffer> {
 }
 
 /**
+ * XLSX counterpart to `buildSeisGoalsCsvFrom` — header on row 1, then whatever
+ * sparse rows the caller supplies. For tests that need the XLSX path over a
+ * specific set of rows rather than the shared seven-row fixture.
+ */
+export async function buildSeisXlsxFrom(rows: SparseRow[]): Promise<Buffer> {
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet('Student Goals');
+  sheet.addRow(SEIS_HEADERS);
+  for (const row of rows) sheet.addRow(sparseToArray(row));
+  return workbookToBuffer(workbook);
+}
+
+/**
  * XLSX variant with the header on row 1 and seven data rows (rows 2–8). Pins
  * the SPE-240 fixes: all seven rows import (parseSEISReport starts data on the
  * row after the detected header, not a fixed `rowNumber <= 5`), and each yields
