@@ -211,6 +211,41 @@ describe('ALTER statements (SPE-472)', () => {
     expect(keyOf(a[0])).not.toBe(keyOf(b[0]));
   });
 
+  it('reads a dynamic ALTER assembled by concatenating literals', () => {
+    // Codex, PR #853: the action can land in a later fragment than the verb, so
+    // reading only the literal containing "ALTER FUNCTION" sees a no-op and lets
+    // the un-pin through.
+    const sql = `DO $$ BEGIN
+      EXECUTE 'ALTER FUNCTION ' || quote_ident(n) || '() SET search_path = public';
+    END $$;`;
+    expect(scanFile(sql, 'm.sql').map((f) => f.rule)).toEqual(['search-path-pg-temp']);
+  });
+
+  it('does not splice the next statement in a DO block into the command', () => {
+    // Rejoining fragments must stop at the semicolon, or a compliant ALTER would
+    // absorb whatever literal follows it and be judged on that instead.
+    const sql = `DO $$ BEGIN
+      EXECUTE 'ALTER FUNCTION public.a() SET search_path = public, pg_temp';
+      RAISE NOTICE 'search_path = public';
+    END $$;`;
+    expect(scanFile(sql, 'm.sql')).toHaveLength(0);
+  });
+
+  it('does not read ALTER POLICY ... RENAME TO as a role clause', () => {
+    // Codex, PR #853: a rename leaves roles untouched, and a policy may
+    // legitimately be named "anon" or "public".
+    expect(scanFile(`ALTER POLICY p ON public.t RENAME TO anon;`, 'm.sql')).toHaveLength(0);
+    expect(scanFile(`ALTER POLICY p ON public.t RENAME TO public;`, 'm.sql')).toHaveLength(0);
+    expect(scanFile(`ALTER POLICY p ON public.t RENAME TO p2;`, 'm.sql')).toHaveLength(0);
+  });
+
+  it('still flags a real role change on a policy whose name mentions rename', () => {
+    // The rename exemption keys on the RENAME TO clause, not on the word
+    // appearing in the policy name.
+    const sql = `ALTER POLICY "rename me later" ON public.t TO anon;`;
+    expect(scanFile(sql, 'm.sql').map((f) => f.rule)).toEqual(['policy-explicit-role']);
+  });
+
   it('catches the SPE-8 rollback, which the CREATE-only gate scored clean', () => {
     const rollback = `ALTER POLICY "District admins can view schedule sessions in their district"
       ON public.schedule_sessions

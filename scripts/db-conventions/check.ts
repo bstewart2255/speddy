@@ -295,8 +295,17 @@ function checkPolicy(text: string, file: string, line: number, kind: 'create' | 
   // everything after it is roles. Reading only the first would let a safe role
   // in front hide an unsafe one behind it — `TO authenticated, anon` is still
   // reachable without signing in.
-  const toClause = /\bto\s+([\s\S]+)$/i.exec(policyRoleRegion(text));
-  if (!toClause) {
+  // `ALTER POLICY p ON t RENAME TO anon` renames the policy; it does not touch
+  // roles. Reading its TO as a role clause reports an anonymous-access violation
+  // on a rename that changed nothing — and a policy may legitimately be named
+  // "anon" or "public".
+  const roleRegion = policyRoleRegion(text);
+  const isRename = /\brename\s+to\b/i.test(roleRegion);
+  const toClause = isRename ? null : /\bto\s+([\s\S]+)$/i.exec(roleRegion);
+
+  if (isRename) {
+    // Nothing to assert: a rename leaves the roles exactly as they were.
+  } else if (!toClause) {
     // Absent TO means "public" on CREATE, but "leave the roles as they are" on
     // ALTER — only the first is a violation.
     if (kind === 'create') {
@@ -412,7 +421,22 @@ function alterFunctionSlices(text: string): string[] {
     const start = m.index;
     const enclosing = literals.find((r) => start > r.start && start < r.end);
     if (enclosing) {
-      out.push(text.slice(start, enclosing.end));
+      // Dynamic SQL. The command may be assembled by concatenating several
+      // literals — `'ALTER FUNCTION ' || quote_ident(n) || '() SET search_path
+      // = public'` — where the action lands in a later fragment than the verb.
+      // Reading only the first literal sees an ALTER doing nothing and lets the
+      // un-pin through, so the fragments are rejoined here. Bounded by the first
+      // semicolon outside a literal: that is the next statement in the DO block,
+      // and swallowing it would splice unrelated SQL into the command.
+      const parts = [text.slice(start, enclosing.end)];
+      let cursor = enclosing.end;
+      for (const r of literals) {
+        if (r.start < enclosing.end) continue;
+        if (text.slice(cursor, r.start).includes(';')) break;
+        parts.push(text.slice(r.start + 1, r.end));
+        cursor = r.end;
+      }
+      out.push(parts.join(''));
       continue;
     }
     const semi = text.indexOf(';', start);
