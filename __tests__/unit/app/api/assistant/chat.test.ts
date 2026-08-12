@@ -175,13 +175,31 @@ describe('POST /api/assistant/chat', () => {
     expect(systemText).toContain('the annual and three-year cycles do not pause');
     expect(systemText).toContain('Do NOT quote statutory deadlines or legal numbers that are not in the reference');
     expect(systemText).toContain('one short verification nudge');
-    // SPE-466: founder-approved CA reference pack rides in the prompt —
-    // spot-pin one entry per section so a trim can't silently drop a block.
-    expect(systemText).toContain('5 business days');
-    expect(systemText).toContain('audio-record with 24 hours');
-    expect(systemText).toContain('turns 16');
-    expect(systemText).toContain('manifestation determination review');
-    expect(systemText).toContain('56329(b)');
+    // SPE-466: founder-approved CA reference pack rides in the prompt — pin
+    // one distinctive anchor per entry so a trim can't silently drop any.
+    for (const anchor of [
+      'Referral and assessment:',
+      'Clock pauses:',
+      '56321(a)',
+      'Reviews:',
+      'reevaluation is unnecessary',
+      'Consent:',
+      'services can be revoked in writing',
+      'audio-record with 24 hours',
+      'IEP team (56341):',
+      'Transfers within California mid-year:',
+      '56325(a)(2)',
+      '5 business days',
+      'Progress:',
+      '56329(b)',
+      'turns 16',
+      '5 CCR 3043',
+      '56505(l)',
+      'waive it in writing or agree to mediation',
+      'manifestation determination review',
+    ]) {
+      expect(systemText).toContain(anchor);
+    }
     expect(call.tools.map((t: { name: string }) => t.name)).toEqual([
       'get_caseload',
       'get_schedule',
