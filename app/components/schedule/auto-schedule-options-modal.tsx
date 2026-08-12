@@ -10,7 +10,14 @@ import {
 interface AutoScheduleOptionsModalProps {
   isOpen: boolean;
   onClose: () => void;
-  /** How many sessions this run will try to place. */
+  /**
+   * How many sessions this run will try to place, from the authoritative
+   * school-scoped count of unscheduled templates. May be 0 while the button is
+   * still enabled — the schedule page also enables on its unscheduled-panel
+   * count, which is the same rows counted client-side and can include dated
+   * instances the authoritative query deliberately excludes. The two must never
+   * be summed; they count the same work.
+   */
   sessionCount: number;
   strategy: SchedulingStrategy;
   onStrategyChange: (strategy: SchedulingStrategy) => void;
@@ -38,7 +45,11 @@ export function AutoScheduleOptionsModal({
       isOpen={isOpen}
       onClose={onClose}
       title="Auto-Schedule Sessions"
-      description={`This will schedule ${sessionCount} session${sessionCount !== 1 ? 's' : ''} that ${sessionCount === 1 ? 'has' : 'have'} never been scheduled before.`}
+      description={
+        sessionCount > 0
+          ? `This will schedule ${sessionCount} session${sessionCount !== 1 ? 's' : ''} that ${sessionCount === 1 ? 'has' : 'have'} never been scheduled before.`
+          : 'This will schedule any sessions that have never been scheduled before.'
+      }
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>

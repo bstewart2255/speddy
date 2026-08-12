@@ -1090,12 +1090,16 @@ the run (replacing the old native `confirm()`), offering four strategies:
 
 Two things are worth knowing about the boundary here:
 
-- **A strategy never changes what is legal.** Bell schedules, special activities,
-  work days, per-slot capacity, consecutive/break rules and cross-provider
-  conflicts are all validated downstream and are identical for every strategy. A
-  strategy only reorders the candidate slots that get *tried*, plus the order
-  students are placed in (grouping strategies place peers consecutively so each
-  one can join the slot the previous peer landed in).
+- **A strategy never changes what is legal.** Bell schedules, work days, per-slot
+  capacity, consecutive/break rules and cross-provider conflicts are all
+  validated downstream and are identical for every strategy. A strategy only
+  reorders the candidate slots that get *tried*, plus the order students are
+  placed in (grouping strategies place peers consecutively so each one can join
+  the slot the previous peer landed in). Note this list does **not** include
+  special activities: `getDataFromManager` still hands the scheduler an empty
+  `specialActivities` array, so that check runs against an empty index and blocks
+  nothing (SPE-318). Strategies neither improve nor worsen that — it is the same
+  blind spot for all four, including the pre-existing `balanced` behavior.
 - **Grouping is decided at the day level as well as the slot level.** Days
   holding same-group peers sort ahead of the emptiest day. Without that, grouping
   is self-defeating: each peer placed makes its day one session busier, so the

@@ -1025,11 +1025,18 @@ export class OptimizedScheduler {
               this.isDeliveredByThisProvider(s)
           ).length;
 
+    // Counted once per day rather than inside the comparator, which would
+    // rescan every session on each comparison, for every student in the batch.
+    const peerCounts = new Map(validWorkDays.map(day => [day, peersOnDay(day)]));
+    const sessionCounts = new Map(validWorkDays.map(day => [day, sessionsOnDay(day)]));
+
     // Sort days to distribute sessions evenly when possible. With no grouping
     // key every day scores 0 peers, so this reduces exactly to the previous
     // emptiest-day-first ordering.
     const sortedDays = [...validWorkDays].sort(
-      (a, b) => (peersOnDay(b) - peersOnDay(a)) || (sessionsOnDay(a) - sessionsOnDay(b))
+      (a, b) =>
+        (peerCounts.get(b)! - peerCounts.get(a)!) ||
+        (sessionCounts.get(a)! - sessionCounts.get(b)!)
     );
 
     this.log(`Work days from context: ${this.context!.workDays}`);
