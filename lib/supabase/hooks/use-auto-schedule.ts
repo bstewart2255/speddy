@@ -35,7 +35,14 @@ export function useAutoSchedule(debug: boolean = false) {
       if (!student.school_site) {
         throw new Error('Student school site is required but not set');
       }
-      await scheduler.initializeContext(student.school_site, student.school_district || '');
+      // SPE-463: pass school_id so bell schedules and special activities are
+      // found by school_id rather than the school_site text, which is NULL on
+      // every row written since the school_id migration.
+      await scheduler.initializeContext(
+        student.school_site,
+        student.school_district || '',
+        student.school_id || undefined
+      );
 
       // Schedule just this one student
       const results = await scheduler.scheduleBatch([student]);
@@ -120,8 +127,11 @@ export function useAutoSchedule(debug: boolean = false) {
         // Ensure data manager is initialized for this school
         // Get school_district from the first student in this school group
         const schoolDistrict = schoolStudents[0]?.school_district || '';
+        // SPE-463: students at one site all share a school_id; take it from the
+        // group so the manager filters by school_id rather than school_site.
+        const schoolId = schoolStudents[0]?.school_id || undefined;
         if (!dataManager.isInitialized() || schoolSite !== lastSchool) {
-          await dataManager.initialize(user.id, schoolSite, schoolDistrict);
+          await dataManager.initialize(user.id, schoolSite, schoolDistrict, schoolId);
           lastSchool = schoolSite;
         } else if (dataManager.isCacheStale()) {
           await dataManager.refresh();
@@ -131,8 +141,8 @@ export function useAutoSchedule(debug: boolean = false) {
         const scheduler = new OptimizedScheduler(user.id, profile.role, debug, !!profile.works_at_multiple_schools);
 
         try {
-          // Initialize context once for the school
-          await scheduler.initializeContext(schoolSite, schoolDistrict);
+          // Initialize context once for the school (SPE-463: school_id included)
+          await scheduler.initializeContext(schoolSite, schoolDistrict, schoolId);
 
           // Schedule all students at this school
           const schoolResults = await scheduler.scheduleBatch(schoolStudents);
@@ -217,12 +227,14 @@ export function useAutoSchedule(debug: boolean = false) {
       // Place sessions for each school
       for (const [schoolSite, schoolStudents] of studentsBySchool) {
         const schoolDistrict = schoolStudents[0]?.school_district || '';
-        
+        // SPE-463: see the note on the auto-schedule path above.
+        const schoolId = schoolStudents[0]?.school_id || undefined;
+
         // Create scheduler and initialize context
         const scheduler = new OptimizedScheduler(user.id, profile.role, debug, !!profile.works_at_multiple_schools);
 
         try {
-          await scheduler.initializeContext(schoolSite, schoolDistrict);
+          await scheduler.initializeContext(schoolSite, schoolDistrict, schoolId);
 
           // Try manual placement with conflict tolerance
           const result = await scheduler.tryManualPlacement(schoolStudents, true);

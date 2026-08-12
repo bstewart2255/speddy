@@ -115,12 +115,20 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
   }
 
   /**
-   * Check if the data manager is initialized for a specific school
+   * Check if the data manager is initialized for a specific school.
+   *
+   * SPE-463: schoolId participates in the check. This singleton is shared
+   * between the interactive schedule page and the auto-scheduler, and a cache
+   * populated without a school_id filters bell schedules by school_site
+   * instead — which finds nothing for schools migrated to school_id. Without
+   * this, a caller that HAS the school_id would reuse that weaker cache and
+   * silently keep the old behaviour.
    */
-  public isInitializedForSchool(schoolSite: string, schoolDistrict?: string): boolean {
+  public isInitializedForSchool(schoolSite: string, schoolDistrict?: string, schoolId?: string): boolean {
     return this.initialized &&
            this.schoolSite === schoolSite &&
-           this.schoolDistrict === (schoolDistrict || this.schoolDistrict);
+           this.schoolDistrict === (schoolDistrict || this.schoolDistrict) &&
+           (schoolId === undefined || this.schoolId === schoolId);
   }
   
   /**
@@ -131,12 +139,27 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
     this.cacheMetadata.fetchErrors = [];
     
     try {
-      // Try to use the batch RPC if available
+      // Try to use the batch RPC if available.
+      //
+      // SPE-463 — READ BEFORE "FIXING" THIS RPC. `get_scheduling_data_batch`
+      // currently throws on EVERY call, for every provider at every school:
+      // its work_schedule CTE compares `uss.site_id = p_school_site`, and
+      // site_id is uuid while p_school_site is text, so Postgres rejects the
+      // statement at plan time (42883). The batch path has therefore never
+      // returned data — the parallel path below is what actually runs.
+      //
+      // Repairing only that type error would make the RPC start succeeding,
+      // and its bell_schedules / special_activities CTEs filter on
+      // `provider_id = p_provider_id AND school_site = p_school_site`. Both
+      // columns are NULL on site-admin-created rows, so it would return an
+      // empty set, processBatchData would cache that, and the auto-scheduler
+      // would go back to ignoring every bell schedule — the exact bug SPE-463
+      // fixed. Key those CTEs on school_id at the same time, or drop the RPC.
       const { data, error } = await this.supabase.rpc('get_scheduling_data_batch', {
         p_provider_id: this.providerId!,
         p_school_site: this.schoolSite!
       }).single();
-      
+
       if (error) {
         console.log('[DataManager] Batch RPC not available, using parallel queries');
         await this.loadDataParallel();
