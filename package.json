@@ -18,6 +18,7 @@
     "start": "next start",
     "lint": "next lint",
     "lint:fix": "next lint --fix",
+    "lint:db": "tsx scripts/db-conventions/check.ts",
     "test:integration": "node scripts/run-integration-tests.js",
     "typecheck": "tsc --noEmit",
     "typecheck:fast": "tsc --noEmit --skipLibCheck",
