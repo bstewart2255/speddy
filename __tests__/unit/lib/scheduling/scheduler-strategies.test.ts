@@ -239,32 +239,36 @@ describe('slot ordering by strategy (SPE-472)', () => {
 });
 
 describe('capacity passes by strategy (SPE-472)', () => {
+  const ceiling = DEFAULT_SCHEDULING_CONFIG.maxConcurrentSessions;
+  const groupable = student({ id: 'g', grade_level: '3', teacher_id: 't-1' });
+
   it('balanced keeps the conservative first pass before the group ceiling', () => {
-    expect(makeScheduler('balanced').getPassCapacities()).toEqual([
-      3,
-      DEFAULT_SCHEDULING_CONFIG.maxConcurrentSessions,
-    ]);
-    expect(makeScheduler('morning-first').getPassCapacities()).toEqual([
-      3,
-      DEFAULT_SCHEDULING_CONFIG.maxConcurrentSessions,
-    ]);
+    expect(makeScheduler('balanced').getPassCapacities(groupable)).toEqual([3, ceiling]);
+    expect(makeScheduler('morning-first').getPassCapacities(groupable)).toEqual([3, ceiling]);
   });
 
-  it('grouping strategies open at the group ceiling', () => {
+  it('opens at the group ceiling for a student the strategy can group', () => {
     // Holding grouping runs to 3 first would cap a grade group at three students
     // and push the fourth off to start a second group — the opposite of the ask.
-    expect(makeScheduler('grade-grouped').getPassCapacities()).toEqual([
-      DEFAULT_SCHEDULING_CONFIG.maxConcurrentSessions,
-    ]);
-    expect(makeScheduler('teacher-grouped').getPassCapacities()).toEqual([
-      DEFAULT_SCHEDULING_CONFIG.maxConcurrentSessions,
-    ]);
+    expect(makeScheduler('grade-grouped').getPassCapacities(groupable)).toEqual([ceiling]);
+    expect(makeScheduler('teacher-grouped').getPassCapacities(groupable)).toEqual([ceiling]);
+  });
+
+  it('keeps the balanced ladder for a student the strategy cannot group', () => {
+    // In a "Group by teacher" run, a student with no teacher recorded is placed
+    // by the balanced rules — so they get the balanced ladder too, rather than
+    // stacking denser than default for no grouping benefit.
+    const noTeacher = student({ id: 'n', teacher_id: null, teacher_name: null });
+    expect(makeScheduler('teacher-grouped').getPassCapacities(noTeacher)).toEqual([3, ceiling]);
+
+    const noGrade = { ...student({ id: 'n2' }), grade_level: '  ' };
+    expect(makeScheduler('grade-grouped').getPassCapacities(noGrade)).toEqual([3, ceiling]);
   });
 
   it('never exceeds the platform group ceiling enforced downstream', () => {
     for (const strategy of ['balanced', 'grade-grouped', 'teacher-grouped', 'morning-first'] as const) {
-      for (const capacity of makeScheduler(strategy).getPassCapacities()) {
-        expect(capacity).toBeLessThanOrEqual(DEFAULT_SCHEDULING_CONFIG.maxConcurrentSessions);
+      for (const capacity of makeScheduler(strategy).getPassCapacities(groupable)) {
+        expect(capacity).toBeLessThanOrEqual(ceiling);
       }
     }
   });
@@ -274,7 +278,7 @@ describe('strategy defaults (SPE-472)', () => {
   it('a scheduler built without a strategy behaves as balanced', () => {
     const scheduler = new OptimizedScheduler('provider-1', 'resource') as any;
     expect(scheduler.strategy).toBe('balanced');
-    expect(scheduler.getPassCapacities()).toEqual([
+    expect(scheduler.getPassCapacities(student({ id: 'g', teacher_id: 't-1' }))).toEqual([
       3,
       DEFAULT_SCHEDULING_CONFIG.maxConcurrentSessions,
     ]);

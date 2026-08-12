@@ -1096,17 +1096,34 @@ Two things are worth knowing about the boundary here:
   strategy only reorders the candidate slots that get *tried*, plus the order
   students are placed in (grouping strategies place peers consecutively so each
   one can join the slot the previous peer landed in).
-- **Grouping strategies open at the full group ceiling**
+- **Grouping is decided at the day level as well as the slot level.** Days
+  holding same-group peers sort ahead of the emptiest day. Without that, grouping
+  is self-defeating: each peer placed makes its day one session busier, so the
+  emptiest-day rule pushes the next peer to the next day and the group ends up
+  spread across the week exactly as `balanced` would spread it.
+- **Slot-level grouping scores exact start-time alignment, not overlap** — group
+  membership derives from `day_of_week` + `start_time` (see Groups v2 below), so
+  a session merely overlapping the group is not in it. Scoring by overlap
+  actively produces those near-misses, since an overlapping earlier slot ties on
+  peer count and then wins the chronological tiebreak.
+- **A groupable student opens at the full group ceiling**
   (`DEFAULT_SCHEDULING_CONFIG.maxConcurrentSessions`) rather than the
-  conservative first pass of 3 that `balanced` uses — otherwise a grade group
-  would cap at three students and the fourth would start a second group. The cap
-  itself is unchanged, and the DB soft guard still applies.
+  conservative first pass of 3 — otherwise a grade group would cap at three
+  students and the fourth would start a second group. Decided per student, not
+  per run: in a `teacher-grouped` run a student with no teacher recorded is
+  placed by the balanced rules and keeps the balanced ladder. The cap itself is
+  unchanged, and the DB soft guard still applies.
 
-Grouping and the grade tiebreak score against **every student at the school**,
-passed in as a roster, not just the students in the current run — before
-SPE-472 the grade map was seeded only from the batch, so students already on the
-calendar registered as neither same-grade nor other-grade and grade preference
-could never actually join them.
+Grouping keys are built from **every student at the school**, passed in as a
+roster, not just the students in the current run — otherwise a grouping run can
+only see its own batch, and a newly added 3rd grader could never join the 3rd
+grade group already on the calendar.
+
+`balanced` is deliberately untouched by all of this: it produces no grouping
+keys, so the day ordering, slot ordering and capacity ladder all reduce to their
+previous form, and its own same-grade tiebreak still reads a batch-only grade map
+(widening that to the roster would silently shift default placements — worth
+doing, but not as a side effect of adding options).
 
 **Source of truth:** `lib/scheduling/scheduling-strategy.ts` (strategies +
 grouping keys), `lib/scheduling/optimized-scheduler.ts`
