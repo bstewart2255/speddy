@@ -13,6 +13,7 @@ type SpecialActivityConflictData = Pick<SpecialActivity, 'teacher_name' | 'day_o
   activity_name?: string;
 };
 type MainstreamingBlockRow = Database['public']['Tables']['mainstreaming_blocks']['Row'];
+type StudentBlockedTimeRow = Database['public']['Tables']['student_blocked_times']['Row'];
 
 export class ConflictResolver {
   private supabase;
@@ -157,6 +158,55 @@ export class ConflictResolver {
       return { marked, failed };
     } catch (error) {
       console.error('Error resolving mainstreaming block conflicts:', error);
+      return { marked: 0, failed: 0, error: (error as Error).message };
+    }
+  }
+
+  /**
+   * SPE-492: check and mark conflicts after creating protected times — the
+   * creating provider's OWN sessions for that student that now sit on the
+   * blocked time. Mirrors resolveMainstreamingBlockConflicts, including its
+   * RLS boundary: cross-provider sessions are warned at their next
+   * drag/placement, not retro-flagged from here.
+   */
+  async resolveStudentBlockedTimeConflicts(
+    blocks: Array<Pick<StudentBlockedTimeRow, 'student_id' | 'day_of_week' | 'start_time' | 'end_time' | 'label'>>
+  ) {
+    try {
+      if (blocks.length === 0) return { marked: 0, failed: 0 };
+
+      const studentId = blocks[0].student_id;
+      const { data: sessions } = await this.supabase
+        .from('schedule_sessions')
+        .select('*')
+        .eq('provider_id', this.providerId)
+        .eq('student_id', studentId)
+        .is('session_date', null)
+        .is('deleted_at', null);
+
+      if (!sessions) return { marked: 0, failed: 0 };
+
+      let marked = 0;
+      let failed = 0;
+      for (const block of blocks) {
+        const conflicting = sessions.filter(session =>
+          session.day_of_week === block.day_of_week &&
+          this.hasTimeOverlap(
+            session.start_time,
+            session.end_time,
+            block.start_time,
+            block.end_time
+          )
+        );
+        if (conflicting.length === 0) continue;
+        const reason = `Sits on protected time (${block.label}) ${block.start_time.slice(0, 5)}-${block.end_time.slice(0, 5)}`;
+        const result = await this.markSessionsAsConflicted(conflicting, reason);
+        marked += result.marked;
+        failed += result.failed;
+      }
+      return { marked, failed };
+    } catch (error) {
+      console.error('Error resolving blocked time conflicts:', error);
       return { marked: 0, failed: 0, error: (error as Error).message };
     }
   }

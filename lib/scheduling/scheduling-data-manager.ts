@@ -21,6 +21,7 @@ import type { OtherProviderSessionLite } from '@/lib/services/session-update-ser
 import { isSpecialistSourceRole } from '@/lib/auth/role-utils';
 
 type MainstreamingBlock = Database['public']['Tables']['mainstreaming_blocks']['Row'];
+type StudentBlockedTime = Database['public']['Tables']['student_blocked_times']['Row'];
 
 const DEFAULT_CONFIG: DataManagerConfig = {
   maxCacheAge: 15 * 60 * 1000, // 15 minutes
@@ -94,6 +95,9 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
   // what makes this readable). Protected time: the auto-scheduler never places
   // a session over a student's time in a gen-ed class.
   private mainstreamingBlocks: MainstreamingBlock[] = [];
+  // SPE-492: every protected time at this school for the current year — same
+  // school-wide posture as mainstreaming blocks.
+  private studentBlockedTimes: StudentBlockedTime[] = [];
 
   private constructor(config?: DataManagerConfig) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -215,6 +219,9 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
       // includes them, and unlike special activities (SPE-318) they are wired
       // into the scheduler from day one.
       await this.loadMainstreamingBlocks();
+
+      // SPE-492: hand-entered protected times, same shape and posture.
+      await this.loadStudentBlockedTimes();
 
       this.cacheMetadata.lastFetched = new Date();
       this.cacheMetadata.isStale = false;
@@ -661,6 +668,34 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
   }
 
   /**
+   * SPE-492: load every protected time at this school for the current school
+   * year. Mirrors loadMainstreamingBlocks in every respect, including the
+   * legacy-school rule (no school_id -> none can exist).
+   */
+  private async loadStudentBlockedTimes(): Promise<void> {
+    this.studentBlockedTimes = [];
+    try {
+      if (!this.schoolId) {
+        return;
+      }
+      const { data, error } = await this.supabase
+        .from('student_blocked_times')
+        .select('*')
+        .eq('school_year', this.schoolYear)
+        .eq('school_id', this.schoolId);
+      if (error) {
+        this.cacheMetadata.fetchErrors.push(`Blocked times: ${error.message}`);
+        return;
+      }
+
+      this.studentBlockedTimes = data || [];
+      console.log(`[DataManager] Loaded ${this.studentBlockedTimes.length} student blocked times`);
+    } catch (e) {
+      this.cacheMetadata.fetchErrors.push(`Blocked times: ${e instanceof Error ? e.message : 'unknown error'}`);
+    }
+  }
+
+  /**
    * Fetch school hours
    */
   private async fetchSchoolHours(): Promise<any[]> {
@@ -946,6 +981,11 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
     return this.mainstreamingBlocks;
   }
 
+  /** SPE-492: every protected time at this school (current year). */
+  public getStudentBlockedTimes(): StudentBlockedTime[] {
+    return this.studentBlockedTimes;
+  }
+
   /**
    * Check if a time slot is available (respecting 8 concurrent session limit)
    */
@@ -1041,6 +1081,7 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
     this.data.data.schoolHours = [];
     this.crossProviderSessions.clear();
     this.mainstreamingBlocks = [];
+    this.studentBlockedTimes = [];
 
     this.cacheMetadata.isStale = true;
     this.conflicts = [];

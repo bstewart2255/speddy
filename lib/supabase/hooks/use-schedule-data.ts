@@ -16,6 +16,7 @@ type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
 type BellSchedule = Database['public']['Tables']['bell_schedules']['Row'];
 type SpecialActivity = Database['public']['Tables']['special_activities']['Row'];
 type MainstreamingBlock = Database['public']['Tables']['mainstreaming_blocks']['Row'];
+type StudentBlockedTime = Database['public']['Tables']['student_blocked_times']['Row'];
 type Profile = Database['public']['Tables']['profiles']['Row'];
 
 interface ScheduleData {
@@ -25,6 +26,7 @@ interface ScheduleData {
   bellSchedules: BellSchedule[];
   specialActivities: SpecialActivity[];
   mainstreamingBlocks: MainstreamingBlock[];
+  studentBlockedTimes: StudentBlockedTime[];
   schoolHours: SchoolHour[];
   seaProfiles: Array<{ id: string; full_name: string; is_shared?: boolean }>;
   otherSpecialists: Array<{ id: string; full_name: string; role: SpecialistSourceRole }>;
@@ -46,6 +48,7 @@ export function useScheduleData() {
     bellSchedules: [],
     specialActivities: [],
     mainstreamingBlocks: [],
+    studentBlockedTimes: [],
     schoolHours: [],
     seaProfiles: [],
     otherSpecialists: [],
@@ -106,6 +109,7 @@ export function useScheduleData() {
         bellResult,
         activitiesResult,
         mainstreamingResult,
+        blockedTimesResult,
         schoolHoursData,
         unscheduledCountData
       ] = await Promise.all([
@@ -161,6 +165,17 @@ export function useScheduleData() {
         currentSchool.school_id
           ? supabase
               .from('mainstreaming_blocks')
+              .select('*')
+              .eq('school_year', getCurrentSchoolYear())
+              .eq('school_id', currentSchool.school_id)
+          : Promise.resolve({ data: [], error: null }),
+
+        // Student blocked times (SPE-492) - School-wide protected times
+        // ("don't pull during PE"); same posture and legacy rule as
+        // mainstreaming blocks above.
+        currentSchool.school_id
+          ? supabase
+              .from('student_blocked_times')
               .select('*')
               .eq('school_year', getCurrentSchoolYear())
               .eq('school_id', currentSchool.school_id)
@@ -356,6 +371,7 @@ export function useScheduleData() {
         bellSchedules: bellResult.data || [],
         specialActivities: activitiesResult.data || [],
         mainstreamingBlocks: mainstreamingResult.data || [],
+        studentBlockedTimes: blockedTimesResult.data || [],
         schoolHours: schoolHoursData,
         seaProfiles,
         otherSpecialists,
@@ -374,6 +390,7 @@ export function useScheduleData() {
         bellSchedules: bellResult.data?.length || 0,
         specialActivities: activitiesResult.data?.length || 0,
         mainstreamingBlocks: mainstreamingResult.data?.length || 0,
+        studentBlockedTimes: blockedTimesResult.data?.length || 0,
         unscheduledCount: unscheduledCountData,
       });
 

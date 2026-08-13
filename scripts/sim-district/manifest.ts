@@ -865,6 +865,9 @@ export const SWEPT_TABLES: { table: string; column: string; identity: 'user' | '
   // through the app as the SDC dual-role persona; keyed to the owning
   // provider account.
   { table: 'mainstreaming_blocks', column: 'provider_id', identity: 'user' },
+  // Student blocked times (SPE-492): protected times ("don't pull during
+  // PE") created live by verification walks; keyed to the owning provider.
+  { table: 'student_blocked_times', column: 'provider_id', identity: 'user' },
 ];
 
 /**

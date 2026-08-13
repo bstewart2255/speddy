@@ -11,6 +11,7 @@ import type {
   SchoolHour,
   SpecialActivity,
   Student,
+  StudentBlockedTime,
 } from '@/src/types';
 import type { Teacher } from '../types/teacher';
 import type { OtherProviderSession } from '../hooks/useOtherProviderSessions';
@@ -21,6 +22,8 @@ interface VisualAvailabilityLayerProps {
   specialActivities: SpecialActivity[];
   /** SPE-478: other providers' mainstreaming blocks (owner renders their own as grid blocks). */
   mainstreamingBlocks?: MainstreamingBlock[];
+  /** SPE-492: other providers' protected times (owner renders their own as grid blocks). */
+  studentBlockedTimes?: StudentBlockedTime[];
   schoolHours: SchoolHour[];
   sessions: ScheduleSession[];
   students: Student[];
@@ -43,6 +46,7 @@ export function VisualAvailabilityLayer({
   bellSchedules,
   specialActivities,
   mainstreamingBlocks = [],
+  studentBlockedTimes = [],
   schoolHours,
   sessions,
   students,
@@ -57,7 +61,7 @@ export function VisualAvailabilityLayer({
       startMin: number;
       endMin: number;
       color: string;
-      type: 'bell' | 'activity' | 'other-provider' | 'mainstreaming';
+      type: 'bell' | 'activity' | 'other-provider' | 'mainstreaming' | 'blocked-time';
       opacity: number;
     }> = [];
 
@@ -207,6 +211,36 @@ export function VisualAvailabilityLayer({
       });
     }
 
+    // Protected times (SPE-492, only when student is selected): times the
+    // student must not be pulled — amber, so they read apart from
+    // mainstreaming's teal. Matched by shared child as well as caseload row.
+    if (filters.studentId) {
+      const selectedChildId = selectedStudent?.child_id ?? null;
+      const studentProtected = studentBlockedTimes.filter(
+        b =>
+          b.day_of_week === day &&
+          (b.student_id === filters.studentId ||
+            (selectedChildId !== null && b.child_id === selectedChildId))
+      );
+
+      studentProtected.forEach(block => {
+        const [startH, startM] = block.start_time.split(':').map(Number);
+        const [endH, endM] = block.end_time.split(':').map(Number);
+        const startMin = startH * 60 + startM;
+        const endMin = endH * 60 + endM;
+
+        if (startMin < gridEndMin && endMin > gridStartMin) {
+          bands.push({
+            startMin: Math.max(startMin, gridStartMin),
+            endMin: Math.min(endMin, gridEndMin),
+            color: 'bg-amber-400',
+            type: 'blocked-time',
+            opacity: 50,
+          });
+        }
+      });
+    }
+
     // Other Provider Sessions (only when student is selected)
     if (filters.studentId && otherProviderSessions.length > 0) {
       const studentOtherSessions = otherProviderSessions.filter(
@@ -232,7 +266,7 @@ export function VisualAvailabilityLayer({
     }
 
     return bands;
-  }, [day, bellSchedules, specialActivities, mainstreamingBlocks, students, teachers, filters, otherProviderSessions, gridConfig]);
+  }, [day, bellSchedules, specialActivities, mainstreamingBlocks, studentBlockedTimes, students, teachers, filters, otherProviderSessions, gridConfig]);
 
   // Merge overlapping bands of the SAME TYPE only
   // Different types (bell, activity, other-provider) should not merge together

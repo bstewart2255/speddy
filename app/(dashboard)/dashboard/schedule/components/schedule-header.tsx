@@ -18,6 +18,9 @@ interface ScheduleHeaderProps {
   /** SPE-478: shown only for providers with a linked classroom (the SDC dual-role marker). */
   showMainstreamingButton?: boolean;
   onAddMainstreamingBlock?: () => void;
+  /** SPE-492: shown at secondary sites — protected times ("don't pull during PE"). */
+  showBlockedTimeButton?: boolean;
+  onAddBlockedTime?: () => void;
 }
 
 export function ScheduleHeader({
@@ -27,7 +30,9 @@ export function ScheduleHeader({
   onScheduleComplete,
   students,
   showMainstreamingButton = false,
-  onAddMainstreamingBlock
+  onAddMainstreamingBlock,
+  showBlockedTimeButton = false,
+  onAddBlockedTime
 }: ScheduleHeaderProps) {
   return (
     <div className="mb-8">
@@ -41,6 +46,14 @@ export function ScheduleHeader({
           </p>
         </div>
         <div className="flex gap-3">
+          {showBlockedTimeButton && (
+            <button
+              onClick={onAddBlockedTime}
+              className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm font-medium"
+            >
+              Add Protected Time
+            </button>
+          )}
           {showMainstreamingButton && (
             <button
               onClick={onAddMainstreamingBlock}

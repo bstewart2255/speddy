@@ -155,7 +155,7 @@ export interface ValidationResult {
   valid: boolean;
   error?: string;
   conflicts?: {
-    type: 'bell_schedule' | 'special_activity' | 'session' | 'rule_violation' | 'mainstreaming';
+    type: 'bell_schedule' | 'special_activity' | 'session' | 'rule_violation' | 'mainstreaming' | 'blocked_time';
     description: string;
     conflictingItem?: any;
   }[];
@@ -451,6 +451,9 @@ export class SessionUpdateService {
       // session over the student's time in a gen-ed class (overridable, like
       // every other conflict here).
       this.checkMainstreamingConflicts(studentId, targetDay, targetStartTime, targetEndTime),
+      // SPE-492: hand-entered protected times ("don't pull during PE") — same
+      // cross-provider posture as mainstreaming.
+      this.checkBlockedTimeConflicts(studentId, targetDay, targetStartTime, targetEndTime),
       this.checkConcurrentSessionLimit(providerId, targetDay, targetStartTime, targetEndTime, session.id),
       this.checkConsecutiveSessionRules(providerId, studentId, targetDay, targetStartTime, targetEndTime, session.id),
       this.checkBreakRequirements(providerId, studentId, targetDay, targetStartTime, targetEndTime, session.id),
@@ -683,6 +686,60 @@ export class SessionUpdateService {
 
     const { data: blocks, error: blocksError } = await query;
     return { blocks: blocks || [], failed: !!blocksError };
+  }
+
+  /**
+   * SPE-492: check for protected-time conflicts — a recurring time the
+   * student must not be pulled ("PE", "Band"), hand-entered by a provider.
+   * Same posture as the mainstreaming check: deliberately NOT scoped to the
+   * caller's provider_id (warning provider B about provider A's block is the
+   * point), resolved through the shared child when present, fail-open like
+   * the sibling warn-path checks.
+   */
+  private async checkBlockedTimeConflicts(
+    studentId: string,
+    day: number,
+    startTime: string,
+    endTime: string
+  ): Promise<NonNullable<ValidationResult['conflicts']>[0] | null> {
+    const { data: student, error: studentError } = await this.supabase
+      .from('students')
+      .select('child_id')
+      .eq('id', studentId)
+      .single();
+    if (studentError) {
+      return null;
+    }
+
+    let query = this.supabase
+      .from('student_blocked_times')
+      .select('*')
+      .eq('day_of_week', day)
+      .eq('school_year', getCurrentSchoolYear());
+
+    if (student?.child_id) {
+      query = query.or(`child_id.eq.${student.child_id},student_id.eq.${studentId}`);
+    } else {
+      query = query.eq('student_id', studentId);
+    }
+
+    const { data: blocks } = await query;
+    if (!blocks || blocks.length === 0) {
+      return null;
+    }
+
+    // Same pure overlap rule as mainstreaming — both are {day, start, end,
+    // label} time blocks, so the helper is shared rather than duplicated.
+    const overlapping = findOverlappingMainstreamingBlock(blocks, day, startTime, endTime);
+    if (!overlapping) {
+      return null;
+    }
+
+    return {
+      type: 'blocked_time',
+      description: `Protected time: ${overlapping.label} (${overlapping.start_time} - ${overlapping.end_time}) — the student should not be pulled during this`,
+      conflictingItem: overlapping
+    };
   }
 
   /**
