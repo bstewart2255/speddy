@@ -601,7 +601,9 @@ export class SessionUpdateService {
     startTime: string,
     endTime: string
   ): Promise<NonNullable<ValidationResult['conflicts']>[0] | null> {
-    const blocks = await this.fetchMainstreamingBlocksForStudent(studentId, day);
+    // Fail-open here matches the sibling bell/activity checks (a read error
+    // means no warning); the stale-CLEAR path is where failure must fail safe.
+    const { blocks } = await this.fetchMainstreamingBlocksForStudent(studentId, day);
     if (blocks.length === 0) {
       return null;
     }
@@ -643,13 +645,21 @@ export class SessionUpdateService {
   private async fetchMainstreamingBlocksForStudent(
     studentId: string,
     day: number
-  ): Promise<Array<Database['public']['Tables']['mainstreaming_blocks']['Row']>> {
+  ): Promise<{
+    blocks: Array<Database['public']['Tables']['mainstreaming_blocks']['Row']>;
+    /** True when a lookup ERRORED (vs. legitimately returning nothing) — the
+     * stale-clear caller must keep flags rather than treat this as "no blocks". */
+    failed: boolean;
+  }> {
     // The caller can always read their own caseload row.
-    const { data: student } = await this.supabase
+    const { data: student, error: studentError } = await this.supabase
       .from('students')
       .select('child_id')
       .eq('id', studentId)
       .single();
+    if (studentError) {
+      return { blocks: [], failed: true };
+    }
 
     let query = this.supabase
       .from('mainstreaming_blocks')
@@ -663,8 +673,8 @@ export class SessionUpdateService {
       query = query.eq('student_id', studentId);
     }
 
-    const { data: blocks } = await query;
-    return blocks || [];
+    const { data: blocks, error: blocksError } = await query;
+    return { blocks: blocks || [], failed: !!blocksError };
   }
 
   /**
@@ -1020,7 +1030,11 @@ export class SessionUpdateService {
       let mainstreamingBlocks: MainstreamingBlockLite[] = [];
       let mainstreamingCheckFailed = false;
       try {
-        mainstreamingBlocks = await this.fetchMainstreamingBlocksForStudent(studentId, day);
+        const result = await this.fetchMainstreamingBlocksForStudent(studentId, day);
+        mainstreamingBlocks = result.blocks;
+        // A returned Supabase error (not just a throw) must also keep flags —
+        // an errored lookup is indistinguishable from "no blocks" otherwise.
+        mainstreamingCheckFailed = result.failed;
       } catch (e) {
         console.error('Mainstreaming stale-check threw:', e);
         mainstreamingCheckFailed = true;
