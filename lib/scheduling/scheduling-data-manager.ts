@@ -19,6 +19,8 @@ import type {
 } from './types/scheduling-data';
 import type { OtherProviderSessionLite } from '@/lib/services/session-update-service';
 
+type MainstreamingBlock = Database['public']['Tables']['mainstreaming_blocks']['Row'];
+
 const DEFAULT_CONFIG: DataManagerConfig = {
   maxCacheAge: 15 * 60 * 1000, // 15 minutes
   enableConflictDetection: true,
@@ -85,6 +87,12 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
   // provider's sessions for the SAME shared child), so the auto-scheduler can hard-avoid
   // double-booking that child. Loaded once per context; only shared students appear.
   private crossProviderSessions: Map<string, OtherProviderSessionLite[]> = new Map();
+
+  // SPE-478: every mainstreaming block at this school for the current year —
+  // ANY provider's, not just the caller's (the school-wide SELECT policy is
+  // what makes this readable). Protected time: the auto-scheduler never places
+  // a session over a student's time in a gen-ed class.
+  private mainstreamingBlocks: MainstreamingBlock[] = [];
 
   private constructor(config?: DataManagerConfig) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -201,6 +209,11 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
       // SPE-287: load cross-provider sessions regardless of which path above ran (the
       // batch RPC does not include them). Best-effort — never blocks the main load.
       await this.loadCrossProviderSessions();
+
+      // SPE-478: mainstreaming blocks, same shape — neither load path above
+      // includes them, and unlike special activities (SPE-318) they are wired
+      // into the scheduler from day one.
+      await this.loadMainstreamingBlocks();
 
       this.cacheMetadata.lastFetched = new Date();
       this.cacheMetadata.isStale = false;
@@ -612,6 +625,41 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
   }
 
   /**
+   * SPE-478: load every mainstreaming block at this school for the current
+   * school year. Best-effort like the cross-provider loader: on error the
+   * list stays empty (the scheduler simply doesn't know about protected time)
+   * and the error is recorded. Requires school_id — the table has no legacy
+   * school_site column, so non-migrated schools scope to the provider's own
+   * blocks, which is also all they could have created.
+   */
+  private async loadMainstreamingBlocks(): Promise<void> {
+    this.mainstreamingBlocks = [];
+    try {
+      // Blocks require a school_id (NOT NULL), so a non-migrated school can
+      // never own any — and a provider-scoped fallback would import the
+      // caller's blocks from their OTHER, migrated schools and wrongly
+      // hard-avoid slots here (self-review on PR #856). Legacy = none.
+      if (!this.schoolId) {
+        return;
+      }
+      const { data, error } = await this.supabase
+        .from('mainstreaming_blocks')
+        .select('*')
+        .eq('school_year', this.schoolYear)
+        .eq('school_id', this.schoolId);
+      if (error) {
+        this.cacheMetadata.fetchErrors.push(`Mainstreaming blocks: ${error.message}`);
+        return;
+      }
+
+      this.mainstreamingBlocks = data || [];
+      console.log(`[DataManager] Loaded ${this.mainstreamingBlocks.length} mainstreaming blocks`);
+    } catch (e) {
+      this.cacheMetadata.fetchErrors.push(`Mainstreaming blocks: ${e instanceof Error ? e.message : 'unknown error'}`);
+    }
+  }
+
+  /**
    * Fetch school hours
    */
   private async fetchSchoolHours(): Promise<any[]> {
@@ -892,6 +940,11 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
     return this.crossProviderSessions;
   }
 
+  /** SPE-478: every mainstreaming block at this school (current year). */
+  public getMainstreamingBlocks(): MainstreamingBlock[] {
+    return this.mainstreamingBlocks;
+  }
+
   /**
    * Check if a time slot is available (respecting 8 concurrent session limit)
    */
@@ -986,6 +1039,7 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
     this.data.data.existingSessions.clear();
     this.data.data.schoolHours = [];
     this.crossProviderSessions.clear();
+    this.mainstreamingBlocks = [];
 
     this.cacheMetadata.isStale = true;
     this.conflicts = [];

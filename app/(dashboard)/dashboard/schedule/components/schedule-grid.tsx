@@ -9,8 +9,10 @@ import { DayColumnMenu } from './day-column-menu';
 import { isScheduledSession } from '@/lib/utils/session-helpers';
 import { formatTime } from '@/lib/utils/time-options';
 import { filterScheduleSessions } from '../utils/session-filters';
+import { formatTeacherName } from '@/lib/utils/teacher-utils';
 import type {
   BellSchedule,
+  MainstreamingBlock,
   ScheduleSession,
   SchoolHour,
   SpecialActivity,
@@ -26,6 +28,10 @@ interface ScheduleGridProps {
   schoolHours: SchoolHour[];
   bellSchedules: BellSchedule[];
   specialActivities: SpecialActivity[];
+  /** SPE-478: recurring blocks placing a student in a gen-ed class. */
+  mainstreamingBlocks?: MainstreamingBlock[];
+  /** Present only for the blocks' owner (the SDC dual-role provider). */
+  onMainstreamingBlockDelete?: (blockId: string) => void;
   teachers: Teacher[];
   visualFilters: {
     grade: string | null;
@@ -89,6 +95,8 @@ export const ScheduleGrid = memo(function ScheduleGrid({
   schoolHours,
   bellSchedules,
   specialActivities,
+  mainstreamingBlocks = [],
+  onMainstreamingBlockDelete,
   teachers,
   visualFilters,
   otherProviderSessions,
@@ -143,6 +151,19 @@ export const ScheduleGrid = memo(function ScheduleGrid({
     const totalMinutes = (hours - gridConfig.startHour) * 60 + minutes;
     return (totalMinutes * gridConfig.pixelsPerHour) / 60;
   };
+
+  // SPE-478: the current provider's own mainstreaming blocks render as teal
+  // blocks in their grid; everyone else's surface through the availability
+  // layer as bands when a student filter is active (mirroring how other
+  // providers' sessions are shown).
+  const ownMainstreamingBlocks = useMemo(
+    () => mainstreamingBlocks.filter(b => currentUserId && b.provider_id === currentUserId),
+    [mainstreamingBlocks, currentUserId]
+  );
+  const otherMainstreamingBlocks = useMemo(
+    () => mainstreamingBlocks.filter(b => !currentUserId || b.provider_id !== currentUserId),
+    [mainstreamingBlocks, currentUserId]
+  );
 
   const sessionOverlapsTimeSlot = (session: ScheduleSession, timeSlot: string): boolean => {
     // Unscheduled sessions (with null times) don't overlap with any time slot
@@ -440,6 +461,7 @@ export const ScheduleGrid = memo(function ScheduleGrid({
                       day={dayNumber}
                       bellSchedules={bellSchedules}
                       specialActivities={specialActivities}
+                      mainstreamingBlocks={otherMainstreamingBlocks}
                       schoolHours={schoolHours}
                       sessions={sessions}
                       students={students}
@@ -448,6 +470,65 @@ export const ScheduleGrid = memo(function ScheduleGrid({
                       otherProviderSessions={otherProviderSessions}
                       gridConfig={gridConfig}
                     />
+
+                    {/* SPE-478: own mainstreaming blocks — background structure,
+                        below group plates and session pills so service sessions
+                        stay clickable even when overlapping (override case). */}
+                    {ownMainstreamingBlocks
+                      .filter(b => b.day_of_week === dayNumber)
+                      .map(block => {
+                        const student = students.find(s => s.id === block.student_id);
+                        const teacher = teachers.find(t => t.id === block.teacher_id);
+                        const startTime = block.start_time.substring(0, 5);
+                        const endTime = block.end_time.substring(0, 5);
+                        // Clamp to the visible hour range, as the availability
+                        // layer's bands do — an unclamped early block would
+                        // paint above the column with a negative top.
+                        const columnHeight = timeMarkers.length * (gridConfig.pixelsPerHour / 4);
+                        const rawTop = timeToPixels(startTime);
+                        const rawBottom = timeToPixels(endTime);
+                        const top = Math.max(0, Math.min(rawTop, columnHeight));
+                        const bottom = Math.max(0, Math.min(rawBottom, columnHeight));
+                        const height = bottom - top;
+                        if (height <= 0) return null;
+                        const teacherLabel = teacher ? formatTeacherName(teacher) : 'class';
+                        const fullLabel = `${student?.initials ?? 'Student'} mainstreams to ${teacherLabel}${block.label ? ` · ${block.label}` : ''} (${formatTime(startTime)}–${formatTime(endTime)})`;
+                        return (
+                          <div
+                            key={block.id}
+                            className="absolute rounded border-l-[3px] border-teal-500 bg-teal-500/10 text-teal-900 pointer-events-none"
+                            style={{ top: `${top}px`, height: `${height}px`, left: '2px', right: '2px', zIndex: 4 }}
+                          >
+                            {/* pointer-events-auto here so the tooltip can
+                                actually fire; the block body stays transparent
+                                to drags/clicks aimed at the column. */}
+                            <div
+                              className="px-1.5 py-0.5 text-[11px] leading-tight truncate pointer-events-auto"
+                              title={fullLabel}
+                            >
+                              <span className="font-semibold">{student?.initials ?? '?'}</span>
+                              {' → '}
+                              {teacherLabel}
+                              {block.label ? ` · ${block.label}` : ''}
+                            </div>
+                            {onMainstreamingBlockDelete && (
+                              <button
+                                type="button"
+                                aria-label="Remove mainstreaming block"
+                                className="absolute top-0.5 right-1 text-teal-700 hover:text-teal-900 pointer-events-auto focus:outline-none focus:ring-1 focus:ring-teal-500 rounded"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (window.confirm('Remove this mainstreaming block?')) {
+                                    onMainstreamingBlockDelete(block.id);
+                                  }
+                                }}
+                              >
+                                ×
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
 
                     {/* Grid lines */}
                     {timeMarkers.map((_, index) => (

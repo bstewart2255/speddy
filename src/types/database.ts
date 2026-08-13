@@ -2037,6 +2037,97 @@ export type Database = {
           },
         ]
       }
+      mainstreaming_blocks: {
+        Row: {
+          child_id: string | null
+          created_at: string
+          day_of_week: number
+          end_time: string
+          id: string
+          label: string | null
+          provider_id: string
+          school_id: string
+          school_year: string
+          start_time: string
+          student_id: string
+          teacher_id: string
+          updated_at: string
+        }
+        Insert: {
+          child_id?: string | null
+          created_at?: string
+          day_of_week: number
+          end_time: string
+          id?: string
+          label?: string | null
+          provider_id: string
+          school_id: string
+          school_year?: string
+          start_time: string
+          student_id: string
+          teacher_id: string
+          updated_at?: string
+        }
+        Update: {
+          child_id?: string | null
+          created_at?: string
+          day_of_week?: number
+          end_time?: string
+          id?: string
+          label?: string | null
+          provider_id?: string
+          school_id?: string
+          school_year?: string
+          start_time?: string
+          student_id?: string
+          teacher_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mainstreaming_blocks_child_id_fkey"
+            columns: ["child_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mainstreaming_blocks_provider_id_fkey"
+            columns: ["provider_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mainstreaming_blocks_school_id_fkey"
+            columns: ["school_id"]
+            isOneToOne: false
+            referencedRelation: "schools"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mainstreaming_blocks_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "students"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mainstreaming_blocks_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "unmatched_student_teachers"
+            referencedColumns: ["student_id"]
+          },
+          {
+            foreignKeyName: "mainstreaming_blocks_teacher_id_fkey"
+            columns: ["teacher_id"]
+            isOneToOne: false
+            referencedRelation: "teachers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       manual_goal_progress: {
         Row: {
           created_at: string | null

@@ -18,6 +18,7 @@ import {
   PERSONAS,
   RECORD_TEACHERS,
   SCHOOLS,
+  SDC_LINKED_PROVIDERS,
   SEEDED_TABLES,
   SESSION_GROUPS,
   SWEPT_TABLES,
@@ -25,6 +26,7 @@ import {
   TOTAL_STUDENT_TEACHER_LINKS,
   TOTAL_STUDENTS,
   careCaseId,
+  sdcClassroomTeacherId,
 } from './manifest';
 import {
   Admin,
@@ -120,6 +122,23 @@ async function collectCounts(admin: Admin) {
   for (const sweep of SWEPT_TABLES) {
     const ids = idsForIdentity(sweep.identity, { users: simUserIds, students: simStudentIds });
     counts[`${sweep.table} (swept)`] = ids.length > 0 ? await countWhereIn(admin, sweep.table, sweep.column, ids) : 0;
+  }
+
+  // SPE-478: the SDC dual-role link — counted only when account_id actually
+  // points at a sim auth user, because the LINK (not the row) is what gates
+  // the SDC scheduling affordances in the app. A seed that plants the row but
+  // loses the link would otherwise verify green and silently hide the gate.
+  if (simUserIds.length > 0) {
+    const sdcIds = SDC_LINKED_PROVIDERS.map(k => sdcClassroomTeacherId(k));
+    const { count, error } = await admin
+      .from('teachers')
+      .select('*', { count: 'exact', head: true })
+      .in('id', sdcIds)
+      .in('account_id', simUserIds);
+    if (error) throw new Error(`SDC dual-role link scan failed: ${error.message}`);
+    counts['teachers (SDC dual-role linked)'] = count ?? 0;
+  } else {
+    counts['teachers (SDC dual-role linked)'] = 0;
   }
 
   // debug_signup_log rows from the signup triggers, tagged to the sim district
@@ -231,7 +250,14 @@ async function main() {
       p => p.role === 'district_admin' || p.role === 'site_admin' || p.role === 'district_tech',
     ).length;
     expect('admin_permissions', n => n === scopedGrants, String(scopedGrants));
-    expect('teachers', n => n === RECORD_TEACHERS.length + teacherLogins, String(RECORD_TEACHERS.length + teacherLogins));
+    // Teacher-login linked + SDC dual-role classrooms (SPE-478) + record-only.
+    const teacherRowsExpected = RECORD_TEACHERS.length + teacherLogins + SDC_LINKED_PROVIDERS.length;
+    expect('teachers', n => n === teacherRowsExpected, String(teacherRowsExpected));
+    expect(
+      'teachers (SDC dual-role linked)',
+      n => n === SDC_LINKED_PROVIDERS.length,
+      String(SDC_LINKED_PROVIDERS.length),
+    );
     expect('students', n => n === TOTAL_STUDENTS, String(TOTAL_STUDENTS));
     // SPE-347: one children row per child. Fewer children than students is the
     // whole point — the gap is exactly the fixture's shared pairs (spec §6),

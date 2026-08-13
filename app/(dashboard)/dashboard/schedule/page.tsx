@@ -23,6 +23,8 @@ import { useOtherProviderSessions } from './hooks/useOtherProviderSessions';
 import { sessionUpdateService } from '../../../../lib/services/session-update-service';
 import { filterScheduleSessions } from './utils/session-filters';
 import { buildAssignmentUpdate, buildSessionTimes } from './utils/drag-session';
+import { AddMainstreamingBlockModal } from '../../../components/schedule/add-mainstreaming-block-modal';
+import { deleteMainstreamingBlock } from '../../../../lib/supabase/queries/mainstreaming-blocks';
 import type { ScheduleSession } from '@/src/types';
 
 export default function SchedulePage() {
@@ -39,6 +41,7 @@ export default function SchedulePage() {
     unscheduledSessions,
     bellSchedules,
     specialActivities,
+    mainstreamingBlocks,
     schoolHours,
     seaProfiles,
     otherSpecialists,
@@ -52,6 +55,30 @@ export default function SchedulePage() {
     refreshUnscheduledCount,
     optimisticUpdateSession,
   } = useScheduleData();
+
+  // SPE-478: "Add Mainstreaming Block" shows only for providers whose account
+  // is linked to their own classroom in the teacher directory — the SDC
+  // dual-role marker (SPE-355). No new role or flag; the link IS the gate.
+  const hasOwnClassroom = useMemo(
+    () => !!currentUserId && teachers.some(t => t.account_id === currentUserId),
+    [teachers, currentUserId]
+  );
+  const [mainstreamingModalOpen, setMainstreamingModalOpen] = useState(false);
+  const handleMainstreamingBlockDelete = useCallback(
+    async (blockId: string) => {
+      try {
+        await deleteMainstreamingBlock(blockId);
+        showToast('Mainstreaming block removed', 'success');
+        refreshData();
+      } catch (err) {
+        showToast(
+          err instanceof Error ? err.message : 'Failed to remove mainstreaming block',
+          'error'
+        );
+      }
+    },
+    [showToast, refreshData]
+  );
 
   // Groups v2 (Phase 3): a click on a group plate or member pill opens the group
   // popover anchored to it; a member row drills into that session's details.
@@ -522,6 +549,8 @@ export default function SchedulePage() {
             unscheduledPanelCount={unscheduledSessions.length}
             currentSchool={currentSchool}
             onScheduleComplete={handleScheduleComplete}
+            showMainstreamingButton={hasOwnClassroom}
+            onAddMainstreamingBlock={() => setMainstreamingModalOpen(true)}
           />
 
           <ConflictFilterPanel
@@ -561,6 +590,8 @@ export default function SchedulePage() {
             schoolHours={schoolHours}
             bellSchedules={bellSchedules}
             specialActivities={specialActivities}
+            mainstreamingBlocks={mainstreamingBlocks}
+            onMainstreamingBlockDelete={currentUserId ? handleMainstreamingBlockDelete : undefined}
             teachers={teachers}
             visualFilters={visualFilters}
             otherProviderSessions={otherProviderSessions}
@@ -621,6 +652,26 @@ export default function SchedulePage() {
               onUpdate={refreshSessions}
             />
           )}
+
+          {/* SPE-478: mainstreaming block input (SDC dual-role providers only) */}
+          <AddMainstreamingBlockModal
+            isOpen={mainstreamingModalOpen}
+            onClose={() => setMainstreamingModalOpen(false)}
+            onSuccess={(sessionsFlagged) => {
+              showToast(
+                sessionsFlagged > 0
+                  ? `Mainstreaming block added — ${sessionsFlagged} of your session${sessionsFlagged === 1 ? '' : 's'} now need${sessionsFlagged === 1 ? 's' : ''} attention`
+                  : 'Mainstreaming block added',
+                'success'
+              );
+              refreshData();
+            }}
+            students={students}
+            teachers={teachers}
+            existingBlocks={mainstreamingBlocks}
+            currentUserId={currentUserId}
+            schoolId={currentSchool?.school_id || null}
+          />
 
           {/* Unscheduled Sessions Panel */}
           <UnscheduledSessionsPanel

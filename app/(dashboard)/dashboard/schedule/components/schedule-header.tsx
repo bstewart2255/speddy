@@ -12,13 +12,18 @@ interface ScheduleHeaderProps {
     school_district: string;
   } | null;
   onScheduleComplete: () => void;
+  /** SPE-478: shown only for providers with a linked classroom (the SDC dual-role marker). */
+  showMainstreamingButton?: boolean;
+  onAddMainstreamingBlock?: () => void;
 }
 
 export function ScheduleHeader({
   unscheduledCount,
   unscheduledPanelCount,
   currentSchool,
-  onScheduleComplete
+  onScheduleComplete,
+  showMainstreamingButton = false,
+  onAddMainstreamingBlock
 }: ScheduleHeaderProps) {
   return (
     <div className="mb-8">
@@ -32,6 +37,14 @@ export function ScheduleHeader({
           </p>
         </div>
         <div className="flex gap-3">
+          {showMainstreamingButton && (
+            <button
+              onClick={onAddMainstreamingBlock}
+              className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm font-medium"
+            >
+              Add Mainstreaming Block
+            </button>
+          )}
           <ScheduleSessions
             onComplete={onScheduleComplete}
             currentSchool={currentSchool}

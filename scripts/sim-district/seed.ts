@@ -28,6 +28,7 @@ import {
   RECORD_TEACHERS,
   SCHOOL_DAY,
   SCHOOLS,
+  SDC_LINKED_PROVIDERS,
   SESSION_GROUPS,
   SESSION_SLOTS,
   SIM_EMAIL_DOMAIN,
@@ -50,6 +51,7 @@ import {
   schoolById,
   schoolHoursId,
   schoolYearFor,
+  sdcClassroomTeacherId,
   sessionInstanceId,
   sessionMix,
   sessionTemplateId,
@@ -231,7 +233,7 @@ async function main() {
   counts['provider_schools'] = await bulkInsert(admin, 'provider_schools', providerSchoolRows);
   counts['user_site_schedules'] = await bulkInsert(admin, 'user_site_schedules', siteScheduleRows);
 
-  // ---- Teachers (3 linked + 18 record-only) -------------------------------
+  // ---- Teachers (3 teacher-login linked + 1 SDC dual-role + 18 record-only)
   console.log('Step 5/9: teachers...');
   const teacherRows: Record<string, unknown>[] = [];
   for (const p of PERSONAS.filter(x => x.role === 'teacher')) {
@@ -247,6 +249,27 @@ async function main() {
       account_id: userIds.get(p.key)!,
       created_by_admin: true,
       grade_level: p.gradeLevel,
+    });
+  }
+  // SPE-478: SDC dual-role classrooms — a PROVIDER persona who also owns a
+  // classroom entry, linked via account_id (the SPE-355 onboarding pattern).
+  // That link is the SDC marker gating mainstreaming-block input in the app.
+  for (const key of SDC_LINKED_PROVIDERS) {
+    const p = PERSONAS.find(x => x.key === key)!;
+    const school = schoolById(p.schoolIds[0]);
+    const [firstName, ...rest] = p.fullName.split(' ');
+    teacherRows.push({
+      id: sdcClassroomTeacherId(key),
+      first_name: firstName,
+      last_name: rest.join(' '),
+      email: personaEmail(key),
+      school_id: school.id,
+      school_site: school.name,
+      account_id: userIds.get(key)!,
+      created_by_admin: true,
+      // Real SDC rooms span grades; the fixture keeps one parseable value so
+      // grade-driven displays stay well-formed.
+      grade_level: '4',
     });
   }
   for (const t of RECORD_TEACHERS) {
