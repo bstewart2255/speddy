@@ -11,6 +11,7 @@ import { ManualPlacementModal } from './manual-placement-modal';
 import { AutoScheduleOptionsModal } from './auto-schedule-options-modal';
 import {
   DEFAULT_SCHEDULING_STRATEGY,
+  type GroupableStudent,
   type SchedulingStrategy,
 } from '../../../lib/scheduling/scheduling-strategy';
 
@@ -22,9 +23,11 @@ interface ScheduleSessionsProps {
   } | null;
   unscheduledCount: number;
   unscheduledPanelCount: number;
+  /** Caseload at the current school, for the picker's grouping-coverage note. */
+  students?: readonly GroupableStudent[];
 }
 
-export function ScheduleSessions({ onComplete, currentSchool, unscheduledCount, unscheduledPanelCount }: ScheduleSessionsProps) {
+export function ScheduleSessions({ onComplete, currentSchool, unscheduledCount, unscheduledPanelCount, students }: ScheduleSessionsProps) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [showOptionsModal, setShowOptionsModal] = useState(false);
   // Kept across runs within the page session so a provider re-running the
@@ -293,6 +296,7 @@ export function ScheduleSessions({ onComplete, currentSchool, unscheduledCount, 
         strategy={strategy}
         onStrategyChange={setStrategy}
         onConfirm={handleScheduleSessions}
+        students={students}
       />
 
       <ManualPlacementModal

@@ -273,7 +273,7 @@ export function teacherRecordId(key: string): string {
  * SPE-478: provider personas who ALSO own a classroom-teacher entry — the SDC
  * dual-role pattern (SPE-355). The link (teachers.account_id pointing at the
  * persona's auth user) is what the app treats as the SDC marker, gating the
- * SDC scheduling affordances (mainstreaming blocks now; SPE-479 class blocks
+ * SDC scheduling affordances (mainstreaming blocks now; SPE-482 class blocks
  * later), so the fixture must hold at least one such persona. Derek
  * (rsp.juniper) carries it: a single-site elementary RSP whose account
  * doubles as a classroom teacher at Juniper.

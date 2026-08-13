@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { ScheduleSessions } from '../../../../components/schedule/schedule-sessions';
+import type { GroupableStudent } from '../../../../../lib/scheduling/scheduling-strategy';
 import { UndoSchedule } from '../../../../components/schedule/undo-schedule';
 
 interface ScheduleHeaderProps {
@@ -12,6 +13,8 @@ interface ScheduleHeaderProps {
     school_district: string;
   } | null;
   onScheduleComplete: () => void;
+  /** Caseload at the current school; the Auto-Schedule picker reports what each grouping option can act on. */
+  students?: readonly GroupableStudent[];
   /** SPE-478: shown only for providers with a linked classroom (the SDC dual-role marker). */
   showMainstreamingButton?: boolean;
   onAddMainstreamingBlock?: () => void;
@@ -22,6 +25,7 @@ export function ScheduleHeader({
   unscheduledPanelCount,
   currentSchool,
   onScheduleComplete,
+  students,
   showMainstreamingButton = false,
   onAddMainstreamingBlock
 }: ScheduleHeaderProps) {
@@ -50,6 +54,7 @@ export function ScheduleHeader({
             currentSchool={currentSchool}
             unscheduledCount={unscheduledCount}
             unscheduledPanelCount={unscheduledPanelCount}
+            students={students}
           />
           <UndoSchedule onComplete={onScheduleComplete} />
         </div>
