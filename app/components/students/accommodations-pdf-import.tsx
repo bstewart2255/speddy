@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '../ui/button';
 
 // Mirrors the server limit (which in turn respects the platform's ~4.5MB
@@ -39,6 +39,25 @@ export function AccommodationsPdfImport({
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [proposals, setProposals] = useState<Proposal[] | null>(null);
+
+  // Hidden until the server confirms AI features are on (SPE-494). AI surfaces
+  // stay out of reach while the kill switch is off, and this one lives inside
+  // an always-reachable modal — so it has to ask. Fail-closed: any fetch error
+  // keeps it hidden.
+  const [available, setAvailable] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/features')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!cancelled && data?.aiFeatures === true) setAvailable(true);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const reset = () => {
     setError(null);
@@ -119,6 +138,8 @@ export function AccommodationsPdfImport({
     onAdd(proposals.filter((p) => p.checked).map((p) => p.text));
     reset();
   };
+
+  if (!available) return null;
 
   return (
     <div className="space-y-2">

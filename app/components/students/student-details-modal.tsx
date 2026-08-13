@@ -866,7 +866,7 @@ export function StudentDetailsModal({
                 <div className="space-y-1">
                   <h3 className="font-medium text-gray-900">Accommodations</h3>
                   <p className="text-sm text-gray-600">
-                    Add IEP accommodations for this student, or import them from the IEP PDF
+                    Add IEP accommodations for this student
                   </p>
                 </div>
 
