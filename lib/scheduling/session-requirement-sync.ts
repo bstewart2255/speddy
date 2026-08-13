@@ -403,6 +403,40 @@ async function adjustSessionCount(
 }
 
 /**
+ * The set a session may be compared against when looking for overlaps (SPE-476).
+ *
+ * Sessions live in two layers and the layers are not comparable:
+ *   - a **template** (`session_date IS NULL`) describes a weekly pattern, so it
+ *     is compared against other templates on the same weekday;
+ *   - a **dated instance** is one concrete occurrence, so it is compared against
+ *     other instances on that same date.
+ *
+ * Comparing across the layers is what produced the bug this key exists to stop:
+ * an instance is generated from its template and therefore shares its weekday
+ * and time by construction, so a weekday-only comparison reported EVERY
+ * instance as overlapping its own parent. Editing a student's service minutes
+ * conflict-flagged their entire materialized schedule — 144 of the 145 flags in
+ * prod when this was found were that false positive, against exactly one real
+ * double-booking.
+ *
+ * Grouping instances by date rather than weekday keeps genuine instance-level
+ * double-bookings detectable: two occurrences on the same date share a date,
+ * and by definition a weekday too.
+ *
+ * `session_date IS NULL` is the template test used throughout this file
+ * (see `adjustSessionCount` and the template count in the caller); it agrees
+ * with `is_template` on every row in prod.
+ */
+function overlapComparisonKey(session: {
+  session_date?: string | null;
+  day_of_week?: number | null;
+}): string {
+  return session.session_date == null
+    ? `template:${session.day_of_week}`
+    : `date:${session.session_date}`;
+}
+
+/**
  * Detects conflicts in sessions after updates
  */
 async function detectSessionConflicts(
@@ -442,10 +476,13 @@ async function detectSessionConflicts(
       conflicts.push('Session extends beyond 5:00 PM');
     }
 
-    // Conflict 2: Overlaps with another session for the same student
+    // Conflict 2: Overlaps with another session for the same student.
+    // Only within the same layer — a template against templates on its weekday,
+    // an instance against instances on its date. See overlapComparisonKey.
+    const sessionKey = overlapComparisonKey(session);
     const overlappingSessions = sessions.filter(other =>
       other.id !== session.id &&
-      other.day_of_week === session.day_of_week &&
+      overlapComparisonKey(other) === sessionKey &&
       other.start_time && other.end_time && // Ensure other session is scheduled
       timesOverlap(session.start_time!, session.end_time!, other.start_time, other.end_time)
     );
