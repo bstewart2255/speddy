@@ -14,6 +14,21 @@ interface ScheduleSnapshot {
   scheduledSessionIds: string[];
 }
 
+// Formats an elapsed-minutes count as minutes, hours, or days, whichever reads best
+function formatElapsedMinutes(minutes: number): string {
+  if (minutes <= 60) {
+    return `${minutes} minute${minutes !== 1 ? 's' : ''}`;
+  }
+
+  const hours = Math.round(minutes / 60);
+  if (hours <= 24) {
+    return `${hours} hour${hours !== 1 ? 's' : ''}`;
+  }
+
+  const days = Math.round(hours / 24);
+  return `${days} day${days !== 1 ? 's' : ''}`;
+}
+
 export function UndoSchedule({ onComplete }: UndoScheduleProps) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [lastSnapshot, setLastSnapshot] = useState<ScheduleSnapshot | null>(null);
@@ -47,7 +62,7 @@ export function UndoSchedule({ onComplete }: UndoScheduleProps) {
     const timeSinceSnapshot = Date.now() - lastSnapshot.timestamp.getTime();
     const minutesSince = Math.floor(timeSinceSnapshot / 60000);
 
-    const confirmMessage = `This will unschedule ${lastSnapshot.scheduledSessionIds.length} session${lastSnapshot.scheduledSessionIds.length !== 1 ? 's' : ''} that were scheduled ${minutesSince} minute${minutesSince !== 1 ? 's' : ''} ago.
+    const confirmMessage = `This will unschedule ${lastSnapshot.scheduledSessionIds.length} session${lastSnapshot.scheduledSessionIds.length !== 1 ? 's' : ''} that were scheduled ${formatElapsedMinutes(minutesSince)} ago.
 
 The sessions will be moved back to the unscheduled section.
 
@@ -124,7 +139,7 @@ Continue?`;
         onClick={handleUndo}
         disabled={isProcessing}
         variant="secondary"
-        aria-label={`Undo - Unschedule ${lastSnapshot.scheduledSessionIds.length} session${lastSnapshot.scheduledSessionIds.length !== 1 ? 's' : ''} from ${minutesSince} minute${minutesSince !== 1 ? 's' : ''} ago`}
+        aria-label={`Undo - Unschedule ${lastSnapshot.scheduledSessionIds.length} session${lastSnapshot.scheduledSessionIds.length !== 1 ? 's' : ''} from ${formatElapsedMinutes(minutesSince)} ago`}
         className="p-2"
       >
         {isProcessing ? (
