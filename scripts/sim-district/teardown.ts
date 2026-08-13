@@ -139,7 +139,14 @@ export async function teardown(admin: Admin): Promise<Record<string, number>> {
 
   // 6. Teachers, permissions, school assignments.
   deleted['teachers'] = await deleteWhereIn(admin, 'teachers', 'school_id', SIM_SCHOOL_IDS);
+  // `admin_permissions` carries TWO foreign keys to profiles — `admin_id` (who
+  // holds the permission) and `granted_by` (who gave it). Sweeping only
+  // `admin_id` leaves any row a sim admin granted, and that surviving row then
+  // blocks the granter's profile delete, which blocks the school delete, and
+  // teardown dies on a schools FK error that names neither table.
   deleted['admin_permissions'] = await deleteWhereIn(admin, 'admin_permissions', 'admin_id', simUserIds);
+  deleted['admin_permissions (granted_by)'] =
+    await deleteWhereIn(admin, 'admin_permissions', 'granted_by', simUserIds);
   deleted['provider_schools'] = await deleteWhereIn(admin, 'provider_schools', 'provider_id', simUserIds);
 
   // 7. Profiles, then auth users (the runtime-resolved exception in invariant 1).
