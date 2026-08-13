@@ -40,9 +40,10 @@ export default function StudentDetailPage() {
   const router = useRouter();
   const studentId = params.studentId as string;
 
-  // On secondary (middle/high) sites this page surfaces accommodations and drops
-  // the elementary scheduling/service-minute view. Driven by the teacher's active
-  // school — the site they teach at is the site the student attends.
+  // On secondary (middle/high) sites this page drops the elementary
+  // scheduling/service-minute view. Driven by the teacher's active school — the
+  // site they teach at is the site the student attends. Accommodations are shown
+  // at every site type (SPE-488).
   const { isSecondary } = useSchool();
 
   const [student, setStudent] = useState<StudentDetail | null>(null);
@@ -199,8 +200,9 @@ export default function StudentDetailPage() {
         </div>
       </div>
 
-      {/* Service Details */}
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-3 mb-6">
+      {/* Service Details — elementary shows 4 cards (sessions/minutes included),
+          secondary keeps its original 2-card layout */}
+      <div className={`grid grid-cols-1 gap-5 mb-6 ${isSecondary ? 'sm:grid-cols-3' : 'sm:grid-cols-2 lg:grid-cols-4'}`}>
         {!isSecondary && (
           <>
             <Card className="p-6">
@@ -217,40 +219,36 @@ export default function StudentDetailPage() {
           <dt className="text-sm font-medium text-gray-500">IEP Goals</dt>
           <dd className="mt-1 text-2xl font-semibold text-gray-900">{iepGoals.length}</dd>
         </Card>
-        {isSecondary && (
-          <Card className="p-6">
-            <dt className="text-sm font-medium text-gray-500">Accommodations</dt>
-            <dd className="mt-1 text-2xl font-semibold text-gray-900">{accommodations.length}</dd>
-          </Card>
-        )}
+        <Card className="p-6">
+          <dt className="text-sm font-medium text-gray-500">Accommodations</dt>
+          <dd className="mt-1 text-2xl font-semibold text-gray-900">{accommodations.length}</dd>
+        </Card>
       </div>
 
-      {/* Accommodations — secondary sites surface these to teachers directly,
-          so the case manager's accommodations are the teacher's line of sight
-          without digging through IEP paperwork. */}
-      {isSecondary && (
-        <Card className="mb-6">
-          <div className="px-6 py-4 border-b border-gray-200">
-            <h2 className="text-lg font-medium text-gray-900">Accommodations</h2>
-          </div>
-          <div className="px-6 py-4">
-            {accommodations.length === 0 ? (
-              <p className="text-gray-500 italic">No accommodations recorded.</p>
-            ) : (
-              <ul className="space-y-4">
-                {accommodations.map((accommodation, index) => (
-                  <li key={index} className="flex gap-3">
-                    <span className="flex-shrink-0 flex items-center justify-center w-6 h-6 rounded-full bg-green-100 text-green-800 text-sm font-semibold">
-                      {index + 1}
-                    </span>
-                    <span className="flex-1 text-gray-800">{accommodation}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </Card>
-      )}
+      {/* Accommodations — the case manager's accommodations are the teacher's
+          line of sight without digging through IEP paperwork. Shown at both
+          elementary and secondary sites (SPE-488). */}
+      <Card className="mb-6">
+        <div className="px-6 py-4 border-b border-gray-200">
+          <h2 className="text-lg font-medium text-gray-900">Accommodations</h2>
+        </div>
+        <div className="px-6 py-4">
+          {accommodations.length === 0 ? (
+            <p className="text-gray-500 italic">No accommodations recorded.</p>
+          ) : (
+            <ul className="space-y-4">
+              {accommodations.map((accommodation, index) => (
+                <li key={index} className="flex gap-3">
+                  <span className="flex-shrink-0 flex items-center justify-center w-6 h-6 rounded-full bg-green-100 text-green-800 text-sm font-semibold">
+                    {index + 1}
+                  </span>
+                  <span className="flex-1 text-gray-800">{accommodation}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </Card>
 
       {/* IEP Goals */}
       <Card className="mb-6">

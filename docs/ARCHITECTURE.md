@@ -1506,7 +1506,7 @@ K-8 and K-12 combined sites are treated as **elementary** by product decision
 | Dashboard | Hides the provider Weekly-view + Attendance widget | `app/(dashboard)/dashboard/page.tsx` |
 | Students list | Hides the "unscheduled sessions" alert; for a **resource** provider, service minutes display/edit as a weekly total ("570 min/week") instead of sessions × minutes | `app/(dashboard)/dashboard/students/page.tsx` |
 | Student modal | Hides the Attendance tab; Sessions/Minutes fields hidden — except a **resource** provider gets a single "Service Minutes per Week" field | `app/components/students/student-details-modal.tsx` |
-| Teacher student view | "Resource Specialist" → "Case Manager"; accommodations surfaced first | `app/(dashboard)/dashboard/teacher/my-students/[studentId]/page.tsx` |
+| Teacher student view | "Resource Specialist" → "Case Manager"; elementary scheduling/service-minute cards dropped. (Accommodations show at both elementary and secondary sites since SPE-488 — no longer a secondary-only surface.) | `app/(dashboard)/dashboard/teacher/my-students/[studentId]/page.tsx` |
 
 **Secondary-resource weekly bucket (2026-08, John Swett pilot).** Secondary
 resource service is embedded in class periods, not pull-out sessions, so for a

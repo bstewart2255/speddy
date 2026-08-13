@@ -8,7 +8,7 @@ exhibit (see SPE-59) and for student-data-privacy disclosures.
 > touch student data is an NDPA change-notification trigger — update this list in
 > the same PR, and notify LEAs per the executed agreement.
 
-_Last reviewed: 2026-07-16._
+_Last reviewed: 2026-08-13._
 
 ## Data categories
 
@@ -47,7 +47,7 @@ via SPE-163 (2026-07-18) and prompt de-identification landed via SPE-61.
 | Service | Role (when enabled) | Student data (when enabled) | Where (code) |
 |---|---|---|---|
 | **OpenAI** | Default lesson-generation provider (`AI_PROVIDER` defaults to `openai`, model `gpt-5-mini`). | Initials + IEP goals in prompts. | `lib/lessons/providers.ts` |
-| **Anthropic (Claude)** | Lessons, exit tickets, progress checks, worksheet vision. | Initials + IEP goals; plus the completed-worksheet image (the student's written work) and its questions/answers on the worksheet-submission path (`submit-worksheet` sends the photo to Claude Vision). | `lib/exit-tickets/generator.ts`, `app/api/submit-worksheet/route.ts`, `lib/lessons/*`, `lib/progress-checks/*` |
+| **Anthropic (Claude)** | Lessons, exit tickets, progress checks, worksheet vision, IEP-PDF accommodations import (SPE-489). | Initials + IEP goals; plus the completed-worksheet image (the student's written work) and its questions/answers on the worksheet-submission path (`submit-worksheet` sends the photo to Claude Vision); plus the full content of a provider-uploaded **IEP PDF** on the accommodations-import path (one extraction call — Speddy never stores the file, and only the provider-approved accommodations list is saved). | `lib/exit-tickets/generator.ts`, `app/api/submit-worksheet/route.ts`, `lib/lessons/*`, `lib/progress-checks/*`, `lib/iep/extract-accommodations.ts` |
 
 ## Data sources (NOT downstream processors)
 
