@@ -549,6 +549,7 @@ export default function SchedulePage() {
             unscheduledPanelCount={unscheduledSessions.length}
             currentSchool={currentSchool}
             onScheduleComplete={handleScheduleComplete}
+            students={students}
             showMainstreamingButton={hasOwnClassroom}
             onAddMainstreamingBlock={() => setMainstreamingModalOpen(true)}
           />

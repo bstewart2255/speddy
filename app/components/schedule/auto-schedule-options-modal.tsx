@@ -25,22 +25,28 @@ function groupabilityNote(
 ): { text: string; tone: 'warning' | 'info' } | null {
   if (!summary || !noun || summary.total === 0) return null;
 
+  // Deliberately phrased in terms of grouping outcomes, never as "identical to
+  // Balanced". That equivalence isn't true: a student with a key the strategy
+  // recognises — even a unique one nobody shares — still takes the grouping
+  // capacity ladder, which opens at the full group ceiling rather than
+  // Balanced's conservative first pass. What the provider needs to know is
+  // whether anyone gets grouped, which is exactly what these say.
   if (summary.withKey === 0) {
     return {
       tone: 'warning',
-      text: `None of your ${summary.total} students here have a ${noun} recorded, so this will schedule the same way as Balanced. Add ${noun}s on the Students page to use this option.`,
+      text: `None of your ${summary.total} students here have a ${noun} recorded, so this option can't group anyone. Add ${noun}s on the Students page to use it.`,
     };
   }
   if (summary.groupable === 0) {
     return {
       tone: 'warning',
-      text: `No two students here share a ${noun}, so there is no one to group — this will schedule the same way as Balanced.`,
+      text: `No two students here share a ${noun}, so there is no one to group.`,
     };
   }
   if (summary.groupable < summary.total) {
     return {
       tone: 'info',
-      text: `${summary.groupable} of ${summary.total} students share a ${noun} with someone. The rest are placed the balanced way.`,
+      text: `${summary.groupable} of ${summary.total} students share a ${noun} with someone. The others have no one to group with.`,
     };
   }
   return {
