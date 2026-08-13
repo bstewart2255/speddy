@@ -279,6 +279,22 @@ describe('POST /api/students/[studentId]/extract-accommodations', () => {
     expect(body.error).toMatch(/couldn't be processed reliably/i);
   });
 
+  it('treats a malformed tool payload as an error, not an empty list', async () => {
+    // Missing property
+    mockCreate.mockResolvedValueOnce({
+      stop_reason: 'tool_use',
+      content: [{ type: 'tool_use', id: 'tu_1', name: 'record_accommodations', input: {} }],
+      usage: { input_tokens: 5000, output_tokens: 10 },
+    });
+    let res = await POST(makeRequest(PDF_BYTES), ctx());
+    expect(res.status).toBe(502);
+
+    // Wrong type
+    mockCreate.mockResolvedValueOnce(toolResponse('extended time'));
+    res = await POST(makeRequest(PDF_BYTES), ctx());
+    expect(res.status).toBe(502);
+  });
+
   it('maps a response with no tool output to a friendly 502', async () => {
     mockCreate.mockResolvedValueOnce({
       stop_reason: 'end_turn',

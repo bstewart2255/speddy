@@ -198,9 +198,21 @@ export async function extractAccommodationsFromPdf(pdf: Buffer): Promise<string[
     );
   }
 
-  const accommodations = sanitizeAccommodations(
-    (toolUse.input as { accommodations?: unknown })?.accommodations
-  );
+  // The tool schema is not strict-validated server-side, so a malformed input
+  // (missing or non-array property) must read as a failure — not as a
+  // legitimately empty "this document has no accommodations" result.
+  const rawList = (toolUse.input as { accommodations?: unknown })?.accommodations;
+  if (!Array.isArray(rawList)) {
+    log.error('Accommodation extraction returned malformed tool input', undefined, {
+      stopReason: response.stop_reason,
+    });
+    throw new AccommodationExtractionError(
+      "The document couldn't be processed. Please try again.",
+      502
+    );
+  }
+
+  const accommodations = sanitizeAccommodations(rawList);
 
   log.info('Accommodation extraction completed', {
     itemCount: accommodations.length,
