@@ -457,19 +457,30 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
 
     const studentIds = students?.map(s => s.id) || [];
 
-    // SPE-474: the 10,000-row cap below has no ORDER BY, so which rows survive
-    // truncation is arbitrary — and dated instances outnumber templates roughly
-    // 40:1 (the largest provider in prod carries 203 templates against 7,868
-    // instances, 8,071 rows against a 10,000 cap). Once a provider crosses it,
-    // arbitrary truncation could drop the recurring templates while keeping
-    // their instances, and the auto-scheduler would then read a student as
-    // having FEWER weekly sessions than they do and create duplicates.
+    // SPE-477: this cache holds the WEEKLY schedule — recurring templates only,
+    // never the dated instances materialized from them.
     //
-    // Ordering templates first makes truncation deterministic and drops
-    // instances rather than templates. It does not shrink what any caller
-    // receives — same cap, same rows below it. The cap itself still needs
-    // raising or paginating (SPE-477).
-    const TEMPLATES_FIRST = { column: 'is_template', options: { ascending: false } } as const;
+    // Every consumer wants templates and only templates:
+    //   - the schedule page's own session fetch already scopes to
+    //     `session_date IS NULL`, and merges this cache into that same list, so
+    //     anything else here leaks a population the page never asked for;
+    //   - the auto-scheduler builds the weekly grid, and filtered instances back
+    //     out client-side after they broke it (SPE-474);
+    //   - manual placement generates Mon–Fri slots and counts conflicts against
+    //     them, where instances inflate every count the same way;
+    //   - the undo snapshot restores the template schedule.
+    //
+    // Fetching them was also what made the 10,000-row cap a real ceiling:
+    // instances outrun templates roughly 40:1 (the largest provider in prod
+    // carried 7,868 instances against 203 templates — 8,071 rows, 81% of the
+    // cap, growing every week as the horizon rolls). Scoped to templates that
+    // provider reads 203 rows, so the cap stops being a deadline.
+    //
+    // `session_date IS NULL` is the template test the page's own query uses; it
+    // agrees with `is_template = true` on every row in prod. SPE-474's
+    // templates-first ordering is gone with it — it existed so arbitrary
+    // truncation would drop instances rather than templates, which cannot arise
+    // when instances are never fetched.
 
     // For specialist users, also fetch sessions assigned to them (even from other providers' students)
     let sessionsResult;
@@ -483,7 +494,8 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
           .from('schedule_sessions')
           .select('*')
           .or(`student_id.in.(${studentIds.join(',')}),assigned_to_specialist_id.eq.${this.providerId}`)
-          .order(TEMPLATES_FIRST.column, TEMPLATES_FIRST.options)
+          .is('session_date', null)
+          .is('deleted_at', null)
           .limit(10000);
       } else {
         // No students, only fetch assigned sessions
@@ -491,7 +503,8 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
           .from('schedule_sessions')
           .select('*')
           .eq('assigned_to_specialist_id', this.providerId!)
-          .order(TEMPLATES_FIRST.column, TEMPLATES_FIRST.options)
+          .is('session_date', null)
+          .is('deleted_at', null)
           .limit(10000);
       }
 
@@ -540,7 +553,8 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
         .select('*')
         .eq('provider_id', this.providerId!)
         .in('student_id', studentIds)
-        .order(TEMPLATES_FIRST.column, TEMPLATES_FIRST.options)
+        .is('session_date', null)
+        .is('deleted_at', null)
         .limit(10000);
     }
 
