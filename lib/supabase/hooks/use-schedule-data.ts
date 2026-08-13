@@ -7,12 +7,14 @@ import { getSchoolHours } from '../queries/school-hours';
 import { getUnscheduledSessionsCount } from '../queries/schedule-sessions';
 import { useSchedulingData } from './use-scheduling-data';
 import { isScheduledSession } from '@/lib/utils/session-helpers';
+import { getCurrentSchoolYear } from '@/lib/school-year';
 import type { Database, SchoolHour } from '@/src/types';
 
 type Student = Database['public']['Tables']['students']['Row'];
 type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
 type BellSchedule = Database['public']['Tables']['bell_schedules']['Row'];
 type SpecialActivity = Database['public']['Tables']['special_activities']['Row'];
+type MainstreamingBlock = Database['public']['Tables']['mainstreaming_blocks']['Row'];
 type Profile = Database['public']['Tables']['profiles']['Row'];
 
 interface ScheduleData {
@@ -21,6 +23,7 @@ interface ScheduleData {
   unscheduledSessions: ScheduleSession[];
   bellSchedules: BellSchedule[];
   specialActivities: SpecialActivity[];
+  mainstreamingBlocks: MainstreamingBlock[];
   schoolHours: SchoolHour[];
   seaProfiles: Array<{ id: string; full_name: string; is_shared?: boolean }>;
   otherSpecialists: Array<{ id: string; full_name: string; role: 'resource' | 'speech' | 'ot' | 'counseling' | 'specialist' | 'intervention' }>;
@@ -41,6 +44,7 @@ export function useScheduleData() {
     unscheduledSessions: [],
     bellSchedules: [],
     specialActivities: [],
+    mainstreamingBlocks: [],
     schoolHours: [],
     seaProfiles: [],
     otherSpecialists: [],
@@ -100,6 +104,7 @@ export function useScheduleData() {
         studentsResult,
         bellResult,
         activitiesResult,
+        mainstreamingResult,
         schoolHoursData,
         unscheduledCountData
       ] = await Promise.all([
@@ -146,7 +151,25 @@ export function useScheduleData() {
           }
           return query;
         })(),
-        
+
+        // Mainstreaming blocks (SPE-478) - School-wide, same reasoning as
+        // special activities: every provider schedules around them. The table
+        // requires school_id, so legacy (non-migrated) schools scope to the
+        // provider's own blocks.
+        (() => {
+          let query = supabase
+            .from('mainstreaming_blocks')
+            .select('*')
+            .eq('school_year', getCurrentSchoolYear());
+          if (currentSchool.school_id) {
+            query = query.eq('school_id', currentSchool.school_id);
+          } else {
+            query = query.eq('provider_id', user.id);
+          }
+          return query;
+        })(),
+
+
         // School hours
         getSchoolHours(currentSchool),
 
@@ -335,6 +358,7 @@ export function useScheduleData() {
         unscheduledSessions: unscheduledSessions,
         bellSchedules: bellResult.data || [],
         specialActivities: activitiesResult.data || [],
+        mainstreamingBlocks: mainstreamingResult.data || [],
         schoolHours: schoolHoursData,
         seaProfiles,
         otherSpecialists,
@@ -352,6 +376,7 @@ export function useScheduleData() {
         totalSessions: allSessions.length,
         bellSchedules: bellResult.data?.length || 0,
         specialActivities: activitiesResult.data?.length || 0,
+        mainstreamingBlocks: mainstreamingResult.data?.length || 0,
         unscheduledCount: unscheduledCountData,
       });
 

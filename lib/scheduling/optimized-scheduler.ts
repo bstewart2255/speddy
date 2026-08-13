@@ -4,7 +4,7 @@ import { Database } from "../../src/types/database";
 import { SchedulingDataManager } from './scheduling-data-manager';
 import { ManualPlacementService } from '../services/manual-placement-service';
 import { filterScheduledSessions, type ScheduledSession } from '../utils/session-helpers';
-import { findOverlappingOtherProviderSession, type OtherProviderSessionLite } from '../services/session-update-service';
+import { findOverlappingOtherProviderSession, findOverlappingMainstreamingBlock, type OtherProviderSessionLite } from '../services/session-update-service';
 import { DEFAULT_SCHEDULING_CONFIG } from './scheduling-config';
 import {
   DEFAULT_SCHEDULING_STRATEGY,
@@ -16,7 +16,8 @@ import type {
   Student,
   ScheduleSession,
   BellSchedule,
-  SpecialActivity
+  SpecialActivity,
+  MainstreamingBlock
 } from './types/scheduling-data';
 
 /**
@@ -89,6 +90,9 @@ interface SchedulingContext {
   providerAvailability: Map<string, Map<number, AvailabilitySlot[]>>; // provider -> day -> slots
   bellSchedulesByGrade: Map<string, Map<number, BellSchedule[]>>; // grade -> day -> schedules
   specialActivitiesByTeacher: Map<string, Map<number, SpecialActivity[]>>; // teacher -> day -> activities
+  // SPE-478: student -> day -> that student's mainstreaming blocks (protected
+  // time in a gen-ed class; the scheduler never places over them).
+  mainstreamingByStudent: Map<string, Map<number, MainstreamingBlock[]>>;
   
   // Cache metadata
   cacheMetadata: {
@@ -257,7 +261,11 @@ export class OptimizedScheduler {
     // Get special activities (we'll need to query all teachers)
     const specialActivities: SpecialActivity[] = [];
     // For now, we'll leave this empty as we'd need to know all teacher names
-    
+
+    // SPE-478: mainstreaming blocks are loaded by the DataManager for the
+    // whole school — unlike special activities above, they ARE wired in.
+    const mainstreamingBlocks = this.dataManager.getMainstreamingBlocks();
+
     // Get school hours from existing context or use defaults
     const schoolHours: Array<{ day_of_week: number; grade_level: string; start_time: string; end_time: string }> = [];
     
@@ -273,6 +281,7 @@ export class OptimizedScheduler {
       workSchedule: workDays.map(day => ({ day_of_week: day })),
       bellSchedules,
       specialActivities,
+      mainstreamingBlocks,
       existingSessions,
       schoolHours,
       crossProviderSessionsByStudent
@@ -373,6 +382,7 @@ export class OptimizedScheduler {
     const providerAvailability = new Map<string, Map<number, AvailabilitySlot[]>>();
     const bellSchedulesByGrade = new Map<string, Map<number, BellSchedule[]>>();
     const specialActivitiesByTeacher = new Map<string, Map<number, SpecialActivity[]>>();
+    const mainstreamingByStudent = new Map<string, Map<number, MainstreamingBlock[]>>();
     
     // Index bell schedules by grade for O(1) lookup
     for (const bell of preloadedData.bellSchedules) {
@@ -399,6 +409,18 @@ export class OptimizedScheduler {
         teacherMap.set(activity.day_of_week, []);
       }
       teacherMap.get(activity.day_of_week)!.push(activity);
+    }
+
+    // SPE-478: index mainstreaming blocks by student for O(1) lookup
+    for (const block of preloadedData.mainstreamingBlocks || []) {
+      if (!mainstreamingByStudent.has(block.student_id)) {
+        mainstreamingByStudent.set(block.student_id, new Map());
+      }
+      const studentMap = mainstreamingByStudent.get(block.student_id)!;
+      if (!studentMap.has(block.day_of_week)) {
+        studentMap.set(block.day_of_week, []);
+      }
+      studentMap.get(block.day_of_week)!.push(block);
     }
     
     // Build provider availability map for all weekdays
@@ -430,7 +452,8 @@ export class OptimizedScheduler {
       providerAvailability,
       bellSchedulesByGrade,
       specialActivitiesByTeacher,
-      
+      mainstreamingByStudent,
+
       // Cache metadata
       cacheMetadata: {
         lastFetched: new Date(),
@@ -1190,6 +1213,15 @@ export class OptimizedScheduler {
         
         if (hasActivityConflict) continue;
 
+        // SPE-478: never place a session over the student's mainstreaming time.
+        // A hard skip like the SPE-287 cross-provider check below — the
+        // interactive drag warns and lets a human override; the auto-scheduler
+        // has no human in the loop, so protected means protected.
+        if (this.hasMainstreamingConflict(student.id, day, slot.startTime, endTime)) {
+          this.log(`    ❌ Mainstreaming conflict: student is in a gen-ed class during this slot`);
+          continue;
+        }
+
         // Check for overlapping sessions FIRST
         if (!this.validateNoOverlap(student, day, slot.startTime, endTime, [...existingFoundSlots, ...foundSlots])) {
           this.log(`    ❌ Session overlap detected`);
@@ -1300,6 +1332,23 @@ export class OptimizedScheduler {
     const sessions = this.context!.crossProviderSessionsByStudent.get(studentId);
     if (!sessions || sessions.length === 0) return false;
     return findOverlappingOtherProviderSession(sessions, day, startTime, endTime) !== null;
+  }
+
+  /**
+   * SPE-478: does this slot overlap the student's mainstreaming time (their
+   * protected time in a gen-ed class)? Same shape as the cross-provider check
+   * above; the pure overlap rule lives in session-update-service so the drag
+   * warning and this hard-avoid can never drift apart.
+   */
+  private hasMainstreamingConflict(
+    studentId: string,
+    day: number,
+    startTime: string,
+    endTime: string
+  ): boolean {
+    const blocks = this.context!.mainstreamingByStudent.get(studentId)?.get(day);
+    if (!blocks || blocks.length === 0) return false;
+    return findOverlappingMainstreamingBlock(blocks, day, startTime, endTime) !== null;
   }
 
   /**

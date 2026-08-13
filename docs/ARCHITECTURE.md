@@ -1076,6 +1076,60 @@ erDiagram
   calendar's client-side virtual layer renders slots beyond the horizon and
   persists them on first touch (`lib/services/session-persistence.ts`).
 
+### Mainstreaming blocks — SDC students into gen-ed classes (SPE-478)
+
+`mainstreaming_blocks` is the third member of the recurring-constraint family:
+bell schedules key on a **grade**, special activities on a **teacher's class**,
+mainstreaming blocks on a **student** — plus a recorded destination
+(`teacher_id` → the teacher directory), which is what makes a
+time-in-general-education (LRE) tally possible later. Template-only like its
+siblings (day_of_week 1–5 + times + school_year, no dated instances), owned by
+the creating provider, hard-deleted (no `deleted_at` — SPE-468 is the
+cautionary tale for soft-deleting constraint tables).
+
+The semantics are a pull-out session **inverted**: the student *leaves* the SDC
+room to *join* a gen-ed class, so the destination class's bell/activity blocks
+are targets, not conflicts — while the block itself is **protected time** for
+the student (owner decision, 2026-08-13):
+
+- **Interactive drag** (`validateSessionMove`, session-update-service): a new
+  `mainstreaming` conflict type warns any provider placing a session over a
+  student's block — overridable via the existing confirm flow, like every other
+  conflict there. The check is deliberately NOT scoped to the caller's
+  provider_id: the point is warning provider B about provider A's block.
+- **Auto-scheduler** (`hasMainstreamingConflict`, optimized-scheduler): a hard
+  skip like the SPE-287 cross-provider check — no human in the loop, so
+  protected means protected. Blocks load through the SchedulingDataManager
+  (`loadMainstreamingBlocks`, school-wide, year-scoped) and are indexed
+  per student — wired in for real from day one, unlike special activities
+  (SPE-318). The shared pure overlap rule
+  (`findOverlappingMainstreamingBlock`) lives in session-update-service so the
+  two paths can't drift.
+- **Grid**: the owner's blocks render as teal blocks on their Main Schedule;
+  other providers see a student's blocks as teal availability bands when
+  filtering by that student (mirroring other-provider sessions).
+
+**The SDC gate is the dual-role link, not a role.** "Add Mainstreaming Block"
+appears only for providers whose account is linked to their own
+classroom-teacher entry (`teachers.account_id`, the SPE-355 onboarding
+pattern). No new role or flag — SPE-358 stays parked. The sim fixture carries
+one such persona (Derek, `rsp.juniper`, `SDC_LINKED_PROVIDERS` in the
+manifest).
+
+**RLS** mirrors the family: school-wide SELECT (own rows ∪
+`get_my_school_ids()` ∪ linked-teacher school); writes owner-only AND only for
+students on the caller's own caseload (`students.provider_id = auth.uid()`).
+
+**Source of truth:**
+`supabase/migrations/20260813_spe478_mainstreaming_blocks.sql` (table + RLS);
+`lib/supabase/queries/mainstreaming-blocks.ts`;
+`lib/services/session-update-service.ts` (`checkMainstreamingConflicts`,
+`findOverlappingMainstreamingBlock`); `lib/scheduling/scheduling-data-manager.ts`
+(`loadMainstreamingBlocks`); `lib/scheduling/optimized-scheduler.ts`
+(`hasMainstreamingConflict`);
+`app/components/schedule/add-mainstreaming-block-modal.tsx`;
+`app/(dashboard)/dashboard/schedule/` (page gate, grid + availability layer).
+
 ### Auto-Schedule strategies (SPE-473)
 
 Clicking **Auto-Schedule Sessions** on the Main Schedule opens a picker before

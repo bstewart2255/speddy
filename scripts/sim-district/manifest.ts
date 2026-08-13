@@ -269,6 +269,20 @@ export function teacherRecordId(key: string): string {
   return simUuid(`teacher:${key}`);
 }
 
+/**
+ * SPE-478: provider personas who ALSO own a classroom-teacher entry — the SDC
+ * dual-role pattern (SPE-355). The link (teachers.account_id pointing at the
+ * persona's auth user) is what the app treats as the SDC marker, gating the
+ * SDC scheduling affordances (mainstreaming blocks now; SPE-479 class blocks
+ * later), so the fixture must hold at least one such persona. Derek
+ * (rsp.juniper) carries it: a single-site elementary RSP whose account
+ * doubles as a classroom teacher at Juniper.
+ */
+export const SDC_LINKED_PROVIDERS = ['derek'] as const;
+export function sdcClassroomTeacherId(personaKey: string): string {
+  return teacherRecordId(`sdc:${personaKey}`);
+}
+
 // ---------------------------------------------------------------------------
 // Caseloads (spec §6) — generator rules, not hand-written rows
 // ---------------------------------------------------------------------------
@@ -847,6 +861,10 @@ export const SWEPT_TABLES: { table: string; column: string; identity: 'user' | '
   { table: 'student_parent_contacts', column: 'student_id', identity: 'student' },
   { table: 'teacher_availability_prefs', column: 'profile_id', identity: 'user' },
   { table: 'site_meeting_rules', column: 'school_id', identity: 'school' },
+  // Mainstreaming blocks (SPE-478): verification walks create these live
+  // through the app as the SDC dual-role persona; keyed to the owning
+  // provider account.
+  { table: 'mainstreaming_blocks', column: 'provider_id', identity: 'user' },
 ];
 
 /**
