@@ -352,10 +352,12 @@ export class SessionUpdateService {
       });
 
       // Clear stale conflicts for this student that this move may have resolved.
-      // clearStaleConflictsForStudent re-checks BOTH same-provider overlaps and the
-      // cross-provider double-book (SPE-255), so it won't erase a live cross-provider
-      // flag on a sibling session — and the just-moved session keeps whatever flag the
-      // validation above set, because that same authoritative check still sees it.
+      // clearStaleConflictsForStudent re-checks EVERY flag source that can set a
+      // flag here — same-provider overlaps, the cross-provider double-book
+      // (SPE-255), mainstreaming time (SPE-478), and the teacher's special
+      // activities (SPE-484) — so it won't erase a live flag on a sibling
+      // session, and the just-moved session keeps whatever flag the validation
+      // above set, because those same authoritative checks still see it.
       if (session.student_id && session.provider_id) {
         // Always check the new day for stale conflicts
         await this.clearStaleConflictsForStudent(session.student_id, session.provider_id, newDay);
@@ -597,36 +599,17 @@ export class SessionUpdateService {
     startTime: string,
     endTime: string
   ): Promise<NonNullable<ValidationResult['conflicts']>[0] | null> {
-    // Get student's teacher and school information
-    const { data: student } = await this.supabase
-      .from('students')
-      .select('teacher_id, teacher_name, school_id')
-      .eq('id', studentId)
-      .single();
-
-    if (!student || !student.school_id || (!student.teacher_id && !student.teacher_name)) {
+    // Fail-open here matches the sibling bell/mainstreaming checks (a read
+    // error means no warning); the stale-CLEAR path is where failure must
+    // fail safe, via this fetch's `failed` flag.
+    const { activities, teacher } = await this.fetchSpecialActivitiesForStudent(studentId, day);
+    if (!teacher) {
       return null;
     }
 
-    // SPE-484: school-wide, NOT scoped to the caller's provider_id — that
-    // legacy filter meant an activity entered by a site admin or another
-    // provider displayed as a band but never warned anyone else. Every
-    // activity the grid shows is one the warning must honor. Year-scoped and
-    // live-only (SPE-468's lesson: soft-deleted rows must never protect).
-    // Teacher matching happens in the pure helper (id preferred, exact-name
-    // fallback), same as the availability layer, so PostgREST or-quoting
-    // never mangles names with spaces.
-    const { data: activities } = await this.supabase
-      .from('special_activities')
-      .select('*')
-      .eq('day_of_week', day)
-      .eq('school_id', student.school_id)
-      .eq('school_year', getCurrentSchoolYear())
-      .is('deleted_at', null);
-
     const overlapping = findOverlappingSpecialActivity(
-      activities || [],
-      { teacherId: student.teacher_id, teacherName: student.teacher_name },
+      activities,
+      teacher,
       day,
       startTime,
       endTime
@@ -639,6 +622,85 @@ export class SessionUpdateService {
       type: 'special_activity',
       description: `Conflicts with special activity "${overlapping.activity_name}" with ${overlapping.teacher_name} (${overlapping.start_time} - ${overlapping.end_time})`,
       conflictingItem: overlapping
+    };
+  }
+
+  /**
+   * SPE-484: the student's teacher identity plus every live special activity
+   * at their school on `day` for the current year. School-wide, NOT scoped to
+   * the caller's provider_id — that legacy filter meant an activity entered
+   * by a site admin or another provider displayed as a band but never warned
+   * anyone else; every activity the grid shows is one the warning must
+   * honor. Live-only (SPE-468's lesson: soft-deleted rows must never
+   * protect). Both school linkages are honored — normalized rows under the
+   * student's school_id plus legacy rows carrying only a school_site name
+   * (school_id IS NULL), the same two-pass shape
+   * SchedulingDataManager.fetchForSchool uses — run as separate queries so
+   * PostgREST or-quoting never mangles school or teacher names with spaces
+   * or commas. Teacher matching happens in the pure helper (id preferred,
+   * exact-name fallback), same as the availability layer, so what warns is
+   * what displays.
+   */
+  private async fetchSpecialActivitiesForStudent(
+    studentId: string,
+    day: number
+  ): Promise<{
+    activities: Array<Database['public']['Tables']['special_activities']['Row']>;
+    /** Null when the student has no teacher or no school linkage — no
+     * activity can match them, so there is nothing to warn about or retain. */
+    teacher: { teacherId: string | null; teacherName: string | null } | null;
+    /** True when a lookup ERRORED (vs. legitimately returning nothing) — the
+     * stale-clear caller must keep flags rather than treat this as "clear". */
+    failed: boolean;
+  }> {
+    const { data: student, error: studentError } = await this.supabase
+      .from('students')
+      .select('teacher_id, teacher_name, school_id, school_site')
+      .eq('id', studentId)
+      .single();
+
+    if (studentError) {
+      return { activities: [], teacher: null, failed: true };
+    }
+    if (
+      !student ||
+      (!student.teacher_id && !student.teacher_name) ||
+      (!student.school_id && !student.school_site)
+    ) {
+      return { activities: [], teacher: null, failed: false };
+    }
+
+    const activitiesQuery = () =>
+      this.supabase
+        .from('special_activities')
+        .select('*')
+        .eq('day_of_week', day)
+        .eq('school_year', getCurrentSchoolYear())
+        .is('deleted_at', null);
+
+    const activities: Array<Database['public']['Tables']['special_activities']['Row']> = [];
+    let failed = false;
+
+    if (student.school_id) {
+      const { data, error } = await activitiesQuery().eq('school_id', student.school_id);
+      if (error) failed = true;
+      activities.push(...(data || []));
+    }
+    if (student.school_site) {
+      // Legacy rows predate school normalization — school_id was never set,
+      // so the branch above cannot see them. Mutually exclusive with it
+      // (school_id IS NULL here), so no dedupe is needed.
+      const { data, error } = await activitiesQuery()
+        .is('school_id', null)
+        .eq('school_site', student.school_site);
+      if (error) failed = true;
+      activities.push(...(data || []));
+    }
+
+    return {
+      activities,
+      teacher: { teacherId: student.teacher_id, teacherName: student.teacher_name },
+      failed,
     };
   }
 
@@ -1094,25 +1156,52 @@ export class SessionUpdateService {
         mainstreamingCheckFailed = true;
       }
 
+      // SPE-484: a flag may also exist because the session sits on the
+      // student's teacher's special activity (an overridden drag warning).
+      // Same retention contract as mainstreaming above — count the overlap
+      // as still live, and treat an errored lookup as "unknown: keep flags".
+      let specialActivities: SpecialActivityLite[] = [];
+      let activityTeacher: { teacherId: string | null; teacherName: string | null } | null = null;
+      let activityCheckFailed = false;
+      try {
+        const result = await this.fetchSpecialActivitiesForStudent(studentId, day);
+        specialActivities = result.activities;
+        activityTeacher = result.teacher;
+        activityCheckFailed = result.failed;
+      } catch (e) {
+        console.error('Special-activity stale-check threw:', e);
+        activityCheckFailed = true;
+      }
+
       // Clear a flag only when the session no longer overlaps ANY same-provider
-      // session, no longer double-books across providers, AND no longer sits on
-      // mainstreaming time.
+      // session, no longer double-books across providers, no longer sits on
+      // mainstreaming time, AND no longer sits on its teacher's special
+      // activity.
       for (const flaggedSession of flaggedSessions) {
         if (!flaggedSession.start_time || !flaggedSession.end_time) {
           continue;
         }
 
-        // Fail safe: an unverifiable cross-provider status keeps the flag.
+        // Fail safe: an unverifiable conflict source keeps the flag.
         const stillHasOverlap =
           crossCheckFailed ||
           mainstreamingCheckFailed ||
+          activityCheckFailed ||
           flaggedSessionStillConflicts(flaggedSession, allSessions, otherProviderSessions) ||
           findOverlappingMainstreamingBlock(
             mainstreamingBlocks,
             day,
             flaggedSession.start_time,
             flaggedSession.end_time
-          ) !== null;
+          ) !== null ||
+          (activityTeacher !== null &&
+            findOverlappingSpecialActivity(
+              specialActivities,
+              activityTeacher,
+              day,
+              flaggedSession.start_time,
+              flaggedSession.end_time
+            ) !== null);
 
         // If no longer overlapping, clear the conflict flag
         if (!stillHasOverlap) {

@@ -132,4 +132,15 @@ describe('OptimizedScheduler slot search respects special activities (SPE-318)',
     expect(slots).toHaveLength(1);
     expect(slots[0].startTime).toBe('10:00');
   });
+
+  it('does not block on a name coincidence when the student\'s teacher has a different id', () => {
+    // The index files activities under teacher_name too, so a student whose
+    // teacher SHARES the display name but carries a different directory id
+    // finds the activity via the name key — the slot search must apply the
+    // shared rule's id-disagreement veto rather than over-block.
+    const student = { id: 's1', grade_level: '3', teacher_id: 'teacher-else', teacher_name: 'Mrs. Nova', initials: 'AB' };
+    const slots = schedulerWith(dualKeyedIndex()).findSlotsWithCapacityLimit(student, 30, 1, [1], 8, []);
+    expect(slots).toHaveLength(1);
+    expect(slots[0].startTime).toBe('10:00');
+  });
 });

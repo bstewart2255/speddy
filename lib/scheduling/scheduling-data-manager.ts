@@ -198,6 +198,12 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
       // the parallel path below no longer does. Repairing the RPC without
       // adding a school_year filter would reintroduce that bug on this path
       // only — visible just at schools holding two years of data.
+      //
+      // SPE-468/SPE-484: the special_activities CTE also has no deleted_at
+      // filter. The parallel path strips soft-deleted rows in fetchForSchool,
+      // and the scheduler now actually consumes this list (SPE-318), so a
+      // repaired RPC without that filter would resurrect deleted activities
+      // as scheduling blocks on this path only.
       const { data, error } = await this.supabase.rpc('get_scheduling_data_batch', {
         p_provider_id: this.providerId!,
         p_school_site: this.schoolSite!

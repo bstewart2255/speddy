@@ -141,6 +141,13 @@ export function useScheduleData() {
         
         // Special activities query - School-wide (all providers see all activities)
         // Exclude soft-deleted activities
+        //
+        // SPE-487: NOT year-scoped, unlike the drag-warning and auto-scheduler
+        // fetches, which honor only getCurrentSchoolYear() rows — so after a
+        // school-year rollover a prior-year band could display here while
+        // warning about and blocking nothing. Harmless today (prod holds only
+        // current-year rows) and changing what displays is a user-facing call,
+        // so the divergence is tracked there rather than fixed as a rider.
         (() => {
           let query = supabase
             .from('special_activities')

@@ -4,7 +4,7 @@ import { Database } from "../../src/types/database";
 import { SchedulingDataManager } from './scheduling-data-manager';
 import { ManualPlacementService } from '../services/manual-placement-service';
 import { filterScheduledSessions, type ScheduledSession } from '../utils/session-helpers';
-import { findOverlappingOtherProviderSession, findOverlappingMainstreamingBlock, type OtherProviderSessionLite } from '../services/session-update-service';
+import { findOverlappingOtherProviderSession, findOverlappingMainstreamingBlock, findOverlappingSpecialActivity, type OtherProviderSessionLite } from '../services/session-update-service';
 import { DEFAULT_SCHEDULING_CONFIG } from './scheduling-config';
 import {
   DEFAULT_SCHEDULING_STRATEGY,
@@ -1217,25 +1217,29 @@ export class OptimizedScheduler {
 
         // Check special activities using cached index (O(1) lookup) — by the
         // teacher directory id when the student has one, else by name (the
-        // index carries both keys; an id match survives name drift).
+        // index carries both keys; an id match survives name drift). The
+        // candidates then go through the same pure rule the drag warning
+        // runs, which vetoes a name-key hit whose activity carries a
+        // DIFFERENT teacher_id — two teachers sharing a display name must
+        // not block each other's students.
         const activityIndex = this.context!.specialActivitiesByTeacher;
         const teacherActivities = [
           ...(student.teacher_id ? activityIndex.get(student.teacher_id)?.get(day) || [] : []),
           ...(student.teacher_name ? activityIndex.get(student.teacher_name)?.get(day) || [] : []),
         ];
 
-        const hasActivityConflict = teacherActivities.some(activity => {
-          const hasTimeOverlap = this.hasTimeOverlap(slot.startTime, endTime, activity.start_time, activity.end_time);
-          
-          if (hasTimeOverlap) {
-            this.log(`    ❌ Special activity conflict: ${activity.activity_name} for teacher ${student.teacher_name}`);
-            this.performanceMetrics.cacheHits++;
-          }
-          
-          return hasTimeOverlap;
-        });
-        
-        if (hasActivityConflict) continue;
+        const conflictingActivity = findOverlappingSpecialActivity(
+          teacherActivities,
+          { teacherId: student.teacher_id, teacherName: student.teacher_name },
+          day,
+          slot.startTime,
+          endTime,
+        );
+        if (conflictingActivity) {
+          this.log(`    ❌ Special activity conflict: ${conflictingActivity.activity_name} for teacher ${student.teacher_name}`);
+          this.performanceMetrics.cacheHits++;
+          continue;
+        }
 
         // SPE-478: never place a session over the student's mainstreaming time.
         // A hard skip like the SPE-287 cross-provider check below — the
