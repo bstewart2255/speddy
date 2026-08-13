@@ -61,9 +61,8 @@ experience at that school, on one login.
   elementary-shaped scheduling surfaces (weekly session schedule, bell
   schedules, special activities, lesson-plan calendar) are hidden because they
   don't match a period-based day. Terminology also shifts (e.g. "Resource
-  Specialist" becomes "Case Manager", accommodations are surfaced first for
-  teachers). Native period-based scheduling is on the roadmap as part of the
-  Middle/High School module.
+  Specialist" becomes "Case Manager"). Native period-based scheduling is on
+  the roadmap as part of the Middle/High School module.
 
 Admin surfaces are level-independent: a site admin manages an elementary or
 secondary site with the same tools, and district admins see both.
@@ -209,13 +208,16 @@ spreadsheet, a binder, and someone's memory.
 - Student profiles: grade, teacher, service details, sessions-per-week and
   minutes-per-session.
 - IEP goals and accommodations per student; IEP and triennial due dates.
+  Accommodations can also be imported from an uploaded **IEP PDF** —
+  AI-extracted, reviewed and approved by the provider before saving; the PDF
+  itself is read once and never stored (SPE-489).
 - Import: bulk CSV, or directly from a **SEIS export** (CA) — caseloads
   onboard from the file the school already has.
 - Assessment records (STAR Reading/Math, WISC-V, BRIEF, WIAT-4, WJ-IV,
   mClass and others) with trend views.
 - Teacher-facing view of the same student, scoped to what a gen-ed teacher
-  needs: services, schedule, goals, accommodations (accommodations first at
-  secondary sites).
+  needs: services, schedule, goals, and accommodations — at every site type
+  (SPE-488).
 
 **Who uses it:** providers own their caseloads. Site admins see the school's
 students; district admins see across schools. SEAs view the students they
