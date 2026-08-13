@@ -1126,6 +1126,18 @@ pattern). No new role or flag — SPE-358 stays parked. The sim fixture carries
 one such persona (Derek, `rsp.juniper`, `SDC_LINKED_PROVIDERS` in the
 manifest).
 
+**The link creates itself (SPE-481).** Database triggers auto-link the two
+halves in EITHER entry order — a new classroom entry matching a Resource
+Specialist profile, or a new/updated resource profile matching a waiting
+entry — on exact email + same school, `resource` role only, never
+overwriting, only when unambiguous. This exists because nothing else made
+the link for the SDC shape (teacher-login creation and the SIS sync link
+only the accounts THEY create), which left all four Rodeo Hills SDC teachers
+and both JSHS hybrids unlinked until the SPE-481 backfill. Multi-school
+caveat: matching uses the profile's primary school only.
+`sdc_autolink_on_teacher_write` / `sdc_autolink_on_profile_write`
+(20260813_spe481_sdc_auto_link.sql).
+
 **RLS**: SELECT = own rows ∪ any school in `get_my_school_ids()` (the
 school-wide breadth is what makes cross-provider protection work) ∪ blocks
 naming the caller's linked classroom as **destination** (a gen-ed teacher sees
