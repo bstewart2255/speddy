@@ -154,20 +154,16 @@ export function useScheduleData() {
 
         // Mainstreaming blocks (SPE-478) - School-wide, same reasoning as
         // special activities: every provider schedules around them. The table
-        // requires school_id, so legacy (non-migrated) schools scope to the
-        // provider's own blocks.
-        (() => {
-          let query = supabase
-            .from('mainstreaming_blocks')
-            .select('*')
-            .eq('school_year', getCurrentSchoolYear());
-          if (currentSchool.school_id) {
-            query = query.eq('school_id', currentSchool.school_id);
-          } else {
-            query = query.eq('provider_id', user.id);
-          }
-          return query;
-        })(),
+        // requires school_id, so a non-migrated school can never own blocks —
+        // and a provider-scoped fallback would render the caller's blocks
+        // from OTHER schools on this grid. Legacy schools get none.
+        currentSchool.school_id
+          ? supabase
+              .from('mainstreaming_blocks')
+              .select('*')
+              .eq('school_year', getCurrentSchoolYear())
+              .eq('school_id', currentSchool.school_id)
+          : Promise.resolve({ data: [], error: null }),
 
 
         // School hours

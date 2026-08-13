@@ -481,17 +481,31 @@ export const ScheduleGrid = memo(function ScheduleGrid({
                         const teacher = teachers.find(t => t.id === block.teacher_id);
                         const startTime = block.start_time.substring(0, 5);
                         const endTime = block.end_time.substring(0, 5);
-                        const top = timeToPixels(startTime);
-                        const height = timeToPixels(endTime) - top;
+                        // Clamp to the visible hour range, as the availability
+                        // layer's bands do — an unclamped early block would
+                        // paint above the column with a negative top.
+                        const columnHeight = timeMarkers.length * (gridConfig.pixelsPerHour / 4);
+                        const rawTop = timeToPixels(startTime);
+                        const rawBottom = timeToPixels(endTime);
+                        const top = Math.max(0, Math.min(rawTop, columnHeight));
+                        const bottom = Math.max(0, Math.min(rawBottom, columnHeight));
+                        const height = bottom - top;
+                        if (height <= 0) return null;
                         const teacherLabel = teacher ? formatTeacherName(teacher) : 'class';
+                        const fullLabel = `${student?.initials ?? 'Student'} mainstreams to ${teacherLabel}${block.label ? ` · ${block.label}` : ''} (${formatTime(startTime)}–${formatTime(endTime)})`;
                         return (
                           <div
                             key={block.id}
                             className="absolute rounded border-l-[3px] border-teal-500 bg-teal-500/10 text-teal-900 pointer-events-none"
                             style={{ top: `${top}px`, height: `${height}px`, left: '2px', right: '2px', zIndex: 4 }}
-                            title={`${student?.initials ?? 'Student'} mainstreams to ${teacherLabel}${block.label ? ` · ${block.label}` : ''} (${formatTime(startTime)}–${formatTime(endTime)})`}
                           >
-                            <div className="px-1.5 py-0.5 text-[11px] leading-tight truncate">
+                            {/* pointer-events-auto here so the tooltip can
+                                actually fire; the block body stays transparent
+                                to drags/clicks aimed at the column. */}
+                            <div
+                              className="px-1.5 py-0.5 text-[11px] leading-tight truncate pointer-events-auto"
+                              title={fullLabel}
+                            >
                               <span className="font-semibold">{student?.initials ?? '?'}</span>
                               {' → '}
                               {teacherLabel}

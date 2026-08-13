@@ -591,7 +591,7 @@ export default function SchedulePage() {
             bellSchedules={bellSchedules}
             specialActivities={specialActivities}
             mainstreamingBlocks={mainstreamingBlocks}
-            onMainstreamingBlockDelete={hasOwnClassroom ? handleMainstreamingBlockDelete : undefined}
+            onMainstreamingBlockDelete={currentUserId ? handleMainstreamingBlockDelete : undefined}
             teachers={teachers}
             visualFilters={visualFilters}
             otherProviderSessions={otherProviderSessions}
@@ -657,12 +657,18 @@ export default function SchedulePage() {
           <AddMainstreamingBlockModal
             isOpen={mainstreamingModalOpen}
             onClose={() => setMainstreamingModalOpen(false)}
-            onSuccess={() => {
-              showToast('Mainstreaming block added', 'success');
+            onSuccess={(sessionsFlagged) => {
+              showToast(
+                sessionsFlagged > 0
+                  ? `Mainstreaming block added — ${sessionsFlagged} of your session${sessionsFlagged === 1 ? '' : 's'} now need${sessionsFlagged === 1 ? 's' : ''} attention`
+                  : 'Mainstreaming block added',
+                'success'
+              );
               refreshData();
             }}
             students={students}
             teachers={teachers}
+            existingBlocks={mainstreamingBlocks}
             currentUserId={currentUserId}
             schoolId={currentSchool?.school_id || null}
           />

@@ -2,19 +2,28 @@
 
 import React, { useMemo, useState } from 'react';
 import { addMainstreamingBlocks } from '@/lib/supabase/queries/mainstreaming-blocks';
+import { ConflictResolver } from '@/lib/scheduling/conflict-resolver';
 import { generateActivityTimeOptions } from '@/lib/utils/time-options';
 import { formatTeacherName } from '@/lib/utils/teacher-utils';
-import type { Student, Teacher } from '@/src/types';
+import type { MainstreamingBlock, Student, Teacher } from '@/src/types';
 
 type Props = {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess: () => void;
+  /** Called after a successful add; `sessionsFlagged` = own sessions newly marked as sitting on the block. */
+  onSuccess: (sessionsFlagged: number) => void;
   students: Student[];
   teachers: Teacher[];
+  /** School-wide blocks already on the calendar, for the overlap pre-check. */
+  existingBlocks: MainstreamingBlock[];
   currentUserId: string | null;
   schoolId: string | null;
 };
+
+const DAY_NAMES: Record<number, string> = { 1: 'Monday', 2: 'Tuesday', 3: 'Wednesday', 4: 'Thursday', 5: 'Friday' };
+
+const overlaps = (aStart: string, aEnd: string, bStart: string, bEnd: string) =>
+  aStart < bEnd.substring(0, 5) && aEnd > bStart.substring(0, 5);
 
 const DAYS_OF_WEEK = [
   { id: 1, shortName: 'Mon' },
@@ -35,6 +44,7 @@ export function AddMainstreamingBlockModal({
   onSuccess,
   students,
   teachers,
+  existingBlocks,
   currentUserId,
   schoolId,
 }: Props) {
@@ -78,6 +88,13 @@ export function AddMainstreamingBlockModal({
     setError('');
   };
 
+  // The modal stays mounted in the page, so Cancel/X must clear state too —
+  // otherwise the next open shows the previous student and a stale error.
+  const handleClose = () => {
+    resetForm();
+    onClose();
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -95,9 +112,29 @@ export function AddMainstreamingBlockModal({
       return;
     }
 
+    // One student can't be in two classrooms at once: block any overlap with
+    // the student's existing mainstreaming time (matched by shared child as
+    // well as caseload row — a co-served child's blocks may carry another
+    // provider's row id).
+    const selectedStudent = caseloadStudents.find(s => s.id === studentId);
+    const clash = existingBlocks.find(b =>
+      selectedDays.includes(b.day_of_week) &&
+      (b.student_id === studentId ||
+        (selectedStudent?.child_id != null && b.child_id === selectedStudent.child_id)) &&
+      overlaps(startTime, endTime, b.start_time, b.end_time)
+    );
+    if (clash) {
+      const where = teachers.find(t => t.id === clash.teacher_id);
+      setError(
+        `This student already mainstreams ${clash.start_time.slice(0, 5)}–${clash.end_time.slice(0, 5)} on ${DAY_NAMES[clash.day_of_week]}` +
+        `${where ? ` (${formatTeacherName(where)}'s class)` : ''}. Adjust the time or remove that block first.`
+      );
+      return;
+    }
+
     setSubmitting(true);
     try {
-      await addMainstreamingBlocks(
+      const created = await addMainstreamingBlocks(
         {
           student_id: studentId,
           teacher_id: teacherId,
@@ -108,11 +145,26 @@ export function AddMainstreamingBlockModal({
         },
         selectedDays
       );
+
+      // Mirror the bell-schedule form: sessions of OURS already sitting on the
+      // new protected time get flagged needs_attention right away. Best-effort.
+      let flagged = 0;
+      if (currentUserId) {
+        const resolver = new ConflictResolver(currentUserId);
+        const result = await resolver.resolveMainstreamingBlockConflicts(created);
+        flagged = result.marked;
+      }
+
       resetForm();
-      onSuccess();
+      onSuccess(flagged);
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add mainstreaming block');
+      const message = err instanceof Error ? err.message : 'Failed to add mainstreaming block';
+      setError(
+        /duplicate key|mainstreaming_blocks_no_exact_dupes/i.test(message)
+          ? 'This exact block already exists for that student, class, day and time.'
+          : message
+      );
     } finally {
       setSubmitting(false);
     }
@@ -131,7 +183,7 @@ export function AddMainstreamingBlockModal({
             </p>
           </div>
           <button
-            onClick={onClose}
+            onClick={handleClose}
             className="text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded"
             aria-label="Close"
           >
@@ -278,7 +330,7 @@ export function AddMainstreamingBlockModal({
           <div className="flex justify-end gap-3 pt-2">
             <button
               type="button"
-              onClick={onClose}
+              onClick={handleClose}
               className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               Cancel

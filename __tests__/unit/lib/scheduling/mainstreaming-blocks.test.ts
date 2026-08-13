@@ -59,21 +59,28 @@ describe('findOverlappingMainstreamingBlock (SPE-478)', () => {
  * assert it directly (same approach as the SPE-287 cross-provider test).
  */
 function withContext(
-  blocksByStudent: Map<string, Map<number, MainstreamingBlockLite[]>>,
-): { conflicts: (studentId: string, day: number, start: string, end: string) => boolean } {
+  blocksByKey: Map<string, Map<number, MainstreamingBlockLite[]>>,
+): {
+  conflicts: (
+    student: { id: string; child_id?: string | null },
+    day: number,
+    start: string,
+    end: string,
+  ) => boolean;
+} {
   const scheduler = new OptimizedScheduler('provider-1', 'resource') as any;
-  scheduler.context = { mainstreamingByStudent: blocksByStudent };
+  scheduler.context = { mainstreamingByStudent: blocksByKey };
   return {
-    conflicts: (studentId, day, start, end) =>
-      scheduler.hasMainstreamingConflict(studentId, day, start, end),
+    conflicts: (student, day, start, end) =>
+      scheduler.hasMainstreamingConflict(student, day, start, end),
   };
 }
 
 describe('OptimizedScheduler.hasMainstreamingConflict (SPE-478)', () => {
-  const STUDENT = 'sdc-student';
+  const STUDENT = { id: 'sdc-student', child_id: null };
   const base = () =>
     new Map<string, Map<number, MainstreamingBlockLite[]>>([
-      [STUDENT, new Map([[1, [block()]]])],
+      [STUDENT.id, new Map([[1, [block()]]])],
     ]);
 
   it('hard-avoids a slot overlapping the student\'s mainstreaming block', () => {
@@ -88,6 +95,20 @@ describe('OptimizedScheduler.hasMainstreamingConflict (SPE-478)', () => {
 
   it('does not block a different day or another student', () => {
     expect(withContext(base()).conflicts(STUDENT, 2, '10:15', '10:45:00')).toBe(false);
-    expect(withContext(base()).conflicts('someone-else', 1, '10:15', '10:45:00')).toBe(false);
+    expect(withContext(base()).conflicts({ id: 'someone-else', child_id: null }, 1, '10:15', '10:45:00')).toBe(false);
+  });
+
+  it('hard-avoids via the shared CHILD when the block was created on another provider\'s caseload row', () => {
+    // SPE-347: the SDC teacher's block is indexed under the child id; this
+    // provider's caseload row for the same child has a different id. The
+    // child key is what connects them (Codex P1 on PR #856).
+    const CHILD = 'shared-child';
+    const byChild = new Map<string, Map<number, MainstreamingBlockLite[]>>([
+      [CHILD, new Map([[1, [block()]]])],
+    ]);
+    const myRow = { id: 'my-caseload-row', child_id: CHILD };
+    expect(withContext(byChild).conflicts(myRow, 1, '10:15', '10:45:00')).toBe(true);
+    // Unlinked student with the same row id finds nothing — fallback only under-warns.
+    expect(withContext(byChild).conflicts({ id: 'my-caseload-row', child_id: null }, 1, '10:15', '10:45:00')).toBe(false);
   });
 });

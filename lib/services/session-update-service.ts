@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/client';
-import { ScheduleSession, BellSchedule, SpecialActivity } from '@/src/types';
+import { ScheduleSession, BellSchedule, SpecialActivity, type Database } from '@/src/types';
 import { DEFAULT_SCHEDULING_CONFIG } from '@/lib/scheduling/scheduling-config';
 import { requireNonNull } from '@/lib/types/utils';
 import { formatRoleLabel } from '@/lib/utils/role-utils';
@@ -601,14 +601,8 @@ export class SessionUpdateService {
     startTime: string,
     endTime: string
   ): Promise<NonNullable<ValidationResult['conflicts']>[0] | null> {
-    const { data: blocks } = await this.supabase
-      .from('mainstreaming_blocks')
-      .select('*')
-      .eq('student_id', studentId)
-      .eq('day_of_week', day)
-      .eq('school_year', getCurrentSchoolYear());
-
-    if (!blocks || blocks.length === 0) {
+    const blocks = await this.fetchMainstreamingBlocksForStudent(studentId, day);
+    if (blocks.length === 0) {
       return null;
     }
 
@@ -634,6 +628,43 @@ export class SessionUpdateService {
       description: `Student is mainstreaming in ${destination}${label} (${overlapping.start_time} - ${overlapping.end_time}) — this time is protected`,
       conflictingItem: overlapping
     };
+  }
+
+  /**
+   * SPE-478: the student's mainstreaming blocks for one weekday, resolved
+   * through the CHILD, not the caseload row. A child served by two providers
+   * has two students rows (SPE-347) — the SDC teacher's block carries THEIR
+   * row id, while the session being validated carries the caller's. Keying on
+   * the shared child_id is what makes the cross-provider warning (the point
+   * of protected time) actually fire. Falls back to caseload-row matching for
+   * students without a child link, which can only under-warn for unlinked
+   * legacy rows.
+   */
+  private async fetchMainstreamingBlocksForStudent(
+    studentId: string,
+    day: number
+  ): Promise<Array<Database['public']['Tables']['mainstreaming_blocks']['Row']>> {
+    // The caller can always read their own caseload row.
+    const { data: student } = await this.supabase
+      .from('students')
+      .select('child_id')
+      .eq('id', studentId)
+      .single();
+
+    let query = this.supabase
+      .from('mainstreaming_blocks')
+      .select('*')
+      .eq('day_of_week', day)
+      .eq('school_year', getCurrentSchoolYear());
+
+    if (student?.child_id) {
+      query = query.or(`child_id.eq.${student.child_id},student_id.eq.${studentId}`);
+    } else {
+      query = query.eq('student_id', studentId);
+    }
+
+    const { data: blocks } = await query;
+    return blocks || [];
   }
 
   /**
@@ -981,8 +1012,23 @@ export class SessionUpdateService {
         crossCheckFailed = true;
       }
 
+      // SPE-478: a flag may also exist because the session sits on the
+      // student's mainstreaming time (an overridden protected-time warning).
+      // Without this, the cleanup right after an override commit would wipe
+      // the flag it had just earned. Best-effort like the cross-provider RPC:
+      // an error keeps flags rather than hiding a live warning.
+      let mainstreamingBlocks: MainstreamingBlockLite[] = [];
+      let mainstreamingCheckFailed = false;
+      try {
+        mainstreamingBlocks = await this.fetchMainstreamingBlocksForStudent(studentId, day);
+      } catch (e) {
+        console.error('Mainstreaming stale-check threw:', e);
+        mainstreamingCheckFailed = true;
+      }
+
       // Clear a flag only when the session no longer overlaps ANY same-provider
-      // session AND no longer double-books across providers.
+      // session, no longer double-books across providers, AND no longer sits on
+      // mainstreaming time.
       for (const flaggedSession of flaggedSessions) {
         if (!flaggedSession.start_time || !flaggedSession.end_time) {
           continue;
@@ -991,7 +1037,14 @@ export class SessionUpdateService {
         // Fail safe: an unverifiable cross-provider status keeps the flag.
         const stillHasOverlap =
           crossCheckFailed ||
-          flaggedSessionStillConflicts(flaggedSession, allSessions, otherProviderSessions);
+          mainstreamingCheckFailed ||
+          flaggedSessionStillConflicts(flaggedSession, allSessions, otherProviderSessions) ||
+          findOverlappingMainstreamingBlock(
+            mainstreamingBlocks,
+            day,
+            flaggedSession.start_time,
+            flaggedSession.end_time
+          ) !== null;
 
         // If no longer overlapping, clear the conflict flag
         if (!stillHasOverlap) {

@@ -11,6 +11,7 @@ type BellScheduleConflictData = Pick<BellSchedule, 'grade_level' | 'day_of_week'
 type SpecialActivityConflictData = Pick<SpecialActivity, 'teacher_name' | 'day_of_week' | 'start_time' | 'end_time' | 'school_id'> & {
   activity_name?: string;
 };
+type MainstreamingBlockRow = Database['public']['Tables']['mainstreaming_blocks']['Row'];
 
 export class ConflictResolver {
   private supabase;
@@ -99,6 +100,56 @@ export class ConflictResolver {
       return await this.markSessionsAsConflicted(conflictingSessions, conflictReason);
     } catch (error) {
       console.error('Error resolving special activity conflicts:', error);
+      return { marked: 0, failed: 0, error: (error as Error).message };
+    }
+  }
+
+  /**
+   * SPE-478: check and mark conflicts after creating mainstreaming blocks —
+   * the creating provider's OWN sessions for that student that now sit on
+   * protected time. Cross-provider sessions can't be flagged from here (RLS:
+   * we can only update our own rows); other providers are warned at their
+   * next drag/placement, and retro-flagging theirs is a logged follow-up.
+   */
+  async resolveMainstreamingBlockConflicts(
+    blocks: Array<Pick<MainstreamingBlockRow, 'student_id' | 'day_of_week' | 'start_time' | 'end_time' | 'label'>>
+  ) {
+    try {
+      if (blocks.length === 0) return { marked: 0, failed: 0 };
+
+      const studentId = blocks[0].student_id;
+      const { data: sessions } = await this.supabase
+        .from('schedule_sessions')
+        .select('*')
+        .eq('provider_id', this.providerId)
+        .eq('student_id', studentId)
+        .is('session_date', null)
+        .is('deleted_at', null);
+
+      if (!sessions) return { marked: 0, failed: 0 };
+
+      let marked = 0;
+      let failed = 0;
+      for (const block of blocks) {
+        const conflicting = sessions.filter(session =>
+          session.day_of_week === block.day_of_week &&
+          this.hasTimeOverlap(
+            session.start_time,
+            session.end_time,
+            block.start_time,
+            block.end_time
+          )
+        );
+        if (conflicting.length === 0) continue;
+        const label = block.label ? ` (${block.label})` : '';
+        const reason = `Sits on mainstreaming time${label} ${block.start_time.slice(0, 5)}-${block.end_time.slice(0, 5)}`;
+        const result = await this.markSessionsAsConflicted(conflicting, reason);
+        marked += result.marked;
+        failed += result.failed;
+      }
+      return { marked, failed };
+    } catch (error) {
+      console.error('Error resolving mainstreaming block conflicts:', error);
       return { marked: 0, failed: 0, error: (error as Error).message };
     }
   }

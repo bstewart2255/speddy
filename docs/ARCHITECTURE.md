@@ -1087,6 +1087,16 @@ siblings (day_of_week 1–5 + times + school_year, no dated instances), owned by
 the creating provider, hard-deleted (no `deleted_at` — SPE-468 is the
 cautionary tale for soft-deleting constraint tables).
 
+**Blocks resolve through the CHILD, not the caseload row.** A co-served child
+has one `students` row per provider (SPE-347), and the block carries the SDC
+teacher's row id — so every consumer (drag warning, auto-scheduler,
+availability bands, the modal's overlap pre-check) matches on the
+trigger-maintained `child_id` as well as `student_id`. Without that, the
+cross-provider warning — the whole point of protected time — would miss
+whenever another provider serves the same child through their own row
+(caught on PR #856 review). Falls back to row matching for legacy students
+without a child link.
+
 The semantics are a pull-out session **inverted**: the student *leaves* the SDC
 room to *join* a gen-ed class, so the destination class's bell/activity blocks
 are targets, not conflicts — while the block itself is **protected time** for
@@ -1116,9 +1126,16 @@ pattern). No new role or flag — SPE-358 stays parked. The sim fixture carries
 one such persona (Derek, `rsp.juniper`, `SDC_LINKED_PROVIDERS` in the
 manifest).
 
-**RLS** mirrors the family: school-wide SELECT (own rows ∪
-`get_my_school_ids()` ∪ linked-teacher school); writes owner-only AND only for
-students on the caller's own caseload (`students.provider_id = auth.uid()`).
+**RLS**: SELECT = own rows ∪ any school in `get_my_school_ids()` (the
+school-wide breadth is what makes cross-provider protection work) ∪ blocks
+naming the caller's linked classroom as **destination** (a gen-ed teacher sees
+who joins THEIR class, not the school's every block). Writes are owner-only,
+caseload-scoped (`students.provider_id = auth.uid()`), and school-bound: the
+student AND the destination teacher must belong to the block's school. The
+SDC gate itself (the dual-role link) is deliberately **UI-only** — a display
+condition Blair can flip cheaply after pilot feedback, not an RLS predicate;
+any provider writing blocks for their own caseload is caseload-scoped planning
+data, not an escalation.
 
 **Source of truth:**
 `supabase/migrations/20260813_spe478_mainstreaming_blocks.sql` (table + RLS);

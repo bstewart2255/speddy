@@ -635,17 +635,18 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
   private async loadMainstreamingBlocks(): Promise<void> {
     this.mainstreamingBlocks = [];
     try {
-      let query = this.supabase
+      // Blocks require a school_id (NOT NULL), so a non-migrated school can
+      // never own any — and a provider-scoped fallback would import the
+      // caller's blocks from their OTHER, migrated schools and wrongly
+      // hard-avoid slots here (self-review on PR #856). Legacy = none.
+      if (!this.schoolId) {
+        return;
+      }
+      const { data, error } = await this.supabase
         .from('mainstreaming_blocks')
         .select('*')
-        .eq('school_year', this.schoolYear);
-      if (this.schoolId) {
-        query = query.eq('school_id', this.schoolId);
-      } else {
-        query = query.eq('provider_id', this.providerId!);
-      }
-
-      const { data, error } = await query;
+        .eq('school_year', this.schoolYear)
+        .eq('school_id', this.schoolId);
       if (error) {
         this.cacheMetadata.fetchErrors.push(`Mainstreaming blocks: ${error.message}`);
         return;

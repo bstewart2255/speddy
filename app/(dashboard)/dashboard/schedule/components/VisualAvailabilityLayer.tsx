@@ -172,9 +172,16 @@ export function VisualAvailabilityLayer({
     // Mainstreaming blocks (SPE-478, only when student is selected): the
     // student's protected time in a gen-ed class — same visibility rule as
     // other-provider sessions, in the feature's teal so the two read apart.
+    // Matched by shared child as well as caseload row: a co-served child has
+    // a different students row per provider, and the block usually carries
+    // the OTHER provider's row id.
     if (filters.studentId) {
+      const selectedChildId = selectedStudent?.child_id ?? null;
       const studentBlocks = mainstreamingBlocks.filter(
-        b => b.student_id === filters.studentId && b.day_of_week === day
+        b =>
+          b.day_of_week === day &&
+          (b.student_id === filters.studentId ||
+            (selectedChildId !== null && b.child_id === selectedChildId))
       );
 
       studentBlocks.forEach(block => {

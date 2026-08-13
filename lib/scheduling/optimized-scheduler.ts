@@ -411,16 +411,26 @@ export class OptimizedScheduler {
       teacherMap.get(activity.day_of_week)!.push(activity);
     }
 
-    // SPE-478: index mainstreaming blocks by student for O(1) lookup
+    // SPE-478: index mainstreaming blocks for O(1) lookup — under the
+    // caseload row AND, when linked, the shared CHILD id. A co-served child
+    // has a different students row per provider (SPE-347), so child keying is
+    // what lets THIS provider's run avoid a block created by the SDC teacher
+    // on THEIR row for the same child.
+    const indexBlockUnder = (key: string, block: MainstreamingBlock) => {
+      if (!mainstreamingByStudent.has(key)) {
+        mainstreamingByStudent.set(key, new Map());
+      }
+      const keyMap = mainstreamingByStudent.get(key)!;
+      if (!keyMap.has(block.day_of_week)) {
+        keyMap.set(block.day_of_week, []);
+      }
+      keyMap.get(block.day_of_week)!.push(block);
+    };
     for (const block of preloadedData.mainstreamingBlocks || []) {
-      if (!mainstreamingByStudent.has(block.student_id)) {
-        mainstreamingByStudent.set(block.student_id, new Map());
+      indexBlockUnder(block.student_id, block);
+      if (block.child_id) {
+        indexBlockUnder(block.child_id, block);
       }
-      const studentMap = mainstreamingByStudent.get(block.student_id)!;
-      if (!studentMap.has(block.day_of_week)) {
-        studentMap.set(block.day_of_week, []);
-      }
-      studentMap.get(block.day_of_week)!.push(block);
     }
     
     // Build provider availability map for all weekdays
@@ -1217,7 +1227,7 @@ export class OptimizedScheduler {
         // A hard skip like the SPE-287 cross-provider check below — the
         // interactive drag warns and lets a human override; the auto-scheduler
         // has no human in the loop, so protected means protected.
-        if (this.hasMainstreamingConflict(student.id, day, slot.startTime, endTime)) {
+        if (this.hasMainstreamingConflict(student, day, slot.startTime, endTime)) {
           this.log(`    ❌ Mainstreaming conflict: student is in a gen-ed class during this slot`);
           continue;
         }
@@ -1338,16 +1348,22 @@ export class OptimizedScheduler {
    * SPE-478: does this slot overlap the student's mainstreaming time (their
    * protected time in a gen-ed class)? Same shape as the cross-provider check
    * above; the pure overlap rule lives in session-update-service so the drag
-   * warning and this hard-avoid can never drift apart.
+   * warning and this hard-avoid can never drift apart. Consults both the
+   * caseload-row key and the shared-child key, because the block may have
+   * been created by ANOTHER provider on their own row for the same child.
    */
   private hasMainstreamingConflict(
-    studentId: string,
+    student: Pick<Student, 'id' | 'child_id'>,
     day: number,
     startTime: string,
     endTime: string
   ): boolean {
-    const blocks = this.context!.mainstreamingByStudent.get(studentId)?.get(day);
-    if (!blocks || blocks.length === 0) return false;
+    const index = this.context!.mainstreamingByStudent;
+    const blocks = [
+      ...(index.get(student.id)?.get(day) || []),
+      ...(student.child_id ? index.get(student.child_id)?.get(day) || [] : []),
+    ];
+    if (blocks.length === 0) return false;
     return findOverlappingMainstreamingBlock(blocks, day, startTime, endTime) !== null;
   }
 

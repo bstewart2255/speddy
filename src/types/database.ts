@@ -2039,6 +2039,7 @@ export type Database = {
       }
       mainstreaming_blocks: {
         Row: {
+          child_id: string | null
           created_at: string
           day_of_week: number
           end_time: string
@@ -2053,6 +2054,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          child_id?: string | null
           created_at?: string
           day_of_week: number
           end_time: string
@@ -2067,6 +2069,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          child_id?: string | null
           created_at?: string
           day_of_week?: number
           end_time?: string
@@ -2081,6 +2084,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "mainstreaming_blocks_child_id_fkey"
+            columns: ["child_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "mainstreaming_blocks_provider_id_fkey"
             columns: ["provider_id"]
