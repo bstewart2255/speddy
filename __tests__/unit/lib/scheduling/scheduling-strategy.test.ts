@@ -4,6 +4,7 @@ import {
   getGroupingKey,
   isGroupingStrategy,
   isSchedulingStrategy,
+  summarizeGroupability,
 } from '@/lib/scheduling/scheduling-strategy';
 
 /**
@@ -117,5 +118,127 @@ describe('scheduling strategy options (SPE-473)', () => {
     // Guards against a stale persisted value being trusted.
     expect(isSchedulingStrategy('two-pass')).toBe(false);
     expect(isSchedulingStrategy(undefined)).toBe(false);
+  });
+});
+
+describe('grouping coverage summary (SPE-482)', () => {
+  const withTeacher = (id: string, teacher: string | null) => ({
+    grade_level: '3',
+    teacher_id: teacher,
+    teacher_name: null,
+  });
+
+  it('reports nothing for strategies that do not group', () => {
+    const students = [withTeacher('a', 't-1'), withTeacher('b', 't-1')];
+    expect(summarizeGroupability(students, 'balanced')).toBeNull();
+    expect(summarizeGroupability(students, 'morning-first')).toBeNull();
+  });
+
+  it('reports zero coverage when nobody has the field — the real-caseload case', () => {
+    // Ten students, no teacher on any of them: "Group by teacher" is a silent
+    // no-op, which is exactly what this summary exists to surface.
+    const students = Array.from({ length: 10 }, (_, i) => withTeacher(`s${i}`, null));
+    expect(summarizeGroupability(students, 'teacher-grouped')).toEqual({
+      total: 10,
+      withKey: 0,
+      groupable: 0,
+    });
+  });
+
+  it('separates "has the field" from "has a peer to group with"', () => {
+    // Everyone has a teacher, but each teacher is unique — nothing to group.
+    const students = [withTeacher('a', 't-1'), withTeacher('b', 't-2'), withTeacher('c', 't-3')];
+    expect(summarizeGroupability(students, 'teacher-grouped')).toEqual({
+      total: 3,
+      withKey: 3,
+      groupable: 0,
+    });
+  });
+
+  it('counts only students who actually share a key', () => {
+    const students = [
+      withTeacher('a', 't-1'),
+      withTeacher('b', 't-1'),
+      withTeacher('c', 't-2'), // alone in their class
+      withTeacher('d', null),  // no teacher at all
+    ];
+    expect(summarizeGroupability(students, 'teacher-grouped')).toEqual({
+      total: 4,
+      withKey: 3,
+      groupable: 2,
+    });
+  });
+
+  it('summarizes grade coverage independently of teacher coverage', () => {
+    // The Bancroft shape: every student has a grade, none has a teacher.
+    const students = [
+      { grade_level: '5', teacher_id: null, teacher_name: null },
+      { grade_level: '5', teacher_id: null, teacher_name: null },
+      { grade_level: '1', teacher_id: null, teacher_name: null },
+    ];
+    expect(summarizeGroupability(students, 'grade-grouped')).toEqual({
+      total: 3,
+      withKey: 3,
+      groupable: 2,
+    });
+    expect(summarizeGroupability(students, 'teacher-grouped')).toEqual({
+      total: 3,
+      withKey: 0,
+      groupable: 0,
+    });
+  });
+
+  it('handles an empty caseload without dividing by zero', () => {
+    expect(summarizeGroupability([], 'grade-grouped')).toEqual({
+      total: 0,
+      withKey: 0,
+      groupable: 0,
+    });
+  });
+
+  it('gives every grouping option a noun for the picker to use', () => {
+    for (const option of SCHEDULING_STRATEGY_OPTIONS) {
+      if (isGroupingStrategy(option.value)) {
+        expect(option.groupingNoun).toBeTruthy();
+      } else {
+        expect(option.groupingNoun).toBeNull();
+      }
+    }
+  });
+});
+
+describe('coverage is only meaningful over the roster that will be scheduled (SPE-482)', () => {
+  // The schedule page's `students` array carries a provider's own caseload AND,
+  // for specialist roles, students from other providers' caseloads delegated to
+  // them (use-schedule-data appends those by assigned_to_specialist_id).
+  // Auto-Schedule rebuilds its roster with provider_id = me and never places the
+  // delegated ones, so coverage must be summarized over the owned students only.
+  // This pins the skew that would otherwise be reported.
+  const owned = [
+    { grade_level: '3', teacher_id: null, teacher_name: null },
+    { grade_level: '4', teacher_id: null, teacher_name: null },
+  ];
+  const delegatedFromAnotherProvider = [
+    { grade_level: '5', teacher_id: 't-9', teacher_name: null },
+    { grade_level: '5', teacher_id: 't-9', teacher_name: null },
+  ];
+
+  it('reports no teacher coverage for the owned caseload', () => {
+    expect(summarizeGroupability(owned, 'teacher-grouped')).toEqual({
+      total: 2,
+      withKey: 0,
+      groupable: 0,
+    });
+  });
+
+  it('would hide that fact if delegated students were mixed in', () => {
+    // Same owned students, plus two delegated ones who share a teacher: the
+    // "nobody has a teacher" warning silently downgrades to a partial count,
+    // describing students the run will never touch.
+    const mixed = [...owned, ...delegatedFromAnotherProvider];
+    const summary = summarizeGroupability(mixed, 'teacher-grouped')!;
+    expect(summary.withKey).toBe(2);
+    expect(summary.groupable).toBe(2);
+    expect(summary.total).toBe(4);
   });
 });

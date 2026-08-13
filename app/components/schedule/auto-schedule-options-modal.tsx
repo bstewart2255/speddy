@@ -4,8 +4,56 @@ import { Modal } from '../ui/modal';
 import { Button } from '../ui/button';
 import {
   SCHEDULING_STRATEGY_OPTIONS,
+  summarizeGroupability,
+  type GroupableStudent,
+  type GroupabilitySummary,
   type SchedulingStrategy,
 } from '../../../lib/scheduling/scheduling-strategy';
+
+/**
+ * What a grouping option can actually do with this caseload, in plain words
+ * (SPE-482). Returns null when there is nothing worth saying.
+ *
+ * The case this exists for: a provider picks "Group by teacher", none of their
+ * students have a teacher recorded, and the run silently produces a balanced
+ * schedule with no explanation. Telling them BEFORE the run costs nothing and
+ * points at the fix, which is their data rather than the option.
+ */
+function groupabilityNote(
+  summary: GroupabilitySummary | null,
+  noun: string | null
+): { text: string; tone: 'warning' | 'info' } | null {
+  if (!summary || !noun || summary.total === 0) return null;
+
+  // Deliberately phrased in terms of grouping outcomes, never as "identical to
+  // Balanced". That equivalence isn't true: a student with a key the strategy
+  // recognises — even a unique one nobody shares — still takes the grouping
+  // capacity ladder, which opens at the full group ceiling rather than
+  // Balanced's conservative first pass. What the provider needs to know is
+  // whether anyone gets grouped, which is exactly what these say.
+  if (summary.withKey === 0) {
+    return {
+      tone: 'warning',
+      text: `None of your ${summary.total} students here have a ${noun} recorded, so this option can't group anyone. Add ${noun}s on the Students page to use it.`,
+    };
+  }
+  if (summary.groupable === 0) {
+    return {
+      tone: 'warning',
+      text: `No two students here share a ${noun}, so there is no one to group.`,
+    };
+  }
+  if (summary.groupable < summary.total) {
+    return {
+      tone: 'info',
+      text: `${summary.groupable} of ${summary.total} students share a ${noun} with someone. The others have no one to group with.`,
+    };
+  }
+  return {
+    tone: 'info',
+    text: `All ${summary.total} students share a ${noun} with someone.`,
+  };
+}
 
 interface AutoScheduleOptionsModalProps {
   isOpen: boolean;
@@ -22,6 +70,12 @@ interface AutoScheduleOptionsModalProps {
   strategy: SchedulingStrategy;
   onStrategyChange: (strategy: SchedulingStrategy) => void;
   onConfirm: () => void;
+  /**
+   * The caseload at the current school, used only to tell the provider how much
+   * each grouping option can act on. Optional: with none passed, the picker
+   * simply shows no coverage note.
+   */
+  students?: readonly GroupableStudent[];
 }
 
 /**
@@ -39,6 +93,7 @@ export function AutoScheduleOptionsModal({
   strategy,
   onStrategyChange,
   onConfirm,
+  students = [],
 }: AutoScheduleOptionsModalProps) {
   return (
     <Modal
@@ -73,6 +128,12 @@ export function AutoScheduleOptionsModal({
         <div className="mt-4 space-y-2">
           {SCHEDULING_STRATEGY_OPTIONS.map((option) => {
             const isSelected = option.value === strategy;
+            // Shown on every grouping option, not just the selected one, so the
+            // coverage is visible while choosing rather than after.
+            const note = groupabilityNote(
+              summarizeGroupability(students, option.value),
+              option.groupingNoun
+            );
             return (
               <label
                 key={option.value}
@@ -99,6 +160,23 @@ export function AutoScheduleOptionsModal({
                   <span className="mt-0.5 block text-sm text-gray-600">
                     {option.description}
                   </span>
+                  {note && (
+                    <span
+                      data-testid={`strategy-coverage-${option.value}`}
+                      className={`mt-1.5 block text-sm ${
+                        note.tone === 'warning'
+                          ? 'font-medium text-amber-700'
+                          : 'text-gray-500'
+                      }`}
+                    >
+                      {note.tone === 'warning' && (
+                        <span aria-hidden="true" className="mr-1">
+                          ⚠
+                        </span>
+                      )}
+                      {note.text}
+                    </span>
+                  )}
                 </span>
               </label>
             );

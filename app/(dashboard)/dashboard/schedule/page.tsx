@@ -63,6 +63,18 @@ export default function SchedulePage() {
     () => !!currentUserId && teachers.some(t => t.account_id === currentUserId),
     [teachers, currentUserId]
   );
+  // SPE-482: the caseload Auto-Schedule will actually place, which is the
+  // provider's OWN students. For specialist roles `students` also carries
+  // students from other providers' caseloads that are delegated to this user
+  // (use-schedule-data appends them by assigned_to_specialist_id), while
+  // handleScheduleSessions rebuilds its roster with provider_id = me and never
+  // touches them. Reporting grouping coverage over the mixed array would
+  // describe a population the run ignores — delegated students sharing a
+  // teacher could hide that none of the provider's own students are groupable.
+  const ownedStudents = useMemo(
+    () => students.filter(student => student.provider_id === currentUserId),
+    [students, currentUserId]
+  );
   const [mainstreamingModalOpen, setMainstreamingModalOpen] = useState(false);
   const handleMainstreamingBlockDelete = useCallback(
     async (blockId: string) => {
@@ -549,6 +561,7 @@ export default function SchedulePage() {
             unscheduledPanelCount={unscheduledSessions.length}
             currentSchool={currentSchool}
             onScheduleComplete={handleScheduleComplete}
+            students={ownedStudents}
             showMainstreamingButton={hasOwnClassroom}
             onAddMainstreamingBlock={() => setMainstreamingModalOpen(true)}
           />
