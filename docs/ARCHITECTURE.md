@@ -1136,7 +1136,10 @@ only the accounts THEY create), which left all four Rodeo Hills SDC teachers
 and both JSHS hybrids unlinked until the SPE-481 backfill. Multi-school
 caveat: matching uses the profile's primary school only.
 `sdc_autolink_on_teacher_write` / `sdc_autolink_on_profile_write`
-(20260813_spe481_sdc_auto_link.sql).
+(20260813_spe481_sdc_auto_link.sql; superseded in place by `_v2` — links on
+email/school edits too, one linked row per account — and `_v3` — per-account
+advisory lock serializing concurrent linkers, SPE-141 pattern; read all three
+as one unit).
 
 **RLS**: SELECT = own rows ∪ any school in `get_my_school_ids()` (the
 school-wide breadth is what makes cross-provider protection work) ∪ blocks
