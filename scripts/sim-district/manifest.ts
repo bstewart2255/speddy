@@ -882,6 +882,10 @@ export const DECLARED_UNSEEDED_TABLES: string[] = [
   // Children of swept IEP tables — cleaned by ON DELETE CASCADE from
   // iep_meetings / student_parent_contacts, so no direct sweep key needed:
   'iep_meeting_attendees', 'parent_confirmation_tokens',
+  // SDC per-student blocked times (PR #860): every FK (children, students,
+  // profiles, schools) is ON DELETE CASCADE, so teardown's parent deletes
+  // clean it — created live via the app when a run exercises SDC scheduling:
+  'student_blocked_times',
   // AI-generated content (AI gated off; generation costs real tokens):
   'exit_tickets', 'exit_ticket_results', 'progress_checks', 'progress_check_results',
   'saved_worksheets', 'worksheet_submissions', 'lesson_adjustment_queue',
