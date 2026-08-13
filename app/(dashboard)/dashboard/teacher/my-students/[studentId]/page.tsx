@@ -226,8 +226,8 @@ export default function StudentDetailPage() {
       </div>
 
       {/* Accommodations — the case manager's accommodations are the teacher's
-          line of sight without digging through IEP paperwork. Shown at every
-          site type (SPE-488). */}
+          line of sight without digging through IEP paperwork. Shown at both
+          elementary and secondary sites (SPE-488). */}
       <Card className="mb-6">
         <div className="px-6 py-4 border-b border-gray-200">
           <h2 className="text-lg font-medium text-gray-900">Accommodations</h2>

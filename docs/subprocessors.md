@@ -8,7 +8,7 @@ exhibit (see SPE-59) and for student-data-privacy disclosures.
 > touch student data is an NDPA change-notification trigger — update this list in
 > the same PR, and notify LEAs per the executed agreement.
 
-_Last reviewed: 2026-07-16._
+_Last reviewed: 2026-08-13._
 
 ## Data categories
 

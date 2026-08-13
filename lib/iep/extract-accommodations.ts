@@ -24,6 +24,11 @@ const MAX_ITEM_CHARS = 1000;
 // Thinking is disabled, so the whole budget is available for the list; real
 // accommodation lists serialize to well under 2k tokens.
 const MAX_OUTPUT_TOKENS = 8192;
+// The route runs under `maxDuration = 60`; the SDK's defaults (10-minute
+// timeout, 2 retries) would let a hung call outlive the function and surface
+// as a generic platform kill instead of the friendly 502 below. One attempt,
+// bounded inside the route budget — the provider can simply retry.
+const REQUEST_TIMEOUT_MS = 55_000;
 
 // Accuracy matters more than latency here — the output lands in front of every
 // gen-ed teacher on the student's caseload. Extraction is mechanical, so
@@ -105,7 +110,7 @@ export async function extractAccommodationsFromPdf(pdf: Buffer): Promise<string[
     throw new Error('ANTHROPIC_API_KEY is not configured');
   }
 
-  const client = new Anthropic({ apiKey });
+  const client = new Anthropic({ apiKey, timeout: REQUEST_TIMEOUT_MS, maxRetries: 0 });
 
   let response: Anthropic.Message;
   try {
@@ -216,6 +221,9 @@ export async function extractAccommodationsFromPdf(pdf: Buffer): Promise<string[
 
   log.info('Accommodation extraction completed', {
     itemCount: accommodations.length,
+    // Counts only, never text. A rawItemCount above itemCount makes the
+    // sanitizer's dedupe and MAX_ITEMS cap visible instead of silent.
+    rawItemCount: rawList.length,
     inputTokens: response.usage.input_tokens,
     outputTokens: response.usage.output_tokens,
   });

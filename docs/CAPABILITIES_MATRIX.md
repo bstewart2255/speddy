@@ -216,8 +216,8 @@ spreadsheet, a binder, and someone's memory.
 - Assessment records (STAR Reading/Math, WISC-V, BRIEF, WIAT-4, WJ-IV,
   mClass and others) with trend views.
 - Teacher-facing view of the same student, scoped to what a gen-ed teacher
-  needs: services, schedule, goals, and accommodations — at every site type
-  (SPE-488).
+  needs: services, schedule, goals, and accommodations — at both elementary
+  and secondary sites (SPE-488).
 
 **Who uses it:** providers own their caseloads. Site admins see the school's
 students; district admins see across schools. SEAs view the students they

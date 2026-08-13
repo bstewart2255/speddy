@@ -23,6 +23,7 @@ const USER_ID = '11111111-1111-4111-8111-111111111111';
 const STUDENT_ID = '22222222-2222-4222-8222-222222222222';
 
 const mockCreate = jest.fn();
+const mockClientOptions = jest.fn();
 jest.mock('@anthropic-ai/sdk', () => {
   class MockAPIError extends Error {
     status?: number;
@@ -46,7 +47,9 @@ jest.mock('@anthropic-ai/sdk', () => {
     static BadRequestError = MockBadRequestError;
     static RateLimitError = MockRateLimitError;
     messages = { create: (...args: unknown[]) => mockCreate(...args) };
-    constructor(_opts: unknown) {}
+    constructor(opts: unknown) {
+      mockClientOptions(opts);
+    }
   }
   return { __esModule: true, default: MockAnthropic };
 });
@@ -237,6 +240,12 @@ describe('POST /api/students/[studentId]/extract-accommodations', () => {
     expect(documentBlock.source.media_type).toBe('application/pdf');
     expect(documentBlock.source.data).toBe(Buffer.from(PDF_BYTES).toString('base64'));
     expect(textBlock.type).toBe('text');
+
+    // One bounded attempt: the SDK's default 10-minute timeout and 2 retries
+    // would outlive the route's 60-second maxDuration.
+    expect(mockClientOptions).toHaveBeenCalledWith(
+      expect.objectContaining({ timeout: 55_000, maxRetries: 0 })
+    );
   });
 
   it('returns an empty list when the document has no accommodations', async () => {
@@ -253,6 +262,15 @@ describe('POST /api/students/[studentId]/extract-accommodations', () => {
     expect(res.status).toBe(422);
     const body = await res.json();
     expect(body.error).toMatch(/couldn't be read/i);
+    expect(body.error).not.toMatch(/provider/);
+  });
+
+  it('maps a provider rate limit to a friendly 429 without leaking provider text', async () => {
+    mockCreate.mockRejectedValueOnce(new (Anthropic as any).RateLimitError());
+    const res = await POST(makeRequest(PDF_BYTES), ctx());
+    expect(res.status).toBe(429);
+    const body = await res.json();
+    expect(body.error).toMatch(/busy right now/i);
     expect(body.error).not.toMatch(/provider/);
   });
 
