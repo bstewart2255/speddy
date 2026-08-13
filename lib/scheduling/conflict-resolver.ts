@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/client';
 import { Database } from '../../src/types/database';
+import { isClassPeriodBlock } from '@/lib/constants/activity-types';
 
 type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
 type BellSchedule = Database['public']['Tables']['bell_schedules']['Row'];
@@ -25,6 +26,12 @@ export class ConflictResolver {
   // Check and mark conflicts after bell schedule changes
   async resolveBellScheduleConflicts(newBellSchedule: BellScheduleConflictData) {
     try {
+      // Class periods describe the secondary day's structure — pull-outs
+      // happen DURING them, so adding one must not flag sessions (SPE-491).
+      if (isClassPeriodBlock(newBellSchedule.period_name)) {
+        return { marked: 0, failed: 0 };
+      }
+
       // Validate school_id is present to prevent cross-school conflicts
       if (!newBellSchedule.school_id) {
         console.warn('resolveBellScheduleConflicts called without school_id - skipping conflict resolution');

@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/client';
+import { isClassPeriodBlock } from '@/lib/constants/activity-types';
 import { isSpecialistSourceRole } from '@/lib/auth/role-utils';
 import { Database } from "../../src/types/database";
 import { SchedulingDataManager } from './scheduling-data-manager';
@@ -384,8 +385,11 @@ export class OptimizedScheduler {
     const specialActivitiesByTeacher = new Map<string, Map<number, SpecialActivity[]>>();
     const mainstreamingByStudent = new Map<string, Map<number, MainstreamingBlock[]>>();
     
-    // Index bell schedules by grade for O(1) lookup
+    // Index bell schedules by grade for O(1) lookup. Class periods (the
+    // secondary period grid) are structure, not restrictions — pull-outs
+    // happen inside them — so they never enter the conflict index (SPE-491).
     for (const bell of preloadedData.bellSchedules) {
+      if (isClassPeriodBlock(bell.period_name)) continue;
       const grades = bell.grade_level.split(',').map((g: string) => g.trim());
       for (const grade of grades) {
         if (!bellSchedulesByGrade.has(grade)) {

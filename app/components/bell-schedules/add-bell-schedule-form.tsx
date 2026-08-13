@@ -6,7 +6,10 @@ import { Database } from '../../../src/types/database';
 import { ConflictResolver } from '../../../lib/scheduling/conflict-resolver';
 import { useSchool } from '../../components/providers/school-context';
 import { generateActivityTimeOptions } from '../../../lib/utils/time-options';
-import { BELL_SCHEDULE_ACTIVITIES } from '../../../lib/constants/activity-types';
+import {
+  BELL_SCHEDULE_ACTIVITIES,
+  SECONDARY_BELL_SCHEDULE_ACTIVITIES,
+} from '../../../lib/constants/activity-types';
 import { getCurrentSchoolYear } from '../../../lib/school-year';
 
 type CreatorRole = 'provider' | 'site_admin';
@@ -47,7 +50,13 @@ export default function AddBellScheduleForm({
   const [submitting, setSubmitting] = useState(false);
   const supabase = createClient<Database>();
 
-  const { currentSchool } = useSchool();
+  const { currentSchool, isSecondary } = useSchool();
+
+  // Secondary schools pick from the period grid (Period A/1–8, Advisory,
+  // Brunch, Lunch…); elementary keeps its recess/lunch list (SPE-491).
+  const activityOptions = isSecondary
+    ? SECONDARY_BELL_SCHEDULE_ACTIVITIES
+    : BELL_SCHEDULE_ACTIVITIES;
 
   const daysOfWeek = [
     { id: 1, name: 'Monday', shortName: 'Mon' },
@@ -356,7 +365,7 @@ export default function AddBellScheduleForm({
           required
         >
           <option value="">Select activity</option>
-          {BELL_SCHEDULE_ACTIVITIES.map((activity) => (
+          {activityOptions.map((activity) => (
             <option key={activity} value={activity}>
               {activity}
             </option>

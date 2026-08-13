@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/client';
+import { isClassPeriodBlock } from '@/lib/constants/activity-types';
 import { ScheduleSession, BellSchedule, SpecialActivity, type Database } from '@/src/types';
 import { DEFAULT_SCHEDULING_CONFIG } from '@/lib/scheduling/scheduling-config';
 import { requireNonNull } from '@/lib/types/utils';
@@ -524,9 +525,16 @@ export class SessionUpdateService {
 
     if (bellSchedules) {
       for (const schedule of bellSchedules) {
+        // Class periods (secondary period grid) are the slots pull-outs happen
+        // inside of — never a conflict (SPE-491). Breaks (Brunch/Lunch…) keep
+        // full conflict behavior.
+        if (isClassPeriodBlock(schedule.period_name)) {
+          continue;
+        }
+
         // Parse comma-separated grade levels from bell schedule
         const bellGrades = schedule.grade_level.split(',').map((g: string) => g.trim());
-        
+
         // Check if student's grade is in the bell schedule's grade list
         if (bellGrades.includes(student.grade_level.trim())) {
           if (this.hasTimeOverlap(startTime, endTime, schedule.start_time, schedule.end_time)) {

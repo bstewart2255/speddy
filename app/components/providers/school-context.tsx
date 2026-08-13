@@ -57,6 +57,7 @@ export interface SchoolInfo {
   // School-level inputs (drive the secondary / middle-high experience)
   school_type?: string | null;
   grade_span_low?: string | null;
+  grade_span_high?: string | null;
 
   // Additional metadata
   school_details?: {
@@ -122,6 +123,7 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
             name,
             school_type,
             grade_span_low,
+            grade_span_high,
             districts!inner(
               name,
               states!inner(
@@ -137,6 +139,7 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
         if (schoolDetails) {
           enrichedSchool.school_type = schoolDetails.school_type;
           enrichedSchool.grade_span_low = schoolDetails.grade_span_low;
+          enrichedSchool.grade_span_high = schoolDetails.grade_span_high;
         }
 
         if (schoolDetails && schoolDetails.districts) {

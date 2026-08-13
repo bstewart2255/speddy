@@ -3,6 +3,7 @@
 import React, { useMemo } from 'react';
 import { GRADE_COLOR_MAP } from '@/lib/scheduling/constants';
 import { formatTeacherName } from '@/lib/utils/teacher-utils';
+import { isClassPeriodBlock } from '@/lib/constants/activity-types';
 import type {
   BellSchedule,
   MainstreamingBlock,
@@ -80,6 +81,10 @@ export function VisualAvailabilityLayer({
     if (effectiveGrade) {
       const gradeBellSchedules = bellSchedules.filter(bs => {
         if (bs.day_of_week !== day) return false;
+        // Class periods (secondary period grid) are day structure, not
+        // restrictions — banding them would paint the whole day as blocked
+        // (SPE-491).
+        if (isClassPeriodBlock(bs.period_name)) return false;
         // Handle comma-separated grade levels
         const grades = bs.grade_level.split(',').map(g => g.trim());
         return grades.includes(effectiveGrade!);

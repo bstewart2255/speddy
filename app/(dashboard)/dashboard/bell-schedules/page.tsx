@@ -10,12 +10,16 @@ import BellScheduleCSVImport from '../../../components/bell-schedules/csv-import
 import { getBellSchedules, deleteBellSchedule } from '../../../../lib/supabase/queries/bell-schedules';
 import { getCurrentSchoolYear } from '../../../../lib/school-year';
 import { useSchool } from '../../../components/providers/school-context';
+import { getSecondaryGradeRange } from '../../../../lib/school-helpers';
 import { CollapsibleCard } from '../../../components/ui/collapsible-card';
 import SchoolHoursForm from '../../../components/bell-schedules/school-hours-form';
 import { FilterSelect } from '../../../components/schedule/filter-select';
 import { LastSaved } from '../../../components/ui/last-saved';
 import { getLastSavedBellSchedule } from '../../../../lib/supabase/queries/last-saved';
-import { BELL_SCHEDULE_ACTIVITIES } from '../../../../lib/constants/activity-types';
+import {
+  BELL_SCHEDULE_ACTIVITIES,
+  SECONDARY_BELL_SCHEDULE_ACTIVITIES,
+} from '../../../../lib/constants/activity-types';
 import { createClient } from '@/lib/supabase/client';
 
 export default function BellSchedulesPage() {
@@ -28,7 +32,15 @@ export default function BellSchedulesPage() {
   const [sortByGrade, setSortByGrade] = useState(false);
   const [lastSaved, setLastSaved] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const { currentSchool, loading: schoolLoading } = useSchool();
+  const { currentSchool, loading: schoolLoading, isSecondary } = useSchool();
+
+  // A secondary period grid applies school-wide: one row per day covering the
+  // whole grade span (comma-joined; every matcher splits on commas), so the
+  // per-grade picker disappears (SPE-491).
+  const secondaryGrades = useMemo(
+    () => (isSecondary ? getSecondaryGradeRange(currentSchool) : []),
+    [isSecondary, currentSchool]
+  );
 
   // Get current user ID for ownership checks
   useEffect(() => {
@@ -132,10 +144,13 @@ export default function BellSchedulesPage() {
     });
   }, [bellSchedules, gradeFilter, dayFilter, activityFilter]);
   
-  // Activity options from predefined constants
+  // Activity options from predefined constants (period grid at secondary)
   const activityOptions = useMemo(() => {
-    return BELL_SCHEDULE_ACTIVITIES.map(activity => ({ value: activity, label: activity }));
-  }, []);
+    const activities = isSecondary
+      ? SECONDARY_BELL_SCHEDULE_ACTIVITIES
+      : BELL_SCHEDULE_ACTIVITIES;
+    return activities.map(activity => ({ value: activity, label: activity }));
+  }, [isSecondary]);
 
   // Check if current user owns a bell schedule (can delete it)
   const isOwner = (schedule: any) => {
@@ -168,7 +183,11 @@ export default function BellSchedulesPage() {
           <div className="flex justify-between items-center">
             <div>
               <h1 className="text-3xl font-bold text-gray-900 mb-2">Bell Schedules</h1>
-              <p className="text-gray-600">Set grade-wide time restrictions (Start/End, Recess, Lunch, etc)</p>
+              <p className="text-gray-600">
+                {isSecondary
+                  ? "Enter the school's period grid (Periods, Brunch, Lunch, Advisory). Class periods are reference only — sessions can be scheduled during them; Brunch/Lunch block scheduling."
+                  : 'Set grade-wide time restrictions (Start/End, Recess, Lunch, etc)'}
+              </p>
             </div>
             <div className="flex flex-col items-end gap-2">
               <div className="flex items-center gap-3">
@@ -249,6 +268,11 @@ export default function BellSchedulesPage() {
                 </div>
               </CardHeader>
               <CardBody>
+                {isSecondary ? (
+                  <p className="mb-4 text-sm text-gray-600">
+                    Applies to all grades ({secondaryGrades[0]}–{secondaryGrades[secondaryGrades.length - 1]}) — the period grid is school-wide.
+                  </p>
+                ) : (
                 <div className="mb-4">
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Select Grade Level
@@ -269,8 +293,9 @@ export default function BellSchedulesPage() {
                     ))}
                   </div>
                 </div>
+                )}
                 <AddBellScheduleForm
-                  gradeLevel={selectedGrade}
+                  gradeLevel={isSecondary ? secondaryGrades.join(',') : selectedGrade}
                   onSuccess={() => {
                     setShowAddForm(false);
                     fetchSchedules();
@@ -303,6 +328,7 @@ export default function BellSchedulesPage() {
             {/* Filter Section */}
             <div className="mb-4">
               <div className="flex flex-wrap gap-4">
+                {!isSecondary && (
                 <FilterSelect
                   label="Grade:"
                   value={gradeFilter}
@@ -318,6 +344,7 @@ export default function BellSchedulesPage() {
                   ]}
                   placeholder="All Grades"
                 />
+                )}
                 <FilterSelect
                   label="Day:"
                   value={dayFilter}
