@@ -26,8 +26,15 @@ import { GET } from '@/app/api/features/route';
 const makeRequest = () => new NextRequest('http://localhost/api/features');
 
 describe('GET /api/features', () => {
+  const ORIGINAL_FLAG = process.env.AI_FEATURES_ENABLED;
+
   beforeEach(() => {
     delete process.env.AI_FEATURES_ENABLED;
+  });
+
+  afterAll(() => {
+    if (ORIGINAL_FLAG === undefined) delete process.env.AI_FEATURES_ENABLED;
+    else process.env.AI_FEATURES_ENABLED = ORIGINAL_FLAG;
   });
 
   it('reports aiFeatures false while the switch is off', async () => {

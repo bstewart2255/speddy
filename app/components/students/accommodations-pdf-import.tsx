@@ -15,6 +15,32 @@ interface Proposal {
   checked: boolean;
 }
 
+// Availability probe for the AI kill switch (SPE-494), shared across mounts so
+// tab-flipping inside the modal doesn't re-ask. Only a confirmed "on" is
+// cached: while the switch is off (or the check fails) the next mount asks
+// again, so flipping the switch shows the button on the next modal open
+// without a full page reload. Fail-closed on any error or non-OK response.
+let aiConfirmedOn: Promise<boolean> | null = null;
+
+function checkAiFeatures(): Promise<boolean> {
+  if (aiConfirmedOn) return aiConfirmedOn;
+  const probe = fetch('/api/features')
+    .then((res) => (res.ok ? res.json() : null))
+    .then((data) => (data as { aiFeatures?: unknown } | null)?.aiFeatures === true)
+    .catch(() => false)
+    .then((on) => {
+      if (!on) aiConfirmedOn = null;
+      return on;
+    });
+  aiConfirmedOn = probe;
+  return probe;
+}
+
+/** Test-only: clear the module-level probe cache between cases. */
+export function __resetAiFeaturesProbeForTests() {
+  aiConfirmedOn = null;
+}
+
 interface AccommodationsPdfImportProps {
   studentId: string;
   /** Current accommodations in the form, used to flag already-listed proposals. */
@@ -42,18 +68,14 @@ export function AccommodationsPdfImport({
 
   // Hidden until the server confirms AI features are on (SPE-494). AI surfaces
   // stay out of reach while the kill switch is off, and this one lives inside
-  // an always-reachable modal — so it has to ask. Fail-closed: any fetch error
-  // keeps it hidden.
+  // an always-reachable modal — so it has to ask.
   const [available, setAvailable] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    fetch('/api/features')
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (!cancelled && data?.aiFeatures === true) setAvailable(true);
-      })
-      .catch(() => {});
+    checkAiFeatures().then((on) => {
+      if (!cancelled && on) setAvailable(true);
+    });
     return () => {
       cancelled = true;
     };
