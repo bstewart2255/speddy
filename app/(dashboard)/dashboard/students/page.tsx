@@ -26,6 +26,7 @@ import { StudentImportModal } from '../../../components/students/student-import-
 import { StudentImportReview } from '../../../components/students/review/student-import-review';
 import { IepMinutesConverter } from '../../../components/students/iep-minutes-converter';
 import { calculateSessions, MAX_MINUTES_PER_SESSION } from '@/lib/services/weekly-minutes';
+import { canScheduleAtSecondary } from '@/lib/school-helpers';
 import { adaptBulkPreview } from '@/lib/import/review-model';
 import type { BulkPreviewData } from '@/lib/types/student-import';
 
@@ -564,8 +565,9 @@ export default function StudentsPage() {
           />
         )}
 
-        {/* Unscheduled Sessions Notification — scheduling doesn't apply on secondary sites */}
-        {!isSecondary && unscheduledCount > 0 && (
+        {/* Unscheduled Sessions Notification — scheduling doesn't apply on
+            secondary sites, except for related-service roles (SPE-490) */}
+        {(!isSecondary || canScheduleAtSecondary(userRole)) && unscheduledCount > 0 && (
           <div className="mb-8 bg-amber-50 border border-amber-200 rounded-lg p-4">
             <div className="flex items-center">
               <svg className="h-5 w-5 text-amber-400 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">

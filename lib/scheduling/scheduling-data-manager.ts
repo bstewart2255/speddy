@@ -18,6 +18,7 @@ import type {
   SchedulingDataManagerInterface
 } from './types/scheduling-data';
 import type { OtherProviderSessionLite } from '@/lib/services/session-update-service';
+import { isSpecialistSourceRole } from '@/lib/auth/role-utils';
 
 type MainstreamingBlock = Database['public']['Tables']['mainstreaming_blocks']['Row'];
 
@@ -473,7 +474,7 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
 
     // For specialist users, also fetch sessions assigned to them (even from other providers' students)
     let sessionsResult;
-    if (this.providerRole && ['resource', 'speech', 'ot', 'counseling', 'specialist', 'intervention'].includes(this.providerRole)) {
+    if (this.providerRole && isSpecialistSourceRole(this.providerRole)) {
       // Fetch sessions where:
       // 1. Student belongs to this user (any sessions for my students)
       // 2. OR assigned to this user (sessions assigned to me, regardless of whose students)

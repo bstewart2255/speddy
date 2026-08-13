@@ -5,6 +5,8 @@ import { createClient } from '@/lib/supabase/client';
 import { calculateOptimalModalPosition, getSessionModalDimensions, type ModalPosition } from '@/lib/utils/modal-positioning';
 import { formatTime } from '@/lib/utils/time-options';
 import type { Database, ScheduleSession, Student } from '@/src/types';
+import type { SpecialistSourceRole } from '@/lib/auth/role-utils';
+import { formatRoleLabel } from '@/lib/utils/role-utils';
 import { ExclamationTriangleIcon } from '@heroicons/react/24/solid';
 
 type ScheduleSessionUpdate = Database['public']['Tables']['schedule_sessions']['Update'];
@@ -14,7 +16,7 @@ interface SessionAssignmentPopupProps {
   student?: Student;
   triggerRect: DOMRect;
   seaProfiles: Array<{ id: string; full_name: string; is_shared?: boolean }>;
-  otherSpecialists: Array<{ id: string; full_name: string; role: 'resource' | 'speech' | 'ot' | 'counseling' | 'specialist' | 'intervention' }>;
+  otherSpecialists: Array<{ id: string; full_name: string; role: SpecialistSourceRole }>;
   sessionTags: Record<string, string>;
   setSessionTags: React.Dispatch<React.SetStateAction<Record<string, string>>>;
   onClose: () => void;
@@ -262,16 +264,8 @@ export function SessionAssignmentPopup({
           {otherSpecialists.length > 0 && (
             <optgroup label="Other Specialists">
               {otherSpecialists.map((specialist) => {
-                // Format role display
-                const roleDisplay = {
-                  'resource': 'Resource',
-                  'speech': 'Speech',
-                  'ot': 'OT',
-                  'counseling': 'Counseling',
-                  'specialist': 'Specialist',
-                  'intervention': 'Intervention'
-                }[specialist.role] || specialist.role;
-                
+                const roleDisplay = formatRoleLabel(specialist.role);
+
                 return (
                   <option key={`specialist:${specialist.id}`} value={`specialist:${specialist.id}`}>
                     {specialist.full_name} ({roleDisplay})

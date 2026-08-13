@@ -26,6 +26,7 @@ import { buildAssignmentUpdate, buildSessionTimes } from './utils/drag-session';
 import { AddMainstreamingBlockModal } from '../../../components/schedule/add-mainstreaming-block-modal';
 import { deleteMainstreamingBlock } from '../../../../lib/supabase/queries/mainstreaming-blocks';
 import type { ScheduleSession } from '@/src/types';
+import { isSpecialistSourceRole } from '@/lib/auth/role-utils';
 
 export default function SchedulePage() {
   const { currentSchool } = useSchool();
@@ -584,7 +585,7 @@ export default function SchedulePage() {
             highlightedStudentId={highlightedStudentId}
             onSessionFilterChange={setSessionFilter}
             showSpecialistFilter={providerRole === 'resource' && otherSpecialists.length > 0}
-            showAssignedFilter={['resource', 'speech', 'ot', 'counseling', 'specialist', 'intervention'].includes(providerRole)}
+            showAssignedFilter={isSpecialistSourceRole(providerRole)}
             onGradeToggle={toggleGrade}
             onTimeSlotClear={clearTimeSlot}
             onDayClear={clearDay}

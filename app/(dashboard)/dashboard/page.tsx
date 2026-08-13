@@ -12,6 +12,7 @@ import { WeeklyView } from '../../components/weekly-view';
 import { AttendanceWidget } from '../../components/dashboard/attendance-widget';
 import { ToastProvider } from '../../contexts/toast-context';
 import { useSchool } from '../../components/providers/school-context';
+import { canScheduleAtSecondary } from '@/lib/school-helpers';
 
 export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
@@ -84,8 +85,13 @@ export default function DashboardPage() {
 
           {/* Main Content Area */}
           <div className="space-y-4">
-            {/* Scheduling & attendance views don't apply on secondary (middle/high) sites */}
-            {!isSecondary && <WeeklyView viewMode="provider" />}
+            {/* Scheduling & attendance views don't apply on secondary
+                (middle/high) sites — except the Weekly view for related-service
+                roles, which schedule sessions at secondary too (SPE-490).
+                Attendance stays elementary-only. */}
+            {(!isSecondary || canScheduleAtSecondary(userRole)) && (
+              <WeeklyView viewMode="provider" />
+            )}
 
             <div className={`grid grid-cols-1 gap-4 ${isSecondary ? '' : 'lg:grid-cols-2'}`}>
               {!isSecondary && <AttendanceWidget />}
