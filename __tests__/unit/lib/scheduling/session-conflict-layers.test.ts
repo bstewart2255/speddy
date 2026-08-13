@@ -90,20 +90,27 @@ jest.mock('@/lib/supabase/client', () => ({
   },
 }));
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires
 const { updateExistingSessionsForStudent } = require('@/lib/scheduling/session-requirement-sync');
 
 /**
  * Runs the sync with unchanged requirements, which skips the duration and count
  * steps and exercises conflict detection on its own.
+ *
+ * Asserts the run actually succeeded before returning. `updateExistingSessionsForStudent`
+ * swallows every error into `{ success: false }`, so without this a broken
+ * fixture would leave `flagged` empty and every "must not flag" case below would
+ * pass for the wrong reason — the exact failure these tests exist to catch.
  */
 async function detectConflicts() {
   flagged = [];
-  await updateExistingSessionsForStudent(
+  const result = await updateExistingSessionsForStudent(
     'student-1',
     { minutes_per_session: 30, sessions_per_week: 2 },
     { minutes_per_session: 30, sessions_per_week: 2 }
   );
+  expect(result).toMatchObject({ success: true });
+  // Detection genuinely ran and agrees with what was written.
+  expect(result.conflictCount).toBe(flagged.length);
   return flagged;
 }
 
