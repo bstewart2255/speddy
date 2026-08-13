@@ -33,8 +33,11 @@ export function ConflictFilterPanel({
   onFilterChange,
   hasOtherProviderSessions = false,
 }: ConflictFilterPanelProps) {
-  // Get unique grade levels from bell schedules, sorted in logical grade order (TK, K, 1, 2, 3...)
-  const gradeLevels = Array.from(new Set(bellSchedules.map(bs => bs.grade_level)))
+  // Get unique grade levels from bell schedules, sorted in logical grade
+  // order (TK, K, 1, 2, 3...). grade_level is a comma list — secondary rows
+  // carry the whole span ("6,7,8", SPE-491) — so split before uniquing, or the
+  // joined string becomes one dead chip no downstream matcher recognizes.
+  const gradeLevels = Array.from(new Set(bellSchedules.flatMap(bs => (bs.grade_level || '').split(',').map(g => g.trim()))))
     .filter(Boolean)
     .sort((a, b) => {
       const gradeOrder: Record<string, number> = { 'TK': 0, 'K': 1 };

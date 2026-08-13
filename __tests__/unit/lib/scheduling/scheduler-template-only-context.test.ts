@@ -61,6 +61,7 @@ async function contextFrom(sessions: Array<Record<string, unknown>>) {
     getExistingSessions: () => sessions,
     getCrossProviderSessions: () => new Map(),
     getMainstreamingBlocks: () => [],
+    getStudentBlockedTimes: () => [],
     getBellScheduleConflicts: () => [],
     getMetrics: () => ({ cacheHits: 0, cacheMisses: 0 }),
   };

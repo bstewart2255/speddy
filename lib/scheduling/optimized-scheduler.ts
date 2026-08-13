@@ -253,15 +253,20 @@ export class OptimizedScheduler {
     // mid-run and cause a missed hard-avoid.
     const crossProviderSessionsByStudent = new Map(this.dataManager.getCrossProviderSessions());
     
-    // Get bell schedules for all grades
-    const bellSchedules: BellSchedule[] = [];
-    const grades = ['K', 'TK', '1', '2', '3', '4', '5'];
+    // Get bell schedules for all grades. TK-12, not just elementary: SPE-490
+    // opened auto-scheduling to related-service providers at secondary sites,
+    // whose Brunch/Lunch/Advisory rows live under grades 6-12 (SPE-491). A
+    // multi-grade row ("6,7,8") comes back once per grade, so dedupe by id.
+    const bellSchedulesById = new Map<string, BellSchedule>();
+    const grades = ['TK', 'K', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'];
     for (const grade of grades) {
       for (const day of [1, 2, 3, 4, 5]) {
-        const conflicts = this.dataManager.getBellScheduleConflicts(grade, day, '00:00', '23:59');
-        bellSchedules.push(...conflicts);
+        for (const conflict of this.dataManager.getBellScheduleConflicts(grade, day, '00:00', '23:59')) {
+          bellSchedulesById.set(conflict.id, conflict);
+        }
       }
     }
+    const bellSchedules: BellSchedule[] = [...bellSchedulesById.values()];
     
     // Get special activities (we'll need to query all teachers)
     const specialActivities: SpecialActivity[] = [];

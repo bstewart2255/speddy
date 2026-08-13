@@ -76,41 +76,6 @@ export async function addStudentBlockedTimes(
 }
 
 /**
- * Fetch all protected times at a school for the current school year.
- * School-wide on purpose: every provider schedules around them (the SELECT
- * policy scopes access to the caller's schools).
- */
-export async function getStudentBlockedTimes(
-  schoolId: string,
-  schoolYear?: string
-): Promise<StudentBlockedTime[]> {
-  const supabase = createClient<Database>();
-
-  const fetchPerf = measurePerformanceWithAlerts('fetch_student_blocked_times', 'database');
-  const fetchResult = await safeQuery(
-    async () => {
-      const { data, error } = await supabase
-        .from('student_blocked_times')
-        .select('*')
-        .eq('school_id', schoolId)
-        .eq('school_year', schoolYear || getCurrentSchoolYear())
-        .order('day_of_week', { ascending: true })
-        .order('start_time', { ascending: true });
-      if (error) throw error;
-      return data;
-    },
-    { operation: 'fetch_student_blocked_times', schoolId }
-  );
-  fetchPerf.end({
-    success: !fetchResult.error,
-    metadata: { recordCount: fetchResult.data?.length || 0 },
-  });
-
-  if (fetchResult.error) throw fetchResult.error;
-  return fetchResult.data || [];
-}
-
-/**
  * Delete one protected time owned by the current user. The explicit owner
  * filter plus the returned-row check make an RLS-filtered no-op fail loudly
  * instead of reporting success.

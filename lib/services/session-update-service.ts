@@ -702,29 +702,10 @@ export class SessionUpdateService {
     startTime: string,
     endTime: string
   ): Promise<NonNullable<ValidationResult['conflicts']>[0] | null> {
-    const { data: student, error: studentError } = await this.supabase
-      .from('students')
-      .select('child_id')
-      .eq('id', studentId)
-      .single();
-    if (studentError) {
-      return null;
-    }
-
-    let query = this.supabase
-      .from('student_blocked_times')
-      .select('*')
-      .eq('day_of_week', day)
-      .eq('school_year', getCurrentSchoolYear());
-
-    if (student?.child_id) {
-      query = query.or(`child_id.eq.${student.child_id},student_id.eq.${studentId}`);
-    } else {
-      query = query.eq('student_id', studentId);
-    }
-
-    const { data: blocks } = await query;
-    if (!blocks || blocks.length === 0) {
+    // Fail-open here matches the sibling warn-path checks; the stale-CLEAR
+    // path consumes the `failed` flag instead.
+    const { blocks } = await this.fetchBlockedTimesForStudent(studentId, day);
+    if (blocks.length === 0) {
       return null;
     }
 
@@ -740,6 +721,45 @@ export class SessionUpdateService {
       description: `Protected time: ${overlapping.label} (${overlapping.start_time} - ${overlapping.end_time}) — the student should not be pulled during this`,
       conflictingItem: overlapping
     };
+  }
+
+  /**
+   * SPE-492: the student's protected times for one weekday, resolved through
+   * the CHILD when linked (same reasoning and shape as
+   * fetchMainstreamingBlocksForStudent above). `failed` distinguishes an
+   * errored lookup from a legitimate empty set — the stale-clear caller must
+   * keep flags on failure rather than treat it as "no blocks".
+   */
+  private async fetchBlockedTimesForStudent(
+    studentId: string,
+    day: number
+  ): Promise<{
+    blocks: Array<Database['public']['Tables']['student_blocked_times']['Row']>;
+    failed: boolean;
+  }> {
+    const { data: student, error: studentError } = await this.supabase
+      .from('students')
+      .select('child_id')
+      .eq('id', studentId)
+      .single();
+    if (studentError) {
+      return { blocks: [], failed: true };
+    }
+
+    let query = this.supabase
+      .from('student_blocked_times')
+      .select('*')
+      .eq('day_of_week', day)
+      .eq('school_year', getCurrentSchoolYear());
+
+    if (student?.child_id) {
+      query = query.or(`child_id.eq.${student.child_id},student_id.eq.${studentId}`);
+    } else {
+      query = query.eq('student_id', studentId);
+    }
+
+    const { data: blocks, error: blocksError } = await query;
+    return { blocks: blocks || [], failed: !!blocksError };
   }
 
   /**
@@ -1105,9 +1125,23 @@ export class SessionUpdateService {
         mainstreamingCheckFailed = true;
       }
 
+      // SPE-492: same again for protected times — a flag earned by an
+      // overridden "sits on protected time" placement must survive sibling
+      // moves. Same fail-safe posture as the two branches above.
+      let blockedTimes: MainstreamingBlockLite[] = [];
+      let blockedTimeCheckFailed = false;
+      try {
+        const result = await this.fetchBlockedTimesForStudent(studentId, day);
+        blockedTimes = result.blocks;
+        blockedTimeCheckFailed = result.failed;
+      } catch (e) {
+        console.error('Blocked-time stale-check threw:', e);
+        blockedTimeCheckFailed = true;
+      }
+
       // Clear a flag only when the session no longer overlaps ANY same-provider
       // session, no longer double-books across providers, AND no longer sits on
-      // mainstreaming time.
+      // mainstreaming or protected time.
       for (const flaggedSession of flaggedSessions) {
         if (!flaggedSession.start_time || !flaggedSession.end_time) {
           continue;
@@ -1117,9 +1151,16 @@ export class SessionUpdateService {
         const stillHasOverlap =
           crossCheckFailed ||
           mainstreamingCheckFailed ||
+          blockedTimeCheckFailed ||
           flaggedSessionStillConflicts(flaggedSession, allSessions, otherProviderSessions) ||
           findOverlappingMainstreamingBlock(
             mainstreamingBlocks,
+            day,
+            flaggedSession.start_time,
+            flaggedSession.end_time
+          ) !== null ||
+          findOverlappingMainstreamingBlock(
+            blockedTimes,
             day,
             flaggedSession.start_time,
             flaggedSession.end_time

@@ -6,7 +6,10 @@ import { createClient } from '@/lib/supabase/client';
 import type { Database } from "../../../src/types/database";
 import { useSchool } from "../../components/providers/school-context";
 import { dedupeBellSchedules, normalizeBellSchedule, createImportSummary } from '../../../lib/utils/dedupe-helpers';
-import { BELL_SCHEDULE_ACTIVITIES } from '../../../lib/constants/activity-types';
+import {
+  BELL_SCHEDULE_ACTIVITIES,
+  SECONDARY_BELL_SCHEDULE_ACTIVITIES,
+} from '../../../lib/constants/activity-types';
 import { getCurrentSchoolYear } from '../../../lib/school-year';
 
 interface Props {
@@ -17,7 +20,14 @@ export default function BellScheduleCSVImport({ onSuccess }: Props) {
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState("");
   const supabase = createClient<Database>();
-  const { currentSchool } = useSchool();
+  const { currentSchool, isSecondary } = useSchool();
+
+  // The manual form on this same page offers the period grid at secondary
+  // (SPE-491); the import must accept the same names or the page's two entry
+  // paths contradict each other.
+  const validActivities: readonly string[] = isSecondary
+    ? SECONDARY_BELL_SCHEDULE_ACTIVITIES
+    : BELL_SCHEDULE_ACTIVITIES;
 
   const downloadTemplate = () => {
     const csvContent = `Grade,Activity,Start Time,End Time
@@ -128,7 +138,7 @@ K,Lunch,12:00,12:45
             const invalidActivities: string[] = [];
             const normalizeActivity = (input: string): string | null => {
               const trimmed = input.trim();
-              return BELL_SCHEDULE_ACTIVITIES.find(
+              return validActivities.find(
                 (a) => a.toLowerCase() === trimmed.toLowerCase()
               ) || null;
             };
@@ -144,7 +154,7 @@ K,Lunch,12:00,12:45
 
             if (invalidActivities.length > 0) {
               throw new Error(
-                `Invalid activity values found:\n${invalidActivities.join('\n')}\n\nValid activities are: ${BELL_SCHEDULE_ACTIVITIES.join(', ')}`
+                `Invalid activity values found:\n${invalidActivities.join('\n')}\n\nValid activities are: ${validActivities.join(', ')}`
               );
             }
 
@@ -288,7 +298,7 @@ K,Lunch,12:00,12:45
             CSV should include: Grade, Activity, Start Time, End Time
           </p>
           <p className="text-xs text-gray-500 mt-1">
-            Valid activities: {BELL_SCHEDULE_ACTIVITIES.join(', ')}
+            Valid activities: {validActivities.join(', ')}
           </p>
           <p className="text-xs text-gray-500">
             Time format: HH:MM (e.g., 9:00, 1:30 PM, or 14:30). Schedules apply to all weekdays.

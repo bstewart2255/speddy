@@ -752,19 +752,25 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
    */
   private cacheBellSchedules(schedules: BellSchedule[]): void {
     this.data.data.bellSchedules.clear();
-    
+
     schedules.forEach(schedule => {
-      const gradeKey = schedule.grade_level;
-      if (!this.data.data.bellSchedules.has(gradeKey)) {
-        this.data.data.bellSchedules.set(gradeKey, new Map());
+      // grade_level is a comma list ("1,2,3"; secondary rows are the whole
+      // span, e.g. "6,7,8" — SPE-491). Index under EVERY member: keying by
+      // the raw string made multi-grade rows unfindable, since lookups ask
+      // for a single grade (every other consumer splits on commas too).
+      const gradeKeys = (schedule.grade_level || '').split(',').map(g => g.trim()).filter(Boolean);
+      for (const gradeKey of gradeKeys) {
+        if (!this.data.data.bellSchedules.has(gradeKey)) {
+          this.data.data.bellSchedules.set(gradeKey, new Map());
+        }
+
+        const dayMap = this.data.data.bellSchedules.get(gradeKey)!;
+        if (!dayMap.has(schedule.day_of_week)) {
+          dayMap.set(schedule.day_of_week, []);
+        }
+
+        dayMap.get(schedule.day_of_week)!.push(schedule);
       }
-      
-      const dayMap = this.data.data.bellSchedules.get(gradeKey)!;
-      if (!dayMap.has(schedule.day_of_week)) {
-        dayMap.set(schedule.day_of_week, []);
-      }
-      
-      dayMap.get(schedule.day_of_week)!.push(schedule);
     });
   }
   

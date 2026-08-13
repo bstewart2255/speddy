@@ -180,7 +180,10 @@ describe('SchedulingDataManager cache reuse across the Aug 1 rollover (SPE-458)'
   // the rollover reloading against last year indefinitely, reading back as
   // zero rows with no error. Re-deriving on every load closes both doors.
   it('re-derives the year on every load, so a refresh after the rollover moves to the new year', async () => {
-    mockState.rows.bell_schedules = [{ id: 'a', school_id: SCHOOL_ID, school_year: THIS_YEAR }];
+    // grade_level is NOT NULL in the real schema, and the cache now indexes
+    // by split grade members (SPE-491) — a gradeless fixture row would index
+    // under nothing and make the size assertion below vacuous.
+    mockState.rows.bell_schedules = [{ id: 'a', school_id: SCHOOL_ID, school_year: THIS_YEAR, grade_level: '3' }];
 
     const mgr = manager();
     mgr.providerId = 'provider-1';
