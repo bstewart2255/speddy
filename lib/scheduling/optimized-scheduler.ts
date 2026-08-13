@@ -258,12 +258,13 @@ export class OptimizedScheduler {
       }
     }
     
-    // Get special activities (we'll need to query all teachers)
-    const specialActivities: SpecialActivity[] = [];
-    // For now, we'll leave this empty as we'd need to know all teacher names
+    // SPE-318: special activities, loaded school-wide by the DataManager
+    // (year-scoped and live-only per SPE-458/468). This was hardcoded [] for
+    // years — the auto-scheduler placed sessions straight through PE and
+    // assemblies while the drag path warned about them.
+    const specialActivities = this.dataManager.getSpecialActivitiesFlat();
 
-    // SPE-478: mainstreaming blocks are loaded by the DataManager for the
-    // whole school — unlike special activities above, they ARE wired in.
+    // SPE-478: mainstreaming blocks, same school-wide load.
     const mainstreamingBlocks = this.dataManager.getMainstreamingBlocks();
 
     // Get school hours from existing context or use defaults
@@ -399,16 +400,25 @@ export class OptimizedScheduler {
       }
     }
     
-    // Index special activities by teacher for O(1) lookup
-    for (const activity of preloadedData.specialActivities) {
-      if (!specialActivitiesByTeacher.has(activity.teacher_name)) {
-        specialActivitiesByTeacher.set(activity.teacher_name, new Map());
+    // Index special activities by teacher for O(1) lookup — under the display
+    // name AND, when present, the teacher directory id (SPE-484: exact-string
+    // teacher_name matching is the fragile link; ids match even when a name
+    // drifts by whitespace). The slot check consults both keys.
+    const indexActivityUnder = (key: string, activity: SpecialActivity) => {
+      if (!specialActivitiesByTeacher.has(key)) {
+        specialActivitiesByTeacher.set(key, new Map());
       }
-      const teacherMap = specialActivitiesByTeacher.get(activity.teacher_name)!;
+      const teacherMap = specialActivitiesByTeacher.get(key)!;
       if (!teacherMap.has(activity.day_of_week)) {
         teacherMap.set(activity.day_of_week, []);
       }
       teacherMap.get(activity.day_of_week)!.push(activity);
+    };
+    for (const activity of preloadedData.specialActivities) {
+      indexActivityUnder(activity.teacher_name, activity);
+      if (activity.teacher_id) {
+        indexActivityUnder(activity.teacher_id, activity);
+      }
     }
 
     // SPE-478: index mainstreaming blocks for O(1) lookup — under the
@@ -1205,11 +1215,15 @@ export class OptimizedScheduler {
         
         if (hasBellConflict) continue;
 
-        // Check special activities using cached index (O(1) lookup)
-        const teacherActivities = student.teacher_name 
-          ? this.context!.specialActivitiesByTeacher.get(student.teacher_name)?.get(day) || []
-          : [];
-        
+        // Check special activities using cached index (O(1) lookup) — by the
+        // teacher directory id when the student has one, else by name (the
+        // index carries both keys; an id match survives name drift).
+        const activityIndex = this.context!.specialActivitiesByTeacher;
+        const teacherActivities = [
+          ...(student.teacher_id ? activityIndex.get(student.teacher_id)?.get(day) || [] : []),
+          ...(student.teacher_name ? activityIndex.get(student.teacher_name)?.get(day) || [] : []),
+        ];
+
         const hasActivityConflict = teacherActivities.some(activity => {
           const hasTimeOverlap = this.hasTimeOverlap(slot.startTime, endTime, activity.start_time, activity.end_time);
           

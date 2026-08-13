@@ -50,6 +50,51 @@ export function findOverlappingOtherProviderSession(
   return null;
 }
 
+/** SPE-484: minimal shape of a special activity for teacher-keyed overlap checks. */
+export interface SpecialActivityLite {
+  teacher_id: string | null;
+  teacher_name: string;
+  day_of_week: number;
+  start_time: string;
+  end_time: string;
+}
+
+/**
+ * SPE-484: the first special activity belonging to the student's TEACHER that
+ * overlaps [startTime, endTime) on `day`, else null. Teacher matching prefers
+ * teacher_id and falls back to exact teacher_name — the same dual matching the
+ * grid's availability layer uses, so what warns is what displays. When the
+ * student has a teacher_id and the activity carries one too, the ids must
+ * agree (a stale name coincidence must not warn). Pure (no I/O) so the rule is
+ * unit-testable without a Supabase mock. Half-open overlap, matching
+ * SessionUpdateService.hasTimeOverlap.
+ */
+export function findOverlappingSpecialActivity<T extends SpecialActivityLite>(
+  activities: T[],
+  studentTeacher: { teacherId: string | null; teacherName: string | null },
+  day: number,
+  startTime: string,
+  endTime: string,
+): T | null {
+  const start = timeToMinutes(startTime);
+  const end = timeToMinutes(endTime);
+  for (const a of activities) {
+    if (a.day_of_week !== day) continue;
+    const idMatch = !!studentTeacher.teacherId && a.teacher_id === studentTeacher.teacherId;
+    const nameMatch =
+      !!studentTeacher.teacherName &&
+      a.teacher_name === studentTeacher.teacherName &&
+      // If both sides carry ids and they disagree, the name match is a
+      // coincidence (or drift) — do not warn on it.
+      !(a.teacher_id && studentTeacher.teacherId && a.teacher_id !== studentTeacher.teacherId);
+    if (!idMatch && !nameMatch) continue;
+    if (start < timeToMinutes(a.end_time) && end > timeToMinutes(a.start_time)) {
+      return a;
+    }
+  }
+  return null;
+}
+
 /** SPE-478: minimal shape of a mainstreaming block for overlap checks. */
 export interface MainstreamingBlockLite {
   day_of_week: number;
@@ -445,7 +490,7 @@ export class SessionUpdateService {
     // conflict priority (the conflicts[0] surfaced as `error`) is unchanged.
     const checks: Array<Promise<NonNullable<ValidationResult['conflicts']>[0] | null>> = [
       this.checkBellScheduleConflicts(providerId, studentId, targetDay, targetStartTime, targetEndTime),
-      this.checkSpecialActivityConflicts(providerId, studentId, targetDay, targetStartTime, targetEndTime),
+      this.checkSpecialActivityConflicts(studentId, targetDay, targetStartTime, targetEndTime),
       // SPE-478: mainstreaming time is protected — warn any provider placing a
       // session over the student's time in a gen-ed class (overridable, like
       // every other conflict here).
@@ -547,7 +592,6 @@ export class SessionUpdateService {
    * Check for special activity conflicts
    */
   private async checkSpecialActivityConflicts(
-    providerId: string,
     studentId: string,
     day: number,
     startTime: string,
@@ -556,36 +600,46 @@ export class SessionUpdateService {
     // Get student's teacher and school information
     const { data: student } = await this.supabase
       .from('students')
-      .select('teacher_name, school_id')
+      .select('teacher_id, teacher_name, school_id')
       .eq('id', studentId)
       .single();
 
-    if (!student || !student.teacher_name || !student.school_id) {
+    if (!student || !student.school_id || (!student.teacher_id && !student.teacher_name)) {
       return null;
     }
 
-    // Only check special activities for this student's teacher and school
+    // SPE-484: school-wide, NOT scoped to the caller's provider_id — that
+    // legacy filter meant an activity entered by a site admin or another
+    // provider displayed as a band but never warned anyone else. Every
+    // activity the grid shows is one the warning must honor. Year-scoped and
+    // live-only (SPE-468's lesson: soft-deleted rows must never protect).
+    // Teacher matching happens in the pure helper (id preferred, exact-name
+    // fallback), same as the availability layer, so PostgREST or-quoting
+    // never mangles names with spaces.
     const { data: activities } = await this.supabase
       .from('special_activities')
       .select('*')
-      .eq('provider_id', providerId)
-      .eq('teacher_name', student.teacher_name)
       .eq('day_of_week', day)
-      .eq('school_id', student.school_id);
+      .eq('school_id', student.school_id)
+      .eq('school_year', getCurrentSchoolYear())
+      .is('deleted_at', null);
 
-    if (activities) {
-      for (const activity of activities) {
-        if (this.hasTimeOverlap(startTime, endTime, activity.start_time, activity.end_time)) {
-          return {
-            type: 'special_activity',
-            description: `Conflicts with special activity "${activity.activity_name}" with ${activity.teacher_name} (${activity.start_time} - ${activity.end_time})`,
-            conflictingItem: activity
-          };
-        }
-      }
+    const overlapping = findOverlappingSpecialActivity(
+      activities || [],
+      { teacherId: student.teacher_id, teacherName: student.teacher_name },
+      day,
+      startTime,
+      endTime
+    );
+    if (!overlapping) {
+      return null;
     }
 
-    return null;
+    return {
+      type: 'special_activity',
+      description: `Conflicts with special activity "${overlapping.activity_name}" with ${overlapping.teacher_name} (${overlapping.start_time} - ${overlapping.end_time})`,
+      conflictingItem: overlapping
+    };
   }
 
   /**
