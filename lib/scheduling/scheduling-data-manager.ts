@@ -94,6 +94,10 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
   // a session over a student's time in a gen-ed class.
   private mainstreamingBlocks: MainstreamingBlock[] = [];
 
+  // SPE-318: the same activities cacheSpecialActivities indexes, kept flat for
+  // the auto-scheduler (year-scoped and live-only at fetch — SPE-458/468).
+  private specialActivitiesFlat: SpecialActivity[] = [];
+
   private constructor(config?: DataManagerConfig) {
     this.config = { ...DEFAULT_CONFIG, ...config };
   }
@@ -194,6 +198,12 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
       // the parallel path below no longer does. Repairing the RPC without
       // adding a school_year filter would reintroduce that bug on this path
       // only — visible just at schools holding two years of data.
+      //
+      // SPE-468/SPE-484: the special_activities CTE also has no deleted_at
+      // filter. The parallel path strips soft-deleted rows in fetchForSchool,
+      // and the scheduler now actually consumes this list (SPE-318), so a
+      // repaired RPC without that filter would resurrect deleted activities
+      // as scheduling blocks on this path only.
       const { data, error } = await this.supabase.rpc('get_scheduling_data_batch', {
         p_provider_id: this.providerId!,
         p_school_site: this.schoolSite!
@@ -359,13 +369,21 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
     label: string,
   ): Promise<T[]> {
     const rows: T[] = [];
+    // SPE-468: special_activities soft-deletes; every other reader filters
+    // deleted rows out and the scheduler must too — a deleted activity must
+    // never keep protecting a slot. bell_schedules has no deleted_at column.
+    const liveOnly = table === 'special_activities';
 
     if (this.schoolId) {
-      const { data, error } = await this.supabase
+      let query = this.supabase
         .from(table)
         .select('*')
         .eq('school_year', this.schoolYear)
         .eq('school_id', this.schoolId);
+      if (liveOnly) {
+        query = query.is('deleted_at', null);
+      }
+      const { data, error } = await query;
 
       if (error) {
         this.cacheMetadata.fetchErrors.push(`${label}: ${error.message}`);
@@ -380,6 +398,9 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
         .select('*')
         .eq('school_year', this.schoolYear)
         .eq('school_site', this.schoolSite);
+      if (liveOnly) {
+        query = query.is('deleted_at', null);
+      }
 
       // When we already matched by school_id, this pass is only for strays the
       // migration missed — without this the two passes would double-count any
@@ -751,7 +772,10 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
    */
   private cacheSpecialActivities(activities: SpecialActivity[]): void {
     this.data.data.specialActivities.clear();
-    
+    // SPE-318: keep the flat list too — the auto-scheduler builds its own
+    // per-teacher index from it (same shape it uses for mainstreaming blocks).
+    this.specialActivitiesFlat = activities;
+
     activities.forEach(activity => {
       const teacherKey = activity.teacher_name;
       if (!this.data.data.specialActivities.has(teacherKey)) {
@@ -959,6 +983,11 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
     return this.mainstreamingBlocks;
   }
 
+  /** SPE-318: every live special activity at this school (current year), flat. */
+  public getSpecialActivitiesFlat(): SpecialActivity[] {
+    return this.specialActivitiesFlat;
+  }
+
   /**
    * Check if a time slot is available (respecting 8 concurrent session limit)
    */
@@ -1054,6 +1083,7 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
     this.data.data.schoolHours = [];
     this.crossProviderSessions.clear();
     this.mainstreamingBlocks = [];
+    this.specialActivitiesFlat = [];
 
     this.cacheMetadata.isStale = true;
     this.conflicts = [];

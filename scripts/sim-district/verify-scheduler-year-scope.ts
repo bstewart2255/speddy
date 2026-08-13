@@ -141,11 +141,14 @@ async function signIn(personaKey: string): Promise<SupabaseClient> {
 
   // Special activities get the same treatment, ground truth included. Asserting
   // only "prior year is empty" here would go green on a query error, which is
-  // the trap this script exists to avoid.
+  // the trap this script exists to avoid. The truth query is live-only to
+  // match fetchForSchool's SPE-468 deleted_at filter — without it, any
+  // soft-deleted activity in the namespace makes this check false-fail.
   let actTruth = admin
     .from('special_activities')
     .select('id', { count: 'exact', head: true })
-    .eq('school_year', thisYear);
+    .eq('school_year', thisYear)
+    .is('deleted_at', null);
   actTruth = school.school_id
     ? actTruth.eq('school_id', school.school_id)
     : actTruth.eq('school_site', school.school_site!);
