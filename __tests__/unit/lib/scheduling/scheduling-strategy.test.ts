@@ -206,3 +206,39 @@ describe('grouping coverage summary (SPE-482)', () => {
     }
   });
 });
+
+describe('coverage is only meaningful over the roster that will be scheduled (SPE-482)', () => {
+  // The schedule page's `students` array carries a provider's own caseload AND,
+  // for specialist roles, students from other providers' caseloads delegated to
+  // them (use-schedule-data appends those by assigned_to_specialist_id).
+  // Auto-Schedule rebuilds its roster with provider_id = me and never places the
+  // delegated ones, so coverage must be summarized over the owned students only.
+  // This pins the skew that would otherwise be reported.
+  const owned = [
+    { grade_level: '3', teacher_id: null, teacher_name: null },
+    { grade_level: '4', teacher_id: null, teacher_name: null },
+  ];
+  const delegatedFromAnotherProvider = [
+    { grade_level: '5', teacher_id: 't-9', teacher_name: null },
+    { grade_level: '5', teacher_id: 't-9', teacher_name: null },
+  ];
+
+  it('reports no teacher coverage for the owned caseload', () => {
+    expect(summarizeGroupability(owned, 'teacher-grouped')).toEqual({
+      total: 2,
+      withKey: 0,
+      groupable: 0,
+    });
+  });
+
+  it('would hide that fact if delegated students were mixed in', () => {
+    // Same owned students, plus two delegated ones who share a teacher: the
+    // "nobody has a teacher" warning silently downgrades to a partial count,
+    // describing students the run will never touch.
+    const mixed = [...owned, ...delegatedFromAnotherProvider];
+    const summary = summarizeGroupability(mixed, 'teacher-grouped')!;
+    expect(summary.withKey).toBe(2);
+    expect(summary.groupable).toBe(2);
+    expect(summary.total).toBe(4);
+  });
+});
