@@ -236,9 +236,11 @@ export class OptimizedScheduler {
     //     negative and removed it from the grid entirely — a calendar with a
     //     handful of sessions could present as having no room at all.
     //
-    // Scoped to the scheduler's own context on purpose: the shared data manager
-    // still serves unfiltered rows to the calendar and conflict paths, which
-    // legitimately work in dated instances.
+    // SPE-477 has since scoped the shared data manager to templates as well, so
+    // this filter no longer has anything to remove in practice. It stays as the
+    // scheduler's own statement of what its context must contain — the two
+    // failures above are silent ones, and a cache that starts serving instances
+    // again should not be able to reintroduce them from a distance.
     const existingSessions = filterScheduledSessions(this.dataManager.getExistingSessions())
       .filter(session => session.is_template === true && session.deleted_at == null);
 
