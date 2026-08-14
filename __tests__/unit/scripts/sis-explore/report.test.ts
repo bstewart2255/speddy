@@ -50,6 +50,7 @@ const findings = (over: Partial<Findings> = {}): Findings => ({
     matchRateOfThoseWithId: 80,
     duplicates: [],
     backfillGap: 0,
+    probableDuplicateChild: 0,
     unmatchedIds: UNMATCHED,
   },
   teacherLinkage: {
@@ -126,14 +127,44 @@ describe('the summary refuses to be read out of context', () => {
     expect(renderSummary(findings())).not.toMatch(/not\s+trustworthy yet/i);
   });
 
-  it('names the backfill gap as ours, not the district\'s', () => {
+  it('tells someone to move a stranded ID across only when nothing else claims it', () => {
     const f = findings();
     const summary = renderSummary({
       ...f,
       matchRate: { ...f.matchRate, backfillGap: 11 },
     });
     expect(summary).toMatch(/11 student\(s\)/);
-    expect(summary).toMatch(/our backfill gap, not missing data at the district/i);
+    expect(summary).toMatch(/no other child record claims that ID/i);
+    expect(summary).toMatch(/moving it onto the child record/i);
+  });
+
+  it('never suggests copying an ID that already belongs to another child (SPE-409)', () => {
+    // The failure this ticket exists to prevent: the report naming a cheap,
+    // safe-sounding remedy for a state whose real remedy is a careful merge.
+    // Acting on the old wording would have put one district student ID on two
+    // children — every real instance at JSUSD was this state.
+    const f = findings();
+    const summary = renderSummary({
+      ...f,
+      matchRate: { ...f.matchRate, probableDuplicateChild: 11, backfillGap: 0 },
+    });
+    expect(summary).toMatch(/11 student\(s\)/);
+    expect(summary).toMatch(/already belongs to a different child record/i);
+    expect(summary).toMatch(/Do not copy it across/i);
+    // and none of the copy-it-across language from the other branch
+    expect(summary).not.toMatch(/moving it onto the child record/i);
+  });
+
+  it('reports both states side by side when a district has each', () => {
+    const f = findings();
+    const summary = renderSummary({
+      ...f,
+      matchRate: { ...f.matchRate, probableDuplicateChild: 9, backfillGap: 2 },
+    });
+    expect(summary).toMatch(/9 student\(s\)/);
+    expect(summary).toMatch(/2 student\(s\)/);
+    expect(summary).toMatch(/Do not copy it across/i);
+    expect(summary).toMatch(/moving it onto the child record/i);
   });
 
   it('says plainly that OneRoster cannot answer the special-ed question', () => {

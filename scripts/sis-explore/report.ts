@@ -86,11 +86,21 @@ export function renderSummary(f: Findings): string {
   if (m.duplicates.length) {
     lines.push(`- ⚠️ ${m.duplicates.length} district ID(s) appear on more than one child`);
   }
+  // Two states, two remedies. Report what was observed and let the counts say
+  // which one you are looking at — never name a remedy for the other (SPE-409).
+  if (m.probableDuplicateChild) {
+    lines.push(
+      `- ⚠️ ${m.probableDuplicateChild} student(s) carry a district ID on the caseload row that ` +
+        'is missing from their child record AND already belongs to a different child record. ' +
+        'Do not copy it across — that would put one district student ID on two children. ' +
+        'These look like duplicate child records for one student (SPE-408); they need merging.',
+    );
+  }
   if (m.backfillGap) {
     lines.push(
       `- ⚠️ ${m.backfillGap} student(s) have a district ID on the caseload row that never reached ` +
-        'the child record. That is our backfill gap, not missing data at the district — ' +
-        'those students are unmatchable until it is closed.',
+        'the child record, and no other child record claims that ID. Nothing else is using it, ' +
+        'so moving it onto the child record is what unblocks matching for these students.',
     );
   }
   lines.push('');

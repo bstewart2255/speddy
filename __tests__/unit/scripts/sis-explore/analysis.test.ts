@@ -158,6 +158,9 @@ describe('analyzeMatchRate', () => {
     // (SPE-347's backfill). Production has rows in this state. Reporting them
     // as "no ID entered" would send someone to chase providers for data those
     // providers already gave us.
+    //
+    // No other child holds '100001' here, so this is the real backfill gap:
+    // nothing is using the ID, and moving it across is safe.
     const r = analyzeMatchRate(
       [
         student({ childId: 'a', districtStudentId: null, legacyDistrictStudentId: '100001' }),
@@ -166,8 +169,58 @@ describe('analyzeMatchRate', () => {
       sis,
     );
     expect(r.backfillGap).toBe(1);
+    expect(r.probableDuplicateChild).toBe(0);
     expect(r.withoutId).toBe(2); // both are unmatchable today...
     // ...but only one of them is unmatchable because of something WE did.
+  });
+
+  it('calls a stranded ID a duplicate child, not a backfill gap, when another child holds it', () => {
+    // SPE-409: the shape that every real instance at JSUSD turned out to be.
+    // Child 'a' has no ID on its child record but carries one on the legacy
+    // students row — and child 'b' already owns that exact ID. Copying it
+    // across would put one district student ID on two children, so this must
+    // NOT be reported as a backfill gap.
+    const r = analyzeMatchRate(
+      [
+        student({ childId: 'a', districtStudentId: null, legacyDistrictStudentId: '100001' }),
+        student({ childId: 'b', districtStudentId: '100001' }),
+      ],
+      sis,
+    );
+    expect(r.probableDuplicateChild).toBe(1);
+    expect(r.backfillGap).toBe(0);
+  });
+
+  it('splits a mixed caseload into the two states rather than lumping them', () => {
+    const r = analyzeMatchRate(
+      [
+        // duplicate: 'c' already owns 100001
+        student({ childId: 'a', districtStudentId: null, legacyDistrictStudentId: '100001' }),
+        student({ childId: 'c', districtStudentId: '100001' }),
+        // genuine gap: nobody owns 100002
+        student({ childId: 'd', districtStudentId: null, legacyDistrictStudentId: '100002' }),
+        // neither: no ID anywhere
+        student({ childId: 'e', districtStudentId: null }),
+      ],
+      sis,
+    );
+    expect(r.probableDuplicateChild).toBe(1);
+    expect(r.backfillGap).toBe(1);
+  });
+
+  it('matches the stranded ID against other children the same way it matches the SIS', () => {
+    // The comparison has to go through the same normalizer, or a leading zero
+    // or stray space makes a duplicate look like a gap — the exact misread
+    // SPE-409 is about, reintroduced one layer down.
+    const r = analyzeMatchRate(
+      [
+        student({ childId: 'a', districtStudentId: null, legacyDistrictStudentId: ' 100001 ' }),
+        student({ childId: 'b', districtStudentId: '100001' }),
+      ],
+      sis,
+    );
+    expect(r.probableDuplicateChild).toBe(1);
+    expect(r.backfillGap).toBe(0);
   });
 
   it('does not divide by zero on an empty caseload', () => {

@@ -190,10 +190,24 @@ export interface MatchRateReport {
   /** Same district ID on more than one child — a data-entry collision. */
   duplicates: { districtStudentId: string; childIds: string[] }[];
   /**
-   * OUR bug, not the district's: an ID sits on the `students` row but never
-   * reached the child record, so the join above cannot see it.
+   * An ID sits on the `students` row but not on that child record, AND the ID
+   * is not on any other child either. Nothing else claims it, so moving it
+   * across is the safe remedy — this is the state the label "backfill gap"
+   * actually describes.
    */
   backfillGap: number;
+  /**
+   * The same shape, except the ID ALREADY belongs to a different child record.
+   * That is not a backfill that failed to run — it is one student holding two
+   * child records (SPE-408), and copying the ID across would put one district
+   * student ID on two children.
+   *
+   * Split out from `backfillGap` because the two states have opposite remedies
+   * and, on the only real data this tool has seen (JSUSD), every single
+   * instance was this one. A report that names the cheap remedy for the
+   * expensive state is worse than no report (SPE-409).
+   */
+  probableDuplicateChild: number;
   /** DETAIL — student-level, never leaves the git-ignored report. */
   unmatchedIds: string[];
 }
@@ -226,9 +240,20 @@ export function analyzeMatchRate(
     collisions.set(key, list);
   }
 
-  const backfillGap = children.filter(
+  // Which IDs are already spoken for by some child record. Checking is cheap,
+  // and it is the whole difference between "copy this across" and "merge these
+  // two children" — so the tool decides it rather than whoever reads the report.
+  const claimedByAChild = new Set(
+    children.map((c) => norm(c.districtStudentId)).filter((v) => v !== ''),
+  );
+
+  const stranded = children.filter(
     (c) => !c.districtStudentId && !!c.legacyDistrictStudentId,
+  );
+  const probableDuplicateChild = stranded.filter((c) =>
+    claimedByAChild.has(norm(c.legacyDistrictStudentId)),
   ).length;
+  const backfillGap = stranded.length - probableDuplicateChild;
 
   const pct = (n: number, d: number) => (d === 0 ? 0 : Math.round((n / d) * 1000) / 10);
 
@@ -245,6 +270,7 @@ export function analyzeMatchRate(
       .filter(([, ids]) => ids.length > 1)
       .map(([districtStudentId, childIds]) => ({ districtStudentId, childIds })),
     backfillGap,
+    probableDuplicateChild,
     unmatchedIds: unmatched.map((c) => c.districtStudentId!),
   };
 }
