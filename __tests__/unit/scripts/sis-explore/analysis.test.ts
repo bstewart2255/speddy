@@ -191,6 +191,23 @@ describe('analyzeMatchRate', () => {
     expect(r.backfillGap).toBe(0);
   });
 
+  it('flags two stranded children sharing one legacy ID, though neither holds it yet', () => {
+    // The gap the first pass at SPE-409 left: both children have a NULL
+    // districtStudentId, so checking only child records finds nothing claiming
+    // the ID and calls both a safe backfill. Copying as instructed would put
+    // one district student ID on two children — the outcome this metric exists
+    // to prevent, reached by following its own advice.
+    const r = analyzeMatchRate(
+      [
+        student({ childId: 'a', districtStudentId: null, legacyDistrictStudentId: '100001' }),
+        student({ childId: 'b', districtStudentId: null, legacyDistrictStudentId: '100001' }),
+      ],
+      sis,
+    );
+    expect(r.probableDuplicateChild).toBe(2);
+    expect(r.backfillGap).toBe(0);
+  });
+
   it('splits a mixed caseload into the two states rather than lumping them', () => {
     const r = analyzeMatchRate(
       [

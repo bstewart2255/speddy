@@ -240,18 +240,30 @@ export function analyzeMatchRate(
     collisions.set(key, list);
   }
 
-  // Which IDs are already spoken for by some child record. Checking is cheap,
-  // and it is the whole difference between "copy this across" and "merge these
-  // two children" — so the tool decides it rather than whoever reads the report.
-  const claimedByAChild = new Set(
-    children.map((c) => norm(c.districtStudentId)).filter((v) => v !== ''),
-  );
-
   const stranded = children.filter(
     (c) => !c.districtStudentId && !!c.legacyDistrictStudentId,
   );
-  const probableDuplicateChild = stranded.filter((c) =>
-    claimedByAChild.has(norm(c.legacyDistrictStudentId)),
+
+  // How many children would hold each ID once every stranded one is copied
+  // across. Counting is cheap, and it is the whole difference between "copy
+  // this across" and "merge these two children" — so the tool decides it
+  // rather than whoever reads the report.
+  //
+  // Both sources have to be counted, not just the child records: two stranded
+  // children can carry the SAME legacy ID with neither holding it on a child
+  // record yet. Looking only at child records calls both of those a safe
+  // backfill, and following that advice lands one district student ID on two
+  // children — the exact outcome SPE-409 exists to prevent.
+  const claims = new Map<string, number>();
+  const claim = (id: string) => {
+    if (id !== '') claims.set(id, (claims.get(id) ?? 0) + 1);
+  };
+  for (const c of children) claim(norm(c.districtStudentId));
+  for (const c of stranded) claim(norm(c.legacyDistrictStudentId));
+
+  // >1 means somebody else claims it too, so a copy would collide.
+  const probableDuplicateChild = stranded.filter(
+    (c) => (claims.get(norm(c.legacyDistrictStudentId)) ?? 0) > 1,
   ).length;
   const backfillGap = stranded.length - probableDuplicateChild;
 
