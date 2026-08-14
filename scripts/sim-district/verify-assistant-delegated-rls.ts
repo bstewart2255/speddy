@@ -43,7 +43,7 @@
  */
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { createAdmin, requireEnv } from './lib';
-import { derivePassword, personaEmail } from './manifest';
+import { DISTRICT, derivePassword, personaEmail } from './manifest';
 
 const url = requireEnv('NEXT_PUBLIC_SUPABASE_URL');
 const anon = requireEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY');
@@ -150,10 +150,19 @@ async function main(): Promise<void> {
   const { data: tomasOwned } = await admin.from('students').select('id').eq('provider_id', tomasId);
   for (const r of tomasOwned ?? []) relatedIds.add(r.id as string);
 
-  const { data: strangerRows } = await admin
-    .from('students').select('id, provider_id').neq('provider_id', tomasId).limit(500);
+  // Scoped to the sim district and ordered, so the subject is the same student
+  // on every run. An unscoped `limit(500)` over a production table picks a
+  // different — possibly real — student each time, which makes a failure
+  // impossible to reproduce and points the probe at data that isn't ours.
+  const { data: strangerRows, error: strangerErr } = await admin
+    .from('students')
+    .select('id, provider_id')
+    .eq('district_id', DISTRICT.id)
+    .neq('provider_id', tomasId)
+    .order('id', { ascending: true });
+  if (strangerErr) throw new Error(`stranger lookup failed: ${strangerErr.message}`);
   const stranger = (strangerRows ?? []).find(r => !relatedIds.has(r.id as string));
-  if (!stranger) throw new Error('could not find a student unrelated to Tomás for the negative check');
+  if (!stranger) throw new Error('could not find a sim student unrelated to Tomás for the negative check');
 
   const tomas = await signIn('tomas');
   const rachel = await signIn('rachel');

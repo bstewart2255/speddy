@@ -73,24 +73,56 @@ async function profileId(personaKey: string): Promise<string> {
   return data.id as string;
 }
 
-const PROBE_INITIALS = 'ZZ';
+const PROBE_INITIALS = 'ZZ';       // the authorized insert
+const IMPERSONATION_INITIALS = 'YY'; // only ever lands if the guard is missing
 
-async function cleanup(): Promise<void> {
-  const { data: probes } = await admin
-    .from('students').select('id').eq('initials', PROBE_INITIALS);
+/**
+ * Remove this probe's rows — and ONLY this probe's rows.
+ *
+ * Scoped to the two sim provider ids on purpose. This runs against the
+ * production database, where most students belong to real customers, so a sweep
+ * keyed on initials alone would hard-delete a real "ZZ" student and their whole
+ * session history. Initials are not unique and are not ours to match on.
+ *
+ * Also clears the `children` row the students_child_link insert trigger
+ * creates: leaving it behind makes the next `sim:verify` fail on an exact
+ * children count, which reads as fixture drift rather than probe litter.
+ */
+async function cleanup(providerIds: string[]): Promise<void> {
+  if (providerIds.length === 0) return;
+  const { data: probes, error } = await admin
+    .from('students')
+    .select('id, child_id')
+    .in('provider_id', providerIds)
+    .in('initials', [PROBE_INITIALS, IMPERSONATION_INITIALS]);
+  if (error) throw new Error(`probe cleanup lookup failed: ${error.message}`);
+
   for (const p of probes ?? []) {
     await admin.from('schedule_sessions').delete().eq('student_id', p.id);
     await admin.from('student_details').delete().eq('student_id', p.id);
-    await admin.from('students').delete().eq('id', p.id);
+    const { error: delErr } = await admin.from('students').delete().eq('id', p.id);
+    if (delErr) throw new Error(`probe student delete failed: ${delErr.message}`);
+
+    if (p.child_id) {
+      // Only if nothing else points at it — a shared child must survive.
+      const { count } = await admin
+        .from('students').select('id', { count: 'exact', head: true }).eq('child_id', p.child_id);
+      if ((count ?? 0) === 0) {
+        const { error: childErr } = await admin.from('children').delete().eq('id', p.child_id);
+        if (childErr) throw new Error(`probe child delete failed: ${childErr.message}`);
+      }
+    }
   }
 }
 
 async function main(): Promise<void> {
   console.log('\nSPE-372 — import RPC (upsert_students_atomic) with real sessions\n');
-  await cleanup(); // a previous aborted run must not make today's checks lie
 
   const rachelId = await profileId('rachel');
   const tomasId = await profileId('tomas');
+  const probeProviders = [rachelId, tomasId];
+  await cleanup(probeProviders); // an aborted run must not make today's checks lie
+
   const rachel = await signIn('rachel');
 
   // School fields are copied from a real seeded row rather than hardcoded: the
@@ -135,7 +167,7 @@ async function main(): Promise<void> {
   // Read it back rather than trusting the return value — the whole point.
   const { data: persisted } = await admin
     .from('students').select('id, provider_id, initials, sessions_per_week')
-    .eq('initials', PROBE_INITIALS);
+    .eq('provider_id', rachelId).eq('initials', PROBE_INITIALS);
   check((persisted ?? []).length === 1, 'the student row is actually in the table afterwards',
     `${(persisted ?? []).length} row(s)`);
   const probeId = persisted?.[0]?.id as string | undefined;
@@ -162,7 +194,7 @@ async function main(): Promise<void> {
 
   const { error: impErr } = await rachel.rpc('upsert_students_atomic', {
     p_provider_id: tomasId,
-    p_students: [{ ...newStudent, initials: 'YY' }],
+    p_students: [{ ...newStudent, initials: IMPERSONATION_INITIALS }],
   });
   check(!!impErr, 'passing another provider_id is REFUSED', impErr ? 'refused' : 'ACCEPTED — LEAK');
   check(
@@ -187,10 +219,19 @@ async function main(): Promise<void> {
     });
     // The RPC catches per-row failures rather than aborting, so the refusal
     // shows up as an error entry, not a thrown error.
+    const rowError: string = updResult?.results?.[0]?.error ?? '';
     check(
       !!updResult && updResult.updated === 0 && updResult.errors === 1,
       'updating a student owned by someone else is refused per-row',
       updResult ? `updated=${updResult.updated} errors=${updResult.errors}` : 'no payload'
+    );
+    // Assert the REASON, not just that something failed: an unrelated per-row
+    // exception would otherwise keep this green after the ownership guard is
+    // gone — the exact trap CLAUDE.md names.
+    check(
+      /not found or not owned by provider/i.test(rowError),
+      'refused by the ownership guard, not incidentally',
+      rowError ? rowError.slice(0, 52) : 'no error text'
     );
     const { data: after } = await admin
       .from('students').select('grade_level').eq('id', tomasStudent.id).single();
@@ -199,7 +240,7 @@ async function main(): Promise<void> {
       `${tomasStudent.grade_level} -> ${after?.grade_level}`);
   }
 
-  await cleanup();
+  await cleanup(probeProviders);
   console.log(
     failures === 0
       ? '\nAll checks passed. Re-seed (npm run sim:reset -- --yes) to restore the fixture.\n'
@@ -209,7 +250,11 @@ async function main(): Promise<void> {
 }
 
 main().catch(async err => {
-  await cleanup().catch(() => {});
+  // Best-effort: resolve the ids again so the sweep stays provider-scoped even
+  // when the failure happened before they were available.
+  await Promise.all([profileId('rachel'), profileId('tomas')])
+    .then(ids => cleanup(ids))
+    .catch(() => {});
   console.error(err instanceof Error ? err.message : err);
   process.exit(1);
 });

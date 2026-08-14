@@ -75,25 +75,45 @@ async function signIn(personaKey: string): Promise<SupabaseClient> {
   return client;
 }
 
+/**
+ * Remove everything the probe copied into PROBE_YEAR.
+ *
+ * Every delete is checked. A silently-failed sweep would leave probe-year rows
+ * behind, which then breaks `sim:verify`'s exact per-table counts AND makes the
+ * NEXT run's first copy fail on "target year already has data" — a failure that
+ * would be blamed on the RPC rather than on this teardown.
+ */
 async function cleanup(): Promise<void> {
+  const fail = (what: string, message: string): never => {
+    throw new Error(`probe cleanup failed (${what}): ${message} — probe-year rows may remain`);
+  };
+
   // rotation_groups/members key off pair_id, not school_year alone — clear them
   // via the probe-year pairs first so nothing is orphaned.
-  const { data: pairs } = await admin
+  const { data: pairs, error: pairErr } = await admin
     .from('rotation_activity_pairs').select('id').eq('school_year', PROBE_YEAR);
+  if (pairErr) fail('rotation_activity_pairs lookup', pairErr.message);
   const pairIds = (pairs ?? []).map(p => p.id);
   if (pairIds.length) {
-    const { data: groups } = await admin
+    const { data: groups, error: gErr } = await admin
       .from('rotation_groups').select('id').in('pair_id', pairIds);
+    if (gErr) fail('rotation_groups lookup', gErr.message);
     const groupIds = (groups ?? []).map(g => g.id);
     if (groupIds.length) {
-      await admin.from('rotation_group_members').delete().in('group_id', groupIds);
-      await admin.from('rotation_groups').delete().in('id', groupIds);
+      const { error: mErr } = await admin
+        .from('rotation_group_members').delete().in('group_id', groupIds);
+      if (mErr) fail('rotation_group_members', mErr.message);
+      const { error: grpErr } = await admin.from('rotation_groups').delete().in('id', groupIds);
+      if (grpErr) fail('rotation_groups', grpErr.message);
     }
-    await admin.from('rotation_activity_pairs').delete().in('id', pairIds);
+    const { error: pDelErr } = await admin
+      .from('rotation_activity_pairs').delete().in('id', pairIds);
+    if (pDelErr) fail('rotation_activity_pairs', pDelErr.message);
   }
   for (const table of COPIED_TABLES) {
     if (table.startsWith('rotation_')) continue;
-    await admin.from(table).delete().eq('school_year', PROBE_YEAR);
+    const { error } = await admin.from(table).delete().eq('school_year', PROBE_YEAR);
+    if (error) fail(table, error.message);
   }
 }
 
