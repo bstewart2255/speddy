@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
+import { cronTokenMatches } from '@/lib/api/cron-auth';
 
 // SPE-143: retention/TTL for worksheet-submission images (scanned student work).
 // Submissions older than this are deleted along with their Storage objects.
@@ -47,7 +48,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    if (!token || token !== expectedToken) {
+    if (!cronTokenMatches(token, expectedToken)) {
       console.warn('Unauthorized worksheet-image cleanup attempt');
       return NextResponse.json(
         { success: false, error: 'Unauthorized', timestamp: new Date().toISOString() },

@@ -1,6 +1,6 @@
 {
   "$comment": "SPE-441 — pre-existing violations of the DB hardening conventions, recorded so the gate fails only on newly introduced ones. Regenerate with: npm run lint:db -- --update-baseline. This list should only ever shrink.",
-  "generated": "2026-08-12",
+  "generated": "2026-08-14",
   "violations": [
     "policy-explicit-role::20250125_add_exit_tickets.sql::exit_tickets.Providers can create exit tickets",
     "policy-explicit-role::20250125_add_exit_tickets.sql::exit_tickets.Providers can delete own exit tickets",
@@ -896,8 +896,6 @@
     "search-path-pg-temp::20250812_simplify_team_functions.sql::find_all_team_members",
     "search-path-pg-temp::20250812_simplify_team_functions.sql::get_school_statistics",
     "search-path-pg-temp::20250812_simplify_team_functions.sql::get_system_health_stats",
-    "search-path-pg-temp::20250813_performance_optimization.sql::get_user_school_context",
-    "search-path-pg-temp::20250813_performance_optimization.sql::refresh_school_statistics",
     "search-path-pg-temp::20250815_scheduling_batch_rpc.sql::get_scheduling_data_batch",
     "search-path-pg-temp::20250816_add_sea_sharing.sql::can_assign_sea_to_session",
     "search-path-pg-temp::20250823_add_specialist_assignment.sql::can_assign_specialist_to_session",

@@ -7,6 +7,7 @@ import {
   renderDailyScheduleEmail,
   type DailyScheduleSessionInput,
 } from '@/lib/email/daily-schedule';
+import { cronTokenMatches } from '@/lib/api/cron-auth';
 
 // SPE-320: daily schedule emails. Weekday mornings (Vercel cron `0 14 * * 1-5`
 // UTC → 7am PDT / 6am PST) every opted-in provider/SEA gets their day's schedule
@@ -186,7 +187,7 @@ export async function GET(request: NextRequest) {
         { status: 500 }
       );
     }
-    if (!token || token !== expectedToken) {
+    if (!cronTokenMatches(token, expectedToken)) {
       console.warn('Unauthorized daily-schedule-emails attempt');
       return NextResponse.json(
         { success: false, error: 'Unauthorized', timestamp: new Date().toISOString() },

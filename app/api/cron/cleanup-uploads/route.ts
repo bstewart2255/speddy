@@ -4,6 +4,7 @@ import {
   runSessionInstanceTopup,
   SESSION_TOPUP_WEEKS_AHEAD
 } from '@/lib/services/session-instance-topup';
+import { cronTokenMatches } from '@/lib/api/cron-auth';
 
 export async function GET(request: NextRequest) {
   const startTime = Date.now();
@@ -32,7 +33,7 @@ export async function GET(request: NextRequest) {
       }, { status: 500 });
     }
 
-    if (!token || token !== expectedToken) {
+    if (!cronTokenMatches(token, expectedToken)) {
       console.warn('Unauthorized cleanup attempt');
       return NextResponse.json({
         success: false,
