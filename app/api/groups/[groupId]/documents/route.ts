@@ -6,6 +6,7 @@ import { track } from '@/lib/monitoring/analytics';
 import { measurePerformanceWithAlerts } from '@/lib/monitoring/performance-alerts';
 import { validateDocumentFile, generateSafeFilename } from '@/lib/document-utils';
 import { withRoute } from '@/lib/api/with-route';
+import { readCappedFormData, readCappedJson, BodyTooLargeError, BODY_LIMITS } from '@/lib/api/body-limit';
 
 const sessionDateQuerySchema = z.object({
   session_date: z.string().optional(),
@@ -149,7 +150,9 @@ export const POST = withRoute<{ groupId: string }>({}, async ({ req: request, us
 
     if (isFormData) {
       // Handle file upload
-      const formData = await request.formData();
+      // Capped read (SPE-505): validateDocumentFile enforces the real 25 MB
+      // rule below, but only once the whole body is already in memory.
+      const formData = await readCappedFormData(request, BODY_LIMITS.document);
       const file = formData.get('file') as File | null;
       title = formData.get('title') as string | null;
       document_type = formData.get('document_type') as string | null;
@@ -231,7 +234,8 @@ export const POST = withRoute<{ groupId: string }>({}, async ({ req: request, us
       });
     } else {
       // Handle JSON request (links)
-      const body = await request.json();
+      // Link/pasted-text branch — no file, so it gets the metadata ceiling.
+      const body = await readCappedJson<any>(request, BODY_LIMITS.documentMetadata);
       title = body.title;
       document_type = body.document_type;
       content = body.content;
@@ -340,6 +344,11 @@ export const POST = withRoute<{ groupId: string }>({}, async ({ req: request, us
     perf.end({ success: true, documentId: data.id });
     return NextResponse.json({ document: data }, { status: 201 });
   } catch (error) {
+    if (error instanceof BodyTooLargeError) {
+      log.warn('Document upload rejected: body exceeded size ceiling', { userId, groupId });
+      perf.end({ success: false });
+      return NextResponse.json({ error: 'Upload too large' }, { status: 413 });
+    }
     log.error('Error in create-group-document route', error, { userId, groupId });
     perf.end({ success: false });
     return NextResponse.json(

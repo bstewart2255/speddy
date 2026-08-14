@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { withRoute } from '@/lib/api/with-route';
+import { readCappedFormData, BodyTooLargeError, BODY_LIMITS } from '@/lib/api/body-limit';
 import { createClient } from '@/lib/supabase/server';
 import {
   extractAccommodationsFromPdf,
@@ -62,8 +63,18 @@ export const POST = withRoute<{ studentId: string }>(
 
     let formData: FormData;
     try {
-      formData = await req.formData();
-    } catch {
+      // Capped read (SPE-505): the MAX_PDF_BYTES check below only runs once the
+      // whole body is already buffered in memory.
+      formData = await readCappedFormData(req, BODY_LIMITS.extractAccommodations);
+    } catch (error) {
+      if (error instanceof BodyTooLargeError) {
+        // Same message the in-handler size check gives, so the two paths read
+        // identically to the user; that check keeps its original 400.
+        return NextResponse.json(
+          { error: 'PDF is too large. The limit is 4MB — try the shorter "IEP at a Glance" instead of the full IEP.' },
+          { status: 413 }
+        );
+      }
       return NextResponse.json({ error: 'Expected a file upload' }, { status: 400 });
     }
 

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { withRoute } from '@/lib/api/with-route';
+import { readCappedFormData, BodyTooLargeError, BODY_LIMITS } from '@/lib/api/body-limit';
 import { log } from '@/lib/monitoring/logger';
 
 // GET: Fetch user's saved worksheets
@@ -46,7 +47,9 @@ export const GET = withRoute({}, async ({ userId }) => {
 export const POST = withRoute({}, async ({ req: request, userId }) => {
   try {
     const supabase = await createClient();
-    const formData = await request.formData();
+    // Capped read (SPE-505): the 10 MB per-file check below only runs once the
+    // whole body is already in memory.
+    const formData = await readCappedFormData(request, BODY_LIMITS.savedWorksheet);
 
     const title = formData.get('title') as string;
     const file = formData.get('file') as File;
@@ -171,6 +174,10 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
 
     return NextResponse.json(worksheet, { status: 201 });
   } catch (error) {
+    if (error instanceof BodyTooLargeError) {
+      log.warn('Saved worksheet upload rejected: body exceeded size ceiling', { userId });
+      return NextResponse.json({ error: 'File size exceeds 10MB limit' }, { status: 413 });
+    }
     log.error('Error in POST /api/saved-worksheets', error, { userId });
     return NextResponse.json(
       { error: 'Internal server error' },

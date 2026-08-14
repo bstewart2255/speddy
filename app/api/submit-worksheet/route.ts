@@ -7,6 +7,12 @@ import { checkRateLimit, recordUpload } from '@/lib/rate-limit';
 import { extractQRCodeForSubmission, verifyQRCodeMatch } from '@/lib/qr-verification';
 import { validateImageBuffer } from '@/lib/image-utils';
 import { trackEvent } from '@/lib/analytics';
+import {
+  readCappedFormData,
+  readCappedJson,
+  BodyTooLargeError,
+  BODY_LIMITS,
+} from '@/lib/api/body-limit';
 
 // Decodes an image (up to 10MB) with Jimp and runs a Claude Vision call, which
 // can exceed the platform default timeout. Requires platform support.
@@ -47,7 +53,14 @@ export const POST = withRoute({ auth: false, aiGated: true }, async ({ req: requ
 
     // Handle direct upload from the upload page
     if (contentType?.includes('application/json')) {
-      const { image, filename, mimetype, source: uploadSource } = await request.json();
+      // Capped read (SPE-505): this route is public, and the 10 MB image check
+      // below only runs once the whole body is already in memory.
+      const { image, filename, mimetype, source: uploadSource } = await readCappedJson<{
+        image: string;
+        filename?: string;
+        mimetype?: string;
+        source?: string;
+      }>(request, BODY_LIMITS.submitWorksheet);
       source = uploadSource;
 
       // Check authentication for direct uploads (skip for QR scan uploads)
@@ -106,7 +119,7 @@ export const POST = withRoute({ auth: false, aiGated: true }, async ({ req: requ
     } 
     // Handle email webhook format or FormData from QR scan
     else {
-      const formData = await request.formData();
+      const formData = await readCappedFormData(request, BODY_LIMITS.submitWorksheet);
       const imageFile = formData.get('image') as File;
       qrCode = formData.get('qr_code') as string;
       submitterEmail = formData.get('from_email') as string;
@@ -445,8 +458,25 @@ export const POST = withRoute({ auth: false, aiGated: true }, async ({ req: requ
     return NextResponse.json(responseData);
 
   } catch (error: any) {
+    // The body outran the ceiling mid-read (SPE-505). Reported as 413 rather
+    // than falling through to the generic 500. `retryable: false` is accurate —
+    // resending the same oversized body fails identically — but note the
+    // uploader's fetchWithRetry does not read it and retries 4xx anyway; that
+    // is pre-existing (it does the same with the 400 from the 10 MB check) and
+    // tracked separately.
+    if (error instanceof BodyTooLargeError) {
+      return NextResponse.json(
+        {
+          error: 'Upload too large',
+          details: 'The image must be under 10MB.',
+          retryable: false,
+        },
+        { status: 413 }
+      );
+    }
+
     console.error('Error processing worksheet submission:', error);
-    
+
     // Track failed upload
     const processingTime = Date.now() - startTime;
     const eventType = source === 'qr_scan_upload' ? 'qr_upload_failed' : 'standard_upload_failed';

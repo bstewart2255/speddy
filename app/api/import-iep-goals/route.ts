@@ -6,6 +6,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { withRoute } from '@/lib/api/with-route';
+import { readCappedFormData, BodyTooLargeError, BODY_LIMITS } from '@/lib/api/body-limit';
 import { parseSEISReport, ParseResult as SEISParseResult } from '@/lib/parsers/seis-parser';
 import { parseCSVReport, ParseResult as CSVParseResult } from '@/lib/parsers/csv-parser';
 import { matchStudents, DatabaseStudent } from '@/lib/utils/student-matcher';
@@ -27,8 +28,10 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
   try {
     const supabase = await createClient();
 
-    // Get form data
-    const formData = await request.formData();
+    // Get form data, under a body ceiling (SPE-505). This route had no size
+    // check at all; the limit matches the 10 MB-per-file convention the sibling
+    // student import already enforces.
+    const formData = await readCappedFormData(request, BODY_LIMITS.iepGoalsImport);
     const file = formData.get('file') as File;
     const targetStudentId = formData.get('targetStudentId') as string | null;
 
@@ -409,6 +412,15 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
       }
     });
   } catch (error: any) {
+    if (error instanceof BodyTooLargeError) {
+      log.warn('IEP goals import rejected: body exceeded size ceiling', { userId });
+      perf.end({ success: false });
+      // States the ceiling actually enforced. Unlike the other upload routes,
+      // this one has no per-file size check behind the cap, so claiming 10 MB
+      // here would assert a limit nothing applies (SPE-509).
+      return NextResponse.json({ error: 'Upload too large. The file must be under 12 MB.' }, { status: 413 });
+    }
+
     log.error('IEP goals import error', error, { userId });
 
     track.event('iep_goals_import_error', {
