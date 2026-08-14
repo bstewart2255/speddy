@@ -216,6 +216,20 @@ async function collectCounts(admin: Admin) {
     counts['group multi-day (>=2 DOW)'] = multiDayGroups;
     counts['group split-slot (>=2 refs)'] = splitSlots;
     counts['sea-run grouped sessions'] = seaRunSessions;
+
+    // Specialist-delegated sessions (SPE-456). The seed's SEA delegation had a
+    // counter here from the start; this one did not exist at all until SPE-456,
+    // which is exactly why the assistant's delegated-specialist read path could
+    // never be exercised with a real session. Counted so a fixture edit that
+    // drops it fails the reset instead of quietly removing the coverage.
+    const { data: specialistRows, error: spErr } = await admin
+      .from('schedule_sessions')
+      .select('assigned_to_specialist_id, delivered_by')
+      .in('provider_id', simUserIds)
+      .eq('delivered_by', 'specialist');
+    if (spErr) throw new Error(`specialist-delegated scan failed: ${spErr.message}`);
+    counts['specialist-delegated sessions'] =
+      (specialistRows ?? []).filter(r => r.assigned_to_specialist_id).length;
     counts['dangling group_ref'] = danglingRefs;
     counts['groups with < 2 members'] = groupsUnder2;
   }
@@ -298,6 +312,7 @@ async function main() {
     expect('group multi-day (>=2 DOW)', n => n === 1, '1');
     expect('group split-slot (>=2 refs)', n => n === 1, '1');
     expect('sea-run grouped sessions', n => n > 0, '> 0');
+    expect('specialist-delegated sessions', n => n > 0, '> 0');
     expect('dangling group_ref', n => n === 0, '0');
     expect('groups with < 2 members', n => n === 0, '0');
   }

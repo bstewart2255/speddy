@@ -541,6 +541,24 @@ export const EDGE = {
   zeroSessionsIndex: 5,
   /** Index whose non-grouped sessions are all delegated to the SEA (Leah). */
   seaDelegatedIndex: 2,
+  /**
+   * Index whose sessions are all delegated to a SPECIALIST (Tomás), the mirror
+   * of seaDelegatedIndex (SPE-456).
+   *
+   * Until this existed the seed delegated to the SEA and never to a specialist,
+   * so the assistant's delegated-specialist read path — get_schedule's `.or()`
+   * and get_student_info's RLS visibility — could not be exercised with a real
+   * signed-in session at all. SPE-455 had to settle for reading pg_policies,
+   * which is the kind of "confirmation" SPE-332 showed to be worthless.
+   *
+   * 7 is chosen because it collides with nothing: not another EDGE index (2, 5,
+   * 6), not a grouped student (2, 3, 8, 9, 11, 14), and NOT one of Rachel's
+   * first two, which are the same children as Tomás's first two. That last
+   * point is what makes the fixture meaningful — the student must not be on
+   * Tomás's own caseload, or `on_my_caseload` would be true for the ordinary
+   * reason and the probe would prove nothing.
+   */
+  specialistDelegatedIndex: 7,
   /** Index with a manually placed session. */
   manuallyPlacedIndex: 6,
 } as const;

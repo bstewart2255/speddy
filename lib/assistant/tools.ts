@@ -238,10 +238,17 @@ async function getStudentInfo(
   // schedule surface exposes delegated students too — pinning to ownership
   // would wrongly refuse them. provider_id is selected only to compute
   // on_my_caseload below; it is never emitted to the model.
-  // Note (verified against live pg_policies): student_details' SELECT policy
-  // covers owner/SEA/teacher paths but NOT delegated specialists, so for a
-  // delegated student the details join comes back empty — on_my_caseload lets
-  // the model report "held by the caseload owner" instead of "missing".
+  // student_details' SELECT policy covers owner/SEA/teacher paths but NOT
+  // delegated specialists, so for a delegated student the details join comes
+  // back empty — on_my_caseload lets the model report "held by the caseload
+  // owner" instead of "missing".
+  //
+  // This used to say "verified against live pg_policies", which is the kind of
+  // confirmation SPE-332 showed to be worthless (a recursive policy read as
+  // correct for 7 months). It is now measured with a real signed-in session:
+  // npm run sim:verify-assistant-delegated-rls (SPE-456). That probe also
+  // pins the positive control — the caseload owner DOES see the same details
+  // row — so "empty" is proven to be RLS rather than an absent row.
   const { data, error } = await supabase
     .from('students')
     .select(
