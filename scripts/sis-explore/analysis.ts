@@ -197,15 +197,19 @@ export interface MatchRateReport {
    */
   backfillGap: number;
   /**
-   * The same shape, except the ID ALREADY belongs to a different child record.
-   * That is not a backfill that failed to run — it is one student holding two
-   * child records (SPE-408), and copying the ID across would put one district
-   * student ID on two children.
+   * The same shape, except another child ALSO claims that ID — either because
+   * it already sits on that child's record, or because a second stranded child
+   * carries the same legacy value. Either way a copy would put one district
+   * student ID on two children, so it is not a backfill that failed to run.
    *
-   * Split out from `backfillGap` because the two states have opposite remedies
-   * and, on the only real data this tool has seen (JSUSD), every single
-   * instance was this one. A report that names the cheap remedy for the
-   * expensive state is worse than no report (SPE-409).
+   * Deliberately named "probable": a shared ID is a fact, but its cause is not.
+   * It is equally consistent with one student holding two child records
+   * (SPE-408 — what every instance at JSUSD turned out to be) and with one ID
+   * entered against two genuinely different students, and those have different
+   * remedies. The report says so rather than prescribing one.
+   *
+   * Split out from `backfillGap` because a report that names the cheap remedy
+   * for the expensive state is worse than no report (SPE-409).
    */
   probableDuplicateChild: number;
   /** DETAIL — student-level, never leaves the git-ignored report. */

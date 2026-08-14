@@ -223,6 +223,22 @@ describe('analyzeMatchRate', () => {
     expect(analyzeMatchRate([...rows].reverse(), sis).backfillGap).toBe(1);
   });
 
+  it('does not call a whitespace-only legacy ID a backfill gap', () => {
+    // `!!legacyDistrictStudentId` is truthy for '   ', which would report a
+    // migration that has no value to migrate. The normalizer decides what
+    // counts as an ID, so blank-ish rows fall out before classification.
+    const r = analyzeMatchRate(
+      [
+        student({ childId: 'a', districtStudentId: null, legacyDistrictStudentId: '   ' }),
+        student({ childId: 'b', districtStudentId: null, legacyDistrictStudentId: '' }),
+      ],
+      sis,
+    );
+    expect(r.backfillGap).toBe(0);
+    expect(r.probableDuplicateChild).toBe(0);
+    expect(r.withoutId).toBe(2);
+  });
+
   it('splits a mixed caseload into the two states rather than lumping them', () => {
     const r = analyzeMatchRate(
       [

@@ -149,8 +149,11 @@ describe('the summary refuses to be read out of context', () => {
       matchRate: { ...f.matchRate, probableDuplicateChild: 11, backfillGap: 0 },
     });
     expect(summary).toMatch(/11 student\(s\)/);
-    expect(summary).toMatch(/another child record would also hold/i);
-    expect(summary).toMatch(/Do not copy it across/i);
+    expect(summary).toMatch(/another child also claims/i);
+    // Both claim sources named, since neither child record holds it in the
+    // two-stranded case: "already on its child record, or on its own caseload row".
+    expect(summary).toMatch(/on its own caseload row/i);
+    expect(summary).toMatch(/Do not copy either value across/i);
     // and none of the copy-it-across language from the other branch
     expect(summary).not.toMatch(/moving it onto the child record/i);
 
@@ -171,7 +174,7 @@ describe('the summary refuses to be read out of context', () => {
     });
     expect(summary).toMatch(/9 student\(s\)/);
     expect(summary).toMatch(/2 student\(s\)/);
-    expect(summary).toMatch(/Do not copy it across/i);
+    expect(summary).toMatch(/Do not copy either value across/i);
     expect(summary).toMatch(/moving it onto the child record/i);
   });
 

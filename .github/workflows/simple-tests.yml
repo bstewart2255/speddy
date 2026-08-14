@@ -75,6 +75,6 @@ jobs:
         run: |
           echo "## Test Summary"
           echo "- Linting: Complete"
-          echo "- Type checking: Complete"
+          echo "- Type checking: Delegated to typecheck.yml"
           echo "- Build: ${{ steps.build.outcome || 'Complete' }}"
           echo "- Smoke tests: ${{ steps.smoke.outcome || 'Complete' }}"

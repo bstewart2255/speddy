@@ -98,8 +98,9 @@ export function renderSummary(f: Findings): string {
   if (m.probableDuplicateChild) {
     lines.push(
       `- ⚠️ ${m.probableDuplicateChild} student(s) carry a district ID on the caseload row that ` +
-        'is missing from their child record, and that another child record would also hold. ' +
-        'Do not copy it across — that would put one district student ID on two children. ' +
+        'is missing from their child record, and that another child also claims — either ' +
+        'already on its child record, or on its own caseload row. ' +
+        'Do not copy either value across — that would put one district student ID on two children. ' +
         'Check the identities first: this is either one student with two child records ' +
         '(SPE-408 — at JSUSD, all of them were) or one ID entered against two different ' +
         'students. Those have different fixes, and the ID alone does not tell you which.',
