@@ -11,7 +11,7 @@ import { log } from '@/lib/monitoring/logger';
  * read rows the signed-in user couldn't read themselves, and it has no write
  * path at all.
  *
- * Student-data scope (CA-NDPA, see SPE-61 / `lib/lessons/student-labels.ts`):
+ * Student-data scope (CA-NDPA, see SPE-61):
  * what these tools return is sent to Anthropic as tool results, so they are
  * limited to the disclosed subprocessor scope — student initials, IEP goal
  * text, IEP/triennial meeting dates, grade, session times, and session group

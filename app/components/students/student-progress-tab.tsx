@@ -80,14 +80,12 @@ export function StudentProgressTab({ studentId, iepGoals, schoolId, districtId, 
   };
 
   const handleEditProgress = (item: TimelineItem) => {
-    if (item.type !== 'manual') return;
-
     setSelectedGoalIndex(item.goalIndex);
     setSelectedEntry({
       id: item.id,
       student_id: studentId,
       iep_goal_index: item.goalIndex,
-      score: item.score || 0,
+      score: item.score,
       observation_date: item.date,
       source: item.source,
       notes: item.notes,
@@ -131,9 +129,7 @@ export function StudentProgressTab({ studentId, iepGoals, schoolId, districtId, 
   }
 
   const { goalSummaries, totals, timeline } = progressData;
-  const activeGoalsCount = goalSummaries.filter(g =>
-    g.progressCheckCount > 0 || g.exitTicketCount > 0 || g.manualProgressCount > 0
-  ).length;
+  const activeGoalsCount = goalSummaries.filter(g => g.manualProgressCount > 0).length;
 
   return (
     <div className="space-y-6">
@@ -142,22 +138,22 @@ export function StudentProgressTab({ studentId, iepGoals, schoolId, districtId, 
         <h3 className="font-medium text-gray-900 mb-3">Summary (All-Time)</h3>
         <CardGrid columns={3} gap="sm">
           <StatCard
-            title="Total Assessments"
+            title="Progress Entries"
             value={totals.totalAssessments}
-            description="Progress checks + exit tickets"
+            description="Recorded observations"
           />
           <StatCard
-            title="Overall Accuracy"
+            title="Overall Average"
             value={totals.overallAccuracy !== null ? `${totals.overallAccuracy}%` : '--'}
-            description={totals.totalGraded > 0
-              ? `${totals.totalCorrect}/${totals.totalGraded} correct`
-              : 'No graded items'
+            description={totals.totalAssessments > 0
+              ? 'Across all entries'
+              : 'No entries yet'
             }
           />
           <StatCard
             title="Active Goals"
             value={`${activeGoalsCount}/${iepGoals.length}`}
-            description="Goals with assessments"
+            description="Goals with progress entries"
           />
         </CardGrid>
       </div>
@@ -191,7 +187,7 @@ export function StudentProgressTab({ studentId, iepGoals, schoolId, districtId, 
         <h3 className="font-medium text-gray-900 mb-3">Last 30 Days</h3>
         {timeline.length === 0 ? (
           <div className="text-center py-6 bg-gray-50 rounded-lg">
-            <p className="text-gray-500">No assessments in the last 30 days</p>
+            <p className="text-gray-500">No progress entries in the last 30 days</p>
           </div>
         ) : (
           <div className="space-y-2">
@@ -199,7 +195,7 @@ export function StudentProgressTab({ studentId, iepGoals, schoolId, districtId, 
               <TimelineItemCard
                 key={item.id}
                 item={item}
-                onEdit={item.type === 'manual' && !readOnly ? () => handleEditProgress(item) : undefined}
+                onEdit={!readOnly ? () => handleEditProgress(item) : undefined}
               />
             ))}
           </div>
@@ -226,7 +222,7 @@ export function StudentProgressTab({ studentId, iepGoals, schoolId, districtId, 
 }
 
 function GoalBreakdownCard({ goal, onAddProgress, readOnly = false }: { goal: GoalSummary; onAddProgress: () => void; readOnly?: boolean }) {
-  const hasAnyData = goal.progressCheckCount > 0 || goal.exitTicketCount > 0 || goal.manualProgressCount > 0;
+  const hasAnyData = goal.manualProgressCount > 0;
 
   return (
     <Card padding="sm" className="border border-gray-200">
@@ -255,9 +251,9 @@ function GoalBreakdownCard({ goal, onAddProgress, readOnly = false }: { goal: Go
             </p>
           </div>
           {hasAnyData && (
-            <div className={`px-3 py-1 rounded-full ${getAccuracyBgColor(goal.combinedAccuracy)}`}>
-              <span className={`text-lg font-semibold ${getAccuracyColor(goal.combinedAccuracy)}`}>
-                {goal.combinedAccuracy !== null ? `${goal.combinedAccuracy}%` : '--'}
+            <div className={`px-3 py-1 rounded-full ${getAccuracyBgColor(goal.manualProgressAverage)}`}>
+              <span className={`text-lg font-semibold ${getAccuracyColor(goal.manualProgressAverage)}`}>
+                {goal.manualProgressAverage !== null ? `${goal.manualProgressAverage}%` : '--'}
               </span>
             </div>
           )}
@@ -265,55 +261,16 @@ function GoalBreakdownCard({ goal, onAddProgress, readOnly = false }: { goal: Go
 
         {hasAnyData && (
           <div className="flex flex-wrap gap-4 text-sm pt-1">
-            {/* Progress Check stats */}
-            {goal.progressCheckCount > 0 && (
-              <div className="flex items-center gap-1.5">
-                <Badge variant="default">PC</Badge>
-                <span className={getAccuracyColor(goal.progressCheckAccuracy)}>
-                  {goal.progressCheckAccuracy !== null
-                    ? `${goal.progressCheckAccuracy}%`
-                    : '--'}
-                </span>
-                <span className="text-gray-400">
-                  ({goal.progressCheckCorrect}/{goal.progressCheckTotal})
-                </span>
-              </div>
-            )}
-
-            {/* Exit Ticket stats */}
-            {goal.exitTicketCount > 0 && (
-              <div className="flex items-center gap-1.5">
-                <Badge variant="secondary" className="bg-purple-100 text-purple-800">ET</Badge>
-                <span className={getAccuracyColor(goal.exitTicketAccuracy)}>
-                  {goal.exitTicketAccuracy !== null
-                    ? `${goal.exitTicketAccuracy}%`
-                    : '--'}
-                </span>
-                <span className="text-gray-400">
-                  ({goal.exitTicketCorrect}/{goal.exitTicketTotal})
-                </span>
-              </div>
-            )}
-
-            {/* Manual Progress stats */}
-            {goal.manualProgressCount > 0 && (
-              <div className="flex items-center gap-1.5">
-                <Badge variant="secondary" className="bg-gray-100 text-gray-700">Manual</Badge>
-                <span className={getAccuracyColor(goal.manualProgressAverage)}>
-                  {goal.manualProgressAverage !== null
-                    ? `${goal.manualProgressAverage}%`
-                    : '--'}
-                </span>
-                <span className="text-gray-400">
-                  ({goal.manualProgressCount} {goal.manualProgressCount === 1 ? 'entry' : 'entries'})
-                </span>
-              </div>
-            )}
+            <div className="flex items-center gap-1.5">
+              <span className="text-gray-400">
+                {goal.manualProgressCount} {goal.manualProgressCount === 1 ? 'entry' : 'entries'}
+              </span>
+            </div>
           </div>
         )}
 
         {!hasAnyData && (
-          <p className="text-sm text-gray-400 italic">No assessments yet</p>
+          <p className="text-sm text-gray-400 italic">No progress entries yet</p>
         )}
       </div>
     </Card>
@@ -321,27 +278,17 @@ function GoalBreakdownCard({ goal, onAddProgress, readOnly = false }: { goal: Go
 }
 
 function TimelineItemCard({ item, onEdit }: { item: TimelineItem; onEdit?: () => void }) {
-  const isManual = item.type === 'manual';
-  const total = item.correct + item.incorrect;
-  const accuracy = isManual ? item.score : (total > 0 ? Math.round((item.correct / total) * 100) : null);
-
-  const cardClasses = `border border-gray-200 ${isManual && onEdit ? 'cursor-pointer hover:border-gray-300 hover:shadow-sm transition-all' : ''}`;
+  const cardClasses = `border border-gray-200 ${onEdit ? 'cursor-pointer hover:border-gray-300 hover:shadow-sm transition-all' : ''}`;
 
   const content = (
     <div className="flex items-start justify-between gap-3">
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-1">
-          {item.type === 'progress_check' ? (
-            <Badge variant="default">Progress Check</Badge>
-          ) : item.type === 'exit_ticket' ? (
-            <Badge variant="secondary" className="bg-purple-100 text-purple-800">Exit Ticket</Badge>
-          ) : (
-            <Badge variant="secondary" className="bg-gray-100 text-gray-700">Manual</Badge>
-          )}
+          <Badge variant="secondary" className="bg-gray-100 text-gray-700">Manual</Badge>
           <span className="text-xs text-gray-500">
             {format(new Date(item.date.includes('T') ? item.date : `${item.date}T00:00:00`), 'MMM d, yyyy')}
           </span>
-          {isManual && item.source && (
+          {item.source && (
             <span className="text-xs text-gray-400">
               ({item.source})
             </span>
@@ -352,36 +299,26 @@ function TimelineItemCard({ item, onEdit }: { item: TimelineItem; onEdit?: () =>
           Goal #{item.goalIndex + 1}: {item.goalText}
         </p>
 
-        {!isManual && (
-          <div className="flex items-center gap-3 mt-1 text-sm">
-            <span className="text-green-600">{item.correct} correct</span>
-            <span className="text-red-600">{item.incorrect} incorrect</span>
-            {item.excluded > 0 && (
-              <span className="text-gray-400">{item.excluded} excluded</span>
-            )}
-          </div>
-        )}
-
         {item.notes && (
           <p className="text-sm text-gray-500 mt-1 italic line-clamp-2">
             "{item.notes}"
           </p>
         )}
 
-        {isManual && onEdit && (
+        {onEdit && (
           <p className="text-xs text-blue-500 mt-1">Click to edit</p>
         )}
       </div>
 
-      <div className={`px-2 py-1 rounded ${getAccuracyBgColor(accuracy ?? null)}`}>
-        <span className={`text-sm font-medium ${getAccuracyColor(accuracy ?? null)}`}>
-          {accuracy !== null && accuracy !== undefined ? `${accuracy}%` : '--'}
+      <div className={`px-2 py-1 rounded ${getAccuracyBgColor(item.score)}`}>
+        <span className={`text-sm font-medium ${getAccuracyColor(item.score)}`}>
+          {`${item.score}%`}
         </span>
       </div>
     </div>
   );
 
-  if (isManual && onEdit) {
+  if (onEdit) {
     const handleKeyDown = (e: React.KeyboardEvent) => {
       if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();

@@ -290,32 +290,18 @@ export async function upsertStudentDetails(
 export interface GoalSummary {
   goalIndex: number;
   goalText: string;
-  progressCheckAccuracy: number | null;
-  progressCheckCount: number;
-  progressCheckCorrect: number;
-  progressCheckTotal: number;
-  exitTicketAccuracy: number | null;
-  exitTicketCount: number;
-  exitTicketCorrect: number;
-  exitTicketTotal: number;
   manualProgressCount: number;
   manualProgressAverage: number | null;
-  combinedAccuracy: number | null;
 }
 
 export interface TimelineItem {
   id: string;
-  type: 'progress_check' | 'exit_ticket' | 'manual';
   date: string;
   goalIndex: number;
   goalText: string;
-  correct: number;
-  incorrect: number;
-  excluded: number;
-  notes?: string;
-  // Additional fields for manual entries
-  score?: number;
+  score: number;
   source?: string;
+  notes?: string;
 }
 
 export interface StudentProgressData {
@@ -323,8 +309,6 @@ export interface StudentProgressData {
   totals: {
     totalAssessments: number;
     overallAccuracy: number | null;
-    totalCorrect: number;
-    totalGraded: number;
   };
   timeline: TimelineItem[];
 }
@@ -336,8 +320,8 @@ type ManualGoalProgressRecord = Pick<
 >;
 
 /**
- * Retrieves progress data for a student including Progress Check and Exit Ticket results.
- * Returns all-time summary stats and last 30 days of timeline items.
+ * Retrieves manual goal-progress data for a student.
+ * Returns all-time per-goal summaries and the last 30 days of entries.
  *
  * @param studentId - UUID of the student
  * @param iepGoals - Array of IEP goal texts for this student
@@ -355,193 +339,65 @@ export async function getStudentProgressData(
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-  // Fetch progress check, exit ticket, and manual progress results in parallel
-  const [progressCheckResult, exitTicketResult, manualProgressResult] = await Promise.all([
-    safeQuery(
-      async () => {
-        const { data, error } = await supabase
-          .from('progress_check_results')
-          .select('id, iep_goal_index, status, notes, graded_at, progress_check_id')
-          .eq('student_id', studentId);
-        if (error) throw error;
-        return data || [];
-      },
-      { operation: 'fetch_progress_check_results', studentId }
-    ),
-    safeQuery(
-      async () => {
-        const { data, error } = await supabase
-          .from('exit_ticket_results')
-          .select('id, iep_goal_index, iep_goal_text, status, notes, graded_at, exit_ticket_id')
-          .eq('student_id', studentId);
-        if (error) throw error;
-        return data || [];
-      },
-      { operation: 'fetch_exit_ticket_results', studentId }
-    ),
-    safeQuery(
-      async () => {
-        const { data, error } = await supabase
-          .from('manual_goal_progress')
-          .select('id, iep_goal_index, score, observation_date, source, notes')
-          .eq('student_id', studentId);
-        if (error) throw error;
-        return (data || []) as ManualGoalProgressRecord[];
-      },
-      { operation: 'fetch_manual_goal_progress', studentId }
-    ),
-  ]);
+  const manualProgressResult = await safeQuery(
+    async () => {
+      const { data, error } = await supabase
+        .from('manual_goal_progress')
+        .select('id, iep_goal_index, score, observation_date, source, notes')
+        .eq('student_id', studentId);
+      if (error) throw error;
+      return (data || []) as ManualGoalProgressRecord[];
+    },
+    { operation: 'fetch_manual_goal_progress', studentId }
+  );
 
-  fetchPerf.end({ success: !progressCheckResult.error && !exitTicketResult.error && !manualProgressResult.error });
-
-  if (progressCheckResult.error) {
-    console.error('Error fetching progress check results:', progressCheckResult.error);
-    throw progressCheckResult.error;
-  }
-
-  if (exitTicketResult.error) {
-    console.error('Error fetching exit ticket results:', exitTicketResult.error);
-    throw exitTicketResult.error;
-  }
+  fetchPerf.end({ success: !manualProgressResult.error });
 
   if (manualProgressResult.error) {
     console.error('Error fetching manual goal progress:', manualProgressResult.error);
-    // Don't throw - manual progress is supplementary, continue without it
+    throw manualProgressResult.error;
   }
 
-  const progressCheckResults = progressCheckResult.data || [];
-  const exitTicketResults = exitTicketResult.data || [];
   const manualProgressResults: ManualGoalProgressRecord[] = manualProgressResult.data || [];
 
   // Aggregate by goal
-  const goalMap = new Map<number, {
-    pcCorrect: number;
-    pcIncorrect: number;
-    pcExcluded: number;
-    etCorrect: number;
-    etIncorrect: number;
-    etExcluded: number;
-    manualScores: number[];
-    goalText: string;
-  }>();
+  const goalMap = new Map<number, { manualScores: number[]; goalText: string }>();
 
   // Initialize with IEP goals
   iepGoals.forEach((goalText, index) => {
-    goalMap.set(index, {
-      pcCorrect: 0,
-      pcIncorrect: 0,
-      pcExcluded: 0,
-      etCorrect: 0,
-      etIncorrect: 0,
-      etExcluded: 0,
-      manualScores: [],
-      goalText,
-    });
+    goalMap.set(index, { manualScores: [], goalText });
   });
 
-  // Aggregate progress check results
-  for (const result of progressCheckResults) {
-    const goalIndex = result.iep_goal_index;
-    if (!goalMap.has(goalIndex)) {
-      goalMap.set(goalIndex, {
-        pcCorrect: 0, pcIncorrect: 0, pcExcluded: 0,
-        etCorrect: 0, etIncorrect: 0, etExcluded: 0,
-        manualScores: [],
-        goalText: iepGoals[goalIndex] || `Goal ${goalIndex + 1}`,
-      });
-    }
-    const goal = goalMap.get(goalIndex)!;
-    if (result.status === 'correct') goal.pcCorrect++;
-    else if (result.status === 'incorrect') goal.pcIncorrect++;
-    else if (result.status === 'excluded') goal.pcExcluded++;
-  }
-
-  // Aggregate exit ticket results
-  for (const result of exitTicketResults) {
-    const goalIndex = result.iep_goal_index;
-    if (!goalMap.has(goalIndex)) {
-      goalMap.set(goalIndex, {
-        pcCorrect: 0, pcIncorrect: 0, pcExcluded: 0,
-        etCorrect: 0, etIncorrect: 0, etExcluded: 0,
-        manualScores: [],
-        goalText: result.iep_goal_text || iepGoals[goalIndex] || `Goal ${goalIndex + 1}`,
-      });
-    }
-    const goal = goalMap.get(goalIndex)!;
-    if (result.status === 'correct') goal.etCorrect++;
-    else if (result.status === 'incorrect') goal.etIncorrect++;
-    else if (result.status === 'excluded') goal.etExcluded++;
-  }
-
-  // Aggregate manual progress results
   for (const result of manualProgressResults) {
     const goalIndex = result.iep_goal_index;
     if (!goalMap.has(goalIndex)) {
       goalMap.set(goalIndex, {
-        pcCorrect: 0, pcIncorrect: 0, pcExcluded: 0,
-        etCorrect: 0, etIncorrect: 0, etExcluded: 0,
         manualScores: [],
         goalText: iepGoals[goalIndex] || `Goal ${goalIndex + 1}`,
       });
     }
-    const goal = goalMap.get(goalIndex)!;
-    goal.manualScores.push(result.score);
+    goalMap.get(goalIndex)!.manualScores.push(result.score);
   }
 
   // Build goal summaries
   const goalSummaries: GoalSummary[] = [];
-  let totalCorrect = 0;
-  let totalGraded = 0;
-  let totalManualScore = 0;
-  let totalManualCount = 0;
+  let totalScore = 0;
+  let totalCount = 0;
 
   for (const [goalIndex, data] of goalMap) {
-    const pcTotal = data.pcCorrect + data.pcIncorrect;
-    const pcAccuracy = pcTotal > 0 ? Math.round((data.pcCorrect / pcTotal) * 100) : null;
-
-    const etTotal = data.etCorrect + data.etIncorrect;
-    const etAccuracy = etTotal > 0 ? Math.round((data.etCorrect / etTotal) * 100) : null;
-
     const manualCount = data.manualScores.length;
     const manualAverage = manualCount > 0
       ? Math.round(data.manualScores.reduce((a, b) => a + b, 0) / manualCount)
       : null;
 
-    // Combined accuracy: weight PC and ET by count, include manual scores
-    // Each PC/ET item is 1 data point, each manual entry is 1 data point
-    const pcEtTotal = pcTotal + etTotal;
-    const pcEtCorrect = data.pcCorrect + data.etCorrect;
-
-    // For combined accuracy, treat PC/ET correct/total as percentages weighted by count
-    // and manual scores as their own data points
-    let combinedAccuracy: number | null = null;
-    const allDataPoints = pcEtTotal + manualCount;
-    if (allDataPoints > 0) {
-      // Weight PC/ET by their total items, manual by their count
-      const pcEtWeightedScore = pcEtTotal > 0 ? (pcEtCorrect / pcEtTotal) * 100 * pcEtTotal : 0;
-      const manualWeightedScore = manualCount > 0 ? data.manualScores.reduce((a, b) => a + b, 0) : 0;
-      combinedAccuracy = Math.round((pcEtWeightedScore + manualWeightedScore) / allDataPoints);
-    }
-
-    totalCorrect += pcEtCorrect;
-    totalGraded += pcEtTotal;
-    totalManualScore += data.manualScores.reduce((a, b) => a + b, 0);
-    totalManualCount += manualCount;
+    totalScore += data.manualScores.reduce((a, b) => a + b, 0);
+    totalCount += manualCount;
 
     goalSummaries.push({
       goalIndex,
       goalText: data.goalText,
-      progressCheckAccuracy: pcAccuracy,
-      progressCheckCount: data.pcCorrect + data.pcIncorrect + data.pcExcluded,
-      progressCheckCorrect: data.pcCorrect,
-      progressCheckTotal: pcTotal,
-      exitTicketAccuracy: etAccuracy,
-      exitTicketCount: data.etCorrect + data.etIncorrect + data.etExcluded,
-      exitTicketCorrect: data.etCorrect,
-      exitTicketTotal: etTotal,
       manualProgressCount: manualCount,
       manualProgressAverage: manualAverage,
-      combinedAccuracy,
     });
   }
 
@@ -549,99 +405,20 @@ export async function getStudentProgressData(
   goalSummaries.sort((a, b) => a.goalIndex - b.goalIndex);
 
   // Build timeline (last 30 days)
-  const timeline: TimelineItem[] = [];
-
-  // Group progress check results by progress_check_id AND iep_goal_index for timeline
-  // (a single progress check can have questions for multiple IEP goals)
-  const pcByCheckAndGoal = new Map<string, typeof progressCheckResults>();
-  for (const result of progressCheckResults) {
-    if (result.graded_at && new Date(result.graded_at) >= thirtyDaysAgo) {
-      const key = `${result.progress_check_id}-${result.iep_goal_index}`;
-      if (!pcByCheckAndGoal.has(key)) {
-        pcByCheckAndGoal.set(key, []);
-      }
-      pcByCheckAndGoal.get(key)!.push(result);
-    }
-  }
-
-  // Add progress check timeline items (one per goal per check)
-  for (const [key, results] of pcByCheckAndGoal) {
-    if (results.length === 0) continue;
-    const goalIndex = results[0].iep_goal_index;
-    const goalText = goalMap.get(goalIndex)?.goalText || `Goal ${goalIndex + 1}`;
-    const correct = results.filter(r => r.status === 'correct').length;
-    const incorrect = results.filter(r => r.status === 'incorrect').length;
-    const excluded = results.filter(r => r.status === 'excluded').length;
-    const notes = results.filter(r => r.notes).map(r => r.notes).join('; ') || undefined;
-
-    timeline.push({
-      id: key, // Use composite key for uniqueness
-      type: 'progress_check',
-      date: results[0].graded_at!,
-      goalIndex,
-      goalText,
-      correct,
-      incorrect,
-      excluded,
-      notes,
-    });
-  }
-
-  // Group exit ticket results by exit_ticket_id for timeline
-  const etByTicket = new Map<string, typeof exitTicketResults>();
-  for (const result of exitTicketResults) {
-    if (result.graded_at && new Date(result.graded_at) >= thirtyDaysAgo) {
-      const ticketId = result.exit_ticket_id;
-      if (!etByTicket.has(ticketId)) {
-        etByTicket.set(ticketId, []);
-      }
-      etByTicket.get(ticketId)!.push(result);
-    }
-  }
-
-  // Add exit ticket timeline items
-  for (const [ticketId, results] of etByTicket) {
-    if (results.length === 0) continue;
-    const goalIndex = results[0].iep_goal_index;
-    const goalText = results[0].iep_goal_text || goalMap.get(goalIndex)?.goalText || `Goal ${goalIndex + 1}`;
-    const correct = results.filter(r => r.status === 'correct').length;
-    const incorrect = results.filter(r => r.status === 'incorrect').length;
-    const excluded = results.filter(r => r.status === 'excluded').length;
-    const notes = results.filter(r => r.notes).map(r => r.notes).join('; ') || undefined;
-
-    timeline.push({
-      id: ticketId,
-      type: 'exit_ticket',
-      date: results[0].graded_at!,
-      goalIndex,
-      goalText,
-      correct,
-      incorrect,
-      excluded,
-      notes,
-    });
-  }
-
-  // Add manual progress timeline items (last 30 days)
   // Parse DATE as local date by appending T00:00:00 to avoid timezone issues
+  const timeline: TimelineItem[] = [];
   for (const result of manualProgressResults) {
     const observationDate = new Date(`${result.observation_date}T00:00:00`);
     if (observationDate >= thirtyDaysAgo) {
       const goalIndex = result.iep_goal_index;
-      const goalText = goalMap.get(goalIndex)?.goalText || `Goal ${goalIndex + 1}`;
-
       timeline.push({
         id: result.id,
-        type: 'manual',
         date: result.observation_date,
         goalIndex,
-        goalText,
-        correct: 0, // Not applicable for manual entries
-        incorrect: 0,
-        excluded: 0,
-        notes: result.notes || undefined,
+        goalText: goalMap.get(goalIndex)?.goalText || `Goal ${goalIndex + 1}`,
         score: result.score,
         source: result.source || undefined,
+        notes: result.notes || undefined,
       });
     }
   }
@@ -649,26 +426,11 @@ export async function getStudentProgressData(
   // Sort timeline by date descending (most recent first)
   timeline.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-  // Count unique assessments (progress checks + exit tickets + manual entries)
-  const uniqueProgressChecks = new Set(progressCheckResults.map(r => r.progress_check_id)).size;
-  const uniqueExitTickets = new Set(exitTicketResults.map(r => r.exit_ticket_id)).size;
-  const uniqueManualEntries = manualProgressResults.length;
-
-  // Calculate overall accuracy including manual progress
-  const allDataPoints = totalGraded + totalManualCount;
-  let overallAccuracy: number | null = null;
-  if (allDataPoints > 0) {
-    const pcEtWeightedScore = totalGraded > 0 ? (totalCorrect / totalGraded) * 100 * totalGraded : 0;
-    overallAccuracy = Math.round((pcEtWeightedScore + totalManualScore) / allDataPoints);
-  }
-
   return {
     goalSummaries,
     totals: {
-      totalAssessments: uniqueProgressChecks + uniqueExitTickets + uniqueManualEntries,
-      overallAccuracy,
-      totalCorrect,
-      totalGraded,
+      totalAssessments: manualProgressResults.length,
+      overallAccuracy: totalCount > 0 ? Math.round(totalScore / totalCount) : null,
     },
     timeline,
   };

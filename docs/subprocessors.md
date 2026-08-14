@@ -8,7 +8,7 @@ exhibit (see SPE-59) and for student-data-privacy disclosures.
 > touch student data is an NDPA change-notification trigger — update this list in
 > the same PR, and notify LEAs per the executed agreement.
 
-_Last reviewed: 2026-08-13._
+_Last reviewed: 2026-08-14._
 
 ## Data categories
 
@@ -32,22 +32,25 @@ _Last reviewed: 2026-08-13._
 
 ## Planned — disclosed but NOT currently enabled
 
-The remaining AI features (lessons, exit tickets, progress checks, worksheet
-vision) stay hard-gated off by `AI_FEATURES_ENABLED` (default off; see
-SPE-162): those routes return 404 (before auth or handler logic) and make
-**zero** provider calls unless the env var is set to exactly the string
-`'true'`. The assistant above is the one AI feature enabled independently, via
-`ASSISTANT_ENABLED` (SPE-452).
+One AI feature remains built but hard-gated off by `AI_FEATURES_ENABLED`
+(default off; see SPE-162): its route returns 404 (before auth or handler
+logic) and makes **zero** provider calls unless the env var is set to exactly
+the string `'true'`. The assistant above is the one AI feature enabled
+independently, via `ASSISTANT_ENABLED` (SPE-452).
 
-**DPAs executed and on file (2026-06-12):** OpenAI signed (self-serve), Anthropic
-incorporated via Commercial Terms + dated copy saved; both US-processed on standard
-tiers. The enable-gate preconditions have since been met: the DPA/ZDR work closed
-via SPE-163 (2026-07-18) and prompt de-identification landed via SPE-61.
+The rest of the flag-gated AI suite — lesson generation, exit tickets,
+progress checks, worksheet vision (incl. the QR/photo submission path and the
+inbound email → worksheet webhook) — was **removed from the codebase in
+2026-08 (SPE-497)** without ever being enabled; those data flows no longer
+exist in the product.
+
+**DPAs executed and on file (2026-06-12):** Anthropic incorporated via
+Commercial Terms + dated copy saved; US-processed on standard tier (SPE-163).
+Prompt de-identification landed via SPE-61.
 
 | Service | Role (when enabled) | Student data (when enabled) | Where (code) |
 |---|---|---|---|
-| **OpenAI** | Default lesson-generation provider (`AI_PROVIDER` defaults to `openai`, model `gpt-5-mini`). | Initials + IEP goals in prompts. | `lib/lessons/providers.ts` |
-| **Anthropic (Claude)** | Lessons, exit tickets, progress checks, worksheet vision, IEP-PDF accommodations import (SPE-489). | Initials + IEP goals; plus the completed-worksheet image (the student's written work) and its questions/answers on the worksheet-submission path (`submit-worksheet` sends the photo to Claude Vision); plus the full content of a provider-uploaded **IEP PDF** on the accommodations-import path (one extraction call — Speddy never stores the file, and only the provider-approved accommodations list is saved). | `lib/exit-tickets/generator.ts`, `app/api/submit-worksheet/route.ts`, `lib/lessons/*`, `lib/progress-checks/*`, `lib/iep/extract-accommodations.ts` |
+| **Anthropic (Claude)** | IEP-PDF accommodations import (SPE-489). | The full content of a provider-uploaded **IEP PDF** (one extraction call — Speddy never stores the file, and only the provider-approved accommodations list is saved). | `lib/iep/extract-accommodations.ts` |
 
 ## Data sources (NOT downstream processors)
 
@@ -58,16 +61,17 @@ via SPE-163 (2026-07-18) and prompt de-identification landed via SPE-61.
 ## Email (transactional)
 
 - **Supabase Auth** sends auth emails (signup confirmation, password reset).
-- **Resend** powers the inbound email → worksheet webhook only, which is
-  **disabled by default** (returns 404 unless `EMAIL_WEBHOOK_ENABLED === 'true'`).
-  Provider signature verification is **not yet implemented** and must be added
-  before re-enabling — flipping the flag alone would accept unauthenticated POSTs
-  (SPE-128). Uses student **initials** (not full names) when active.
+- **Resend** sends the outbound opt-in daily schedule emails
+  (`app/api/cron/daily-schedule-emails`), which use student **initials only**,
+  never full names. (The inbound email → worksheet webhook it previously
+  existed for — disabled since SPE-128 — was removed with the worksheet
+  feature, SPE-497.)
 
 ## Removed / not in use (no student data)
 
 | Service | Status |
 |---|---|
+| **OpenAI** | Removed (SPE-497, 2026-08). Was the planned default lesson-generation provider; never enabled in production (`AI_FEATURES_ENABLED` stayed off), so no student data was ever sent. Code and the `openai` npm package are deleted. The self-serve DPA executed 2026-06-12 remains on file. |
 | **PDF.co** | Removed (SPE-164). No **runtime / app-code** references to `api.pdf.co` remain (docs-only mentions — like this file — may reference it). |
 | **Stripe** | Payment system removed (`supabase/migrations/20251208_remove_subscription_tables.sql`); env vars cleaned up. |
 | **SendGrid** | Not used by app code — `SENDGRID_API_KEY` / `sendgrid` appear only in a **commented-out** SMTP example in `supabase/config.toml`. Removed from `.env.example`. |
