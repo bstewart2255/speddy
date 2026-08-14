@@ -253,6 +253,27 @@ export type Database = {
         }
         Relationships: []
       }
+      api_rate_limits: {
+        Row: {
+          created_at: string
+          endpoint: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          endpoint: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          endpoint?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       assessment_types: {
         Row: {
           category: string
@@ -398,6 +419,27 @@ export type Database = {
           resource_type?: string | null
           timestamp?: string
           user_id?: string | null
+        }
+        Relationships: []
+      }
+      backup_spe459_school_year_retag: {
+        Row: {
+          previous_school_year: string
+          retagged_at: string
+          row_id: string
+          table_name: string
+        }
+        Insert: {
+          previous_school_year: string
+          retagged_at?: string
+          row_id: string
+          table_name: string
+        }
+        Update: {
+          previous_school_year?: string
+          retagged_at?: string
+          row_id?: string
+          table_name?: string
         }
         Relationships: []
       }
@@ -720,13 +762,20 @@ export type Database = {
         Row: {
           academic_testing_completed: boolean | null
           academic_testing_date: string | null
+          ap_due_date: string | null
+          ap_due_date_note: string | null
           ap_received_date: string | null
+          ap_sent_date: string | null
           assigned_to: string | null
           created_at: string | null
           current_disposition: string | null
+          eligibility_category: string | null
+          eligibility_meeting_date: string | null
+          eligibility_outcome: string | null
           follow_up_date: string | null
           id: string
           iep_due_date: string | null
+          iep_due_date_note: string | null
           ot_testing_completed: boolean | null
           ot_testing_date: string | null
           ot_testing_needed: boolean | null
@@ -743,13 +792,20 @@ export type Database = {
         Insert: {
           academic_testing_completed?: boolean | null
           academic_testing_date?: string | null
+          ap_due_date?: string | null
+          ap_due_date_note?: string | null
           ap_received_date?: string | null
+          ap_sent_date?: string | null
           assigned_to?: string | null
           created_at?: string | null
           current_disposition?: string | null
+          eligibility_category?: string | null
+          eligibility_meeting_date?: string | null
+          eligibility_outcome?: string | null
           follow_up_date?: string | null
           id?: string
           iep_due_date?: string | null
+          iep_due_date_note?: string | null
           ot_testing_completed?: boolean | null
           ot_testing_date?: string | null
           ot_testing_needed?: boolean | null
@@ -766,13 +822,20 @@ export type Database = {
         Update: {
           academic_testing_completed?: boolean | null
           academic_testing_date?: string | null
+          ap_due_date?: string | null
+          ap_due_date_note?: string | null
           ap_received_date?: string | null
+          ap_sent_date?: string | null
           assigned_to?: string | null
           created_at?: string | null
           current_disposition?: string | null
+          eligibility_category?: string | null
+          eligibility_meeting_date?: string | null
+          eligibility_outcome?: string | null
           follow_up_date?: string | null
           id?: string
           iep_due_date?: string | null
+          iep_due_date_note?: string | null
           ot_testing_completed?: boolean | null
           ot_testing_date?: string | null
           ot_testing_needed?: boolean | null
@@ -850,8 +913,12 @@ export type Database = {
           district_id: string | null
           grade: string
           id: string
+          private_school_name: string | null
           referral_reason: string
+          referral_source: string
           referring_user_id: string
+          request_received_date: string | null
+          requested_by: string | null
           school_id: string | null
           state_id: string | null
           status: string
@@ -868,8 +935,12 @@ export type Database = {
           district_id?: string | null
           grade: string
           id?: string
+          private_school_name?: string | null
           referral_reason: string
+          referral_source: string
           referring_user_id: string
+          request_received_date?: string | null
+          requested_by?: string | null
           school_id?: string | null
           state_id?: string | null
           status?: string
@@ -886,8 +957,12 @@ export type Database = {
           district_id?: string | null
           grade?: string
           id?: string
+          private_school_name?: string | null
           referral_reason?: string
+          referral_source?: string
           referring_user_id?: string
+          request_received_date?: string | null
+          requested_by?: string | null
           school_id?: string | null
           state_id?: string | null
           status?: string
@@ -1220,6 +1295,117 @@ export type Database = {
           user_id?: string | null
         }
         Relationships: []
+      }
+      district_curriculums: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          curriculum_id: string
+          district_id: string
+          id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          curriculum_id: string
+          district_id: string
+          id?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          curriculum_id?: string
+          district_id?: string
+          id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "district_curriculums_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "district_curriculums_district_id_fkey"
+            columns: ["district_id"]
+            isOneToOne: false
+            referencedRelation: "districts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      district_sis_connections: {
+        Row: {
+          aeries_certificate_encrypted: string | null
+          base_url: string | null
+          created_at: string
+          created_by: string | null
+          credential_hint: string | null
+          district_id: string
+          dpa_cleared_at: string | null
+          id: string
+          last_test_result: Json | null
+          last_tested_at: string | null
+          oneroster_client_id_encrypted: string | null
+          oneroster_client_secret_encrypted: string | null
+          sis_type: string
+          status: string
+          token_url: string | null
+          updated_at: string
+        }
+        Insert: {
+          aeries_certificate_encrypted?: string | null
+          base_url?: string | null
+          created_at?: string
+          created_by?: string | null
+          credential_hint?: string | null
+          district_id: string
+          dpa_cleared_at?: string | null
+          id?: string
+          last_test_result?: Json | null
+          last_tested_at?: string | null
+          oneroster_client_id_encrypted?: string | null
+          oneroster_client_secret_encrypted?: string | null
+          sis_type: string
+          status?: string
+          token_url?: string | null
+          updated_at?: string
+        }
+        Update: {
+          aeries_certificate_encrypted?: string | null
+          base_url?: string | null
+          created_at?: string
+          created_by?: string | null
+          credential_hint?: string | null
+          district_id?: string
+          dpa_cleared_at?: string | null
+          id?: string
+          last_test_result?: Json | null
+          last_tested_at?: string | null
+          oneroster_client_id_encrypted?: string | null
+          oneroster_client_secret_encrypted?: string | null
+          sis_type?: string
+          status?: string
+          token_url?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "district_sis_connections_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "district_sis_connections_district_id_fkey"
+            columns: ["district_id"]
+            isOneToOne: false
+            referencedRelation: "districts"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       districts: {
         Row: {
@@ -1728,6 +1914,13 @@ export type Database = {
             referencedRelation: "students"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "iep_meetings_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "unmatched_student_teachers"
+            referencedColumns: ["student_id"]
+          },
         ]
       }
       instruction_schedules: {
@@ -1789,6 +1982,27 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      landing_signups: {
+        Row: {
+          audience: string | null
+          created_at: string
+          email: string
+          id: string
+        }
+        Insert: {
+          audience?: string | null
+          created_at?: string
+          email: string
+          id?: string
+        }
+        Update: {
+          audience?: string | null
+          created_at?: string
+          email?: string
+          id?: string
+        }
+        Relationships: []
       }
       lesson_adjustment_queue: {
         Row: {
@@ -3901,6 +4115,13 @@ export type Database = {
             referencedRelation: "students"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "student_parent_contacts_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "unmatched_student_teachers"
+            referencedColumns: ["student_id"]
+          },
         ]
       }
       student_performance_metrics: {
@@ -4173,6 +4394,8 @@ export type Database = {
           phone_number: string | null
           school_id: string | null
           school_site: string | null
+          sis_id: string | null
+          sis_source: string | null
           updated_at: string | null
         }
         Insert: {
@@ -4188,6 +4411,8 @@ export type Database = {
           phone_number?: string | null
           school_id?: string | null
           school_site?: string | null
+          sis_id?: string | null
+          sis_source?: string | null
           updated_at?: string | null
         }
         Update: {
@@ -4203,6 +4428,8 @@ export type Database = {
           phone_number?: string | null
           school_id?: string | null
           school_site?: string | null
+          sis_id?: string | null
+          sis_source?: string | null
           updated_at?: string | null
         }
         Relationships: [
@@ -4740,6 +4967,19 @@ export type Database = {
       }
     }
     Functions: {
+      _groups_v2_retire_if_empty: {
+        Args: { p_group_ref: string }
+        Returns: undefined
+      }
+      _groups_v2_stamp: {
+        Args: {
+          p_color: number
+          p_group_ref: string
+          p_name: string
+          p_template_id: string
+        }
+        Returns: undefined
+      }
       can_access_conversation: {
         Args: { p_conversation_id: string; p_uid: string }
         Returns: boolean
@@ -4771,6 +5011,7 @@ export type Database = {
         Args: { p_student_id: string; p_uid: string }
         Returns: boolean
       }
+      chat_shares_site: { Args: { p_a: string; p_b: string }; Returns: boolean }
       copy_schedule_to_year: {
         Args: { p_from_year: string; p_school_id: string; p_to_year: string }
         Returns: Json
@@ -4779,6 +5020,7 @@ export type Database = {
         Args: { user_email: string; user_id: string; user_metadata: Json }
         Returns: undefined
       }
+      current_school_year: { Args: never; Returns: string }
       delete_chat_message: {
         Args: { p_message_id: string }
         Returns: undefined
@@ -4839,10 +5081,6 @@ export type Database = {
           start_time: string
         }[]
       }
-      find_shared_child_candidates: {
-        Args: { p_school_id: string; p_rows: Json }
-        Returns: Json
-      }
       find_school_ids_by_names: {
         Args: {
           p_school_district_name: string
@@ -4855,6 +5093,10 @@ export type Database = {
           matched_school_id: string
           matched_state_id: string
         }[]
+      }
+      find_shared_child_candidates: {
+        Args: { p_rows: Json; p_school_id: string }
+        Returns: Json
       }
       find_team_members: {
         Args: {
@@ -4939,18 +5181,18 @@ export type Database = {
       get_my_conversations: {
         Args: { p_school_id?: string }
         Returns: {
-          id: string
-          kind: 'student' | 'direct'
-          student_id: string | null
-          school_id: string | null
-          student_initials: string | null
-          student_grade: string | null
-          other_id: string | null
-          other_name: string | null
-          other_role: string | null
-          last_message_at: string | null
-          last_message_preview: string | null
           created_at: string
+          id: string
+          kind: string
+          last_message_at: string
+          last_message_preview: string
+          other_id: string
+          other_name: string
+          other_role: string
+          school_id: string
+          student_grade: string
+          student_id: string
+          student_initials: string
           unread: boolean
         }[]
       }
@@ -5085,6 +5327,36 @@ export type Database = {
           state_id: string
         }[]
       }
+      groups_v2_assign: {
+        Args: { p_assignee: string; p_delivered_by: string; p_group_id: string }
+        Returns: undefined
+      }
+      groups_v2_form: { Args: { p_session_ids: string[] }; Returns: string }
+      groups_v2_join: {
+        Args: { p_group_id: string; p_session_id: string }
+        Returns: undefined
+      }
+      groups_v2_leave: { Args: { p_session_id: string }; Returns: undefined }
+      groups_v2_merge: {
+        Args: { p_from_group_id: string; p_into_group_id: string }
+        Returns: undefined
+      }
+      groups_v2_rename: {
+        Args: { p_color: number; p_group_id: string; p_name: string }
+        Returns: undefined
+      }
+      groups_v2_split: {
+        Args: { p_group_id: string; p_session_ids: string[] }
+        Returns: string
+      }
+      import_child_candidates: {
+        Args: { p_rows: Json; p_school_id: string }
+        Returns: {
+          child_id: string
+          idx: number
+          reason: string
+        }[]
+      }
       increment_referral_uses: {
         Args: { referrer_user_id: string }
         Returns: undefined
@@ -5110,16 +5382,29 @@ export type Database = {
         Args: { target_user_id: string }
         Returns: boolean
       }
+      matching_provider_student_ids: {
+        Args: { p_student_id: string }
+        Returns: string[]
+      }
+      merge_iep_goals: {
+        Args: { p_entries: Json; p_provider_id: string }
+        Returns: {
+          error_message: string
+          matched_student_id: string
+          ord: number
+          success: boolean
+        }[]
+      }
+      merge_iep_goals_array: {
+        Args: { p_existing: string[]; p_incoming: string[] }
+        Returns: string[]
+      }
+      norm_student_name: {
+        Args: { p_first: string; p_last: string }
+        Returns: string
+      }
       normalize_district_name: {
         Args: { district_name: string }
-        Returns: string
-      }
-      open_direct_conversation: {
-        Args: { p_other_id: string }
-        Returns: string
-      }
-      open_student_conversation: {
-        Args: { p_student_id: string }
         Returns: string
       }
       normalize_existing_school_data: {
@@ -5128,6 +5413,14 @@ export type Database = {
           records_updated: number
           table_name: string
         }[]
+      }
+      open_direct_conversation: {
+        Args: { p_other_id: string }
+        Returns: string
+      }
+      open_student_conversation: {
+        Args: { p_student_id: string }
+        Returns: string
       }
       recalculate_session_end_time: {
         Args: { p_minutes_per_session: number; p_start_time: string }
