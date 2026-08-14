@@ -13,8 +13,18 @@ export const PATCH = withRoute<{ id: string }>({}, async ({ params }) => {
     .eq('id', checkId)
     .single();
 
-  if (fetchError || !existingCheck) {
+  // `.single()` reports "no rows" as PGRST116, so a bare `if (fetchError)` would
+  // turn a legitimate 404 into a 500. Split the two: a real read failure is ours
+  // (500), an absent row is the caller's (404).
+  if (fetchError && fetchError.code !== 'PGRST116') {
     console.error('Error fetching progress check:', fetchError);
+    return NextResponse.json(
+      { error: 'Failed to fetch progress check', details: fetchError.message },
+      { status: 500 }
+    );
+  }
+
+  if (!existingCheck) {
     return NextResponse.json({ error: 'Progress check not found' }, { status: 404 });
   }
 

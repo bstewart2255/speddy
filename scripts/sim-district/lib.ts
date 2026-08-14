@@ -28,6 +28,18 @@ export function requireEnv(name: string): string {
   return value;
 }
 
+/**
+ * Fetch that refuses to follow redirects.
+ *
+ * Supabase sends the service-role key as BOTH `Authorization` and `apikey`. On a
+ * cross-origin redirect the fetch spec strips `Authorization` but says nothing
+ * about `apikey`, so a redirect off our origin would forward the service-role
+ * key to wherever it points. `redirect: 'error'` rejects instead of following,
+ * so there is no header-stripping behaviour to reason about at all.
+ */
+const noRedirectFetch: typeof fetch = (input, init) =>
+  fetch(input, { ...init, redirect: 'error' });
+
 /** Service-role client for the pinned project. Runs the host pin first, always. */
 export function createAdmin(): Admin {
   // Pin the project here, not just in the scripts that remember to ask: this is
@@ -35,7 +47,10 @@ export function createAdmin(): Admin {
   assertProjectRef();
   const url = requireEnv('NEXT_PUBLIC_SUPABASE_URL');
   const key = requireEnv('SUPABASE_SERVICE_ROLE_KEY');
-  return createClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } });
+  return createClient(url, key, {
+    auth: { autoRefreshToken: false, persistSession: false },
+    global: { fetch: noRedirectFetch },
+  });
 }
 
 /** Preflight (a): the connected host must be a manifest-pinned front for the project. */
@@ -205,7 +220,7 @@ export async function listPublicRelations(): Promise<string[]> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 10_000);
   try {
-    const res = await fetch(`${url}/rest/v1/`, {
+    const res = await noRedirectFetch(`${url}/rest/v1/`, {
       headers: { apikey: key, Authorization: `Bearer ${key}` },
       signal: controller.signal,
     });
