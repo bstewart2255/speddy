@@ -22,7 +22,14 @@
  *
  * Tailwind's JIT scans source text for complete class names — it cannot see
  * `bg-${hue}-200`. Every class below is a whole literal for that reason, and
- * `tailwind.config.ts` had to learn to scan `lib/` for them to survive a build.
+ * `tailwind.config.ts` lists THIS FILE by name in its content globs so they
+ * survive a build.
+ *
+ * It lists the file rather than `./lib/**` on purpose: scanning all of lib/
+ * would also un-purge class names in other lib/ files and repaint unrelated UI.
+ * Those classes are genuinely dead today — the CARE category badges and the
+ * AI-lesson student badges among them — which is a real bug, tracked in
+ * SPE-504. Fixing it is a visual change and belongs to that ticket, not here.
  */
 
 /** The activity types that carry a colour. Anything else falls back to grey. */

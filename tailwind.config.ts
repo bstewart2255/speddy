@@ -5,10 +5,15 @@ const config: Config = {
     './pages/**/*.{js,ts,jsx,tsx,mdx}',
     './components/**/*.{js,ts,jsx,tsx,mdx}',
     './app/**/*.{js,ts,jsx,tsx,mdx}',
-    // Shared constants files hold whole Tailwind class names (SPE-34's
-    // activity colors). The JIT only emits classes it finds as literal text,
-    // so without this the class-based maps would be purged from the build.
-    './lib/**/*.{js,ts,jsx,tsx,mdx}',
+    // One file, not './lib/**' (SPE-34). The JIT only emits classes it finds as
+    // literal text, so the activity-color maps must be scanned or they are
+    // purged — but scanning all of lib/ ALSO un-purges class names sitting in
+    // other lib/ files, which repaints unrelated UI (measured: 36 new
+    // selectors, only ~22 of them these colors). Whether that other UI should
+    // have been styled all along is a real question, and a separate one — see
+    // the ticket linked from lib/constants/activity-colors.ts. Scoping to the
+    // one file keeps this refactor's promise of no visual change.
+    './lib/constants/activity-colors.ts',
   ],
   theme: {
     extend: {
