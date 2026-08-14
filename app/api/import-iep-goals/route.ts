@@ -415,7 +415,10 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
     if (error instanceof BodyTooLargeError) {
       log.warn('IEP goals import rejected: body exceeded size ceiling', { userId });
       perf.end({ success: false });
-      return NextResponse.json({ error: 'Upload too large. The file must be under 10 MB.' }, { status: 413 });
+      // States the ceiling actually enforced. Unlike the other upload routes,
+      // this one has no per-file size check behind the cap, so claiming 10 MB
+      // here would assert a limit nothing applies (SPE-509).
+      return NextResponse.json({ error: 'Upload too large. The file must be under 12 MB.' }, { status: 413 });
     }
 
     log.error('IEP goals import error', error, { userId });
