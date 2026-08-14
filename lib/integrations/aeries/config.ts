@@ -11,6 +11,10 @@
  * every call is server-to-server.
  */
 
+// Enforced, not just asserted (SPE-375): a client component importing this
+// fails the build. See the note in client.ts about the tsx scripts.
+import 'server-only';
+
 /** API version segment. v5 is current (v1–v4 were folded into v5). */
 export const AERIES_API_VERSION = 'v5';
 

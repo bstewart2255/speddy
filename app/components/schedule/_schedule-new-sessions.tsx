@@ -80,7 +80,6 @@ Continue?`;
         return;
       }
 
-      console.log(`Found ${studentsNeedingScheduling.length} students needing scheduling`);
 
       // Save snapshot before making changes
       await saveScheduleSnapshot(user.id);

@@ -69,7 +69,6 @@ Continue?`;
         return;
       }
 
-      console.log(`Rescheduling ${allStudents.length} students`);
 
       // Schedule all students
       const results = await scheduleBatchStudents(allStudents);

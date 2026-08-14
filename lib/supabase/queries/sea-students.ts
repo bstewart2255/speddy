@@ -43,28 +43,16 @@ export async function loadStudentsForUser(
       };
     }
 
-    console.log('[loadStudentsForUser] Valid session found for user:', session.user.id);
 
     if (userRole === 'sea') {
       // For SEAs, try RPC function first, then fall back to direct query with RLS
       // SECURITY: Function uses auth.uid() internally, no user ID parameter needed
       // Pass school_id for server-side filtering (null returns all schools)
-      console.log('[loadStudentsForUser] Calling get_sea_students RPC with:', {
-        p_school_id: currentSchool?.school_id || null,
-        school_site: currentSchool?.school_site
-      });
 
       const { data: rpcData, error: rpcError } = await supabase.rpc('get_sea_students', {
         p_school_id: currentSchool?.school_id || null
       });
 
-      console.log('[loadStudentsForUser] RPC response:', {
-        hasData: !!rpcData,
-        dataCount: Array.isArray(rpcData) ? rpcData.length : 'not-array',
-        hasError: !!rpcError,
-        errorType: rpcError ? typeof rpcError : 'none',
-        errorKeys: rpcError ? Object.keys(rpcError) : []
-      });
 
       // If RPC succeeds, use it
       if (!rpcError && rpcData) {
@@ -104,7 +92,6 @@ export async function loadStudentsForUser(
 
       // Fallback: Direct query that relies on RLS policies
       // This requires the migration: 20251016_add_sea_students_rls_policy.sql
-      console.log('[loadStudentsForUser] Using fallback query via RLS policies');
 
       let fallbackQuery = supabase
         .from('students')
@@ -162,7 +149,6 @@ export async function loadStudentsForUser(
         } as StudentData;
       });
 
-      console.log('[loadStudentsForUser] Fallback query succeeded, returned', normalizedData.length, 'students');
       return { data: normalizedData, error: null };
     } else {
       // For non-SEA roles, use the standard query

@@ -45,16 +45,6 @@ export function SessionAssignmentPopup({
     setCalculatedPosition(optimalPosition);
   }, [triggerRect]);
 
-  // Log session info when popup opens
-  useEffect(() => {
-    console.log('[SessionPopup] Opened for session:', {
-      sessionId: session.id,
-      studentId: session.student_id,
-      currentTag: sessionTags[session.id] || '(no tag)',
-      allTags: sessionTags
-    });
-  }, [session.id, session.student_id, sessionTags]);
-
   // Auto-save when assignment changes
   const handleAssignmentChange = async (value: string) => {
     // Parse the value to determine assignment type
@@ -135,8 +125,6 @@ export function SessionAssignmentPopup({
         if (instanceError) {
           console.warn('[SessionAssignmentPopup] Failed to update instances:', instanceError);
           // Don't throw - template was updated successfully, instances can be synced later
-        } else {
-          console.log('[SessionAssignmentPopup] Updated future instances with new assignment');
         }
       }
 
@@ -283,17 +271,11 @@ export function SessionAssignmentPopup({
           type="text"
           value={sessionTags[session.id] || ''}
           onChange={(e) => {
-            console.log('[SessionPopup] Setting tag for session:', {
-              sessionId: session.id,
-              newValue: e.target.value,
-              currentTags: sessionTags
-            });
             setSessionTags(prev => {
               const newTags = {
                 ...prev,
                 [session.id]: e.target.value
               };
-              console.log('[SessionPopup] Updated tags state:', newTags);
               return newTags;
             });
           }}

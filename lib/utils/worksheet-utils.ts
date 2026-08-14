@@ -25,7 +25,6 @@ export function generateWorksheetId(studentId: string, subject?: string): string
  */
 export async function generateWorksheetQRCode(worksheetCode: string): Promise<string | null> {
   // QR CODE DISABLED: Returning null immediately to skip QR generation
-  console.log('[QR DISABLED] Skipping QR code generation for worksheet:', worksheetCode);
   return null;
 
   /* ORIGINAL CODE - PRESERVED FOR FUTURE REFERENCE
@@ -65,20 +64,16 @@ export function validateStudentMaterial(material: any): boolean {
   // Prefer material.worksheet if present
   if (material.worksheet && typeof material.worksheet === 'object') {
     worksheet = material.worksheet;
-    console.log('[VALIDATION] Found worksheet at material.worksheet');
   }
   // Otherwise check for material.worksheets with math, ela, or all keys
   else if (material.worksheets && typeof material.worksheets === 'object') {
     // Check for any valid worksheet in worksheets object
     if (material.worksheets.math && typeof material.worksheets.math === 'object') {
       worksheet = material.worksheets.math;
-      console.log('[VALIDATION] Found worksheet at material.worksheets.math');
     } else if (material.worksheets.ela && typeof material.worksheets.ela === 'object') {
       worksheet = material.worksheets.ela;
-      console.log('[VALIDATION] Found worksheet at material.worksheets.ela');
     } else if (material.worksheets.all && typeof material.worksheets.all === 'object') {
       worksheet = material.worksheets.all;
-      console.log('[VALIDATION] Found worksheet at material.worksheets.all');
     }
   }
 
@@ -127,7 +122,6 @@ export function validateStudentMaterial(material: any): boolean {
     }
   }
 
-  console.log('[VALIDATION] Worksheet validation passed');
   return true;
 }
 
@@ -200,12 +194,6 @@ export async function generateAIWorksheetHtml(
   worksheetCode: string,
   subject?: 'math' | 'ela'
 ): Promise<string | null> {
-  console.log('[DEBUG] generateAIWorksheetHtml called with:', {
-    studentInitials,
-    subject,
-    worksheetCode,
-    hasStudentMaterial: !!studentMaterial
-  });
 
   try {
     // QR CODE DISABLED: Skipping QR code generation to simplify pipeline (Issue #268)
@@ -270,7 +258,6 @@ export async function generateAIWorksheetHtml(
     
     // Use WorksheetRenderer to generate HTML
     const renderer = new WorksheetRenderer();
-    console.log('[DEBUG] Calling WorksheetRenderer.renderStudentWorksheet');
 
     const html = renderer.renderStudentWorksheet(
       worksheetContent,
@@ -278,7 +265,6 @@ export async function generateAIWorksheetHtml(
       qrCodeDataUrl || undefined // Convert null to undefined for TypeScript
     );
 
-    console.log('[DEBUG] WorksheetRenderer returned HTML with length:', html?.length || 0);
 
     return html;
   } catch (error) {
@@ -291,7 +277,6 @@ export async function generateAIWorksheetHtml(
  * Opens and prints HTML worksheet using iframe (avoids pop-up blockers)
  */
 export function printHtmlWorksheet(html: string | null, title: string): void {
-  console.log('[DEBUG] printHtmlWorksheet called with:', { title, htmlLength: html?.length || 0 });
 
   // Validate HTML content before attempting to print
   if (!html || html.trim().length === 0) {
@@ -302,8 +287,6 @@ export function printHtmlWorksheet(html: string | null, title: string): void {
     alert(errorMessage);
     return;
   }
-
-  console.log('[DEBUG] Creating iframe for worksheet print:', title);
 
   // Create a hidden iframe for printing
   const iframe = document.createElement('iframe');

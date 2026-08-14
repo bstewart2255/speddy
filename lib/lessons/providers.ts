@@ -74,6 +74,7 @@ function sanitizeAndLogDebug(context: string, content: string): void {
     ? `${sanitized.substring(0, 200)}... [truncated, total length: ${content.length}]`
     : sanitized;
   
+  // eslint-disable-next-line no-console -- sanitizeAndLogDebug early-returns unless DEBUG_OPENAI or development, and redacts first
   console.debug(`[${context}] Response preview:`, truncated);
 }
 

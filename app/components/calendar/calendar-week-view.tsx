@@ -8,8 +8,6 @@ import type { LessonContent } from "@/lib/types/lesson";
 import { AIContentModal } from "../ai-content-modal";
 import { AIContentModalEnhanced } from "../ai-content-modal-enhanced";
 import { SessionGenerator } from '@/lib/services/session-generator';
-import { ManualLessonFormModal } from "../modals/manual-lesson-form-modal";
-import { ManualLessonViewModal } from "../modals/manual-lesson-view-modal";
 import { SessionDetailsModal } from "../modals/session-details-modal";
 import { useToast } from "../../contexts/toast-context";
 import { sessionUpdateService } from '@/lib/services/session-update-service';
@@ -145,13 +143,6 @@ export function CalendarWeekView({
   const [additionalStudents, setAdditionalStudents] = useState<Map<string, { initials: string; grade_level?: string }>>(new Map());
   
   // State for manual lesson creation
-  const [selectedLessonDate, setSelectedLessonDate] = useState<Date | null>(null);
-  const [showManualLessonForm, setShowManualLessonForm] = useState(false);
-  const [manualLessons, setManualLessons] = useState<Map<string, Lesson[]>>(new Map());
-  const [selectedManualLesson, setSelectedManualLesson] = useState<Lesson | null>(null);
-  const [loadingManualLessons, setLoadingManualLessons] = useState(false);
-  const [showManualLessonView, setShowManualLessonView] = useState(false);
-  const [viewingManualLesson, setViewingManualLesson] = useState<Lesson | null>(null);
   
   // State for enhanced modal with multiple lessons
   const [enhancedModalOpen, setEnhancedModalOpen] = useState(false);
@@ -340,7 +331,6 @@ export function CalendarWeekView({
 
       // If user works at multiple schools and no school is selected yet, wait
       if (profile?.works_at_multiple_schools && !currentSchool) {
-        console.log('[CalendarWeekView] Waiting for school selection');
         setSessionsState([]);
         return;
       }
@@ -577,59 +567,6 @@ export function CalendarWeekView({
     return () => clearTimeout(timer);
   }, [sessionsState, checkSessionConflicts]);
 
-  // Load manual lessons for the week
-  React.useEffect(() => {
-    const loadManualLessons = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      setLoadingManualLessons(true);
-      const toast = showToast; // Capture showToast to use in the effect
-      try {
-        // Get the Monday of the current week
-        const weekStart = new Date();
-        const currentDay = weekStart.getDay();
-        const diff = currentDay === 0 ? -6 : 1 - currentDay;
-        weekStart.setDate(weekStart.getDate() + diff + (weekOffset * 7));
-
-        // Get the Sunday (end of week)
-        const weekEnd = new Date(weekStart);
-        weekEnd.setDate(weekStart.getDate() + 6);
-
-        // Format dates for API
-        const startDate = toLocalDateKey(weekStart);
-        const endDate = toLocalDateKey(weekEnd);
-
-        const response = await fetch(`/api/manual-lessons?start_date=${startDate}&end_date=${endDate}`);
-        
-        if (response.ok) {
-          const data = await response.json();
-          // Fetched manual lessons
-          
-          // Group lessons by date
-          const lessonsByDate = new Map<string, Lesson[]>();
-          data.lessons.forEach((lesson: Lesson) => {
-            const dateKey = lesson.lesson_date;
-            // Processing lesson for date
-            if (!lessonsByDate.has(dateKey)) {
-              lessonsByDate.set(dateKey, []);
-            }
-            lessonsByDate.get(dateKey)!.push(lesson);
-          });
-          
-          setManualLessons(lessonsByDate);
-        }
-      } catch (error) {
-        // Failed to load manual lessons
-      } finally {
-        setLoadingManualLessons(false);
-      }
-    };
-
-    loadManualLessons();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [weekOffset]);
-
   // Legacy cleanup removed - now using lessons table
 
   // Load saved AI lessons
@@ -659,13 +596,6 @@ export function CalendarWeekView({
         const endDate = toLocalDateKey(weekEnd);
 
         // Debug logging for school context
-        console.log('[DEBUG] Loading AI lessons with school context:', {
-          currentSchool,
-          school_id: currentSchool?.school_id,
-          startDate,
-          endDate,
-          user_id: user.id
-        });
 
         // Filter by both provider and school
         let query = supabase
@@ -702,15 +632,6 @@ export function CalendarWeekView({
             });
           }
         } else {
-          console.log('[DEBUG] Loaded lessons from database:', {
-            count: data?.length || 0,
-            lessons: data?.map(l => ({
-              date: l.lesson_date,
-              time: l.time_slot,
-              school_id: l.school_id,
-              id: l.id
-            }))
-          });
 
           const lessonsMap = new Map<string, any>();
           data?.forEach(lesson => {
@@ -731,10 +652,6 @@ export function CalendarWeekView({
             };
           });
 
-          console.log('[DEBUG] Processed lessons into state map:', {
-            dates: Array.from(lessonsMap.keys()),
-            totalDays: lessonsMap.size
-          });
 
           setSavedLessons(lessonsMap);
         }
@@ -1364,13 +1281,6 @@ export function CalendarWeekView({
     }
   };
 
-  // New unified lesson creation handler
-  const handleCreateDailyLesson = (date: Date, daySessions: ScheduleSession[]) => {
-    setSelectedLessonDate(date);
-    setSelectedDaySessions(daySessions);
-    setShowManualLessonForm(true);
-  };
-
   // Handle viewing all AI lessons for a day
   const handleViewAllAILessons = (date: Date) => {
     const dateStr = toLocalDateKey(date);
@@ -1555,12 +1465,6 @@ export function CalendarWeekView({
     return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:00`;
   };
 
-  // Handler for Create Lesson button - goes directly to manual lesson form
-  const handleCreateLesson = (date: Date) => {
-    setSelectedLessonDate(date);
-    setShowManualLessonForm(true);
-  };
-
 
   // Function to handle AI lesson generation with subject type
   const generateAILessons = async (date: Date, daySessions: ScheduleSession[], subjectType: 'ela' | 'math') => {
@@ -1585,12 +1489,8 @@ export function CalendarWeekView({
       let index = 0;
       
       // Debug logging: List all time slots found
-      console.log(`[DEBUG Frontend] Found ${timeSlotGroups.size} time slot groups:`, 
-        Array.from(timeSlotGroups.keys())
-      );
       
       for (const [timeSlot, slotSessions] of timeSlotGroups.entries()) {
-        console.log(`[DEBUG Frontend] Processing time slot: "${timeSlot}" with ${slotSessions.length} sessions`);
         
         // Extract unique students from the sessions
         const sessionStudents = new Set<string>();
@@ -1627,31 +1527,15 @@ export function CalendarWeekView({
           };
           
           // Debug logging for each batch request
-          console.log(`[DEBUG Frontend] Adding batch request ${index}:`, {
-            timeSlot: timeSlot,
-            lessonDate: lessonDate,
-            studentCount: studentList.length,
-            duration: duration,
-            subject: subject,
-            subjectType: subjectType
-          });
           
           batchRequests.push(batchRequest);
           
           // Store mapping for later use
           timeSlotMapping.set(index, { timeSlot, slotSessions });
           index++;
-        } else {
-          console.log(`[DEBUG Frontend] Skipping time slot "${timeSlot}" - no students found`);
         }
       }
       
-      console.log(`[DEBUG Frontend] Final batch requests summary:`, {
-        totalRequests: batchRequests.length,
-        timeSlots: batchRequests.map((req, i) => `${i}: ${req.timeSlot}`),
-        lessonDate: toLocalDateKey(date),
-        subjectType
-      });
       
       if (batchRequests.length === 0) {
         showToast('No valid time slots to generate lessons for', 'warning');
@@ -1661,7 +1545,6 @@ export function CalendarWeekView({
       }
       
       // Make batch API call with timeout
-      console.log(`Sending batch request for ${batchRequests.length} lesson groups`);
       
       // Create an AbortController for timeout
       const controller = new AbortController();
@@ -1747,7 +1630,6 @@ export function CalendarWeekView({
         });
 
         // Log for debugging
-        console.log('Lessons saved to state:', dateStr, generatedLessons.length, 'lessons');
 
         // Force refresh from database to ensure consistency
         setTimeout(async () => {
@@ -1837,184 +1719,6 @@ export function CalendarWeekView({
     if (pendingLessonData) {
       generateAILessons(pendingLessonData.date, pendingLessonData.daySessions, subjectType);
       setPendingLessonData(null);
-    }
-  };
-
-  // Helper function to safely parse activities field
-  const parseActivities = (activities?: string): any[] => {
-    if (!activities) return [];
-    if (typeof activities !== 'string') return activities;
-
-    // Trim whitespace
-    const trimmed = activities.trim();
-
-    // Check if it looks like JSON (starts with '[' or '{')
-    if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
-      try {
-        const parsed = JSON.parse(trimmed);
-        return Array.isArray(parsed) ? parsed : [parsed];
-      } catch (error) {
-        console.warn('Failed to parse activities as JSON, using as plain text:', error);
-        // Fall back to treating it as plain text
-        return [{ description: trimmed }];
-      }
-    }
-
-    // Plain text - wrap in object
-    return [{ description: trimmed }];
-  };
-
-  const handleSaveManualLesson = async (lessonData: {
-    title: string;
-    subject?: string;
-    gradeLevels?: string;
-    duration?: number;
-    learningObjectives?: string;
-    materialsNeeded?: string;
-    activities?: string;
-    assessmentMethods?: string;
-    notes?: string;
-  }) => {
-    if (!selectedLessonDate || !currentUser) return;
-
-    try {
-      const lessonDate = toLocalDateKey(selectedLessonDate);
-
-      // Structure content as JSON object for lessons table
-      const content = {
-        objectives: lessonData.learningObjectives || '',
-        materials: lessonData.materialsNeeded || '',
-        activities: parseActivities(lessonData.activities),
-        assessment: lessonData.assessmentMethods || ''
-      };
-
-      const { data, error } = await supabase
-        .from('lessons')
-        .insert({
-          provider_id: currentUser.id,
-          lesson_date: lessonDate,
-          lesson_source: 'manual',
-          title: lessonData.title,
-          subject: lessonData.subject,
-          grade_levels: lessonData.gradeLevels ? lessonData.gradeLevels.split(',').map(g => g.trim()) : null,
-          duration_minutes: lessonData.duration,
-          content: content,
-          notes: lessonData.notes,
-          school_id: currentSchool?.school_id || null,
-          district_id: currentSchool?.district_id || null,
-          state_id: currentSchool?.state_id || null,
-          lesson_status: 'draft'
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      // Update local state
-      setManualLessons(prev => {
-        const newMap = new Map(prev);
-        const existing = newMap.get(lessonDate) || [];
-        newMap.set(lessonDate, [...existing, data]);
-        return newMap;
-      });
-
-      showToast('Manual lesson saved successfully', 'success');
-      setShowManualLessonForm(false);
-    } catch (error) {
-      console.error('Error saving manual lesson:', error);
-      showToast('Failed to save manual lesson', 'error');
-    }
-  };
-
-  const handleEditManualLesson = (lesson: Lesson) => {
-    setSelectedManualLesson(lesson);
-    setShowManualLessonForm(true);
-  };
-
-  const handleDeleteManualLesson = async (lessonId: string) => {
-    if (!window.confirm('Are you sure you want to delete this lesson?')) return;
-
-    try {
-      const { error } = await supabase
-        .from('lessons')
-        .delete()
-        .eq('id', lessonId)
-        .eq('lesson_source', 'manual');
-
-      if (error) throw error;
-
-      // Update local state
-      setManualLessons(prev => {
-        const newMap = new Map(prev);
-        newMap.forEach((lessons, date) => {
-          newMap.set(date, lessons.filter(l => l.id !== lessonId));
-        });
-        return newMap;
-      });
-
-      showToast('Manual lesson deleted successfully', 'success');
-    } catch (error) {
-      console.error('Error deleting manual lesson:', error);
-      showToast('Failed to delete manual lesson', 'error');
-    }
-  };
-
-  const handleUpdateManualLesson = async (lessonData: {
-    title: string;
-    subject?: string;
-    gradeLevels?: string;
-    duration?: number;
-    learningObjectives?: string;
-    materialsNeeded?: string;
-    activities?: string;
-    assessmentMethods?: string;
-    notes?: string;
-  }) => {
-    if (!selectedManualLesson) return;
-
-    try {
-      // Structure content as JSON object for lessons table
-      const content = {
-        objectives: lessonData.learningObjectives || '',
-        materials: lessonData.materialsNeeded || '',
-        activities: parseActivities(lessonData.activities),
-        assessment: lessonData.assessmentMethods || ''
-      };
-
-      const { data, error } = await supabase
-        .from('lessons')
-        .update({
-          title: lessonData.title,
-          subject: lessonData.subject,
-          grade_levels: lessonData.gradeLevels ? lessonData.gradeLevels.split(',').map(g => g.trim()) : null,
-          duration_minutes: lessonData.duration,
-          content: content,
-          notes: lessonData.notes,
-          school_id: currentSchool?.school_id || null,
-          district_id: currentSchool?.district_id || null,
-          state_id: currentSchool?.state_id || null
-        })
-        .eq('id', selectedManualLesson.id)
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      // Update local state
-      setManualLessons(prev => {
-        const newMap = new Map(prev);
-        newMap.forEach((lessons, date) => {
-          newMap.set(date, lessons.map(l => l.id === data.id ? data : l));
-        });
-        return newMap;
-      });
-
-      showToast('Manual lesson updated successfully', 'success');
-      setShowManualLessonForm(false);
-      setSelectedManualLesson(null);
-    } catch (error) {
-      console.error('Error updating manual lesson:', error);
-      showToast('Failed to update manual lesson', 'error');
     }
   };
 
@@ -2112,7 +1816,6 @@ export function CalendarWeekView({
           const dateStr = toLocalDateKey(date);
           const dayAILessons = savedLessons.get(dateStr) || {};
           const hasAIContent = Object.keys(dayAILessons).length > 0;
-          const dayManualLessons = manualLessons.get(dateStr) || [];
           const isPast = isDateInPast(date);
 
           // Sort sessions by start time for chronological order
@@ -2423,53 +2126,6 @@ export function CalendarWeekView({
             </button>
           </div>
         </div>
-      )}
-
-      {/* Manual Lesson Form Modal */}
-      <ManualLessonFormModal
-        isOpen={showManualLessonForm}
-        onClose={() => {
-          setShowManualLessonForm(false);
-          setSelectedManualLesson(null);
-        }}
-        onSave={selectedManualLesson ? handleUpdateManualLesson : handleSaveManualLesson}
-        initialData={selectedManualLesson ? {
-          id: selectedManualLesson.id,
-          title: selectedManualLesson.title || '',
-          subject: selectedManualLesson.subject || '',
-          gradeLevels: selectedManualLesson.grade_levels?.join(', ') || '',
-          duration: selectedManualLesson.duration_minutes || undefined,
-          learningObjectives: (selectedManualLesson.content as LessonContent)?.objectives || '',
-          materialsNeeded: (selectedManualLesson.content as LessonContent)?.materials || '',
-          activities: (selectedManualLesson.content as LessonContent)?.activities
-            ? (typeof (selectedManualLesson.content as LessonContent).activities === 'string'
-              ? String((selectedManualLesson.content as LessonContent).activities)
-              : JSON.stringify((selectedManualLesson.content as LessonContent).activities))
-            : '',
-          assessmentMethods: (selectedManualLesson.content as LessonContent)?.assessment || '',
-          notes: selectedManualLesson.notes || ''
-        } : undefined}
-        lessonDate={selectedLessonDate || new Date()}
-      />
-
-      {/* Manual Lesson View Modal */}
-      {showManualLessonView && viewingManualLesson && (
-        <ManualLessonViewModal
-          isOpen={showManualLessonView}
-          onClose={() => {
-            setShowManualLessonView(false);
-            setViewingManualLesson(null);
-          }}
-          lesson={viewingManualLesson}
-          onEdit={(lesson: Lesson) => {
-            setShowManualLessonView(false);
-            handleEditManualLesson(lesson);
-          }}
-          onDelete={(lessonId) => {
-            setShowManualLessonView(false);
-            handleDeleteManualLesson(lessonId);
-          }}
-        />
       )}
 
       {/* Enhanced AI Content Modal for multiple time slots */}

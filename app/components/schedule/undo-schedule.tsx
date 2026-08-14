@@ -191,7 +191,6 @@ export async function saveScheduleSnapshot(providerId: string) {
     };
 
     localStorage.setItem('scheduleSnapshot', JSON.stringify(snapshot));
-    console.log(`Saved snapshot with ${beforeScheduledIds.length} existing scheduled sessions`);
   } catch (error) {
     console.error('Error saving schedule snapshot:', error);
   }
@@ -235,7 +234,6 @@ export async function saveScheduledSessionIds(providerId: string) {
     };
 
     localStorage.setItem('scheduleSnapshot', JSON.stringify(updatedSnapshot));
-    console.log(`Finalized snapshot: ${newlyScheduledIds.length} sessions can be undone`);
   } catch (error) {
     console.error('Error finalizing schedule snapshot:', error);
   }

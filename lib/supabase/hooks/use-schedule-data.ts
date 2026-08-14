@@ -101,7 +101,6 @@ export function useScheduleData() {
 
       // Build optimized queries
       const queryStrategy = currentSchool.is_migrated ? 'optimized' : 'legacy';
-      console.log(`[useScheduleData] Using ${queryStrategy} query strategy`);
 
       // Parallel fetch all data
       const [
@@ -291,7 +290,6 @@ export function useScheduleData() {
           // But we also need to filter by the CURRENT school selected in the school switcher
           
           // Get SEAs from the CURRENT school only using RPC function (bypasses RLS)
-          console.log('[useScheduleData] Fetching SEAs for current school:', currentSchool.school_id || currentSchool.school_site);
           const { data: schoolSeas, error } = await (supabase.rpc as Function)('get_school_seas', {
             p_school_id: currentSchool.school_id || null,
             p_school_site: currentSchool.school_id ? null : currentSchool.school_site,
@@ -307,11 +305,9 @@ export function useScheduleData() {
               is_shared: false  // Deprecated field, kept for compatibility
             }));
             
-            console.log(`[useScheduleData] Successfully loaded ${seaProfiles.length} SEAs from current school (${currentSchool.school_id || currentSchool.school_site}): ${seaProfiles.map(s => s.full_name).join(', ')}`);
           }
 
           // Get other specialists (resource, speech, ot, counseling, specialist) from the CURRENT school only
-          console.log('[useScheduleData] Fetching other specialists for current school:', currentSchool.school_id || currentSchool.school_site);
 
           // Use the database function to get specialists, which handles both primary and secondary schools
           if (currentSchool.school_id) {
@@ -335,7 +331,6 @@ export function useScheduleData() {
                 role: s.role as SpecialistSourceRole
               }));
 
-              console.log(`[useScheduleData] Successfully loaded ${otherSpecialists.length} other specialists from current school (${currentSchool.school_id}): ${otherSpecialists.map(s => `${s.full_name} (${s.role})`).join(', ')}`);
             }
           } else {
             // Legacy schools without school_id - fallback to old logic
@@ -358,7 +353,6 @@ export function useScheduleData() {
                 role: specialist.role as SpecialistSourceRole
               }));
 
-              console.log(`[useScheduleData] Successfully loaded ${otherSpecialists.length} other specialists from current school (${currentSchool.school_site}): ${otherSpecialists.map(s => `${s.full_name} (${s.role})`).join(', ')}`);
             }
           }
         } catch (error) {
@@ -389,17 +383,6 @@ export function useScheduleData() {
         error: null,
       });
 
-      console.log('[useScheduleData] Data loaded:', {
-        students: allStudents.length,
-        scheduledSessions: scheduledSessions.length,
-        unscheduledSessions: unscheduledSessions.length,
-        totalSessions: allSessions.length,
-        bellSchedules: bellResult.data?.length || 0,
-        specialActivities: activitiesResult.data?.length || 0,
-        mainstreamingBlocks: mainstreamingResult.data?.length || 0,
-        studentBlockedTimes: blockedTimesResult.data?.length || 0,
-        unscheduledCount: unscheduledCountData,
-      });
 
     } catch (error) {
       console.error('[useScheduleData] Error fetching data:', error);
@@ -444,7 +427,6 @@ export function useScheduleData() {
             ? [...prev.sessions, ...newSessions]
             : filteredSessions;
 
-          console.log('[useScheduleData] Synced with data manager:', mergedSessions.length, 'sessions (merged', prev.sessions.length, 'existing +', newSessions.length, 'from cache)');
 
           return {
             ...prev,
@@ -476,7 +458,6 @@ export function useScheduleData() {
         filter: `provider_id=eq.${data.currentUserId}`,
       },
       (payload) => {
-        console.log('[useScheduleData] Real-time update (provider):', payload);
         fetchData();
       }
     );
@@ -492,7 +473,6 @@ export function useScheduleData() {
           filter: `assigned_to_specialist_id=eq.${data.currentUserId}`,
         },
         (payload) => {
-          console.log('[useScheduleData] Real-time update (specialist assignee):', payload);
           fetchData();
         }
       );
@@ -509,7 +489,6 @@ export function useScheduleData() {
           filter: `assigned_to_sea_id=eq.${data.currentUserId}`,
         },
         (payload) => {
-          console.log('[useScheduleData] Real-time update (SEA assignee):', payload);
           fetchData();
         }
       );

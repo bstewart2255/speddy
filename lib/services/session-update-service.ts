@@ -303,7 +303,6 @@ export class SessionUpdateService {
 
       // If validation fails and force update is not set, return without updating
       if (!validation.valid && validation.conflicts && !forceUpdate) {
-        console.log('Session move has conflicts, requiring confirmation:', validation.conflicts);
         return {
           success: false,
           conflicts: validation.conflicts,
@@ -346,11 +345,6 @@ export class SessionUpdateService {
         return { success: false, error: 'Failed to update session' };
       }
 
-      console.log('Session updated successfully:', sessionId, {
-        newDay,
-        newStartTime,
-        newEndTime
-      });
 
       // Clear stale conflicts for this student that this move may have resolved.
       // clearStaleConflictsForStudent re-checks EVERY flag source that can set a
@@ -397,8 +391,6 @@ export class SessionUpdateService {
           const { deleted, error: pruneError } = await deleteFutureTemplateInstances(this.supabase, sessionId);
           if (pruneError) {
             console.error('Error pruning old-slot instances on move:', pruneError);
-          } else {
-            console.log(`Pruned ${deleted} old-slot instances on move`);
           }
         }
 
@@ -406,7 +398,6 @@ export class SessionUpdateService {
         // scheduled and its slot changed — covers unscheduled->scheduled AND moves.
         // Fire-and-forget through the API (generation is dedup-safe); don't block.
         if (nowScheduled && (wasUnscheduled || slotChanged)) {
-          console.log('Generating instances for scheduled template through school year end:', sessionId);
           fetch('/api/sessions/generate-instances', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -415,7 +406,6 @@ export class SessionUpdateService {
             .then(async (response) => {
               if (response.ok) {
                 const data = await response.json();
-                console.log(`Created ${data.instancesCreated} instances for session ${sessionId} through ${data.endDate || 'school year end'}`);
               } else {
                 const error = await response.json();
                 console.error(`Failed to create instances for session ${sessionId}:`, error.error);
@@ -1311,7 +1301,6 @@ export class SessionUpdateService {
 
         // If no longer overlapping, clear the conflict flag
         if (!stillHasOverlap) {
-          console.log('Clearing stale conflict on session:', flaggedSession.id);
           await this.supabase
             .from('schedule_sessions')
             .update({
@@ -1419,9 +1408,6 @@ export class SessionUpdateService {
       }
 
       const cleared = clearedRows?.length ?? 0;
-      if (cleared > 0) {
-        console.log(`[SPE-288] Cleared ${cleared} stale conflict flag(s) for provider ${providerId}`);
-      }
       return { cleared };
     } catch (error) {
       console.error('SPE-288 reconcileStaleConflictsForProvider failed:', error);
@@ -1472,7 +1458,6 @@ export class SessionUpdateService {
         return { success: false, error: 'Failed to unschedule session' };
       }
 
-      console.log('Session unscheduled successfully:', sessionId);
 
       // Clear stale conflicts on other sessions that may have been resolved by this unschedule
       if (originalSession.student_id && originalSession.provider_id && originalSession.day_of_week !== null) {
@@ -1541,7 +1526,6 @@ export class SessionUpdateService {
         }
       }
 
-      console.log(`Unscheduled ${updatedSessions?.length || 0} sessions from day ${dayOfWeek}`);
       return { success: true, count: updatedSessions?.length || 0 };
     } catch (error) {
       console.error('Unschedule day sessions error:', error);

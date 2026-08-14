@@ -5,10 +5,12 @@
  * path end-to-end against the public Aeries demo instance and prints a concrete
  * field mapping + gap analysis vs. Speddy's `students` table.
  *
- * Run:  npx tsx scripts/aeries-sped-spike.ts
+ * Run:  npx tsx --conditions=react-server scripts/aeries-sped-spike.ts
+ *       (the flag resolves the `server-only` marker in the Aeries client
+ *        to its no-op stub — without it the import throws. SPE-375.)
  *
  * Uses the demo instance by default (no secrets). Point at a real district with:
- *   AERIES_BASE_URL=... AERIES_CERTIFICATE=... npx tsx scripts/aeries-sped-spike.ts
+ *   AERIES_BASE_URL=... AERIES_CERTIFICATE=... npx tsx --conditions=react-server scripts/aeries-sped-spike.ts
  */
 
 import {

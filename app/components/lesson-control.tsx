@@ -45,7 +45,6 @@ export function LessonControl({
       const identifier = await getIdentifier();
       if (!identifier) {
         // No persisted session yet, skip saving
-        console.log('LessonControl: No identifier available, skipping save');
         return true; // Don't treat as error, just skip
       }
       const response = await fetch('/api/curriculum-tracking', {

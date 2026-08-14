@@ -171,27 +171,21 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
   }, [supabase, schoolCache]);
 
   const fetchProviderSchools = useCallback(async () => {
-    console.log('[SchoolContext] Fetching provider schools...');
-    const startTime = performance.now();
     
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
-        console.log('[SchoolContext] No user found');
         setLoading(false);
         return;
       }
-      console.log('[SchoolContext] User ID:', user.id);
       setUserId(user.id);
       
       // Clean up old global localStorage key if it exists
       if (localStorage.getItem('selectedSchool')) {
         localStorage.removeItem('selectedSchool');
-        console.log('[SchoolContext] Cleaned up old global selectedSchool key');
       }
 
       // Fetch profile with migration status
-      console.log('[SchoolContext] Fetching profile for user:', user.id);
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('works_at_multiple_schools, school_site, school_district, school_id, district_id, state_id')
@@ -211,12 +205,10 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
       }
 
       if (!profile) {
-        console.log('[SchoolContext] No profile found');
         return;
       }
 
       const isMigrated = !!profile.school_id;
-      console.log('[SchoolContext] Profile (migrated:', isMigrated, '):', profile);
 
       // Set the worksAtMultipleSchools state
       setWorksAtMultipleSchools(profile.works_at_multiple_schools || false);
@@ -232,7 +224,6 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
           state_id: profile.state_id
         });
         
-        console.log('[SchoolContext] Single school mode, enriched:', singleSchool);
         setAvailableSchools([singleSchool]);
         setCurrentSchoolState(singleSchool);
       } else {
@@ -296,9 +287,6 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
               const saved = JSON.parse(sessionSchoolData);
               if (saved.school_id) {
                 schoolToSet = enrichedSchools.find(s => s.school_id === saved.school_id);
-                if (schoolToSet) {
-                  console.log('[SchoolContext] Using manual school selection from session:', schoolToSet.display_name);
-                }
               }
             } catch (e) {
               console.error('[SchoolContext] Error parsing session school:', e);
@@ -308,13 +296,11 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
           // Priority 2: Day-based automatic selection
           if (!schoolToSet) {
             const currentDay = getCurrentDayOfWeek();
-            console.log('[SchoolContext] Current day of week:', currentDay);
 
             if (currentDay > 0 && currentDay <= 5) {
               // Weekday - check for scheduled school
               try {
                 const schoolsForToday = await getSchoolsForDay(user.id, currentDay);
-                console.log('[SchoolContext] Schools scheduled for today:', schoolsForToday);
 
                 if (schoolsForToday.length === 1) {
                   // Exactly one school scheduled for today
@@ -324,35 +310,22 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
                       s.school_id === todaySchoolData.school_id ||
                       (s.school_site === todaySchoolData.school_site && s.school_district === todaySchoolData.school_district)
                     );
-                    if (schoolToSet) {
-                      console.log('[SchoolContext] Auto-selected school for today:', schoolToSet.display_name);
-                    }
                   }
-                } else if (schoolsForToday.length > 1) {
-                  console.log('[SchoolContext] Multiple schools scheduled for today, falling back to primary');
-                } else {
-                  console.log('[SchoolContext] No schools scheduled for today, falling back to primary');
                 }
               } catch (e) {
                 console.error('[SchoolContext] Error fetching schools for day:', e);
               }
-            } else {
-              console.log('[SchoolContext] Weekend - falling back to primary school');
             }
           }
 
           // Priority 3 & 4: Primary school or first available
           if (!schoolToSet) {
             schoolToSet = enrichedSchools.find(s => s.is_primary) || enrichedSchools[0];
-            console.log('[SchoolContext] Using fallback school:', schoolToSet?.display_name);
           }
 
           setCurrentSchoolState(schoolToSet || null);
         }
       }
-      
-      const endTime = performance.now();
-      console.log(`[SchoolContext] School data loaded in ${Math.round(endTime - startTime)}ms`);
     } catch (error) {
       console.error('Error fetching provider schools:', error);
     } finally {

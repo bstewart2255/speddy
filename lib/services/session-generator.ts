@@ -172,13 +172,6 @@ export class SessionGenerator {
         validInstances.push(instance);
       } else {
         // Orphaned for display only — hidden this render, never deleted.
-        console.log('[SessionGenerator] Hiding orphaned instance (not deleting):', {
-          id: instance.id,
-          student_id: instance.student_id,
-          session_date: instance.session_date,
-          start_time: instance.start_time,
-          day_of_week: instance.day_of_week
-        });
       }
     }
 
@@ -317,7 +310,6 @@ export class SessionGenerator {
 
       // If we found an existing session, return it (idempotent)
       if (existing) {
-        console.log('Session instance already exists, returning existing:', existing.id);
         return existing;
       }
 
@@ -348,7 +340,6 @@ export class SessionGenerator {
         is_template: false
       } as ScheduleSessionInsert;
 
-      console.log('Inserting session instance:', insertData);
 
       const { data, error } = await this.supabase
         .from('schedule_sessions')
@@ -360,7 +351,6 @@ export class SessionGenerator {
         // Handle race condition: if another request created it between pre-check and insert,
         // fetch and return the existing session instead of failing
         if (error.code === '23505') {
-          console.log('Duplicate key on insert, fetching existing session');
           const { data: raceExisting } = await this.supabase
             .from('schedule_sessions')
             .select('*')
@@ -377,7 +367,6 @@ export class SessionGenerator {
         return null;
       }
 
-      console.log('Successfully created session instance:', data);
       return data;
     }
 

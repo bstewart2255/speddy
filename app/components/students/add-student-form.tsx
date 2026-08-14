@@ -33,7 +33,6 @@
       setLoading(true);
 
       try {
-        console.log('Creating student with data:', formData);
 
         // Create the student
         const student = await createStudent({
@@ -45,7 +44,6 @@
           minutes_per_session: formData.minutes_per_session,
         });
 
-        console.log('Student created:', student);
 
         if (!student) {
           throw new Error('Failed to create student');

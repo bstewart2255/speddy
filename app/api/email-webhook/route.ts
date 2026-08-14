@@ -55,11 +55,6 @@ export async function POST(request: NextRequest) {
     const payload = await request.json();
 
     // Log for debugging
-    console.log('Received email webhook:', {
-      from: payload.from,
-      subject: payload.subject,
-      attachments: payload.attachments?.length || 0
-    });
 
     // Extract email data
     const { from, subject, html, text, attachments } = payload;

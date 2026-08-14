@@ -81,7 +81,6 @@ export default function ResultsTab() {
       if (!user) return;
 
       if (!currentSchool) {
-        console.log('[Exit Ticket Results] No current school selected');
         return;
       }
 
@@ -112,7 +111,6 @@ export default function ResultsTab() {
         return Array.isArray(iepGoals) && iepGoals.length > 0;
       });
 
-      console.log(`[Exit Ticket Results] Found ${studentsWithGoals.length} students with IEP goals`);
       setStudents(studentsWithGoals);
     } catch (error) {
       console.error('[Exit Ticket Results] Error fetching students:', error);

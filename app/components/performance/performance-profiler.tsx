@@ -50,6 +50,7 @@ export function PerformanceProfiler({
 
     // Log in development
     if (process.env.NODE_ENV === 'development') {
+      // eslint-disable-next-line no-console -- the profiler exists to print, and this is inside a NODE_ENV === 'development' guard
       console.log(`[Profiler] ${id} (${phase}):`, {
         actualDuration: `${actualDuration.toFixed(2)}ms`,
         baseDuration: `${baseDuration.toFixed(2)}ms`,

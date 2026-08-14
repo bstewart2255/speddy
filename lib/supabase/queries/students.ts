@@ -457,8 +457,6 @@ export async function updateStudent(studentId: string, updates: {
     if (!syncResult.success) {
       console.error('Failed to sync sessions:', syncResult.error);
       // Don't throw - student update was successful, return sync error to caller
-    } else if (syncResult.conflictCount && syncResult.conflictCount > 0) {
-      console.log(`Updated sessions with ${syncResult.conflictCount} conflicts flagged`);
     }
   }
 

@@ -210,6 +210,7 @@ export class OptimizedScheduler {
    */
   private log(...args: any[]): void {
     if (this.debug) {
+      // eslint-disable-next-line no-console -- OptimizedScheduler.log — behind the `debug` constructor flag, which defaults to false
       console.log(...args);
     }
   }
