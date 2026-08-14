@@ -241,6 +241,62 @@ export function getSchoolLevel(school?: SchoolLevelInput | null): SchoolLevel {
 }
 
 /**
+ * Provider roles that schedule discrete pull-out sessions even at secondary
+ * (middle/high) schools — the related services (SPE-490, JSUSD evidence
+ * 2026-08-13). `resource` is deliberately absent: secondary resource service
+ * is embedded in class periods and planned as a weekly minutes bucket
+ * (shouldUseWeeklyBucket), not as scheduled sessions.
+ */
+export const SECONDARY_SCHEDULING_ROLES = [
+  'speech',
+  'ot',
+  'counseling',
+  'psychologist',
+] as const;
+
+/**
+ * Whether this provider role keeps the scheduling surfaces (Schedule, Bell
+ * Schedules, Plan, session fields) when the active school is secondary.
+ */
+export function canScheduleAtSecondary(role?: string | null): boolean {
+  return (SECONDARY_SCHEDULING_ROLES as readonly string[]).includes(
+    (role || '').trim()
+  );
+}
+
+/**
+ * The grade list a secondary school's bell schedule covers (SPE-491).
+ *
+ * A secondary period grid applies to the whole school, not one grade — the
+ * same bell rings for a 9th and a 12th grader — so entry writes ONE row per
+ * day whose grade_level is this list comma-joined (every conflict matcher
+ * already splits on commas). Derived from the school's grade span, clamped
+ * to 6–12; falls back to the full 6–12 when the span is unset or unusable.
+ */
+export function getSecondaryGradeRange(
+  school?: (SchoolLevelInput & { grade_span_high?: string | null }) | null
+): string[] {
+  const FULL_RANGE_LOW = 6;
+  const FULL_RANGE_HIGH = 12;
+
+  let low = parseGradeLevel(school?.grade_span_low);
+  let high = parseGradeLevel(school?.grade_span_high);
+
+  // Combined sites (K-8/K-12) classify as elementary, so a secondary school's
+  // span low below 6 is dirty data — clamp rather than trust it.
+  low = low === null ? FULL_RANGE_LOW : Math.max(low, FULL_RANGE_LOW);
+  high = high === null ? FULL_RANGE_HIGH : Math.min(high, FULL_RANGE_HIGH);
+  if (high < low) {
+    low = FULL_RANGE_LOW;
+    high = FULL_RANGE_HIGH;
+  }
+
+  const grades: string[] = [];
+  for (let g = low; g <= high; g++) grades.push(String(g));
+  return grades;
+}
+
+/**
  * Merge duplicate team members that might appear due to migration
  * (e.g., same person appearing with both ID and text matching)
  */

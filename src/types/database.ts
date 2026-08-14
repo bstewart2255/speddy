@@ -3696,6 +3696,87 @@ export type Database = {
           },
         ]
       }
+      student_blocked_times: {
+        Row: {
+          child_id: string | null
+          created_at: string
+          day_of_week: number
+          end_time: string
+          id: string
+          label: string
+          provider_id: string
+          school_id: string
+          school_year: string
+          start_time: string
+          student_id: string
+          updated_at: string
+        }
+        Insert: {
+          child_id?: string | null
+          created_at?: string
+          day_of_week: number
+          end_time: string
+          id?: string
+          label: string
+          provider_id: string
+          school_id: string
+          school_year?: string
+          start_time: string
+          student_id: string
+          updated_at?: string
+        }
+        Update: {
+          child_id?: string | null
+          created_at?: string
+          day_of_week?: number
+          end_time?: string
+          id?: string
+          label?: string
+          provider_id?: string
+          school_id?: string
+          school_year?: string
+          start_time?: string
+          student_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "student_blocked_times_child_id_fkey"
+            columns: ["child_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "student_blocked_times_provider_id_fkey"
+            columns: ["provider_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "student_blocked_times_school_id_fkey"
+            columns: ["school_id"]
+            isOneToOne: false
+            referencedRelation: "schools"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "student_blocked_times_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "students"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "student_blocked_times_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "unmatched_student_teachers"
+            referencedColumns: ["student_id"]
+          },
+        ]
+      }
       student_details: {
         Row: {
           accommodations: string[] | null

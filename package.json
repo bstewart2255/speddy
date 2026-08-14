@@ -41,6 +41,7 @@
     "sim:verify-teacher-set-reads": "tsx scripts/sim-district/verify-teacher-set-reads.ts",
     "sim:verify-teacher-link-writes": "tsx scripts/sim-district/verify-teacher-link-writes.ts",
     "sim:verify-special-activities-rls": "tsx scripts/sim-district/verify-special-activities-rls.ts",
+    "sim:verify-blocked-times-rls": "tsx scripts/sim-district/verify-student-blocked-times-rls.ts",
     "sim:verify-schedule-sessions-rls": "tsx scripts/sim-district/verify-schedule-sessions-rls.ts",
     "sim:verify-multi-school-rls": "tsx scripts/sim-district/verify-multi-school-rls.ts",
     "sim:verify-scheduler-year-scope": "tsx scripts/sim-district/verify-scheduler-year-scope.ts",

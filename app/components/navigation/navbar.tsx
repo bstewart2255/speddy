@@ -9,6 +9,7 @@ import { Sparkles } from 'lucide-react';
 import UserProfileDropdown from './user-profile-dropdown';
 import { SchoolSwitcher } from '../school-switcher';
 import { useSchool } from '../providers/school-context';
+import { canScheduleAtSecondary } from '@/lib/school-helpers';
 import { LongHoverTooltip } from '../ui/long-hover-tooltip';
 import AssistantPanel from '../assistant/assistant-panel';
 import { canUseAssistant } from '@/lib/assistant/roles';
@@ -31,6 +32,10 @@ type NavigationItem = {
 // Scheduling-centric surfaces that don't apply on secondary (middle/high) sites.
 // Hiding these top-level items also removes their sub-items (e.g. Bell Schedules,
 // Special Activities live under Schedule). Admin nav (Master Schedule) is unaffected.
+// Related-service roles (canScheduleAtSecondary) are exempt: they schedule
+// pull-out sessions at secondary too (SPE-490) and keep Schedule/Bell
+// Schedules/Plan — but still lose Special Activities, whose "teacher's class
+// does X at Y" concept is superseded at secondary by per-student blocks.
 const SECONDARY_HIDDEN_HREFS = new Set([
   '/dashboard/schedule',
   '/dashboard/bell-schedules',
@@ -38,6 +43,7 @@ const SECONDARY_HIDDEN_HREFS = new Set([
   '/dashboard/plan',
   '/dashboard/teacher/special-activities',
 ]);
+const SPECIAL_ACTIVITIES_HREF = '/dashboard/special-activities';
 
 export default function Navbar() {
   const router = useRouter();
@@ -210,9 +216,26 @@ export default function Navbar() {
 
   // On secondary sites, drop scheduling-centric items (Schedule, Bell Schedules,
   // Special Activities, Plan) for providers/teachers; admin nav is unaffected.
-  const navigation = getNavigationForRole(userRole).filter(
-    (item) => !isSecondary || !SECONDARY_HIDDEN_HREFS.has(item.href)
-  );
+  // Related-service roles keep scheduling at secondary (SPE-490), minus
+  // Special Activities (top-level item and Schedule sub-item alike).
+  const schedulesAtSecondary = canScheduleAtSecondary(userRole);
+  const navigation = getNavigationForRole(userRole)
+    .filter((item) =>
+      !isSecondary ||
+      (schedulesAtSecondary
+        ? item.href !== SPECIAL_ACTIVITIES_HREF
+        : !SECONDARY_HIDDEN_HREFS.has(item.href))
+    )
+    .map((item) =>
+      isSecondary && schedulesAtSecondary && item.subItems
+        ? {
+            ...item,
+            subItems: item.subItems.filter(
+              (subItem) => subItem.href !== SPECIAL_ACTIVITIES_HREF
+            ),
+          }
+        : item
+    );
 
   return (
     <nav className="bg-white border-b border-gray-200">

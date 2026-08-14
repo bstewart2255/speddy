@@ -29,6 +29,7 @@ import { useSchool } from '../providers/school-context';
 import { TeamChatButton } from '../chat/team-chat-button';
 import { IepMinutesConverter } from './iep-minutes-converter';
 import { MAX_MINUTES_PER_SESSION } from '@/lib/services/weekly-minutes';
+import { canScheduleAtSecondary } from '@/lib/school-helpers';
 
 interface StudentDetailsModalProps {
   isOpen: boolean;
@@ -597,7 +598,10 @@ export function StudentDetailsModal({
                   )}
                 </div>
               )}
-              {!isSecondary && (
+              {/* Related-service roles schedule discrete sessions at secondary
+                  too (SPE-490), so they keep the pair; resource keeps the
+                  weekly bucket above; other roles stay hidden on secondary. */}
+              {(!isSecondary || canScheduleAtSecondary(providerRole)) && (
               <div className="grid grid-cols-2 gap-4">
                 <FormGroup>
                   <Label htmlFor="sessions_per_week">Sessions per Week</Label>

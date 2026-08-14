@@ -18,8 +18,10 @@ import type {
   SchedulingDataManagerInterface
 } from './types/scheduling-data';
 import type { OtherProviderSessionLite } from '@/lib/services/session-update-service';
+import { isSpecialistSourceRole } from '@/lib/auth/role-utils';
 
 type MainstreamingBlock = Database['public']['Tables']['mainstreaming_blocks']['Row'];
+type StudentBlockedTime = Database['public']['Tables']['student_blocked_times']['Row'];
 
 const DEFAULT_CONFIG: DataManagerConfig = {
   maxCacheAge: 15 * 60 * 1000, // 15 minutes
@@ -93,6 +95,9 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
   // what makes this readable). Protected time: the auto-scheduler never places
   // a session over a student's time in a gen-ed class.
   private mainstreamingBlocks: MainstreamingBlock[] = [];
+  // SPE-492: every protected time at this school for the current year — same
+  // school-wide posture as mainstreaming blocks.
+  private studentBlockedTimes: StudentBlockedTime[] = [];
 
   // SPE-318: the same activities cacheSpecialActivities indexes, kept flat for
   // the auto-scheduler (year-scoped and live-only at fetch — SPE-458/468).
@@ -224,6 +229,9 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
       // includes them, and unlike special activities (SPE-318) they are wired
       // into the scheduler from day one.
       await this.loadMainstreamingBlocks();
+
+      // SPE-492: hand-entered protected times, same shape and posture.
+      await this.loadStudentBlockedTimes();
 
       this.cacheMetadata.lastFetched = new Date();
       this.cacheMetadata.isStale = false;
@@ -505,7 +513,7 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
 
     // For specialist users, also fetch sessions assigned to them (even from other providers' students)
     let sessionsResult;
-    if (this.providerRole && ['resource', 'speech', 'ot', 'counseling', 'specialist', 'intervention'].includes(this.providerRole)) {
+    if (this.providerRole && isSpecialistSourceRole(this.providerRole)) {
       // Fetch sessions where:
       // 1. Student belongs to this user (any sessions for my students)
       // 2. OR assigned to this user (sessions assigned to me, regardless of whose students)
@@ -695,6 +703,34 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
   }
 
   /**
+   * SPE-492: load every protected time at this school for the current school
+   * year. Mirrors loadMainstreamingBlocks in every respect, including the
+   * legacy-school rule (no school_id -> none can exist).
+   */
+  private async loadStudentBlockedTimes(): Promise<void> {
+    this.studentBlockedTimes = [];
+    try {
+      if (!this.schoolId) {
+        return;
+      }
+      const { data, error } = await this.supabase
+        .from('student_blocked_times')
+        .select('*')
+        .eq('school_year', this.schoolYear)
+        .eq('school_id', this.schoolId);
+      if (error) {
+        this.cacheMetadata.fetchErrors.push(`Blocked times: ${error.message}`);
+        return;
+      }
+
+      this.studentBlockedTimes = data || [];
+      console.log(`[DataManager] Loaded ${this.studentBlockedTimes.length} student blocked times`);
+    } catch (e) {
+      this.cacheMetadata.fetchErrors.push(`Blocked times: ${e instanceof Error ? e.message : 'unknown error'}`);
+    }
+  }
+
+  /**
    * Fetch school hours
    */
   private async fetchSchoolHours(): Promise<any[]> {
@@ -751,19 +787,25 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
    */
   private cacheBellSchedules(schedules: BellSchedule[]): void {
     this.data.data.bellSchedules.clear();
-    
+
     schedules.forEach(schedule => {
-      const gradeKey = schedule.grade_level;
-      if (!this.data.data.bellSchedules.has(gradeKey)) {
-        this.data.data.bellSchedules.set(gradeKey, new Map());
+      // grade_level is a comma list ("1,2,3"; secondary rows are the whole
+      // span, e.g. "6,7,8" — SPE-491). Index under EVERY member: keying by
+      // the raw string made multi-grade rows unfindable, since lookups ask
+      // for a single grade (every other consumer splits on commas too).
+      const gradeKeys = (schedule.grade_level || '').split(',').map(g => g.trim()).filter(Boolean);
+      for (const gradeKey of gradeKeys) {
+        if (!this.data.data.bellSchedules.has(gradeKey)) {
+          this.data.data.bellSchedules.set(gradeKey, new Map());
+        }
+
+        const dayMap = this.data.data.bellSchedules.get(gradeKey)!;
+        if (!dayMap.has(schedule.day_of_week)) {
+          dayMap.set(schedule.day_of_week, []);
+        }
+
+        dayMap.get(schedule.day_of_week)!.push(schedule);
       }
-      
-      const dayMap = this.data.data.bellSchedules.get(gradeKey)!;
-      if (!dayMap.has(schedule.day_of_week)) {
-        dayMap.set(schedule.day_of_week, []);
-      }
-      
-      dayMap.get(schedule.day_of_week)!.push(schedule);
     });
   }
   
@@ -983,6 +1025,11 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
     return this.mainstreamingBlocks;
   }
 
+  /** SPE-492: every protected time at this school (current year). */
+  public getStudentBlockedTimes(): StudentBlockedTime[] {
+    return this.studentBlockedTimes;
+  }
+
   /** SPE-318: every live special activity at this school (current year), flat. */
   public getSpecialActivitiesFlat(): SpecialActivity[] {
     return this.specialActivitiesFlat;
@@ -1083,6 +1130,7 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
     this.data.data.schoolHours = [];
     this.crossProviderSessions.clear();
     this.mainstreamingBlocks = [];
+    this.studentBlockedTimes = [];
     this.specialActivitiesFlat = [];
 
     this.cacheMetadata.isStale = true;

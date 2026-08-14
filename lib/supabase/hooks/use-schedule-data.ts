@@ -8,6 +8,7 @@ import { getUnscheduledSessionsCount } from '../queries/schedule-sessions';
 import { useSchedulingData } from './use-scheduling-data';
 import { isScheduledSession } from '@/lib/utils/session-helpers';
 import { getCurrentSchoolYear } from '@/lib/school-year';
+import { SPECIALIST_SOURCE_ROLES, isSpecialistSourceRole, type SpecialistSourceRole } from '@/lib/auth/role-utils';
 import type { Database, SchoolHour } from '@/src/types';
 
 type Student = Database['public']['Tables']['students']['Row'];
@@ -15,6 +16,7 @@ type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
 type BellSchedule = Database['public']['Tables']['bell_schedules']['Row'];
 type SpecialActivity = Database['public']['Tables']['special_activities']['Row'];
 type MainstreamingBlock = Database['public']['Tables']['mainstreaming_blocks']['Row'];
+type StudentBlockedTime = Database['public']['Tables']['student_blocked_times']['Row'];
 type Profile = Database['public']['Tables']['profiles']['Row'];
 
 interface ScheduleData {
@@ -24,9 +26,10 @@ interface ScheduleData {
   bellSchedules: BellSchedule[];
   specialActivities: SpecialActivity[];
   mainstreamingBlocks: MainstreamingBlock[];
+  studentBlockedTimes: StudentBlockedTime[];
   schoolHours: SchoolHour[];
   seaProfiles: Array<{ id: string; full_name: string; is_shared?: boolean }>;
-  otherSpecialists: Array<{ id: string; full_name: string; role: 'resource' | 'speech' | 'ot' | 'counseling' | 'specialist' | 'intervention' }>;
+  otherSpecialists: Array<{ id: string; full_name: string; role: SpecialistSourceRole }>;
   unscheduledCount: number;
   currentUserId: string | null;
   providerRole: string;
@@ -45,6 +48,7 @@ export function useScheduleData() {
     bellSchedules: [],
     specialActivities: [],
     mainstreamingBlocks: [],
+    studentBlockedTimes: [],
     schoolHours: [],
     seaProfiles: [],
     otherSpecialists: [],
@@ -105,6 +109,7 @@ export function useScheduleData() {
         bellResult,
         activitiesResult,
         mainstreamingResult,
+        blockedTimesResult,
         schoolHoursData,
         unscheduledCountData
       ] = await Promise.all([
@@ -172,6 +177,17 @@ export function useScheduleData() {
               .eq('school_id', currentSchool.school_id)
           : Promise.resolve({ data: [], error: null }),
 
+        // Student blocked times (SPE-492) - School-wide protected times
+        // ("don't pull during PE"); same posture and legacy rule as
+        // mainstreaming blocks above.
+        currentSchool.school_id
+          ? supabase
+              .from('student_blocked_times')
+              .select('*')
+              .eq('school_year', getCurrentSchoolYear())
+              .eq('school_id', currentSchool.school_id)
+          : Promise.resolve({ data: [], error: null }),
+
 
         // School hours
         getSchoolHours(currentSchool),
@@ -185,7 +201,7 @@ export function useScheduleData() {
 
       // For specialist users, also fetch sessions assigned to them (even from other providers' students)
       let sessionsResult;
-      if (['resource', 'speech', 'ot', 'counseling', 'specialist', 'intervention'].includes(profile.role)) {
+      if (isSpecialistSourceRole(profile.role)) {
         // Fetch sessions where:
         // 1. Student belongs to this user (any sessions for my students)
         // 2. OR assigned to this user (sessions assigned to me, regardless of whose students)
@@ -245,7 +261,7 @@ export function useScheduleData() {
 
       // For specialists, also fetch students from assigned sessions
       let allStudents = studentsResult.data || [];
-      if (['resource', 'speech', 'ot', 'counseling', 'specialist', 'intervention'].includes(profile.role) && sessionsResult.data) {
+      if (isSpecialistSourceRole(profile.role) && sessionsResult.data) {
         // Get student IDs from assigned sessions that aren't already in our student list
         const assignedSessionStudentIds = sessionsResult.data
           .filter(session => session.assigned_to_specialist_id === user.id && session.student_id)
@@ -267,7 +283,7 @@ export function useScheduleData() {
 
       // Fetch SEA profiles if user is Resource Specialist
       let seaProfiles: Array<{ id: string; full_name: string; is_shared?: boolean }> = [];
-      let otherSpecialists: Array<{ id: string; full_name: string; role: 'resource' | 'speech' | 'ot' | 'counseling' | 'specialist' | 'intervention' }> = [];
+      let otherSpecialists: Array<{ id: string; full_name: string; role: SpecialistSourceRole }> = [];
       
       if (profile?.role === 'resource') {
         try {
@@ -316,7 +332,7 @@ export function useScheduleData() {
               otherSpecialists = specialists.map(s => ({
                 id: s.id,
                 full_name: s.full_name,
-                role: s.role as 'resource' | 'speech' | 'ot' | 'counseling' | 'specialist' | 'intervention'
+                role: s.role as SpecialistSourceRole
               }));
 
               console.log(`[useScheduleData] Successfully loaded ${otherSpecialists.length} other specialists from current school (${currentSchool.school_id}): ${otherSpecialists.map(s => `${s.full_name} (${s.role})`).join(', ')}`);
@@ -326,7 +342,7 @@ export function useScheduleData() {
             const { data: specialistsData, error: specialistsError } = await supabase
               .from('profiles')
               .select('id, full_name, role')
-              .in('role', ['resource', 'speech', 'ot', 'counseling', 'specialist', 'intervention'])
+              .in('role', [...SPECIALIST_SOURCE_ROLES])
               .neq('id', user.id)
               .eq('school_site', currentSchool.school_site)
               .eq('school_district', currentSchool.school_district)
@@ -339,7 +355,7 @@ export function useScheduleData() {
               otherSpecialists = specialistsData.map(specialist => ({
                 id: specialist.id,
                 full_name: specialist.full_name ?? '',
-                role: specialist.role as 'resource' | 'speech' | 'ot' | 'counseling' | 'specialist' | 'intervention'
+                role: specialist.role as SpecialistSourceRole
               }));
 
               console.log(`[useScheduleData] Successfully loaded ${otherSpecialists.length} other specialists from current school (${currentSchool.school_site}): ${otherSpecialists.map(s => `${s.full_name} (${s.role})`).join(', ')}`);
@@ -362,6 +378,7 @@ export function useScheduleData() {
         bellSchedules: bellResult.data || [],
         specialActivities: activitiesResult.data || [],
         mainstreamingBlocks: mainstreamingResult.data || [],
+        studentBlockedTimes: blockedTimesResult.data || [],
         schoolHours: schoolHoursData,
         seaProfiles,
         otherSpecialists,
@@ -380,6 +397,7 @@ export function useScheduleData() {
         bellSchedules: bellResult.data?.length || 0,
         specialActivities: activitiesResult.data?.length || 0,
         mainstreamingBlocks: mainstreamingResult.data?.length || 0,
+        studentBlockedTimes: blockedTimesResult.data?.length || 0,
         unscheduledCount: unscheduledCountData,
       });
 
@@ -464,7 +482,7 @@ export function useScheduleData() {
     );
     
     // For specialist users, also subscribe to sessions assigned to them
-    if (['resource', 'speech', 'ot', 'counseling', 'specialist', 'intervention'].includes(data.providerRole)) {
+    if (isSpecialistSourceRole(data.providerRole)) {
       channel.on(
         'postgres_changes',
         {

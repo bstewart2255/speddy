@@ -17,8 +17,10 @@ import type {
   SchoolHour,
   SpecialActivity,
   Student,
+  StudentBlockedTime,
 } from '@/src/types';
 import type { ScheduleDragPosition } from '../hooks/use-schedule-state';
+import type { SpecialistSourceRole } from '@/lib/auth/role-utils';
 import type { Teacher } from '../types/teacher';
 import type { OtherProviderSession } from '../hooks/useOtherProviderSessions';
 
@@ -30,8 +32,11 @@ interface ScheduleGridProps {
   specialActivities: SpecialActivity[];
   /** SPE-478: recurring blocks placing a student in a gen-ed class. */
   mainstreamingBlocks?: MainstreamingBlock[];
+  /** SPE-492: protected times ("don't pull during X") at this school. */
+  studentBlockedTimes?: StudentBlockedTime[];
   /** Present only for the blocks' owner (the SDC dual-role provider). */
   onMainstreamingBlockDelete?: (blockId: string) => void;
+  onBlockedTimeDelete?: (blockId: string) => void;
   teachers: Teacher[];
   visualFilters: {
     grade: string | null;
@@ -51,7 +56,7 @@ interface ScheduleGridProps {
   selectedSession: ScheduleSession | null;
   popupPosition: DOMRect | null;
   seaProfiles: Array<{ id: string; full_name: string; is_shared?: boolean }>;
-  otherSpecialists: Array<{ id: string; full_name: string; role: 'resource' | 'speech' | 'ot' | 'counseling' | 'specialist' | 'intervention' }>;
+  otherSpecialists: Array<{ id: string; full_name: string; role: SpecialistSourceRole }>;
   providerRole: string;
   currentUserId: string | null;
   sessionTags: Record<string, string>;
@@ -96,7 +101,9 @@ export const ScheduleGrid = memo(function ScheduleGrid({
   bellSchedules,
   specialActivities,
   mainstreamingBlocks = [],
+  studentBlockedTimes = [],
   onMainstreamingBlockDelete,
+  onBlockedTimeDelete,
   teachers,
   visualFilters,
   otherProviderSessions,
@@ -163,6 +170,18 @@ export const ScheduleGrid = memo(function ScheduleGrid({
   const otherMainstreamingBlocks = useMemo(
     () => mainstreamingBlocks.filter(b => !currentUserId || b.provider_id !== currentUserId),
     [mainstreamingBlocks, currentUserId]
+  );
+
+  // SPE-492: same owner/other split for protected times — own render as amber
+  // grid blocks (with delete), others' as availability bands under a student
+  // filter.
+  const ownBlockedTimes = useMemo(
+    () => studentBlockedTimes.filter(b => currentUserId && b.provider_id === currentUserId),
+    [studentBlockedTimes, currentUserId]
+  );
+  const otherBlockedTimes = useMemo(
+    () => studentBlockedTimes.filter(b => !currentUserId || b.provider_id !== currentUserId),
+    [studentBlockedTimes, currentUserId]
   );
 
   const sessionOverlapsTimeSlot = (session: ScheduleSession, timeSlot: string): boolean => {
@@ -462,6 +481,7 @@ export const ScheduleGrid = memo(function ScheduleGrid({
                       bellSchedules={bellSchedules}
                       specialActivities={specialActivities}
                       mainstreamingBlocks={otherMainstreamingBlocks}
+                      studentBlockedTimes={otherBlockedTimes}
                       schoolHours={schoolHours}
                       sessions={sessions}
                       students={students}
@@ -520,6 +540,56 @@ export const ScheduleGrid = memo(function ScheduleGrid({
                                   e.stopPropagation();
                                   if (window.confirm('Remove this mainstreaming block?')) {
                                     onMainstreamingBlockDelete(block.id);
+                                  }
+                                }}
+                              >
+                                ×
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+
+                    {/* SPE-492: own protected times — amber siblings of the
+                        teal mainstreaming blocks above, same clamping and
+                        pointer rules. */}
+                    {ownBlockedTimes
+                      .filter(b => b.day_of_week === dayNumber)
+                      .map(block => {
+                        const student = students.find(s => s.id === block.student_id);
+                        const startTime = block.start_time.substring(0, 5);
+                        const endTime = block.end_time.substring(0, 5);
+                        const columnHeight = timeMarkers.length * (gridConfig.pixelsPerHour / 4);
+                        const rawTop = timeToPixels(startTime);
+                        const rawBottom = timeToPixels(endTime);
+                        const top = Math.max(0, Math.min(rawTop, columnHeight));
+                        const bottom = Math.max(0, Math.min(rawBottom, columnHeight));
+                        const height = bottom - top;
+                        if (height <= 0) return null;
+                        const fullLabel = `${student?.initials ?? 'Student'} — protected time: ${block.label} (${formatTime(startTime)}–${formatTime(endTime)})`;
+                        return (
+                          <div
+                            key={block.id}
+                            className="absolute rounded border-l-[3px] border-amber-500 bg-amber-500/10 text-amber-900 pointer-events-none"
+                            style={{ top: `${top}px`, height: `${height}px`, left: '2px', right: '2px', zIndex: 4 }}
+                          >
+                            <div
+                              className="px-1.5 py-0.5 text-[11px] leading-tight truncate pointer-events-auto"
+                              title={fullLabel}
+                            >
+                              <span className="font-semibold">{student?.initials ?? '?'}</span>
+                              {' · '}
+                              {block.label}
+                            </div>
+                            {onBlockedTimeDelete && (
+                              <button
+                                type="button"
+                                aria-label="Remove protected time"
+                                className="absolute top-0.5 right-1 text-amber-700 hover:text-amber-900 pointer-events-auto focus:outline-none focus:ring-1 focus:ring-amber-500 rounded"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (window.confirm('Remove this protected time?')) {
+                                    onBlockedTimeDelete(block.id);
                                   }
                                 }}
                               >

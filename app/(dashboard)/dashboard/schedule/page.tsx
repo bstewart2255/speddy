@@ -24,11 +24,14 @@ import { sessionUpdateService } from '../../../../lib/services/session-update-se
 import { filterScheduleSessions } from './utils/session-filters';
 import { buildAssignmentUpdate, buildSessionTimes } from './utils/drag-session';
 import { AddMainstreamingBlockModal } from '../../../components/schedule/add-mainstreaming-block-modal';
+import { AddBlockedTimeModal } from '../../../components/schedule/add-blocked-time-modal';
 import { deleteMainstreamingBlock } from '../../../../lib/supabase/queries/mainstreaming-blocks';
+import { deleteStudentBlockedTime } from '../../../../lib/supabase/queries/student-blocked-times';
 import type { ScheduleSession } from '@/src/types';
+import { isSpecialistSourceRole } from '@/lib/auth/role-utils';
 
 export default function SchedulePage() {
-  const { currentSchool } = useSchool();
+  const { currentSchool, isSecondary } = useSchool();
   const { showToast } = useToast();
   const supabase = createClient();
   const teachers = useTeachers(supabase, currentSchool);
@@ -42,6 +45,7 @@ export default function SchedulePage() {
     bellSchedules,
     specialActivities,
     mainstreamingBlocks,
+    studentBlockedTimes,
     schoolHours,
     seaProfiles,
     otherSpecialists,
@@ -76,10 +80,46 @@ export default function SchedulePage() {
     [students, currentUserId]
   );
   const [mainstreamingModalOpen, setMainstreamingModalOpen] = useState(false);
+  // SPE-492: protected times surface at secondary sites first — that's where
+  // the "don't pull during PE" need lives (JSUSD). The blocks themselves are
+  // respected at any school level.
+  const [blockedTimeModalOpen, setBlockedTimeModalOpen] = useState(false);
+
+  // Deleting a block leaves any 'sits on protected/mainstreaming time' flag
+  // it earned at creation; the full-validation reconcile (SPE-288) is the
+  // safe way to clear the caller's now-stale flags — it re-checks EVERY rule,
+  // so a flag with any other live cause survives. Other providers' flags
+  // self-heal the same way on their next schedule view (Codex, PR #864).
+  const reconcileAfterBlockDelete = useCallback(async () => {
+    if (!currentUserId) return;
+    try {
+      await sessionUpdateService.reconcileStaleConflictsForProvider(currentUserId);
+    } catch (err) {
+      console.error('[schedule] post-delete reconcile failed:', err);
+    }
+  }, [currentUserId]);
+
+  const handleBlockedTimeDelete = useCallback(
+    async (blockId: string) => {
+      try {
+        await deleteStudentBlockedTime(blockId);
+        await reconcileAfterBlockDelete();
+        showToast('Protected time removed', 'success');
+        refreshData();
+      } catch (err) {
+        showToast(
+          err instanceof Error ? err.message : 'Failed to remove protected time',
+          'error'
+        );
+      }
+    },
+    [showToast, refreshData, reconcileAfterBlockDelete]
+  );
   const handleMainstreamingBlockDelete = useCallback(
     async (blockId: string) => {
       try {
         await deleteMainstreamingBlock(blockId);
+        await reconcileAfterBlockDelete();
         showToast('Mainstreaming block removed', 'success');
         refreshData();
       } catch (err) {
@@ -89,7 +129,7 @@ export default function SchedulePage() {
         );
       }
     },
-    [showToast, refreshData]
+    [showToast, refreshData, reconcileAfterBlockDelete]
   );
 
   // Groups v2 (Phase 3): a click on a group plate or member pill opens the group
@@ -564,6 +604,8 @@ export default function SchedulePage() {
             students={ownedStudents}
             showMainstreamingButton={hasOwnClassroom}
             onAddMainstreamingBlock={() => setMainstreamingModalOpen(true)}
+            showBlockedTimeButton={isSecondary}
+            onAddBlockedTime={() => setBlockedTimeModalOpen(true)}
           />
 
           <ConflictFilterPanel
@@ -584,7 +626,7 @@ export default function SchedulePage() {
             highlightedStudentId={highlightedStudentId}
             onSessionFilterChange={setSessionFilter}
             showSpecialistFilter={providerRole === 'resource' && otherSpecialists.length > 0}
-            showAssignedFilter={['resource', 'speech', 'ot', 'counseling', 'specialist', 'intervention'].includes(providerRole)}
+            showAssignedFilter={isSpecialistSourceRole(providerRole)}
             onGradeToggle={toggleGrade}
             onTimeSlotClear={clearTimeSlot}
             onDayClear={clearDay}
@@ -605,6 +647,8 @@ export default function SchedulePage() {
             specialActivities={specialActivities}
             mainstreamingBlocks={mainstreamingBlocks}
             onMainstreamingBlockDelete={currentUserId ? handleMainstreamingBlockDelete : undefined}
+            studentBlockedTimes={studentBlockedTimes}
+            onBlockedTimeDelete={currentUserId ? handleBlockedTimeDelete : undefined}
             teachers={teachers}
             visualFilters={visualFilters}
             otherProviderSessions={otherProviderSessions}
@@ -682,6 +726,25 @@ export default function SchedulePage() {
             students={students}
             teachers={teachers}
             existingBlocks={mainstreamingBlocks}
+            currentUserId={currentUserId}
+            schoolId={currentSchool?.school_id || null}
+          />
+
+          {/* SPE-492: protected time input (secondary sites) */}
+          <AddBlockedTimeModal
+            isOpen={blockedTimeModalOpen}
+            onClose={() => setBlockedTimeModalOpen(false)}
+            onSuccess={(sessionsFlagged) => {
+              showToast(
+                sessionsFlagged > 0
+                  ? `Protected time added — ${sessionsFlagged} of your session${sessionsFlagged === 1 ? '' : 's'} now need${sessionsFlagged === 1 ? 's' : ''} attention`
+                  : 'Protected time added',
+                'success'
+              );
+              refreshData();
+            }}
+            students={students}
+            existingBlockedTimes={studentBlockedTimes}
             currentUserId={currentUserId}
             schoolId={currentSchool?.school_id || null}
           />

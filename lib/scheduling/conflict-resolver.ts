@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/client';
 import { Database } from '../../src/types/database';
+import { isClassPeriodBlock } from '@/lib/constants/activity-types';
 
 type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
 type BellSchedule = Database['public']['Tables']['bell_schedules']['Row'];
@@ -12,6 +13,7 @@ type SpecialActivityConflictData = Pick<SpecialActivity, 'teacher_name' | 'day_o
   activity_name?: string;
 };
 type MainstreamingBlockRow = Database['public']['Tables']['mainstreaming_blocks']['Row'];
+type StudentBlockedTimeRow = Database['public']['Tables']['student_blocked_times']['Row'];
 
 export class ConflictResolver {
   private supabase;
@@ -25,6 +27,12 @@ export class ConflictResolver {
   // Check and mark conflicts after bell schedule changes
   async resolveBellScheduleConflicts(newBellSchedule: BellScheduleConflictData) {
     try {
+      // Class periods describe the secondary day's structure — pull-outs
+      // happen DURING them, so adding one must not flag sessions (SPE-491).
+      if (isClassPeriodBlock(newBellSchedule.period_name)) {
+        return { marked: 0, failed: 0 };
+      }
+
       // Validate school_id is present to prevent cross-school conflicts
       if (!newBellSchedule.school_id) {
         console.warn('resolveBellScheduleConflicts called without school_id - skipping conflict resolution');
@@ -114,6 +122,22 @@ export class ConflictResolver {
   async resolveMainstreamingBlockConflicts(
     blocks: Array<Pick<MainstreamingBlockRow, 'student_id' | 'day_of_week' | 'start_time' | 'end_time' | 'label'>>
   ) {
+    return this.resolveTimeBlockConflicts(blocks, 'mainstreaming block', block => {
+      const label = block.label ? ` (${block.label})` : '';
+      return `Sits on mainstreaming time${label} ${block.start_time.slice(0, 5)}-${block.end_time.slice(0, 5)}`;
+    });
+  }
+
+  /**
+   * Shared body of the two protected-time resolvers: flag the creating
+   * provider's OWN template sessions for the block's student that overlap the
+   * new blocks. Cross-provider sessions can't be flagged from here (RLS: we
+   * can only update our own rows); other providers are warned at their next
+   * drag/placement.
+   */
+  private async resolveTimeBlockConflicts<
+    T extends { student_id: string; day_of_week: number; start_time: string; end_time: string }
+  >(blocks: T[], kind: string, reasonFor: (block: T) => string) {
     try {
       if (blocks.length === 0) return { marked: 0, failed: 0 };
 
@@ -141,17 +165,30 @@ export class ConflictResolver {
           )
         );
         if (conflicting.length === 0) continue;
-        const label = block.label ? ` (${block.label})` : '';
-        const reason = `Sits on mainstreaming time${label} ${block.start_time.slice(0, 5)}-${block.end_time.slice(0, 5)}`;
-        const result = await this.markSessionsAsConflicted(conflicting, reason);
+        const result = await this.markSessionsAsConflicted(conflicting, reasonFor(block));
         marked += result.marked;
         failed += result.failed;
       }
       return { marked, failed };
     } catch (error) {
-      console.error('Error resolving mainstreaming block conflicts:', error);
+      console.error(`Error resolving ${kind} conflicts:`, error);
       return { marked: 0, failed: 0, error: (error as Error).message };
     }
+  }
+
+  /**
+   * SPE-492: check and mark conflicts after creating protected times — the
+   * creating provider's OWN sessions for that student that now sit on the
+   * blocked time. Mirrors resolveMainstreamingBlockConflicts, including its
+   * RLS boundary: cross-provider sessions are warned at their next
+   * drag/placement, not retro-flagged from here.
+   */
+  async resolveStudentBlockedTimeConflicts(
+    blocks: Array<Pick<StudentBlockedTimeRow, 'student_id' | 'day_of_week' | 'start_time' | 'end_time' | 'label'>>
+  ) {
+    return this.resolveTimeBlockConflicts(blocks, 'blocked time', block =>
+      `Sits on protected time (${block.label}) ${block.start_time.slice(0, 5)}-${block.end_time.slice(0, 5)}`
+    );
   }
 
   // Mark sessions as conflicted instead of deleting/rescheduling them

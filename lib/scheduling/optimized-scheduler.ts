@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/client';
+import { isClassPeriodBlock } from '@/lib/constants/activity-types';
 import { isSpecialistSourceRole } from '@/lib/auth/role-utils';
 import { Database } from "../../src/types/database";
 import { SchedulingDataManager } from './scheduling-data-manager';
@@ -17,7 +18,8 @@ import type {
   ScheduleSession,
   BellSchedule,
   SpecialActivity,
-  MainstreamingBlock
+  MainstreamingBlock,
+  StudentBlockedTime
 } from './types/scheduling-data';
 
 /**
@@ -93,6 +95,9 @@ interface SchedulingContext {
   // SPE-478: student -> day -> that student's mainstreaming blocks (protected
   // time in a gen-ed class; the scheduler never places over them).
   mainstreamingByStudent: Map<string, Map<number, MainstreamingBlock[]>>;
+  // SPE-492: student -> day -> that student's protected times ("don't pull
+  // during PE"); same never-place-over rule as mainstreaming.
+  blockedTimesByStudent: Map<string, Map<number, StudentBlockedTime[]>>;
   
   // Cache metadata
   cacheMetadata: {
@@ -250,15 +255,20 @@ export class OptimizedScheduler {
     // mid-run and cause a missed hard-avoid.
     const crossProviderSessionsByStudent = new Map(this.dataManager.getCrossProviderSessions());
     
-    // Get bell schedules for all grades
-    const bellSchedules: BellSchedule[] = [];
-    const grades = ['K', 'TK', '1', '2', '3', '4', '5'];
+    // Get bell schedules for all grades. TK-12, not just elementary: SPE-490
+    // opened auto-scheduling to related-service providers at secondary sites,
+    // whose Brunch/Lunch/Advisory rows live under grades 6-12 (SPE-491). A
+    // multi-grade row ("6,7,8") comes back once per grade, so dedupe by id.
+    const bellSchedulesById = new Map<string, BellSchedule>();
+    const grades = ['TK', 'K', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'];
     for (const grade of grades) {
       for (const day of [1, 2, 3, 4, 5]) {
-        const conflicts = this.dataManager.getBellScheduleConflicts(grade, day, '00:00', '23:59');
-        bellSchedules.push(...conflicts);
+        for (const conflict of this.dataManager.getBellScheduleConflicts(grade, day, '00:00', '23:59')) {
+          bellSchedulesById.set(conflict.id, conflict);
+        }
       }
     }
+    const bellSchedules: BellSchedule[] = [...bellSchedulesById.values()];
     
     // SPE-318: special activities, loaded school-wide by the DataManager
     // (year-scoped and live-only per SPE-458/468). This was hardcoded [] for
@@ -268,6 +278,9 @@ export class OptimizedScheduler {
 
     // SPE-478: mainstreaming blocks, same school-wide load.
     const mainstreamingBlocks = this.dataManager.getMainstreamingBlocks();
+
+    // SPE-492: protected times, same day-one wiring.
+    const studentBlockedTimes = this.dataManager.getStudentBlockedTimes();
 
     // Get school hours from existing context or use defaults
     const schoolHours: Array<{ day_of_week: number; grade_level: string; start_time: string; end_time: string }> = [];
@@ -285,6 +298,7 @@ export class OptimizedScheduler {
       bellSchedules,
       specialActivities,
       mainstreamingBlocks,
+      studentBlockedTimes,
       existingSessions,
       schoolHours,
       crossProviderSessionsByStudent
@@ -386,9 +400,13 @@ export class OptimizedScheduler {
     const bellSchedulesByGrade = new Map<string, Map<number, BellSchedule[]>>();
     const specialActivitiesByTeacher = new Map<string, Map<number, SpecialActivity[]>>();
     const mainstreamingByStudent = new Map<string, Map<number, MainstreamingBlock[]>>();
+    const blockedTimesByStudent = new Map<string, Map<number, StudentBlockedTime[]>>();
     
-    // Index bell schedules by grade for O(1) lookup
+    // Index bell schedules by grade for O(1) lookup. Class periods (the
+    // secondary period grid) are structure, not restrictions — pull-outs
+    // happen inside them — so they never enter the conflict index (SPE-491).
     for (const bell of preloadedData.bellSchedules) {
+      if (isClassPeriodBlock(bell.period_name)) continue;
       const grades = bell.grade_level.split(',').map((g: string) => g.trim());
       for (const grade of grades) {
         if (!bellSchedulesByGrade.has(grade)) {
@@ -444,6 +462,24 @@ export class OptimizedScheduler {
         indexBlockUnder(block.child_id, block);
       }
     }
+
+    // SPE-492: protected times, indexed identically (row + shared child).
+    const indexBlockedTimeUnder = (key: string, block: StudentBlockedTime) => {
+      if (!blockedTimesByStudent.has(key)) {
+        blockedTimesByStudent.set(key, new Map());
+      }
+      const keyMap = blockedTimesByStudent.get(key)!;
+      if (!keyMap.has(block.day_of_week)) {
+        keyMap.set(block.day_of_week, []);
+      }
+      keyMap.get(block.day_of_week)!.push(block);
+    };
+    for (const block of preloadedData.studentBlockedTimes || []) {
+      indexBlockedTimeUnder(block.student_id, block);
+      if (block.child_id) {
+        indexBlockedTimeUnder(block.child_id, block);
+      }
+    }
     
     // Build provider availability map for all weekdays
     const providerKey = `${this.providerId}-${schoolSite}`;
@@ -475,6 +511,7 @@ export class OptimizedScheduler {
       bellSchedulesByGrade,
       specialActivitiesByTeacher,
       mainstreamingByStudent,
+      blockedTimesByStudent,
 
       // Cache metadata
       cacheMetadata: {
@@ -1252,6 +1289,12 @@ export class OptimizedScheduler {
           continue;
         }
 
+        // SPE-492: never place a session over the student's protected time.
+        if (this.hasBlockedTimeConflict(student, day, slot.startTime, endTime)) {
+          this.log(`    ❌ Protected-time conflict: student has a blocked time during this slot`);
+          continue;
+        }
+
         // Check for overlapping sessions FIRST
         if (!this.validateNoOverlap(student, day, slot.startTime, endTime, [...existingFoundSlots, ...foundSlots])) {
           this.log(`    ❌ Session overlap detected`);
@@ -1379,6 +1422,26 @@ export class OptimizedScheduler {
     endTime: string
   ): boolean {
     const index = this.context!.mainstreamingByStudent;
+    const blocks = [
+      ...(index.get(student.id)?.get(day) || []),
+      ...(student.child_id ? index.get(student.child_id)?.get(day) || [] : []),
+    ];
+    if (blocks.length === 0) return false;
+    return findOverlappingMainstreamingBlock(blocks, day, startTime, endTime) !== null;
+  }
+
+  /**
+   * SPE-492: does this slot overlap one of the student's protected times
+   * ("don't pull during PE")? Identical shape to the mainstreaming check
+   * above, sharing the same pure overlap rule.
+   */
+  private hasBlockedTimeConflict(
+    student: Pick<Student, 'id' | 'child_id'>,
+    day: number,
+    startTime: string,
+    endTime: string
+  ): boolean {
+    const index = this.context!.blockedTimesByStudent;
     const blocks = [
       ...(index.get(student.id)?.get(day) || []),
       ...(student.child_id ? index.get(student.child_id)?.get(day) || [] : []),

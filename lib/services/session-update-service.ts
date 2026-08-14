@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/client';
+import { isClassPeriodBlock } from '@/lib/constants/activity-types';
 import { ScheduleSession, BellSchedule, SpecialActivity, type Database } from '@/src/types';
 import { DEFAULT_SCHEDULING_CONFIG } from '@/lib/scheduling/scheduling-config';
 import { requireNonNull } from '@/lib/types/utils';
@@ -199,7 +200,7 @@ export interface ValidationResult {
   valid: boolean;
   error?: string;
   conflicts?: {
-    type: 'bell_schedule' | 'special_activity' | 'session' | 'rule_violation' | 'mainstreaming';
+    type: 'bell_schedule' | 'special_activity' | 'session' | 'rule_violation' | 'mainstreaming' | 'blocked_time';
     description: string;
     conflictingItem?: any;
   }[];
@@ -497,6 +498,9 @@ export class SessionUpdateService {
       // session over the student's time in a gen-ed class (overridable, like
       // every other conflict here).
       this.checkMainstreamingConflicts(studentId, targetDay, targetStartTime, targetEndTime),
+      // SPE-492: hand-entered protected times ("don't pull during PE") — same
+      // cross-provider posture as mainstreaming.
+      this.checkBlockedTimeConflicts(studentId, targetDay, targetStartTime, targetEndTime),
       this.checkConcurrentSessionLimit(providerId, targetDay, targetStartTime, targetEndTime, session.id),
       this.checkConsecutiveSessionRules(providerId, studentId, targetDay, targetStartTime, targetEndTime, session.id),
       this.checkBreakRequirements(providerId, studentId, targetDay, targetStartTime, targetEndTime, session.id),
@@ -571,9 +575,16 @@ export class SessionUpdateService {
 
     if (bellSchedules) {
       for (const schedule of bellSchedules) {
+        // Class periods (secondary period grid) are the slots pull-outs happen
+        // inside of — never a conflict (SPE-491). Breaks (Brunch/Lunch…) keep
+        // full conflict behavior.
+        if (isClassPeriodBlock(schedule.period_name)) {
+          continue;
+        }
+
         // Parse comma-separated grade levels from bell schedule
         const bellGrades = schedule.grade_level.split(',').map((g: string) => g.trim());
-        
+
         // Check if student's grade is in the bell schedule's grade list
         if (bellGrades.includes(student.grade_level.trim())) {
           if (this.hasTimeOverlap(startTime, endTime, schedule.start_time, schedule.end_time)) {
@@ -779,6 +790,80 @@ export class SessionUpdateService {
 
     let query = this.supabase
       .from('mainstreaming_blocks')
+      .select('*')
+      .eq('day_of_week', day)
+      .eq('school_year', getCurrentSchoolYear());
+
+    if (student?.child_id) {
+      query = query.or(`child_id.eq.${student.child_id},student_id.eq.${studentId}`);
+    } else {
+      query = query.eq('student_id', studentId);
+    }
+
+    const { data: blocks, error: blocksError } = await query;
+    return { blocks: blocks || [], failed: !!blocksError };
+  }
+
+  /**
+   * SPE-492: check for protected-time conflicts — a recurring time the
+   * student must not be pulled ("PE", "Band"), hand-entered by a provider.
+   * Same posture as the mainstreaming check: deliberately NOT scoped to the
+   * caller's provider_id (warning provider B about provider A's block is the
+   * point), resolved through the shared child when present, fail-open like
+   * the sibling warn-path checks.
+   */
+  private async checkBlockedTimeConflicts(
+    studentId: string,
+    day: number,
+    startTime: string,
+    endTime: string
+  ): Promise<NonNullable<ValidationResult['conflicts']>[0] | null> {
+    // Fail-open here matches the sibling warn-path checks; the stale-CLEAR
+    // path consumes the `failed` flag instead.
+    const { blocks } = await this.fetchBlockedTimesForStudent(studentId, day);
+    if (blocks.length === 0) {
+      return null;
+    }
+
+    // Same pure overlap rule as mainstreaming — both are {day, start, end,
+    // label} time blocks, so the helper is shared rather than duplicated.
+    const overlapping = findOverlappingMainstreamingBlock(blocks, day, startTime, endTime);
+    if (!overlapping) {
+      return null;
+    }
+
+    return {
+      type: 'blocked_time',
+      description: `Protected time: ${overlapping.label} (${overlapping.start_time} - ${overlapping.end_time}) — the student should not be pulled during this`,
+      conflictingItem: overlapping
+    };
+  }
+
+  /**
+   * SPE-492: the student's protected times for one weekday, resolved through
+   * the CHILD when linked (same reasoning and shape as
+   * fetchMainstreamingBlocksForStudent above). `failed` distinguishes an
+   * errored lookup from a legitimate empty set — the stale-clear caller must
+   * keep flags on failure rather than treat it as "no blocks".
+   */
+  private async fetchBlockedTimesForStudent(
+    studentId: string,
+    day: number
+  ): Promise<{
+    blocks: Array<Database['public']['Tables']['student_blocked_times']['Row']>;
+    failed: boolean;
+  }> {
+    const { data: student, error: studentError } = await this.supabase
+      .from('students')
+      .select('child_id')
+      .eq('id', studentId)
+      .single();
+    if (studentError) {
+      return { blocks: [], failed: true };
+    }
+
+    let query = this.supabase
+      .from('student_blocked_times')
       .select('*')
       .eq('day_of_week', day)
       .eq('school_year', getCurrentSchoolYear());
@@ -1156,6 +1241,20 @@ export class SessionUpdateService {
         mainstreamingCheckFailed = true;
       }
 
+      // SPE-492: same again for protected times — a flag earned by an
+      // overridden "sits on protected time" placement must survive sibling
+      // moves. Same fail-safe posture as the branches above.
+      let blockedTimes: MainstreamingBlockLite[] = [];
+      let blockedTimeCheckFailed = false;
+      try {
+        const result = await this.fetchBlockedTimesForStudent(studentId, day);
+        blockedTimes = result.blocks;
+        blockedTimeCheckFailed = result.failed;
+      } catch (e) {
+        console.error('Blocked-time stale-check threw:', e);
+        blockedTimeCheckFailed = true;
+      }
+
       // SPE-484: a flag may also exist because the session sits on the
       // student's teacher's special activity (an overridden drag warning).
       // Same retention contract as mainstreaming above — count the overlap
@@ -1175,8 +1274,8 @@ export class SessionUpdateService {
 
       // Clear a flag only when the session no longer overlaps ANY same-provider
       // session, no longer double-books across providers, no longer sits on
-      // mainstreaming time, AND no longer sits on its teacher's special
-      // activity.
+      // mainstreaming or protected time, AND no longer sits on its teacher's
+      // special activity.
       for (const flaggedSession of flaggedSessions) {
         if (!flaggedSession.start_time || !flaggedSession.end_time) {
           continue;
@@ -1186,10 +1285,17 @@ export class SessionUpdateService {
         const stillHasOverlap =
           crossCheckFailed ||
           mainstreamingCheckFailed ||
+          blockedTimeCheckFailed ||
           activityCheckFailed ||
           flaggedSessionStillConflicts(flaggedSession, allSessions, otherProviderSessions) ||
           findOverlappingMainstreamingBlock(
             mainstreamingBlocks,
+            day,
+            flaggedSession.start_time,
+            flaggedSession.end_time
+          ) !== null ||
+          findOverlappingMainstreamingBlock(
+            blockedTimes,
             day,
             flaggedSession.start_time,
             flaggedSession.end_time

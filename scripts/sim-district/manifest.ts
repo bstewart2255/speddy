@@ -865,6 +865,9 @@ export const SWEPT_TABLES: { table: string; column: string; identity: 'user' | '
   // through the app as the SDC dual-role persona; keyed to the owning
   // provider account.
   { table: 'mainstreaming_blocks', column: 'provider_id', identity: 'user' },
+  // Student blocked times (SPE-492): protected times ("don't pull during
+  // PE") created live by verification walks; keyed to the owning provider.
+  { table: 'student_blocked_times', column: 'provider_id', identity: 'user' },
 ];
 
 /**
@@ -882,10 +885,6 @@ export const DECLARED_UNSEEDED_TABLES: string[] = [
   // Children of swept IEP tables — cleaned by ON DELETE CASCADE from
   // iep_meetings / student_parent_contacts, so no direct sweep key needed:
   'iep_meeting_attendees', 'parent_confirmation_tokens',
-  // SDC per-student blocked times (PR #860): every FK (children, students,
-  // profiles, schools) is ON DELETE CASCADE, so teardown's parent deletes
-  // clean it — created live via the app when a run exercises SDC scheduling:
-  'student_blocked_times',
   // AI-generated content (AI gated off; generation costs real tokens):
   'exit_tickets', 'exit_ticket_results', 'progress_checks', 'progress_check_results',
   'saved_worksheets', 'worksheet_submissions', 'lesson_adjustment_queue',
