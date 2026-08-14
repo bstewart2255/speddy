@@ -16,7 +16,6 @@ import { toLocalDateKey, formatTimeSlot, calculateDurationFromTimeSlot } from '@
 import { parseGradeLevel } from '@/lib/utils/grade-parser';
 import { useSchool } from '../providers/school-context';
 import { fetchWithRetry } from '@/lib/utils/fetch-with-retry';
-import { filterSessionsBySchool } from '@/lib/utils/session-filters';
 import { isScheduledSession } from '@/lib/utils/session-helpers';
 import { Printer, FileText, Paperclip } from "lucide-react";
 import { LongHoverTooltip } from '../ui/long-hover-tooltip';
@@ -345,7 +344,15 @@ export function CalendarWeekView({
       const weekEnd = new Date(weekStart);
       weekEnd.setDate(weekStart.getDate() + 6);
 
-      const weekSessions = await sessionGenerator.getSessionsForDateRange(user.id, weekStart, weekEnd, profile?.role);
+      // School-scoped by the method (SPE-271) rather than by a filter call this
+      // component has to remember further down.
+      const weekSessions = await sessionGenerator.getSchoolScopedSessionsForDateRange(
+        user.id,
+        weekStart,
+        weekEnd,
+        profile?.role,
+        currentSchool
+      );
 
       // Filter by view mode
       let filteredSessions = weekSessions;
@@ -397,8 +404,7 @@ export function CalendarWeekView({
         );
       }
 
-      // Apply school filtering if current school is set
-      filteredSessions = await filterSessionsBySchool(supabase, filteredSessions, currentSchool) as ScheduleSession[];
+      // (School filtering already happened in the fetch above — SPE-271.)
 
       // A newer load (e.g. school switch) owns the state now — drop this one
       if (seq !== loadSeqRef.current) return;

@@ -10,7 +10,6 @@ import { ScheduleSession } from '@/src/types';
 import { isScheduledSession } from '@/lib/utils/session-helpers';
 import { SessionDetailsModal } from '@/app/components/modals/session-details-modal';
 import { SessionGenerator, SessionWithCurriculum } from '@/lib/services/session-generator';
-import { filterSessionsBySchool } from '@/lib/utils/session-filters';
 import { formatCurriculumBadge, getFirstCurriculum } from '@/lib/utils/curriculum-helpers';
 import { FileText, Paperclip } from 'lucide-react';
 
@@ -364,11 +363,33 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
 
         // Use SessionGenerator to get sessions for this week
         // This includes role-based filtering for assigned sessions (specialist/SEA)
-        let allSessions = await sessionGenerator.getSessionsForDateRange(
+        //
+        // School scoping is passed in rather than applied afterward (SPE-271).
+        // The condition is carried over verbatim so this refactor changes no
+        // behaviour, but it is worth being honest about what it does:
+        //
+        //   - single-school provider: skipping is right. Every session is at
+        //     that school, so the filter is a no-op, and skipping it avoids
+        //     both a membership round-trip per load and the fail-closed empty
+        //     schedule (SPE-141) a transient lookup error would hand them.
+        //   - multi-school provider on rows with a NULL school_id (not yet
+        //     migrated): skipping is NOT right — filterSessionsBySchool can
+        //     scope those by site+district, but this condition never lets it
+        //     try, so the week view shows every school. Pre-existing, same
+        //     family as SPE-270, tracked in SPE-510. Left alone here because
+        //     fixing it changes what those users see, which this refactor
+        //     promised not to do.
+        const scopeToSchool =
+          currentSchool && worksAtMultipleSchools && currentSchool.school_id
+            ? currentSchool
+            : null;
+
+        let allSessions = await sessionGenerator.getSchoolScopedSessionsForDateRange(
           user.id,
           weekStartDate,
           weekEndDate,
-          profile?.role
+          profile?.role,
+          scopeToSchool
         );
 
         // Apply view mode filtering
@@ -386,14 +407,7 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
           sessionData = allSessions;
         }
 
-        // Apply school filtering
-        if (currentSchool && worksAtMultipleSchools && currentSchool.school_id) {
-          sessionData = await filterSessionsBySchool(
-            supabase,
-            sessionData,
-            currentSchool
-          );
-        }
+        // (School filtering already happened in the fetch above — SPE-271.)
 
         if (sessionData && isMounted) {
           setSessions(sessionData);
