@@ -52,7 +52,6 @@ export class SchoolQueryBuilder {
     
     if (this.defaultOptions.logPerformance) {
       const queryType = school?.school_id ? 'indexed' : 'text-based';
-      console.log(`[SchoolQueryBuilder] Building ${queryType} query for ${table}`);
     }
     
     return query;
@@ -68,7 +67,6 @@ export class SchoolQueryBuilder {
     
     if (school.school_id && hasIndexSupport) {
       // Log that we could use indexed queries in the future
-      console.log(`[SchoolQueryBuilder] Table ${tableName} will support indexed queries when school_id column is added`);
     }
     
     // For now, use text-based filtering
@@ -125,8 +123,6 @@ export class SchoolQueryBuilder {
     const endTime = performance.now();
     if (this.defaultOptions.logPerformance) {
       const queryType = school.school_id ? 'indexed' : 'text-based';
-      console.log(`[SchoolQueryBuilder] Batch fetch completed in ${Math.round(endTime - startTime)}ms using ${queryType} queries`);
-      console.log(`[SchoolQueryBuilder] Fetched:`, Object.entries(results).map(([table, data]) => `${table}: ${data.length}`).join(', '));
     }
     
     return results;

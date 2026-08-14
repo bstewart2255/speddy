@@ -1,3 +1,8 @@
+/* eslint-disable no-console -- the one console call left here sits behind the `debug` constructor flag, which defaults to false */
+// Kept through SPE-97: that sweep removed UNGATED debug logging, which is
+// what polluted production. Opt-in output behind a flag was never the
+// problem, and deleting it would leave the surrounding block computing a
+// payload it then discards.
 import { createClient } from '@/lib/supabase/client';
 import { isClassPeriodBlock } from '@/lib/constants/activity-types';
 import { isSpecialistSourceRole } from '@/lib/auth/role-utils';

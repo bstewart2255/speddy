@@ -1,3 +1,8 @@
+/* eslint-disable no-console -- every console call left here sits behind NODE_ENV === 'development' */
+// Kept through SPE-97: that sweep removed UNGATED debug logging, which is
+// what polluted production. Opt-in output behind a flag was never the
+// problem, and deleting it would leave the surrounding block computing a
+// payload it then discards.
 'use client';
 
 import { useEffect, useRef, useState } from 'react';

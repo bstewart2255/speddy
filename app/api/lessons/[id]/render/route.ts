@@ -117,8 +117,10 @@ export const GET = withRoute<{ id: string }, undefined, z.infer<typeof querySche
           if (worksheetRecord?.qr_code) {
             qrCodeUrl = worksheetRecord.qr_code;
           }
-        } catch (qrError) {
-          console.log('QR code not available for this worksheet');
+        } catch {
+          // The QR code is optional: qrCodeUrl stays undefined and the worksheet
+          // renders without one. Swallowing is deliberate — the line removed here
+          // said only 'QR code not available for this worksheet' (SPE-97).
         }
 
         html = worksheetRenderer.renderStudentWorksheet(

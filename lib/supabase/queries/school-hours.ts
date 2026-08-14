@@ -13,7 +13,6 @@ export async function getSchoolHours(school?: SchoolIdentifier): Promise<SchoolH
   const supabase = createClient<Database>();
   const queryType = school?.school_id ? 'indexed' : 'text-based';
   
-  console.log('[getSchoolHours] Using', queryType, 'query strategy');
 
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('Not authenticated');

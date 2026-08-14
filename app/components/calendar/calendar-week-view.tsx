@@ -331,7 +331,6 @@ export function CalendarWeekView({
 
       // If user works at multiple schools and no school is selected yet, wait
       if (profile?.works_at_multiple_schools && !currentSchool) {
-        console.log('[CalendarWeekView] Waiting for school selection');
         setSessionsState([]);
         return;
       }
@@ -597,13 +596,6 @@ export function CalendarWeekView({
         const endDate = toLocalDateKey(weekEnd);
 
         // Debug logging for school context
-        console.log('[DEBUG] Loading AI lessons with school context:', {
-          currentSchool,
-          school_id: currentSchool?.school_id,
-          startDate,
-          endDate,
-          user_id: user.id
-        });
 
         // Filter by both provider and school
         let query = supabase
@@ -640,15 +632,6 @@ export function CalendarWeekView({
             });
           }
         } else {
-          console.log('[DEBUG] Loaded lessons from database:', {
-            count: data?.length || 0,
-            lessons: data?.map(l => ({
-              date: l.lesson_date,
-              time: l.time_slot,
-              school_id: l.school_id,
-              id: l.id
-            }))
-          });
 
           const lessonsMap = new Map<string, any>();
           data?.forEach(lesson => {
@@ -669,10 +652,6 @@ export function CalendarWeekView({
             };
           });
 
-          console.log('[DEBUG] Processed lessons into state map:', {
-            dates: Array.from(lessonsMap.keys()),
-            totalDays: lessonsMap.size
-          });
 
           setSavedLessons(lessonsMap);
         }
@@ -1510,12 +1489,8 @@ export function CalendarWeekView({
       let index = 0;
       
       // Debug logging: List all time slots found
-      console.log(`[DEBUG Frontend] Found ${timeSlotGroups.size} time slot groups:`, 
-        Array.from(timeSlotGroups.keys())
-      );
       
       for (const [timeSlot, slotSessions] of timeSlotGroups.entries()) {
-        console.log(`[DEBUG Frontend] Processing time slot: "${timeSlot}" with ${slotSessions.length} sessions`);
         
         // Extract unique students from the sessions
         const sessionStudents = new Set<string>();
@@ -1552,31 +1527,15 @@ export function CalendarWeekView({
           };
           
           // Debug logging for each batch request
-          console.log(`[DEBUG Frontend] Adding batch request ${index}:`, {
-            timeSlot: timeSlot,
-            lessonDate: lessonDate,
-            studentCount: studentList.length,
-            duration: duration,
-            subject: subject,
-            subjectType: subjectType
-          });
           
           batchRequests.push(batchRequest);
           
           // Store mapping for later use
           timeSlotMapping.set(index, { timeSlot, slotSessions });
           index++;
-        } else {
-          console.log(`[DEBUG Frontend] Skipping time slot "${timeSlot}" - no students found`);
         }
       }
       
-      console.log(`[DEBUG Frontend] Final batch requests summary:`, {
-        totalRequests: batchRequests.length,
-        timeSlots: batchRequests.map((req, i) => `${i}: ${req.timeSlot}`),
-        lessonDate: toLocalDateKey(date),
-        subjectType
-      });
       
       if (batchRequests.length === 0) {
         showToast('No valid time slots to generate lessons for', 'warning');
@@ -1586,7 +1545,6 @@ export function CalendarWeekView({
       }
       
       // Make batch API call with timeout
-      console.log(`Sending batch request for ${batchRequests.length} lesson groups`);
       
       // Create an AbortController for timeout
       const controller = new AbortController();
@@ -1672,7 +1630,6 @@ export function CalendarWeekView({
         });
 
         // Log for debugging
-        console.log('Lessons saved to state:', dateStr, generatedLessons.length, 'lessons');
 
         // Force refresh from database to ensure consistency
         setTimeout(async () => {

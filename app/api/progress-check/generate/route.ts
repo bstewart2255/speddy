@@ -79,7 +79,6 @@ export const POST = withRoute(
       // Process students in parallel with Promise.allSettled
       const worksheetPromises = studentsData.map(async (student) => {
         try {
-          console.log(`[Progress Check] Processing student ${student.id} (${student.initials})`);
 
           // Extract IEP goals
           const studentDetails = Array.isArray(student.student_details)
@@ -88,11 +87,9 @@ export const POST = withRoute(
 
           const iepGoals = studentDetails?.iep_goals || [];
 
-          console.log(`[Progress Check] Student ${student.initials} has ${iepGoals.length} IEP goals`);
 
           // Skip if no IEP goals
           if (iepGoals.length === 0) {
-            console.log(`[Progress Check] Skipping student ${student.initials} - no IEP goals`);
             return {
               success: false,
               studentId: student.id,
@@ -102,7 +99,6 @@ export const POST = withRoute(
 
           // Call Claude generator with timeout
           try {
-            console.log(`[Progress Check] Calling Claude for student ${student.initials}...`);
 
             const worksheet = await Promise.race([
               generateProgressCheck({
@@ -115,7 +111,6 @@ export const POST = withRoute(
               )
             ]);
 
-            console.log(`[Progress Check] Claude response received for ${student.initials}`);
 
             return {
               success: true,
@@ -148,21 +143,11 @@ export const POST = withRoute(
       const worksheets: any[] = [];
       const errors: any[] = [];
 
-      console.log('[Progress Check] Processing results:', {
-        totalResults: results.length,
-        fulfilled: results.filter(r => r.status === 'fulfilled').length,
-        rejected: results.filter(r => r.status === 'rejected').length
-      });
 
       for (let index = 0; index < results.length; index++) {
         const result = results[index];
 
         if (result.status === 'fulfilled') {
-          console.log(`[Progress Check] Student ${index + 1} result:`, {
-            success: result.value.success,
-            studentId: result.value.studentId,
-            error: result.value.error
-          });
 
           if (result.value.success) {
             // Save to database
@@ -221,10 +206,6 @@ export const POST = withRoute(
         }
       }
 
-      console.log('[Progress Check] Final results:', {
-        successCount: worksheets.length,
-        errorCount: errors.length
-      });
 
       return NextResponse.json({
         success: worksheets.length > 0,

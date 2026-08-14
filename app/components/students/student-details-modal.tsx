@@ -235,7 +235,6 @@ export function StudentDetailsModal({
     try {
       // Save student details
       await upsertStudentDetails(student.id, details);
-      console.log('Student details saved successfully');
 
       // SPE-337: the link set is the whole teacher edit. The legacy
       // students.teacher_id/teacher_name pair is NOT written from here — the
@@ -276,7 +275,6 @@ export function StudentDetailsModal({
           sessions_per_week: studentInfo.sessions_per_week,
           minutes_per_session: studentInfo.minutes_per_session,
         });
-        console.log('Student info updated successfully');
       }
 
       if (onSave) {

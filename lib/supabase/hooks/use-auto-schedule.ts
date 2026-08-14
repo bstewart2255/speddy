@@ -1,3 +1,8 @@
+/* eslint-disable no-console -- every console call left here sits behind the `debug` flag */
+// Kept through SPE-97: that sweep removed UNGATED debug logging, which is
+// what polluted production. Opt-in output behind a flag was never the
+// problem, and deleting it would leave the surrounding block computing a
+// payload it then discards.
 import { useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { OptimizedScheduler, MissingWorkdaysError, EnhancedSchedulingResult } from '../../scheduling/optimized-scheduler';

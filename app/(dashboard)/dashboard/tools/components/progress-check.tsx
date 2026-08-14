@@ -93,7 +93,6 @@ export default function ProgressCheck() {
           return Array.isArray(iepGoals) && iepGoals.length > 0;
         });
 
-        console.log(`[Progress Check] Found ${studentsWithGoals.length} students with IEP goals out of ${data.length} total students`);
         setStudents(studentsWithGoals);
       }
     }
@@ -137,12 +136,6 @@ export default function ProgressCheck() {
       const data = await response.json();
 
       // Debug logging
-      console.log('[Progress Check] API response:', {
-        success: data.success,
-        worksheetCount: data.worksheets?.length || 0,
-        errorCount: data.errors?.length || 0,
-        errors: data.errors
-      });
 
       if (data.worksheets && data.worksheets.length > 0) {
         setGeneratedWorksheets(data.worksheets);

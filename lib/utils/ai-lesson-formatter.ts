@@ -24,7 +24,6 @@ interface Student {
 export function processAILessonContent(content: string, students: Student[] = []): { __html: string } | null {
   if (!content) return null;
 
-  console.log('[FORMATTER] Processing AI lesson content');
 
   // Process content directly without duplicate standardization
   let processedContent = content;

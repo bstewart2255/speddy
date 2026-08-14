@@ -93,7 +93,6 @@ export default function ExitTicketBuilder() {
                           [];
           return Array.isArray(iepGoals) && iepGoals.length > 0;
         });
-        console.log(`Found ${studentsWithGoals.length} students with IEP goals out of ${data.length} total students`);
         setStudents(studentsWithGoals);
       }
     } finally {

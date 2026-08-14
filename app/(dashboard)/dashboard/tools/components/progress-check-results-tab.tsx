@@ -87,7 +87,6 @@ export default function ProgressCheckResultsTab() {
       if (!user) return;
 
       if (!currentSchool) {
-        console.log('[Progress Check Results] No current school selected');
         return;
       }
 
@@ -120,7 +119,6 @@ export default function ProgressCheckResultsTab() {
         return Array.isArray(iepGoals) && iepGoals.length > 0;
       });
 
-      console.log(`[Progress Check Results] Found ${studentsWithGoals.length} students with IEP goals out of ${studentsData.length} total students`);
       setStudents(studentsWithGoals);
     } catch (error) {
       console.error('[Progress Check Results] Error fetching students:', error);

@@ -121,7 +121,6 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
    * Initialize the data manager with provider and school context
    */
   public async initialize(providerId: string, schoolSite: string, schoolDistrict: string, schoolId?: string, providerRole?: string): Promise<void> {
-    console.log(`[DataManager] Initializing for provider ${providerId} at ${schoolSite}/${schoolDistrict} (school_id: ${schoolId}, role: ${providerRole})`);
 
     this.providerId = providerId;
     this.providerRole = providerRole || null;
@@ -215,7 +214,6 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
       }).single();
 
       if (error) {
-        console.log('[DataManager] Batch RPC not available, using parallel queries');
         await this.loadDataParallel();
       } else {
         this.processBatchData(data);
@@ -241,7 +239,6 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
       this.metrics.queryTimes.push(elapsed);
       this.metrics.totalQueries++;
       
-      console.log(`[DataManager] Data loaded in ${elapsed.toFixed(2)}ms`);
     } catch (error) {
       console.error('[DataManager] Failed to load data:', error);
       this.cacheMetadata.fetchErrors.push(error instanceof Error ? error.message : 'Unknown error');
@@ -309,7 +306,6 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
       .single();
     
     if (schoolError || !schoolData) {
-      console.log('[DataManager] Could not find provider_schools record, skipping availability fetch');
       return [];
     }
     
@@ -573,7 +569,6 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
     } else {
       // For non-specialist users, only fetch their own students' sessions
       if (studentIds.length === 0) {
-        console.log('[DataManager] No students found for school, returning empty sessions');
         return [];
       }
 
@@ -592,7 +587,6 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
       return [];
     }
 
-    console.log(`[DataManager] Fetched ${sessionsResult.data?.length || 0} sessions for ${studentIds.length} students at ${this.schoolSite}`);
     return sessionsResult.data || [];
   }
 
@@ -661,7 +655,6 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
         this.crossProviderSessions.set(row.source_student_id, list);
       });
 
-      console.log(`[DataManager] Loaded cross-provider sessions for ${this.crossProviderSessions.size} shared students`);
     } catch (e) {
       this.cacheMetadata.fetchErrors.push(`Cross-provider sessions: ${e instanceof Error ? e.message : 'unknown error'}`);
     }
@@ -696,7 +689,6 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
       }
 
       this.mainstreamingBlocks = data || [];
-      console.log(`[DataManager] Loaded ${this.mainstreamingBlocks.length} mainstreaming blocks`);
     } catch (e) {
       this.cacheMetadata.fetchErrors.push(`Mainstreaming blocks: ${e instanceof Error ? e.message : 'unknown error'}`);
     }
@@ -724,7 +716,6 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
       }
 
       this.studentBlockedTimes = data || [];
-      console.log(`[DataManager] Loaded ${this.studentBlockedTimes.length} student blocked times`);
     } catch (e) {
       this.cacheMetadata.fetchErrors.push(`Blocked times: ${e instanceof Error ? e.message : 'unknown error'}`);
     }
@@ -1102,7 +1093,6 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
     this.data.version.version = snapshot.version + 1;
     this.data.version.lastModified = new Date().toISOString();
     
-    console.log(`[DataManager] Restored ${snapshot.sessions.length} sessions from snapshot`);
   }
   
   /**
@@ -1113,7 +1103,6 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
       throw new Error('DataManager not initialized');
     }
     
-    console.log('[DataManager] Refreshing cache...');
     await this.loadAllData();
     this.data.version.version++;
     this.data.version.lastModified = new Date().toISOString();
@@ -1136,7 +1125,6 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
     this.cacheMetadata.isStale = true;
     this.conflicts = [];
     
-    console.log('[DataManager] Cache cleared');
   }
   
   /**

@@ -77,7 +77,6 @@ export async function middleware(request: NextRequest) {
 
   // If no valid session and trying to access protected route, redirect to login
   if (!session || error) {
-    console.log('No valid session, redirecting to login', { error: error?.message })
     const redirectUrl = request.nextUrl.clone()
     redirectUrl.pathname = '/login'
     return NextResponse.redirect(redirectUrl)
@@ -86,7 +85,6 @@ export async function middleware(request: NextRequest) {
   // Optionally verify the JWT token is not expired
   const user = session.user
   if (!user) {
-    console.log('No user in session, redirecting to login')
     const redirectUrl = request.nextUrl.clone()
     redirectUrl.pathname = '/login'
     return NextResponse.redirect(redirectUrl)
@@ -173,7 +171,6 @@ export async function middleware(request: NextRequest) {
 
   // Internal routes are only for Speddy admins
   if (isInternalRoute && !isSpeddyAdmin) {
-    console.log('Non-speddy-admin trying to access internal route, redirecting')
     const redirectUrl = request.nextUrl.clone()
     redirectUrl.pathname = '/dashboard'
     return NextResponse.redirect(redirectUrl)

@@ -74,7 +74,6 @@ function sanitizeAndLogDebug(context: string, content: string): void {
     ? `${sanitized.substring(0, 200)}... [truncated, total length: ${content.length}]`
     : sanitized;
   
-  console.debug(`[${context}] Response preview:`, truncated);
 }
 
 // Model token limits (context window - input + output combined)

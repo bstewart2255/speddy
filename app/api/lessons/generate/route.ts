@@ -1,3 +1,8 @@
+/* eslint-disable no-console -- every console call left here sits behind DEBUG / DEBUG_LOG */
+// Kept through SPE-97: that sweep removed UNGATED debug logging, which is
+// what polluted production. Opt-in output behind a flag was never the
+// problem, and deleting it would leave the surrounding block computing a
+// payload it then discards.
 // Unified API endpoint for JSON-first lesson generation
 import { NextResponse } from 'next/server';
 import { lessonGenerator } from '@/lib/lessons/generator';
@@ -187,12 +192,6 @@ export const POST = withRoute(
             
             
             // Generate lesson
-            console.log('Generating lesson for group:', {
-              studentCount: students.length,
-              role: teacherRole,
-              subject: group.subject,
-              duration: lessonRequest.duration
-            });
             
             const { lesson, validation: lessonValidation, metadata: safeMetadata } = await lessonGenerator.generateLesson(lessonRequest);
             
@@ -258,7 +257,6 @@ export const POST = withRoute(
         const failed = lessons.length - successful;
         const totalTime = Date.now() - startTime;
         
-        console.log(`Batch generation completed: ${successful} succeeded, ${failed} failed in ${totalTime}ms`);
         
         return NextResponse.json({
           success: failed === 0,
@@ -314,12 +312,6 @@ export const POST = withRoute(
       };
       
       // Generate lesson
-      console.log('Generating lesson for:', {
-        studentCount: students.length,
-        role: teacherRole,
-        subject: body.subject,
-        duration: lessonRequest.duration
-      });
       
       const { lesson, validation: lessonValidation, metadata: safeMetadata } = await lessonGenerator.generateLesson(lessonRequest);
       

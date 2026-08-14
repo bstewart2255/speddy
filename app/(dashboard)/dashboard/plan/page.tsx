@@ -313,12 +313,6 @@ export default function CalendarPage() {
     }
 
     const dateStr = selectedDate.toISOString().split('T')[0];
-    console.log('Attempting to add holiday:', {
-      date: dateStr,
-      name: holidayName,
-      school_site: currentSchool.school_site,
-      school_district: currentSchool.school_district
-    });
 
     const { data, error } = await supabase
       .from('holidays')
@@ -337,7 +331,6 @@ export default function CalendarPage() {
       console.error('Error adding holiday:', error);
       setError(error.message);
     } else if (data) {
-      console.log('Holiday added successfully:', data);
       setHolidays([...holidays, data]);
       setShowHolidayModal(false);
       setHolidayName('');
@@ -348,7 +341,6 @@ export default function CalendarPage() {
 
   const handleSessionClick = (session: SessionWithCurriculum) => {
     // You can implement session details popup here
-    console.log('Session clicked:', session);
   };
 
   // Add this handler function after the other navigation handlers

@@ -178,7 +178,6 @@ export default function WorksheetUploadPage() {
 
       // Extract metadata for logging
       const metadata = await extractImageMetadata(file);
-      console.log('Image metadata:', metadata);
 
       // Compress image if needed
       const compressed = await compressImage(file, 2); // 2MB max

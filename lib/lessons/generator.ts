@@ -155,12 +155,6 @@ export class LessonGenerator {
       const minProblems = Math.ceil(baseMin * multiplier);
       const maxProblems = Math.ceil(baseMax * multiplier);
 
-      console.log(`[Generator] Lesson generation for group of ${request.students.length} students:
-  - Generating ONE worksheet for the entire group
-  - Grade range: ${Math.min(...request.students.map(s => s.grade))}-${maxGrade}
-  - Duration: ${request.duration || 30} minutes
-  - Duration multiplier: ${multiplier}
-  - Expected problems for worksheet: ${minProblems}-${maxProblems}`);
     }
 
     // No longer using chunked generation since we generate one worksheet for all
@@ -174,7 +168,6 @@ export class LessonGenerator {
       const enrichedRequest = { ...request };
       
       // Generate lesson with AI
-      console.log(`Generating lesson with ${this.getProvider().getName()}...`);
       const startTime = Date.now();
 
       // Generate lesson with AI (single attempt, no retry)
@@ -190,7 +183,6 @@ export class LessonGenerator {
         const lesson = this.convertToLessonFormat(rawResponse, request);
         const validation = materialsValidator.validateLesson(lesson);
 
-        console.log(`Lesson generated in ${Date.now() - startTime}ms`);
 
         // Log what we actually got
         if (debugEnabled) {
@@ -230,21 +222,11 @@ export class LessonGenerator {
             }
           }
 
-          console.log(`[Generator] Generation Result:
-  - Group size: ${request.students.length} students
-  - Single worksheet generated: YES
-  - Problems in worksheet: ${problemCount}
-  - Validation: ${validation.isValid ? 'PASSED' : 'FAILED'}
-  - Errors: ${validation.errors.join('; ') || 'None'}`);
 
           // Check if generation_explanation exists
           const lessonWithExplanation = lesson as LessonResponse & { generation_explanation?: GenerationExplanation };
           if (lessonWithExplanation.generation_explanation) {
             const genExpl = lessonWithExplanation.generation_explanation;
-            console.log(`[Generator] AI Self-Reported:
-  - Problems generated: ${genExpl.actual_content_generated?.practice_problems || 'N/A'}
-  - Whiteboard examples: ${genExpl.actual_content_generated?.whiteboard_examples || 'N/A'}
-  - Reasoning: ${genExpl.actual_content_generated?.reasoning || 'N/A'}`);
           }
         }
 
@@ -276,7 +258,6 @@ export class LessonGenerator {
                             !process.env.OPENAI_API_KEY;
 
         if (isDevelopment) {
-          console.log('API key missing or development mode - returning mock lesson');
           return {
             lesson: this.createMockLesson(request),
             validation: {
@@ -307,7 +288,6 @@ export class LessonGenerator {
     validation: ValidationResult;
     metadata?: SafeGenerationMetadata;
   }> {
-    console.log(`Using chunked generation for ${request.students.length} students`);
     
     try {
       // Grade groups not needed in single-worksheet approach
@@ -343,7 +323,6 @@ ${promptBuilder.buildUserPrompt(lessonPlanRequest)}`;
       
       for (const [groupIndex, group] of gradeGroups.entries()) {
         const groupStudents = request.students.filter(s => group.studentIds.includes(s.id));
-        console.log(`Generating materials for grade group ${group.grades.join(', ')} (${groupStudents.length} students)`);
         
         // Generate materials for this grade group
         const materialsPrompt = `Generate worksheet materials for Grade ${group.grades.join('/')} students.
@@ -382,7 +361,6 @@ Return ONLY the worksheet content in this structure:
             worksheetResponse = fullResponse;
           } catch (error) {
             // If that fails, it might be because we got worksheet-only JSON
-            console.log('Retrying as worksheet-only response...');
             worksheetResponse = { worksheet: null };
           }
           
