@@ -86,11 +86,31 @@ export function renderSummary(f: Findings): string {
   if (m.duplicates.length) {
     lines.push(`- ⚠️ ${m.duplicates.length} district ID(s) appear on more than one child`);
   }
+  // Two states, two remedies. Report what was observed and let the counts say
+  // which one you are looking at — never name a remedy for the other (SPE-409).
+  //
+  // For the contested branch, report the collision and stop there. A shared ID
+  // is a fact; what caused it is not. It is either one student holding two
+  // child records (SPE-408 — what every instance at JSUSD turned out to be) or
+  // the same ID typed onto two genuinely different students. Naming "merge" as
+  // the remedy would repeat this metric's original sin one level up: an
+  // operator acting on it could merge two unrelated children.
+  if (m.probableDuplicateChild) {
+    lines.push(
+      `- ⚠️ ${m.probableDuplicateChild} student(s) carry a district ID on the caseload row that ` +
+        'is missing from their child record, and that another child also claims — either ' +
+        'already on its child record, or on its own caseload row. ' +
+        'Do not copy either value across — that would put one district student ID on two children. ' +
+        'Check the identities first: this is either one student with two child records ' +
+        '(SPE-408 — at JSUSD, all of them were) or one ID entered against two different ' +
+        'students. Those have different fixes, and the ID alone does not tell you which.',
+    );
+  }
   if (m.backfillGap) {
     lines.push(
       `- ⚠️ ${m.backfillGap} student(s) have a district ID on the caseload row that never reached ` +
-        'the child record. That is our backfill gap, not missing data at the district — ' +
-        'those students are unmatchable until it is closed.',
+        'the child record, and no other child record claims that ID. Nothing else is using it, ' +
+        'so moving it onto the child record is what unblocks matching for these students.',
     );
   }
   lines.push('');

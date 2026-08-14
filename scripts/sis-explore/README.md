@@ -36,8 +36,15 @@ portal first (SPE-396 for Aeries, SPE-397 for OneRoster).
 2. **How much of the caseload can the SIS enrich?** Counted per *child*, not per
    caseload row, so a co-served student counts once. Splits three ways: matched,
    no ID entered, and ID entered but absent from the SIS. It also separates out
-   our own backfill gap — IDs sitting on a `students` row that never reached the
-   child record — because that is our bug, not the district's missing data.
+   IDs sitting on a `students` row that never reached the child record — our
+   problem, not the district's missing data — and splits *those* again by
+   whether any other child claims the same ID, whether on its child record or
+   on its own caseload row. If one does, copying would put one district student
+   ID on two children, so the report says to check the identities first: a
+   shared ID is equally consistent with one student holding two child records
+   (SPE-408) and with one ID entered against two different students, and the ID
+   alone cannot tell you which. Only when nothing else claims it is it a
+   backfill gap with a safe remedy.
 
 3. **How many teachers does a secondary student really have?** The empirical
    input SPE-334/342 have been waiting on. Reports the teachers-per-student

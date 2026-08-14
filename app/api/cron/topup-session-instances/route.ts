@@ -4,6 +4,7 @@ import {
   runSessionInstanceTopup,
   SESSION_TOPUP_WEEKS_AHEAD
 } from '@/lib/services/session-instance-topup';
+import { cronTokenMatches } from '@/lib/api/cron-auth';
 
 // SPE-291: dedicated trigger for the session-instance top-up.
 //
@@ -40,7 +41,7 @@ export async function GET(request: NextRequest) {
       }, { status: 500 });
     }
 
-    if (!token || token !== expectedToken) {
+    if (!cronTokenMatches(token, expectedToken)) {
       console.warn('Unauthorized session top-up attempt');
       return NextResponse.json({
         success: false,

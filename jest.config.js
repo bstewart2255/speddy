@@ -16,7 +16,16 @@ const customJestConfig = {
     '^@/lib/(.*)$': '<rootDir>/lib/$1',
     '^@/utils/(.*)$': '<rootDir>/utils/$1',
   },
-  testPathIgnorePatterns: ['<rootDir>/node_modules/', '<rootDir>/.next/'],
+  // Exclude rather than allowlist (SPE-118): `npm test` used to be
+  // `jest __tests__ lib`, so a unit test added under app/ or components/ would
+  // have been silently skipped in CI. Everything runs now except the live-DB
+  // integration suite, which needs Supabase secrets and has its own config and
+  // `npm run test:integration` entrypoint.
+  testPathIgnorePatterns: [
+    '<rootDir>/node_modules/',
+    '<rootDir>/.next/',
+    '<rootDir>/tests/integration/',
+  ],
   // Only files with a .test/.spec suffix are test suites. This keeps fixture and
   // helper modules colocated under __tests__/ (e.g. parsers/fixtures/builders.ts)
   // from being collected as empty suites, without excluding whole directories

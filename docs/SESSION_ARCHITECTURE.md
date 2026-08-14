@@ -14,9 +14,14 @@ All sessions are stored in the `schedule_sessions` table. The session type is de
 
 | Type                     | `session_date` | `day_of_week`   | Description                                           |
 | ------------------------ | -------------- | --------------- | ----------------------------------------------------- |
-| **Scheduled Template**   | `NULL`         | `0-4` (Mon-Fri) | Recurring weekly slot on the Main Schedule grid       |
+| **Scheduled Template**   | `NULL`         | `1-5` (Mon-Fri) | Recurring weekly slot on the Main Schedule grid       |
 | **Unscheduled Template** | `NULL`         | `NULL`          | Slot awaiting placement (in Unscheduled panel)        |
-| **Dated Instance**       | `2024-12-10`   | `0-4`           | Actual dated occurrence for Calendar/Today's Schedule |
+| **Dated Instance**       | `2024-12-10`   | `1-5`           | Actual dated occurrence for Calendar/Today's Schedule |
+
+> `day_of_week` is **Postgres DOW: Monday = 1 … Friday = 5**, not 0-indexed.
+> Verified against live data (every instance falls in 1–5) and matched by the
+> scheduler, which walks Monday=1 through Friday=5. This document said `0-4`
+> until SPE-299; anything written against that reading is off by one.
 
 ### Key Fields
 
@@ -26,7 +31,7 @@ schedule_sessions
 ├── student_id          -- FK to students
 ├── provider_id         -- FK to profiles
 ├── session_date        -- NULL for templates, DATE for instances
-├── day_of_week         -- 0-4 (Mon-Fri), NULL if unscheduled
+├── day_of_week         -- 1-5 (Mon-Fri, Postgres DOW), NULL if unscheduled
 ├── start_time          -- TIME, NULL if unscheduled
 ├── end_time            -- TIME, NULL if unscheduled
 ├── is_completed        -- Only valid for dated instances (see constraint)
@@ -115,7 +120,9 @@ UPDATE: day_of_week, start_time, end_time set
     ↓
 Becomes scheduled template (appears on Main Schedule grid)
     ↓
-Dated instances generated for upcoming weeks
+Manual scheduling generates dated instances immediately.
+Auto-scheduling does NOT — it writes templates only, and their
+instances arrive on the next top-up cron run (see §3).
 ```
 
 ### 3. Instance Generation
