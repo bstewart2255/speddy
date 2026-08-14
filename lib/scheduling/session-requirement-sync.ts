@@ -91,7 +91,6 @@ export async function updateExistingSessionsForStudent(
         const serviceType = providerRole || 'resource';
 
         // Create initial unscheduled sessions
-        console.log(`Creating ${newRequirements.sessions_per_week} initial unscheduled sessions for student ${studentId} with service_type=${serviceType}`);
 
         const newUnscheduledSessions = Array.from(
           { length: newRequirements.sessions_per_week },
@@ -117,7 +116,6 @@ export async function updateExistingSessionsForStudent(
           return { success: false, error: insertErr.message };
         }
 
-        console.log(`Successfully created ${newRequirements.sessions_per_week} initial unscheduled sessions`);
       }
 
       return { success: true };
@@ -259,7 +257,6 @@ async function adjustSessionCount(
 
   if (currentCount > targetCount) {
     // Need to delete excess sessions
-    console.log(`Deleting ${currentCount - targetCount} excess sessions for student ${studentId}`);
 
     // Get only TEMPLATE sessions (session_date IS NULL) to match the counting logic
     // Include completed ones to handle edge cases where orphaned completed unscheduled sessions exist
@@ -366,12 +363,10 @@ async function adjustSessionCount(
         throw new Error(`Failed to remove excess sessions: ${errors.join('; ')}`);
       }
 
-      console.log(`Successfully removed ${sessionsToDelete.length} excess sessions`);
     }
   } else {
     // Need to create additional unscheduled sessions
     const sessionsToCreate = targetCount - currentCount;
-    console.log(`Creating ${sessionsToCreate} new unscheduled sessions for student ${studentId}`);
 
     if (!providerId) {
       throw new Error('Cannot create new sessions without provider_id');
@@ -398,7 +393,6 @@ async function adjustSessionCount(
       throw new Error(`Failed to create new unscheduled sessions: ${insertErr.message}`);
     }
 
-    console.log(`Successfully created ${sessionsToCreate} new unscheduled sessions`);
   }
 }
 

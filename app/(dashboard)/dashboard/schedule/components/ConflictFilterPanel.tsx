@@ -140,7 +140,6 @@ export function ConflictFilterPanel({
     // Validate teacher_id exists in current school's teacher list
     if (teacherId && !teachers.some(t => t.id === teacherId)) {
       // Teacher not found in current school, clear selection
-      console.log('[ConflictFilterPanel] Teacher not found in current school, clearing selection:', teacherId);
       teacherId = null;
     }
 

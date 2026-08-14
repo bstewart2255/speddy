@@ -87,32 +87,12 @@ export function useSessionSync({
             }
             const updateIndex = updatedSessions.findIndex(s => s.id === session.id);
             if (updateIndex !== -1) {
-              const localSession = updatedSessions[updateIndex];
-              const optimisticUpdate = optimisticUpdatesRef.current.get(session.id);
-
-              // Check if this update matches our optimistic update
-              if (optimisticUpdate) {
-                console.log('Comparing optimistic update with real-time update:', {
-                  sessionId: session.id,
-                  optimistic: {
-                    start_time: localSession.start_time,
-                    end_time: localSession.end_time,
-                    day_of_week: localSession.day_of_week
-                  },
-                  realtime: {
-                    start_time: session.start_time,
-                    end_time: session.end_time,
-                    day_of_week: session.day_of_week
-                  }
-                });
-              }
 
               // Apply update (last-write-wins)
               updatedSessions[updateIndex] = session;
               
               // Clear optimistic update for this session
               if (optimisticUpdatesRef.current.has(session.id)) {
-                console.log('Clearing optimistic update for session:', session.id);
                 const update = optimisticUpdatesRef.current.get(session.id);
                 if (update?.rollbackTimer) {
                   clearTimeout(update.rollbackTimer);
@@ -153,12 +133,6 @@ export function useSessionSync({
   ) => {
     const { eventType, new: newRecord, old: oldRecord } = payload;
 
-    console.log('Realtime event received:', eventType, {
-      newId: newRecord && 'id' in newRecord ? newRecord.id : undefined,
-      oldId: oldRecord && 'id' in oldRecord ? oldRecord.id : undefined,
-      providerId: (newRecord && 'provider_id' in newRecord ? newRecord.provider_id : undefined) || 
-                  (oldRecord && 'provider_id' in oldRecord ? oldRecord.provider_id : undefined)
-    });
 
     // Check if this is an update to a session we have an optimistic update for
     const sessionId = (newRecord && 'id' in newRecord ? newRecord.id : undefined) || 
@@ -166,7 +140,6 @@ export function useSessionSync({
     
     // Skip if this is our own update (within a short time window)
     if (localUpdateIdsRef.current.has(sessionId)) {
-      console.log('Skipping our own update for session:', sessionId);
       return;
     }
 
@@ -210,7 +183,6 @@ export function useSessionSync({
     const session = sessions.find(s => s.id === sessionId);
     if (!session) return;
 
-    console.log('Applying optimistic update for session:', sessionId, changes);
 
     // Clear any existing rollback timer for this session
     const existingUpdate = optimisticUpdatesRef.current.get(sessionId);
@@ -221,7 +193,6 @@ export function useSessionSync({
     // Set up rollback timer
     const rollbackTimer = setTimeout(() => {
       if (optimisticUpdatesRef.current.has(sessionId)) {
-        console.log('Auto-rollback optimistic update for session:', sessionId);
         setSessions(current => 
           current.map(s => 
             s.id === sessionId ? session : s

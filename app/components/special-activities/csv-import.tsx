@@ -142,7 +142,6 @@ Lee,Garden,Tuesday,10:00,10:45`;
     const firstRow = data[0];
     const headers = Object.keys(firstRow).map((h) => h.toLowerCase().trim());
 
-    console.log("Headers found:", headers);
 
     const requiredColumns = [
       "teacher",
@@ -160,9 +159,6 @@ Lee,Garden,Tuesday,10:00,10:45`;
       );
     });
 
-    if (missing.length > 0) {
-      console.log("Missing columns:", missing);
-    }
 
     return missing.length === 0;
   };
@@ -191,7 +187,6 @@ Lee,Garden,Tuesday,10:00,10:45`;
         skipEmptyLines: true,
         transformHeader: (header) => header.trim().toLowerCase(),
         complete: async (results) => {
-          console.log("Parsed data:", results.data);
           try {
             if (!validateColumns(results.data)) {
               throw new Error(
@@ -249,7 +244,6 @@ Lee,Garden,Tuesday,10:00,10:45`;
                 };
               });
 
-            console.log("Raw activities:", rawActivities);
 
             if (rawActivities.length === 0) {
               throw new Error("No valid activities found in CSV");

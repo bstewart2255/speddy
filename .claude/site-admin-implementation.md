@@ -186,9 +186,19 @@ VALUES (
    - Delete incomplete or duplicate records
 
 4. **Link Teacher Portal Accounts:**
-   - For teachers who have portal accounts (role='teacher')
-   - Use `linkTeacherToProfile()` to connect profile to teacher record
-   - Or manually update teachers.account_id
+   - Applies to the SDC dual-role shape: a provider who also has a classroom, so
+     the account is a **`role='resource'` profile**, not `role='teacher'`. Both
+     auto-link trigger paths filter on `p.role = 'resource'` (the SPE-355 SDC
+     convention), so a `teacher`-role profile will not match and will not link.
+   - **This links itself now (SPE-481).** Two SECURITY DEFINER triggers create
+     `teachers.account_id` in either entry order: a new `teachers` row matching
+     exactly one Resource Specialist profile (email, case-insensitive, same
+     school) links on insert, and a profile gaining its email/school links any
+     waiting entry. Both have an ambiguity guard.
+   - The old `linkTeacherToProfile()` query helper was deleted in SPE-404: no UI
+     ever called it, and a second manual path would bypass the triggers'
+     ambiguity guard.
+   - To repair a link by hand, update `teachers.account_id` directly.
 
 ### Special Activities Migration
 

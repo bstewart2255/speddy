@@ -76,7 +76,6 @@ export default function SampleLessonForm({ onGenerate }: SampleLessonFormProps) 
         const studentsWithIEP = data.filter(
           (student) => student.iep_goals && student.iep_goals.length > 0
         );
-        console.log(`[Sample Lessons] Fetched ${studentsWithIEP.length} students with IEP goals (out of ${data.length} total)`);
         setStudents(studentsWithIEP);
       }
     } catch (err) {

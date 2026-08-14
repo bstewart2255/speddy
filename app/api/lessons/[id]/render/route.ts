@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/server';
 import { worksheetRenderer } from '@/lib/lessons/renderer';
 import { LessonResponse, isValidLessonResponse } from '@/lib/lessons/schema';
 import { withRoute } from '@/lib/api/with-route';
+import { log } from '@/lib/monitoring/logger';
 
 const querySchema = z.object({
   type: z.string().optional(),
@@ -106,19 +107,34 @@ export const GET = withRoute<{ id: string }, undefined, z.infer<typeof querySche
         // Generate QR code for worksheet (using existing system)
         let qrCodeUrl: string | undefined;
         try {
-          // Check if we can use the existing QR system
-          const { data: worksheetRecord } = await supabase
+          // maybeSingle(), not single(): a worksheet with no QR row is the
+          // normal case, and single() reports it as a PGRST116 error that is
+          // indistinguishable from a real read failure unless you check the
+          // code. maybeSingle() gives null for "no row" and reserves `error`
+          // for things that actually went wrong.
+          const { data: worksheetRecord, error: worksheetError } = await supabase
             .from('worksheets')
             .select('qr_code')
             .eq('lesson_id', lessonId)
             .eq('student_id', studentId)
-            .single();
+            .maybeSingle();
 
-          if (worksheetRecord?.qr_code) {
+          // The QR code stays optional either way — the worksheet renders
+          // without one. But a database failure is not the same as "this
+          // worksheet has no QR code", and only one of them should be silent.
+          if (worksheetError) {
+            log.error('QR lookup failed while rendering worksheet', worksheetError, {
+              lessonId,
+              studentId,
+            });
+          } else if (worksheetRecord?.qr_code) {
             qrCodeUrl = worksheetRecord.qr_code;
           }
         } catch (qrError) {
-          console.log('QR code not available for this worksheet');
+          log.error('QR lookup threw while rendering worksheet', qrError, {
+            lessonId,
+            studentId,
+          });
         }
 
         html = worksheetRenderer.renderStudentWorksheet(

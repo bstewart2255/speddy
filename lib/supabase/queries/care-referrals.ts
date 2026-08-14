@@ -268,7 +268,6 @@ export async function updateReferralStatus(
       // Handle race condition: if unique constraint violation (23505),
       // another user already created the case - this is OK
       if (caseError.code === '23505') {
-        console.log('Case already exists for referral (created by concurrent request)');
       } else {
         console.error('Error creating case:', caseError);
         // Don't throw - the referral was updated successfully

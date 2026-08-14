@@ -5,6 +5,7 @@ import { Button } from '../../../../../components/ui/button';
 import { TrashIcon } from '@heroicons/react/24/outline';
 import { SidebarSection } from './sidebar-section';
 import { deleteRotationPair, type RotationPairWithGroups } from '../../../../../../lib/supabase/queries/rotation-groups';
+import { ACTIVITY_SOLID_HEX, DEFAULT_ACTIVITY_SOLID_HEX } from '@/lib/constants/activity-colors';
 
 interface RotationGroupsPanelProps {
   rotationPairs: RotationPairWithGroups[];
@@ -137,18 +138,8 @@ export function RotationGroupsPanel({
   );
 }
 
-// Activity type color map (matching existing pattern)
 function getActivityColor(activityType: string): string {
-  const colorMap: Record<string, string> = {
-    'Library': '#8B5CF6',
-    'STEAM': '#F59E0B',
-    'STEM': '#F59E0B',
-    'Garden': '#10B981',
-    'Music': '#EC4899',
-    'ART': '#EF4444',
-    'PE': '#3B82F6',
-  };
-  return colorMap[activityType] || '#6B7280';
+  return ACTIVITY_SOLID_HEX[activityType] || DEFAULT_ACTIVITY_SOLID_HEX;
 }
 
 function getTotalMemberCount(pair: RotationPairWithGroups): number {

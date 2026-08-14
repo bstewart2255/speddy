@@ -123,10 +123,6 @@ K,Lunch,12:00,12:45
       );
     });
 
-    if (missing.length > 0) {
-      console.log("Missing columns:", missing);
-      console.log("Found headers:", headers);
-    }
 
     return missing.length === 0;
   };
@@ -147,7 +143,6 @@ K,Lunch,12:00,12:45
         skipEmptyLines: true,
         transformHeader: (header) => header.trim().toLowerCase(),
         complete: async (results) => {
-          console.log("Parsed data:", results.data);
           try {
             if (!validateColumns(results.data)) {
               throw new Error(
@@ -194,7 +189,6 @@ K,Lunch,12:00,12:45
                 }));
               });
 
-            console.log("Raw schedules:", rawSchedules);
 
             if (rawSchedules.length === 0) {
               throw new Error("No valid schedules found in CSV");

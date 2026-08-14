@@ -64,7 +64,6 @@ export default function Navbar() {
 
       // Get user's role if logged in
       if (user) {
-        console.log('[Navbar] Fetching role for user:', user.id);
         const { data: profile, error } = await supabase
           .from('profiles')
           .select('role')
@@ -84,7 +83,6 @@ export default function Navbar() {
 
         if (profile) {
           setUserRole(profile.role);
-          console.log('[Navbar] User role:', profile.role);
         }
         setRoleLoaded(true);
       }

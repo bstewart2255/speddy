@@ -60,19 +60,12 @@ export default function BellSchedulesPage() {
   // Fetch bell schedules from database with intelligent filtering
   const fetchSchedules = useCallback(async () => {
     try {
-      const startTime = performance.now();
-      console.log('Fetching bell schedules for:', currentSchool?.display_name || currentSchool?.school_site);
-      console.log('School migration status:', currentSchool?.is_migrated ? 'Migrated (fast)' : 'Legacy (normal)');
 
       const data = await getBellSchedules(currentSchool || undefined, getCurrentSchoolYear());
       
       // Fetch last saved timestamp
       const lastUpdated = await getLastSavedBellSchedule(currentSchool || undefined);
       setLastSaved(lastUpdated);
-
-      const endTime = performance.now();
-      console.log(`Bell schedules loaded in ${Math.round(endTime - startTime)}ms`);
-      console.log('Bell schedules received:', data?.length || 0, 'schedules');
 
       setBellSchedules(Array.isArray(data) ? data : []);
     } catch (error) {
@@ -171,8 +164,6 @@ export default function BellSchedulesPage() {
     );
   }
 
-  console.log('Bell schedules state before render:', bellSchedules);
-  console.log('Bell schedules length:', bellSchedules.length);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -246,7 +237,6 @@ export default function BellSchedulesPage() {
           <CollapsibleCard title="School Start & End Times" defaultOpen={false}>
             <SchoolHoursForm onSuccess={() => {
               // Optionally refresh any data if needed
-              console.log('School hours saved successfully');
             }} />
           </CollapsibleCard>
         </div>

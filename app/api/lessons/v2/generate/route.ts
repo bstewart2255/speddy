@@ -112,7 +112,6 @@ export const POST = withRoute(
           );
         }
         // If grade is provided, continue with grade-only generation
-        console.log('[V2 API] Continuing with grade-only generation due to student fetch error');
       } else if (studentsData && studentsData.length > 0) {
         // Transform to Student type
         students = studentsData.map((s: any) => {
@@ -155,7 +154,6 @@ export const POST = withRoute(
           };
         });
 
-        console.log(`[V2 API] Fetched ${students.length} students with IEP data`);
       } else if (studentsData && studentsData.length === 0) {
         // No students found - could be RLS issue or invalid IDs
         console.warn('[V2 API] No students found for provided IDs:', body.studentIds);
@@ -166,7 +164,6 @@ export const POST = withRoute(
           );
         }
         // Continue with grade-only generation
-        console.log('[V2 API] Continuing with grade-only generation since no student data found');
       }
     }
 
@@ -185,7 +182,6 @@ export const POST = withRoute(
           const studentWord = students.length === 1 ? 'student doesn\'t' : 'students don\'t';
 
           iepGoalWarning = `Note: The selected ${studentWord} have ${subjectName} keywords in their IEP goals. The lesson has been generated, but please verify it aligns with the students' actual IEP objectives.`;
-          console.log('[V2 API] IEP goal mismatch warning:', iepGoalWarning);
         }
       }
     }
@@ -200,14 +196,6 @@ export const POST = withRoute(
       students,  // Pass student data for IEP-aware generation
     };
 
-    console.log('[V2 API] Generation request:', {
-      topic: body.topic,
-      subjectType: body.subjectType,
-      grade: body.grade,
-      duration: body.duration,
-      studentCount: students?.length ?? 0,
-      hasStudentIds: !!body.studentIds?.length,
-    });
 
     // Generate worksheet
     const result = await generateV2Worksheet(generationRequest, apiKey);
@@ -290,7 +278,6 @@ export const POST = withRoute(
         const lessonPlanResult = await generateLessonPlan(lessonPlanRequest, apiKey);
         lessonPlan = lessonPlanResult.lessonPlan;
         lessonPlanMetadata = lessonPlanResult.metadata;
-        console.log('[V2 API] Lesson plan generated successfully');
       } catch (error) {
         console.error('[V2 API] Lesson plan generation failed:', error);
         // Don't fail the entire request if lesson plan fails
@@ -386,7 +373,6 @@ export const POST = withRoute(
         // Don't fail the request - lesson was generated successfully
       } else if (savedLesson) {
         savedLessonId = savedLesson.id;
-        console.log('[V2 API] Lesson saved to database:', savedLessonId);
       }
     } catch (saveError) {
       console.error('[V2 API] Error saving lesson to database:', saveError);

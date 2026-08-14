@@ -12,6 +12,12 @@
  * `dateLastModified` is left to callers (the param is supported here).
  */
 
+// The "server-to-server ONLY" above is now enforced, not just documented
+// (SPE-375): importing this from a client component is a build error rather
+// than something a reviewer has to catch. Node scripts that legitimately use
+// this (npm run sis:explore) pass --conditions=react-server so the marker
+// resolves to its no-op stub — see package.json.
+import 'server-only';
 import { logger } from '@/lib/logger';
 import {
   getAeriesConfig,

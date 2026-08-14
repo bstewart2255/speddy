@@ -82,6 +82,7 @@ export function usePerformanceMetrics(componentName: string) {
 
     // Log to console in development
     if (process.env.NODE_ENV === 'development') {
+      // eslint-disable-next-line no-console -- development-only metrics output, inside a NODE_ENV === 'development' guard
       console.log(`[Performance] ${componentName}:`, {
         renderTime: `${renderTime.toFixed(2)}ms`,
         renderCount: renderCount.current,

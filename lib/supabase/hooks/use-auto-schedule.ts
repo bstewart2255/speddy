@@ -154,6 +154,7 @@ export function useAutoSchedule(debug: boolean = false) {
       // Schedule each school separately
       for (const [schoolSite, schoolStudents] of studentsBySchool) {
         if (debug) {
+          // eslint-disable-next-line no-console -- behind the `debug` flag this hook is constructed with
           console.log(`\n=== Scheduling ${schoolStudents.length} students at ${schoolSite} ===`);
         }
 

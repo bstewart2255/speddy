@@ -16,6 +16,7 @@ import type { YardDutyZone } from '../../../../../../lib/supabase/queries/yard-d
 import type { BellScheduleWithCreator } from '../types';
 import type { FullDayAvailability } from '../../../../../../lib/supabase/queries/activity-availability';
 import type { RotationPairWithGroups, RotationGroupMemberWithTeacher } from '../../../../../../lib/supabase/queries/rotation-groups';
+import { ACTIVITY_GRID_CLASSES, DEFAULT_ACTIVITY_GRID_CLASSES } from '@/lib/constants/activity-colors';
 
 // Special period names that indicate daily time markers
 const DAILY_TIME_PERIOD_NAMES = ['School Start', 'Dismissal', 'Early Dismissal'] as const;
@@ -83,17 +84,6 @@ const GRADE_COLOR_MAP: Record<string, string> = {
   '5': 'bg-slate-400 border-slate-600',
 };
 
-const ACTIVITY_COLOR_MAP: Record<string, string> = {
-  Library: 'bg-blue-200 border-blue-400',
-  STEAM: 'bg-orange-200 border-orange-400',
-  STEM: 'bg-teal-200 border-teal-400',
-  Garden: 'bg-lime-200 border-lime-400',
-  Music: 'bg-violet-200 border-violet-400',
-  ART: 'bg-fuchsia-200 border-fuchsia-400',
-  PE: 'bg-red-200 border-red-400',
-};
-
-const DEFAULT_ACTIVITY_COLOR = 'bg-gray-200 border-gray-400';
 const YARD_DUTY_COLOR = 'bg-amber-200 border-amber-400';
 const INSTRUCTION_COLOR = 'bg-red-100 border-red-300';
 
@@ -440,8 +430,8 @@ export function AdminScheduleGrid({
 
   // Get color for a special activity based on its type
   const getActivityColor = (activityName: string | null): string => {
-    if (!activityName) return DEFAULT_ACTIVITY_COLOR;
-    return ACTIVITY_COLOR_MAP[activityName] || DEFAULT_ACTIVITY_COLOR;
+    if (!activityName) return DEFAULT_ACTIVITY_GRID_CLASSES;
+    return ACTIVITY_GRID_CLASSES[activityName] || DEFAULT_ACTIVITY_GRID_CLASSES;
   };
 
   return (

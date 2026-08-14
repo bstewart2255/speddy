@@ -172,7 +172,6 @@ export async function cleanOldRecords(): Promise<number> {
     }
 
     const deletedCount = data?.length || 0;
-    console.log(`Cleaned up ${deletedCount} old rate limit records`);
     return deletedCount;
 
   } catch (error) {

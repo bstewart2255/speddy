@@ -79,9 +79,6 @@ export async function generateV2Worksheet(
     }
 
     // Log retry attempt
-    if (attempt < MAX_RETRIES) {
-      console.log(`[V2 Generator] Validation failed on attempt ${attempt}, retrying...`);
-    }
   }
 
   // Return the last failed result with accumulated token usage
@@ -114,10 +111,6 @@ async function generateV2WorksheetAttempt(
       request.subjectType
     );
 
-    if (attempt > 1) {
-      console.log(`[V2 Generator] Retry attempt ${attempt}`);
-    }
-    console.log('[V2 Generator] Ability profile:', abilityProfile);
 
     // Step 2: Select template and calculate problem count
     const templateSelection = selectTemplate({
