@@ -12,6 +12,15 @@ import { checkUserRateLimit, type RateLimitRule } from './rate-limit-user';
 // read per request (not cached at module load) so a change takes effect on
 // the next request rather than requiring a fresh process.
 
+/**
+ * The master AI kill switch, read per request. Shared by the `aiGated` route
+ * gate below and `/api/features` (SPE-494) so the UI's idea of "on" can never
+ * drift from what the gate actually enforces.
+ */
+export function isAiEnabled(): boolean {
+  return process.env.AI_FEATURES_ENABLED === 'true';
+}
+
 interface WithRouteConfig<TBody, TQuery> {
   /** Require an authenticated user (default true). When false, `userId` is ''. */
   auth?: boolean;
@@ -92,7 +101,7 @@ export function withRoute<
       // master switch.
       if (config.aiGated) {
         const enabled =
-          process.env.AI_FEATURES_ENABLED === 'true' ||
+          isAiEnabled() ||
           (config.aiEnableFlag != null && process.env[config.aiEnableFlag] === 'true');
         if (!enabled) {
           return NextResponse.json({ error: 'Not found' }, { status: 404 });

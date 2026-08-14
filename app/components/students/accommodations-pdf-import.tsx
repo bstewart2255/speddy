@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '../ui/button';
 
 // Mirrors the server limit (which in turn respects the platform's ~4.5MB
@@ -13,6 +13,32 @@ const normalize = (s: string) => s.replace(/\s+/g, ' ').trim().toLowerCase();
 interface Proposal {
   text: string;
   checked: boolean;
+}
+
+// Availability probe for the AI kill switch (SPE-494), shared across mounts so
+// tab-flipping inside the modal doesn't re-ask. Only a confirmed "on" is
+// cached: while the switch is off (or the check fails) the next mount asks
+// again, so flipping the switch shows the button on the next modal open
+// without a full page reload. Fail-closed on any error or non-OK response.
+let aiConfirmedOn: Promise<boolean> | null = null;
+
+function checkAiFeatures(): Promise<boolean> {
+  if (aiConfirmedOn) return aiConfirmedOn;
+  const probe = fetch('/api/features')
+    .then((res) => (res.ok ? res.json() : null))
+    .then((data) => (data as { aiFeatures?: unknown } | null)?.aiFeatures === true)
+    .catch(() => false)
+    .then((on) => {
+      if (!on) aiConfirmedOn = null;
+      return on;
+    });
+  aiConfirmedOn = probe;
+  return probe;
+}
+
+/** Test-only: clear the module-level probe cache between cases. */
+export function __resetAiFeaturesProbeForTests() {
+  aiConfirmedOn = null;
 }
 
 interface AccommodationsPdfImportProps {
@@ -39,6 +65,21 @@ export function AccommodationsPdfImport({
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [proposals, setProposals] = useState<Proposal[] | null>(null);
+
+  // Hidden until the server confirms AI features are on (SPE-494). AI surfaces
+  // stay out of reach while the kill switch is off, and this one lives inside
+  // an always-reachable modal — so it has to ask.
+  const [available, setAvailable] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    checkAiFeatures().then((on) => {
+      if (!cancelled && on) setAvailable(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const reset = () => {
     setError(null);
@@ -119,6 +160,8 @@ export function AccommodationsPdfImport({
     onAdd(proposals.filter((p) => p.checked).map((p) => p.text));
     reset();
   };
+
+  if (!available) return null;
 
   return (
     <div className="space-y-2">
