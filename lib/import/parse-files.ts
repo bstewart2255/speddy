@@ -75,64 +75,68 @@ export class UploadTooLargeError extends Error {
 }
 
 /**
- * Buffer the request body, aborting the moment it passes the total ceiling
- * (SPE-443).
+ * Wrap a body stream so it fails once it passes the total ceiling (SPE-443).
  *
- * The Content-Length check above can only act on what the client claims. This
- * counts what the client actually sends, so an unbounded body cannot be
- * buffered into memory by formData() no matter what the headers say. At most
- * one chunk beyond the ceiling is ever held before the read is abandoned.
+ * Counting in a pass-through rather than pre-buffering matters: the point of
+ * the guard is to bound memory, so it must not itself hold a second full copy
+ * of the body. Chunks flow straight on to the parser and the read is torn down
+ * on the chunk that crosses the line.
  *
- * Returns null when the request exposes no readable body — there is then
- * nothing to buffer and so nothing to cap, and the caller reads the form
- * directly.
+ * `tripped` is reported back because the failure surfaces from formData(),
+ * which may wrap the underlying stream error in its own type — the caller uses
+ * the flag to answer "was this the ceiling?" rather than matching on that.
  */
-async function readBodyWithinLimit(request: Request): Promise<Uint8Array | null> {
-  const body = request.body;
-  if (!body || typeof body.getReader !== 'function') return null;
-
-  const reader = body.getReader();
-  const chunks: Uint8Array[] = [];
+function capBodyStream(body: ReadableStream<Uint8Array>): {
+  stream: ReadableStream<Uint8Array>;
+  tripped: () => boolean;
+} {
   let total = 0;
-  try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      if (!value) continue;
-      total += value.byteLength;
-      if (total > MAX_TOTAL_UPLOAD_BYTES) throw new UploadTooLargeError();
-      chunks.push(value);
-    }
-  } finally {
-    // Release the stream so an abandoned read doesn't hold the connection.
-    await reader.cancel().catch(() => {});
-  }
-
-  const buffer = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    buffer.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return buffer;
+  let exceeded = false;
+  const stream = body.pipeThrough(
+    new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        total += chunk.byteLength;
+        if (total > MAX_TOTAL_UPLOAD_BYTES) {
+          exceeded = true;
+          throw new UploadTooLargeError();
+        }
+        controller.enqueue(chunk);
+      },
+    })
+  );
+  return { stream, tripped: () => exceeded };
 }
 
-/** Parse the multipart form from a body read under the size ceiling. */
+/**
+ * Parse the multipart form from a body read under the size ceiling.
+ *
+ * When the request exposes no readable body there is nothing to buffer and so
+ * nothing to cap, and the form is read directly.
+ */
 async function readBoundedFormData(request: Request): Promise<FormData> {
-  const body = await readBodyWithinLimit(request);
-  if (body === null) return request.formData();
+  const body = request.body;
+  if (!body || typeof body.pipeThrough !== 'function') return request.formData();
 
-  // Re-wrap the bytes actually read, so formData() parses those rather than the
-  // now-consumed original stream. Only content-type carries over: it holds the
-  // multipart boundary, whereas the original content-length may disagree with
-  // what was really sent — which is the whole point of SPE-443.
+  const { stream, tripped } = capBodyStream(body);
+
+  // Only content-type carries over: it holds the multipart boundary, whereas
+  // the original content-length may disagree with what is really being sent —
+  // which is the whole point of SPE-443.
   const contentType = request.headers?.get?.('content-type') ?? null;
   const bounded = new Request(request.url, {
     method: 'POST',
     ...(contentType ? { headers: { 'content-type': contentType } } : {}),
-    body,
-  });
-  return bounded.formData();
+    body: stream,
+    // undici requires this for a streaming request body.
+    duplex: 'half',
+  } as RequestInit & { duplex: 'half' });
+
+  try {
+    return await bounded.formData();
+  } catch (error) {
+    if (tripped()) throw new UploadTooLargeError();
+    throw error;
+  }
 }
 
 /** The first present file over the per-file cap, or null if all are within it. */
