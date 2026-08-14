@@ -106,6 +106,13 @@ export async function listMyConversations(
     p_school_id: schoolId ?? undefined,
   });
   if (error) throw error;
+  // This cast is load-bearing, not decoration (SPE-351). The generated type for
+  // get_my_conversations marks every column non-nullable and types `kind` as a
+  // plain string, because that is all Supabase's generator can infer from a
+  // RETURNS TABLE signature. The function is LEFT JOIN-based, so student_id,
+  // other_id, other_name, other_role and last_message_at really are null
+  // depending on the conversation kind. Dropping this cast to "just use the
+  // generated type" would compile and then null-deref at runtime.
   const rows = (data ?? []) as Array<{
     id: string;
     kind: 'student' | 'direct';

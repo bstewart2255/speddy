@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { ActivityContextMenu } from './activity-context-menu';
 import { AvailabilityModal } from './availability-modal';
 import { deleteActivityAvailability } from '../../../../../../lib/supabase/queries/activity-availability';
+import { ACTIVITY_FILTER_CLASSES, DEFAULT_ACTIVITY_FILTER_CLASSES } from '@/lib/constants/activity-colors';
 
 interface ActivityTypeFilterProps {
   selectedTypes: Set<string>;
@@ -16,17 +17,6 @@ interface ActivityTypeFilterProps {
   inUseActivityTypes?: Set<string>;
 }
 
-const ACTIVITY_COLOR_MAP: Record<string, { bg: string; border: string; selectedBg: string }> = {
-  Library: { bg: 'bg-blue-50', border: 'border-blue-300', selectedBg: 'bg-blue-200' },
-  STEAM: { bg: 'bg-orange-50', border: 'border-orange-300', selectedBg: 'bg-orange-200' },
-  STEM: { bg: 'bg-teal-50', border: 'border-teal-300', selectedBg: 'bg-teal-200' },
-  Garden: { bg: 'bg-lime-50', border: 'border-lime-300', selectedBg: 'bg-lime-200' },
-  Music: { bg: 'bg-violet-50', border: 'border-violet-300', selectedBg: 'bg-violet-200' },
-  ART: { bg: 'bg-fuchsia-50', border: 'border-fuchsia-300', selectedBg: 'bg-fuchsia-200' },
-  PE: { bg: 'bg-red-50', border: 'border-red-300', selectedBg: 'bg-red-200' },
-};
-
-const DEFAULT_COLOR = { bg: 'bg-gray-50', border: 'border-gray-300', selectedBg: 'bg-gray-200' };
 
 export function ActivityTypeFilter({
   selectedTypes,
@@ -110,7 +100,7 @@ export function ActivityTypeFilter({
       <div className="flex items-center gap-1">
         {availableTypes.map((type) => {
           const isSelected = selectedTypes.has(type);
-          const colors = ACTIVITY_COLOR_MAP[type] || DEFAULT_COLOR;
+          const colors = ACTIVITY_FILTER_CLASSES[type] || DEFAULT_ACTIVITY_FILTER_CLASSES;
 
           return (
             <button
