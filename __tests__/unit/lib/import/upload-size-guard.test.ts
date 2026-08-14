@@ -15,9 +15,9 @@
 import {
   readImportForm,
   exceedsTotalUploadSize,
-  UploadTooLargeError,
   MAX_TOTAL_UPLOAD_BYTES,
 } from '@/lib/import/parse-files';
+import { BodyTooLargeError } from '@/lib/api/body-limit';
 
 const URL_UNDER_TEST = 'http://localhost/api/import-students';
 const ONE_MB = 1024 * 1024;
@@ -138,7 +138,7 @@ describe('readImportForm body ceiling (SPE-443)', () => {
       'content-type': 'multipart/form-data; boundary=----test',
     });
 
-    await expect(readImportForm(request)).rejects.toBeInstanceOf(UploadTooLargeError);
+    await expect(readImportForm(request)).rejects.toBeInstanceOf(BodyTooLargeError);
 
     // Stopped at the ceiling rather than draining the stream.
     expect(pulled()).toBeLessThanOrEqual(MAX_EXPECTED_CHUNKS);
@@ -152,7 +152,7 @@ describe('readImportForm body ceiling (SPE-443)', () => {
       'content-length': '1024',
     });
 
-    await expect(readImportForm(request)).rejects.toBeInstanceOf(UploadTooLargeError);
+    await expect(readImportForm(request)).rejects.toBeInstanceOf(BodyTooLargeError);
     expect(pulled()).toBeLessThanOrEqual(MAX_EXPECTED_CHUNKS);
   });
 

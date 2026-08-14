@@ -6,6 +6,7 @@ import { track } from '@/lib/monitoring/analytics';
 import { measurePerformanceWithAlerts } from '@/lib/monitoring/performance-alerts';
 import { validateDocumentFile, generateSafeFilename } from '@/lib/document-utils';
 import { withRoute } from '@/lib/api/with-route';
+import { readCappedFormData, readCappedJson, BodyTooLargeError, BODY_LIMITS } from '@/lib/api/body-limit';
 
 const sessionDocsQuerySchema = z.object({
   session_date: z.string().optional(),
@@ -258,7 +259,10 @@ export const POST = withRoute<{ sessionId: string }>({}, async ({ req: request, 
 
     if (isFormData) {
       // Handle file upload
-      const formData = await request.formData();
+      // Capped read (SPE-505). This route had no size check at all; the ceiling
+      // is a memory backstop set well above any realistic document, not a limit
+      // anyone should reach.
+      const formData = await readCappedFormData(request, BODY_LIMITS.document);
       const file = formData.get('file') as File | null;
       title = formData.get('title') as string | null;
       document_type = formData.get('document_type') as string | null;
@@ -340,7 +344,7 @@ export const POST = withRoute<{ sessionId: string }>({}, async ({ req: request, 
       });
     } else {
       // Handle JSON request (links)
-      const body = await request.json();
+      const body = await readCappedJson<any>(request, BODY_LIMITS.document);
       title = body.title;
       document_type = body.document_type;
       content = body.content;
@@ -449,6 +453,11 @@ export const POST = withRoute<{ sessionId: string }>({}, async ({ req: request, 
     perf.end({ success: true, documentId: data.id });
     return NextResponse.json({ document: data }, { status: 201 });
   } catch (error) {
+    if (error instanceof BodyTooLargeError) {
+      log.warn('Document upload rejected: body exceeded size ceiling', { userId, sessionId });
+      perf.end({ success: false });
+      return NextResponse.json({ error: 'Upload too large' }, { status: 413 });
+    }
     log.error('Error in create-session-document route', error, { userId, sessionId });
     perf.end({ success: false });
     return NextResponse.json(

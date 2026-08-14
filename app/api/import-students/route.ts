@@ -15,12 +15,8 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { withRoute } from '@/lib/api/with-route';
-import {
-  readImportForm,
-  exceedsTotalUploadSize,
-  findOversizedFile,
-  UploadTooLargeError,
-} from '@/lib/import/parse-files';
+import { readImportForm, exceedsTotalUploadSize, findOversizedFile } from '@/lib/import/parse-files';
+import { BodyTooLargeError } from '@/lib/api/body-limit';
 import { MAX_FILE_SIZE_MB } from '@/lib/import/detect-import-file';
 import { runStudentsPreview, runUpdateOnlyPreview } from '@/lib/import/pipeline';
 import { log } from '@/lib/monitoring/logger';
@@ -84,7 +80,7 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
     // The body outran the ceiling mid-read (SPE-443) — the Content-Length check
     // above can't see this when the header is absent, chunked, or understated.
     // Same status and message as the declared-size rejection.
-    if (error instanceof UploadTooLargeError) {
+    if (error instanceof BodyTooLargeError) {
       log.warn('Import upload rejected: body exceeded size ceiling while reading', { userId });
       perf.end({ success: false });
       return NextResponse.json(
