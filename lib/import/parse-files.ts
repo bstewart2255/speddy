@@ -26,7 +26,7 @@ export interface ImportForm {
 
 /** Read the multipart form into typed files + school context. */
 export async function readImportForm(request: Request): Promise<ImportForm> {
-  const formData = await request.formData();
+  const formData = await readBoundedFormData(request);
   return {
     studentsFile: formData.get('studentsFile') as File | null,
     deliveriesFile: formData.get('deliveriesFile') as File | null,
@@ -51,11 +51,92 @@ export const MAX_UPLOAD_FILE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
  *  cap, plus ~1 MB for multipart framing. */
 export const MAX_TOTAL_UPLOAD_BYTES = MAX_UPLOAD_FILE_BYTES * 4 + 1024 * 1024;
 
-/** True when the request's Content-Length exceeds the total-body ceiling. */
+/**
+ * True when the request's Content-Length *declares* a body over the ceiling.
+ *
+ * This is only a cheap fast path — it rejects an honest oversized upload
+ * without reading a byte. It is deliberately NOT the enforcement point: a
+ * client that omits Content-Length, uses chunked transfer-encoding, or simply
+ * understates the length sails straight through it. The real cap is applied by
+ * readImportForm(), which counts the bytes it actually reads (SPE-443).
+ */
 export function exceedsTotalUploadSize(request: Request): boolean {
   const raw = request.headers?.get?.('content-length');
   const len = raw == null ? NaN : Number(raw);
   return Number.isFinite(len) && len > MAX_TOTAL_UPLOAD_BYTES;
+}
+
+/** Thrown by readImportForm when the body read passes MAX_TOTAL_UPLOAD_BYTES. */
+export class UploadTooLargeError extends Error {
+  constructor(message = 'Upload exceeds the total size ceiling') {
+    super(message);
+    this.name = 'UploadTooLargeError';
+  }
+}
+
+/**
+ * Wrap a body stream so it fails once it passes the total ceiling (SPE-443).
+ *
+ * Counting in a pass-through rather than pre-buffering matters: the point of
+ * the guard is to bound memory, so it must not itself hold a second full copy
+ * of the body. Chunks flow straight on to the parser and the read is torn down
+ * on the chunk that crosses the line.
+ *
+ * `tripped` is reported back because the failure surfaces from formData(),
+ * which may wrap the underlying stream error in its own type — the caller uses
+ * the flag to answer "was this the ceiling?" rather than matching on that.
+ */
+function capBodyStream(body: ReadableStream<Uint8Array>): {
+  stream: ReadableStream<Uint8Array>;
+  tripped: () => boolean;
+} {
+  let total = 0;
+  let exceeded = false;
+  const stream = body.pipeThrough(
+    new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        total += chunk.byteLength;
+        if (total > MAX_TOTAL_UPLOAD_BYTES) {
+          exceeded = true;
+          throw new UploadTooLargeError();
+        }
+        controller.enqueue(chunk);
+      },
+    })
+  );
+  return { stream, tripped: () => exceeded };
+}
+
+/**
+ * Parse the multipart form from a body read under the size ceiling.
+ *
+ * When the request exposes no readable body there is nothing to buffer and so
+ * nothing to cap, and the form is read directly.
+ */
+async function readBoundedFormData(request: Request): Promise<FormData> {
+  const body = request.body;
+  if (!body || typeof body.pipeThrough !== 'function') return request.formData();
+
+  const { stream, tripped } = capBodyStream(body);
+
+  // Only content-type carries over: it holds the multipart boundary, whereas
+  // the original content-length may disagree with what is really being sent —
+  // which is the whole point of SPE-443.
+  const contentType = request.headers?.get?.('content-type') ?? null;
+  const bounded = new Request(request.url, {
+    method: 'POST',
+    ...(contentType ? { headers: { 'content-type': contentType } } : {}),
+    body: stream,
+    // undici requires this for a streaming request body.
+    duplex: 'half',
+  } as RequestInit & { duplex: 'half' });
+
+  try {
+    return await bounded.formData();
+  } catch (error) {
+    if (tripped()) throw new UploadTooLargeError();
+    throw error;
+  }
 }
 
 /** The first present file over the per-file cap, or null if all are within it. */

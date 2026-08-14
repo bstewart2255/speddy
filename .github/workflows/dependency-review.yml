@@ -12,6 +12,13 @@ on:
   pull_request:
     branches: [ "main" ]
 
+# Auto-cancel superseded PR runs (SPE-405). This workflow is pull_request-only,
+# so the fallback arm never fires; the form is kept identical to the other
+# workflows so all four read the same way.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: true
+
 # If using a dependency submission action in this workflow this permission will need to be set to:
 #
 # permissions:

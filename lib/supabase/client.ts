@@ -27,5 +27,9 @@ export const createClient = <T = any>() => {
   return getSupabaseClient() as unknown as ReturnType<typeof createBrowserClient<T>>
 }
 
-// Export singleton for backward compatibility
-export const supabase = getSupabaseClient()
+// NOTE (SPE-495): do NOT re-add an eagerly-constructed `export const supabase`
+// here. createBrowserClient() throws when NEXT_PUBLIC_SUPABASE_URL/ANON_KEY are
+// absent, and a module-scope call runs on mere *import* of this file — so any
+// server module that transitively imports it (e.g. the daily-schedule-emails
+// cron, via SessionGenerator) breaks `next build` in an env-less environment.
+// Call getSupabaseClient() from inside a function instead.
