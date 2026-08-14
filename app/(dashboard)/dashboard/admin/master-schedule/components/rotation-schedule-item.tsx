@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { ACTIVITY_HEX, DEFAULT_ACTIVITY_HEX } from '@/lib/constants/activity-colors';
 
 interface RotationScheduleItemProps {
   activityA: string;
@@ -13,21 +14,8 @@ interface RotationScheduleItemProps {
   overlapTotal?: number;
 }
 
-// Activity type to color map (matching existing pattern)
-const ACTIVITY_COLORS: Record<string, { bg: string; border: string }> = {
-  Library: { bg: '#BFDBFE', border: '#60A5FA' },
-  STEAM: { bg: '#FED7AA', border: '#FB923C' },
-  STEM: { bg: '#99F6E4', border: '#2DD4BF' },
-  Garden: { bg: '#D9F99D', border: '#84CC16' },
-  Music: { bg: '#DDD6FE', border: '#A78BFA' },
-  ART: { bg: '#F5D0FE', border: '#E879F9' },
-  PE: { bg: '#FECACA', border: '#F87171' },
-};
-
-const DEFAULT_COLOR = { bg: '#E5E7EB', border: '#9CA3AF' };
-
 function getActivityColor(activityType: string): { bg: string; border: string } {
-  return ACTIVITY_COLORS[activityType] || DEFAULT_COLOR;
+  return ACTIVITY_HEX[activityType] || DEFAULT_ACTIVITY_HEX;
 }
 
 export function RotationScheduleItem({

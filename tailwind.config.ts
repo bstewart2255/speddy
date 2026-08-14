@@ -5,6 +5,10 @@ const config: Config = {
     './pages/**/*.{js,ts,jsx,tsx,mdx}',
     './components/**/*.{js,ts,jsx,tsx,mdx}',
     './app/**/*.{js,ts,jsx,tsx,mdx}',
+    // Shared constants files hold whole Tailwind class names (SPE-34's
+    // activity colors). The JIT only emits classes it finds as literal text,
+    // so without this the class-based maps would be purged from the build.
+    './lib/**/*.{js,ts,jsx,tsx,mdx}',
   ],
   theme: {
     extend: {
