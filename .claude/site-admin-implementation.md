@@ -187,8 +187,15 @@ VALUES (
 
 4. **Link Teacher Portal Accounts:**
    - For teachers who have portal accounts (role='teacher')
-   - Use `linkTeacherToProfile()` to connect profile to teacher record
-   - Or manually update teachers.account_id
+   - **This links itself now (SPE-481).** Two SECURITY DEFINER triggers create
+     `teachers.account_id` in either entry order: a new `teachers` row matching
+     exactly one Resource Specialist profile (email, case-insensitive, same
+     school) links on insert, and a profile gaining its email/school links any
+     waiting entry. Both have an ambiguity guard.
+   - The old `linkTeacherToProfile()` query helper was deleted in SPE-404: no UI
+     ever called it, and a second manual path would bypass the triggers'
+     ambiguity guard.
+   - To repair a link by hand, update `teachers.account_id` directly.
 
 ### Special Activities Migration
 
