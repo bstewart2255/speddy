@@ -121,6 +121,14 @@ export async function checkYearHasData(
 /**
  * Copy all schedule data from one school year to another via database RPC.
  * Runs in a single transaction for atomicity.
+ *
+ * The `getUser()` call below is NOT the authorization boundary — it only fails
+ * fast with a friendlier error. Authorization lives in the RPC itself
+ * (20260814_spe511_authorize_copy_schedule_to_year.sql): site admins for their
+ * own school, district admins for any school in their district, everyone else
+ * refused with SQLSTATE 42501. It has to live there, because this file runs in
+ * the browser and anyone can call `supabase.rpc(...)` directly with the session
+ * they already hold — which is exactly how SPE-511 happened.
  */
 export async function copyScheduleToNextYear(
   schoolId: string,
