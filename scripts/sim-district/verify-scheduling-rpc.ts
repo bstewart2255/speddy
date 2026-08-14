@@ -18,6 +18,13 @@
  * stays failing as standing evidence until SPE-511 lands; it is not flaky and
  * should not be "fixed" by softening the assertion.
  *
+ * For whoever implements SPE-511: this check requires the refusal to be an
+ * AUTHORIZATION error — SQLSTATE 42501, or a message matching "not authorized"
+ * / "unauthorized" / "permission denied". That is the house convention already
+ * used by upsert_students_atomic. It is deliberately narrow: accepting any
+ * error would let an unrelated failure (year validation, an empty source year)
+ * turn this check green while the hole is still open.
+ *
  * The rest of the contract asserted:
  *   - an authorized copy PERSISTS — the copied rows are read back from the
  *     target year afterwards, not inferred from the returned counts;
@@ -76,7 +83,16 @@ async function signIn(personaKey: string): Promise<SupabaseClient> {
 }
 
 /**
- * Remove everything the probe copied into PROBE_YEAR.
+ * Remove everything the probe copied into PROBE_YEAR — and ONLY that.
+ *
+ * Scoped to WILLOW as well as the year. PROBE_YEAR is picked so no fixture uses
+ * it, but that is an assumption about other people's data, and this runs with
+ * the service role against the production database: a sweep keyed on
+ * `school_year` alone would hard-delete another school's schedule if one ever
+ * carried that year. The year is not ours to match on by itself. The six
+ * non-rotation tables all have `school_id`; `rotation_groups` and
+ * `rotation_group_members` do not, and are reached through the (now
+ * school-scoped) probe-year pairs instead.
  *
  * Every delete is checked. A silently-failed sweep would leave probe-year rows
  * behind, which then breaks `sim:verify`'s exact per-table counts AND makes the
@@ -91,7 +107,8 @@ async function cleanup(): Promise<void> {
   // rotation_groups/members key off pair_id, not school_year alone — clear them
   // via the probe-year pairs first so nothing is orphaned.
   const { data: pairs, error: pairErr } = await admin
-    .from('rotation_activity_pairs').select('id').eq('school_year', PROBE_YEAR);
+    .from('rotation_activity_pairs').select('id')
+    .eq('school_id', WILLOW).eq('school_year', PROBE_YEAR);
   if (pairErr) fail('rotation_activity_pairs lookup', pairErr.message);
   const pairIds = (pairs ?? []).map(p => p.id);
   if (pairIds.length) {
@@ -112,7 +129,8 @@ async function cleanup(): Promise<void> {
   }
   for (const table of COPIED_TABLES) {
     if (table.startsWith('rotation_')) continue;
-    const { error } = await admin.from(table).delete().eq('school_year', PROBE_YEAR);
+    const { error } = await admin.from(table).delete()
+      .eq('school_id', WILLOW).eq('school_year', PROBE_YEAR);
     if (error) fail(table, error.message);
   }
 }
@@ -172,14 +190,34 @@ async function main(): Promise<void> {
   const { error: seaErr } = await leah.rpc('copy_schedule_to_year', {
     p_school_id: WILLOW, p_from_year: '1900-1901', p_to_year: '1901-1902',
   });
-  check(!!seaErr, 'a non-admin is REFUSED (SPE-511 — currently NOT enforced)',
-    seaErr ? `code=${seaErr.code}` : 'EXECUTED — any signed-in user can write to any school');
+  // Match the AUTHORIZATION error specifically, not merely "something failed".
+  // `!!seaErr` would go green the day the RPC starts validating year ranges or
+  // rejecting an empty source — and this probe deliberately passes an empty
+  // source year, so that is the likely way it breaks. A probe that reports
+  // "non-admins are refused" because of an unrelated error is worse than no
+  // probe: it would close SPE-511 while the hole is still open for a populated
+  // source year. 42501 / "not authorized" is the house convention here —
+  // upsert_students_atomic already refuses impersonation exactly that way.
+  const refusedByAuth =
+    seaErr?.code === '42501' || /not authorized|unauthorized|permission denied/i.test(seaErr?.message ?? '');
+  check(refusedByAuth, 'a non-admin is REFUSED by an authorization guard (SPE-511)',
+    seaErr
+      ? `code=${seaErr.code} msg=${seaErr.message.slice(0, 44)}`
+      : 'EXECUTED — any signed-in user can write to any school');
   if (!seaErr) {
     console.log(
       '\n  ⚠️  SPE-511: copy_schedule_to_year is SECURITY DEFINER, granted to\n' +
       '      `authenticated`, and has no authorization check in its body. The\n' +
       '      only gate is client-side and merely checks the caller is signed in.\n' +
       '      This check is expected to fail until that ticket lands.'
+    );
+  } else if (!refusedByAuth) {
+    console.log(
+      '\n  ⚠️  The call was refused, but NOT by an authorization guard. Do not\n' +
+      '      read this as SPE-511 being fixed — an unrelated failure (year\n' +
+      '      validation, an empty source year) refuses this call while a\n' +
+      '      populated source year may still be exploitable. Re-test with a\n' +
+      '      real source year before closing SPE-511.'
     );
   }
 
