@@ -28,9 +28,10 @@ jobs:
       - name: Run linting
         run: npm run lint
 
-      - name: Run type checking
-        run: npm run typecheck
-
+      # Type checking lives in typecheck.yml, not here (SPE-118). It used to run
+      # in both, twice per PR. Keeping the standalone workflow rather than this
+      # step is the reversible choice: the "typecheck" check name survives, so a
+      # branch-protection rule that requires it keeps being satisfied.
       - name: Run unit tests
         run: npm test
 

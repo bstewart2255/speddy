@@ -15,16 +15,19 @@ jobs:
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
-      
+        uses: actions/checkout@v4
+
+      # Node 20 + `npm ci`, matching simple-tests.yml (SPE-118). The two used to
+      # disagree — Node 18 + `npm install` here — so this workflow could pass or
+      # fail on a different resolved dependency tree than the one CI builds.
       - name: Setup Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: 20
           cache: 'npm'
-      
+
       - name: Install dependencies
-        run: npm install
-      
+        run: npm ci
+
       - name: Run TypeScript type check
         run: npm run typecheck
