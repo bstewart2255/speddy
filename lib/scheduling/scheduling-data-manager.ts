@@ -99,6 +99,10 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
   // school-wide posture as mainstreaming blocks.
   private studentBlockedTimes: StudentBlockedTime[] = [];
 
+  // SPE-318: the same activities cacheSpecialActivities indexes, kept flat for
+  // the auto-scheduler (year-scoped and live-only at fetch — SPE-458/468).
+  private specialActivitiesFlat: SpecialActivity[] = [];
+
   private constructor(config?: DataManagerConfig) {
     this.config = { ...DEFAULT_CONFIG, ...config };
   }
@@ -199,6 +203,12 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
       // the parallel path below no longer does. Repairing the RPC without
       // adding a school_year filter would reintroduce that bug on this path
       // only — visible just at schools holding two years of data.
+      //
+      // SPE-468/SPE-484: the special_activities CTE also has no deleted_at
+      // filter. The parallel path strips soft-deleted rows in fetchForSchool,
+      // and the scheduler now actually consumes this list (SPE-318), so a
+      // repaired RPC without that filter would resurrect deleted activities
+      // as scheduling blocks on this path only.
       const { data, error } = await this.supabase.rpc('get_scheduling_data_batch', {
         p_provider_id: this.providerId!,
         p_school_site: this.schoolSite!
@@ -367,13 +377,21 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
     label: string,
   ): Promise<T[]> {
     const rows: T[] = [];
+    // SPE-468: special_activities soft-deletes; every other reader filters
+    // deleted rows out and the scheduler must too — a deleted activity must
+    // never keep protecting a slot. bell_schedules has no deleted_at column.
+    const liveOnly = table === 'special_activities';
 
     if (this.schoolId) {
-      const { data, error } = await this.supabase
+      let query = this.supabase
         .from(table)
         .select('*')
         .eq('school_year', this.schoolYear)
         .eq('school_id', this.schoolId);
+      if (liveOnly) {
+        query = query.is('deleted_at', null);
+      }
+      const { data, error } = await query;
 
       if (error) {
         this.cacheMetadata.fetchErrors.push(`${label}: ${error.message}`);
@@ -388,6 +406,9 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
         .select('*')
         .eq('school_year', this.schoolYear)
         .eq('school_site', this.schoolSite);
+      if (liveOnly) {
+        query = query.is('deleted_at', null);
+      }
 
       // When we already matched by school_id, this pass is only for strays the
       // migration missed — without this the two passes would double-count any
@@ -465,19 +486,30 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
 
     const studentIds = students?.map(s => s.id) || [];
 
-    // SPE-474: the 10,000-row cap below has no ORDER BY, so which rows survive
-    // truncation is arbitrary — and dated instances outnumber templates roughly
-    // 40:1 (the largest provider in prod carries 203 templates against 7,868
-    // instances, 8,071 rows against a 10,000 cap). Once a provider crosses it,
-    // arbitrary truncation could drop the recurring templates while keeping
-    // their instances, and the auto-scheduler would then read a student as
-    // having FEWER weekly sessions than they do and create duplicates.
+    // SPE-477: this cache holds the WEEKLY schedule — recurring templates only,
+    // never the dated instances materialized from them.
     //
-    // Ordering templates first makes truncation deterministic and drops
-    // instances rather than templates. It does not shrink what any caller
-    // receives — same cap, same rows below it. The cap itself still needs
-    // raising or paginating (SPE-477).
-    const TEMPLATES_FIRST = { column: 'is_template', options: { ascending: false } } as const;
+    // Every consumer wants templates and only templates:
+    //   - the schedule page's own session fetch already scopes to
+    //     `session_date IS NULL`, and merges this cache into that same list, so
+    //     anything else here leaks a population the page never asked for;
+    //   - the auto-scheduler builds the weekly grid, and filtered instances back
+    //     out client-side after they broke it (SPE-474);
+    //   - manual placement generates Mon–Fri slots and counts conflicts against
+    //     them, where instances inflate every count the same way;
+    //   - the undo snapshot restores the template schedule.
+    //
+    // Fetching them was also what made the 10,000-row cap a real ceiling:
+    // instances outrun templates roughly 40:1 (the largest provider in prod
+    // carried 7,868 instances against 203 templates — 8,071 rows, 81% of the
+    // cap, growing every week as the horizon rolls). Scoped to templates that
+    // provider reads 203 rows, so the cap stops being a deadline.
+    //
+    // `session_date IS NULL` is the template test the page's own query uses; it
+    // agrees with `is_template = true` on every row in prod. SPE-474's
+    // templates-first ordering is gone with it — it existed so arbitrary
+    // truncation would drop instances rather than templates, which cannot arise
+    // when instances are never fetched.
 
     // For specialist users, also fetch sessions assigned to them (even from other providers' students)
     let sessionsResult;
@@ -491,7 +523,8 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
           .from('schedule_sessions')
           .select('*')
           .or(`student_id.in.(${studentIds.join(',')}),assigned_to_specialist_id.eq.${this.providerId}`)
-          .order(TEMPLATES_FIRST.column, TEMPLATES_FIRST.options)
+          .is('session_date', null)
+          .is('deleted_at', null)
           .limit(10000);
       } else {
         // No students, only fetch assigned sessions
@@ -499,7 +532,8 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
           .from('schedule_sessions')
           .select('*')
           .eq('assigned_to_specialist_id', this.providerId!)
-          .order(TEMPLATES_FIRST.column, TEMPLATES_FIRST.options)
+          .is('session_date', null)
+          .is('deleted_at', null)
           .limit(10000);
       }
 
@@ -548,7 +582,8 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
         .select('*')
         .eq('provider_id', this.providerId!)
         .in('student_id', studentIds)
-        .order(TEMPLATES_FIRST.column, TEMPLATES_FIRST.options)
+        .is('session_date', null)
+        .is('deleted_at', null)
         .limit(10000);
     }
 
@@ -779,7 +814,10 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
    */
   private cacheSpecialActivities(activities: SpecialActivity[]): void {
     this.data.data.specialActivities.clear();
-    
+    // SPE-318: keep the flat list too — the auto-scheduler builds its own
+    // per-teacher index from it (same shape it uses for mainstreaming blocks).
+    this.specialActivitiesFlat = activities;
+
     activities.forEach(activity => {
       const teacherKey = activity.teacher_name;
       if (!this.data.data.specialActivities.has(teacherKey)) {
@@ -992,6 +1030,11 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
     return this.studentBlockedTimes;
   }
 
+  /** SPE-318: every live special activity at this school (current year), flat. */
+  public getSpecialActivitiesFlat(): SpecialActivity[] {
+    return this.specialActivitiesFlat;
+  }
+
   /**
    * Check if a time slot is available (respecting 8 concurrent session limit)
    */
@@ -1088,6 +1131,7 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
     this.crossProviderSessions.clear();
     this.mainstreamingBlocks = [];
     this.studentBlockedTimes = [];
+    this.specialActivitiesFlat = [];
 
     this.cacheMetadata.isStale = true;
     this.conflicts = [];

@@ -8,6 +8,7 @@ import { adaptTargetStudentPreview } from '@/lib/import/review-model';
 import type { TargetPreviewData } from '@/lib/types/student-import';
 import AssessmentList from './assessment-list';
 import { IEPGoalsUploader } from './iep-goals-uploader';
+import { AccommodationsPdfImport } from './accommodations-pdf-import';
 import {
   StudentImportReview,
   type ReviewConfirmSelection,
@@ -874,6 +875,18 @@ export function StudentDetailsModal({
                 </div>
 
                 <div className="space-y-2">
+                  {!readOnly && (
+                    <AccommodationsPdfImport
+                      studentId={student.id}
+                      existingAccommodations={details.accommodations}
+                      onAdd={(items) =>
+                        setDetails({
+                          ...details,
+                          accommodations: [...details.accommodations, ...items],
+                        })
+                      }
+                    />
+                  )}
                   {!readOnly && (
                     <div className="flex justify-end">
                       <Button

@@ -1111,8 +1111,8 @@ the student (owner decision, 2026-08-13):
   skip like the SPE-287 cross-provider check — no human in the loop, so
   protected means protected. Blocks load through the SchedulingDataManager
   (`loadMainstreamingBlocks`, school-wide, year-scoped) and are indexed
-  per student — wired in for real from day one, unlike special activities
-  (SPE-318). The shared pure overlap rule
+  per student — wired in for real from day one. (Special activities caught up
+  in SPE-484/318/468: see the paragraph below.) The shared pure overlap rule
   (`findOverlappingMainstreamingBlock`) lives in session-update-service so the
   two paths can't drift.
 - **Grid**: the owner's blocks render as teal blocks on their Main Schedule;
@@ -1181,11 +1181,17 @@ Two things are worth knowing about the boundary here:
   validated downstream and are identical for every strategy. A strategy only
   reorders the candidate slots that get *tried*, plus the order students are
   placed in (grouping strategies place peers consecutively so each one can join
-  the slot the previous peer landed in). Note this list does **not** include
-  special activities: `getDataFromManager` still hands the scheduler an empty
-  `specialActivities` array, so that check runs against an empty index and blocks
-  nothing (SPE-318). Strategies neither improve nor worsen that — it is the same
-  blind spot for all four, including the pre-existing `balanced` behavior.
+  the slot the previous peer landed in). Special activities joined that
+  validated list in SPE-484/318/468 ("activities protect the way they
+  display"): the DataManager feeds the scheduler the school's live,
+  year-scoped activities (`getSpecialActivitiesFlat`; deleted rows filtered at
+  fetch — SPE-468), indexed under BOTH `teacher_name` and `teacher_id` so an
+  id match survives name drift; and the interactive drag warning
+  (`checkSpecialActivityConflicts`) is school-wide, no longer scoped to
+  activities the dragging provider created themselves (SPE-484's legacy
+  quirk). The shared teacher-matching rule is the pure
+  `findOverlappingSpecialActivity` in session-update-service (id preferred;
+  exact-name fallback; disagreeing ids veto a name coincidence).
 - **Grouping is decided at the day level as well as the slot level.** Days
   holding same-group peers sort ahead of the emptiest day. Without that, grouping
   is self-defeating: each peer placed makes its day one session busier, so the
@@ -1500,7 +1506,7 @@ K-8 and K-12 combined sites are treated as **elementary** by product decision
 | Dashboard | Hides the provider Weekly-view + Attendance widget | `app/(dashboard)/dashboard/page.tsx` |
 | Students list | Hides the "unscheduled sessions" alert; for a **resource** provider, service minutes display/edit as a weekly total ("570 min/week") instead of sessions × minutes | `app/(dashboard)/dashboard/students/page.tsx` |
 | Student modal | Hides the Attendance tab; Sessions/Minutes fields hidden — except a **resource** provider gets a single "Service Minutes per Week" field | `app/components/students/student-details-modal.tsx` |
-| Teacher student view | "Resource Specialist" → "Case Manager"; accommodations surfaced first | `app/(dashboard)/dashboard/teacher/my-students/[studentId]/page.tsx` |
+| Teacher student view | "Resource Specialist" → "Case Manager"; elementary scheduling/service-minute cards dropped. (Accommodations show at both elementary and secondary sites since SPE-488 — no longer a secondary-only surface.) | `app/(dashboard)/dashboard/teacher/my-students/[studentId]/page.tsx` |
 
 **Secondary-resource weekly bucket (2026-08, John Swett pilot).** Secondary
 resource service is embedded in class periods, not pull-out sessions, so for a
