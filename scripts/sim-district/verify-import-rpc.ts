@@ -252,8 +252,8 @@ async function main(): Promise<void> {
   // contract. `||` would accept any 42501 the database happens to raise, and a
   // plain permission error on some unrelated table would keep this green after
   // the provider-ID guard was gone. (The scheduling probe's equivalent check
-  // deliberately uses `||`, because SPE-511's guard does not exist yet and its
-  // exact message is not something this script gets to dictate.)
+  // matches both signals the same way now that SPE-511 has landed; it used a
+  // looser `||` only while that gate was still missing.)
   check(
     impErr?.code === '42501' && /unauthorized/i.test(impErr?.message ?? ''),
     'refused with the RPC\'s own guard (42501 AND Unauthorized)',

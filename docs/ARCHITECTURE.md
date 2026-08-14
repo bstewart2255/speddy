@@ -204,6 +204,54 @@ flowchart TD
    etc.) carry policies scoped to the user's school(s) and/or ownership. Admin
    scope is granted via `admin_permissions` (§3).
 
+### `SECURITY DEFINER` RPCs — the layer that opts *out* of RLS (SPE-511)
+
+A `SECURITY DEFINER` function runs as its **owner**, not its caller. Whether that
+bypasses RLS depends on the owner: a role is exempt from a table's policies if it
+owns the table and the table is not `FORCE ROW LEVEL SECURITY`, or if it is a
+superuser / has `BYPASSRLS`. Here it does bypass — ours are owned by `postgres`,
+which also owns the domain tables, and none of them sets `FORCE ROW LEVEL
+SECURITY` (`relforcerowsecurity = false`).
+
+So for our functions, **RLS does not apply to anything they do**. Layer 3 above is
+not protecting these. Whatever check the function body performs *is* the entire
+authorization, and most of them are granted `EXECUTE` to `authenticated` — i.e.
+to every signed-in user.
+
+That makes two rules non-negotiable for this class of function:
+
+- **The gate lives in the body.** A caller-supplied `p_school_id` /
+  `p_provider_id` is an argument, not a credential. Client-side checks are not
+  gates: the browser can call `supabase.rpc(...)` directly with the session it
+  already holds.
+- **Any `CREATE OR REPLACE` must carry the gate forward.** `copy_schedule_to_year`
+  shipped with a site-admin gate in `20260402`, and three later migrations
+  (`20260407`, `20260409`, `20260413`) each replaced the body to add columns and
+  each silently dropped it. For ~4 months any signed-in user could write
+  scheduling rows into any school in any district (SPE-511).
+
+Nothing in the test suite can catch this: **unit tests mock the Supabase client,
+so they cannot see grants or `SECURITY DEFINER` behaviour at all** — they pass
+identically whether the gate is present or absent. It was found by *calling* the
+function with a real signed-in session, and it is pinned that way now
+(`npm run sim:verify-scheduling-rpc`, `npm run sim:verify-import-rpc`).
+
+Current gates:
+
+| function | who may call it | refusal |
+| -- | -- | -- |
+| `copy_schedule_to_year` | `site_admin` of that school; `district_admin` of the school's district (resolved via `schools.district_id`) | `42501` / `Not authorized …` |
+| `upsert_students_atomic` | the provider named in `p_provider_id`, and only themselves | `42501` / `Unauthorized` |
+
+Note `district_admin` is presently a **policy** allowance, not a reachable path:
+the only caller (`admin/master-schedule`) resolves a `site_admin` grant, so no
+UI reaches the RPC as a district admin today.
+
+**Source of truth:** `supabase/migrations/20260814_spe511_authorize_copy_schedule_to_year.sql`,
+`lib/supabase/queries/school-year-copy.ts`,
+`scripts/sim-district/verify-scheduling-rpc.ts`,
+`scripts/sim-district/verify-import-rpc.ts`.
+
 ### Column-level grants — when RLS is not enough (SPE-395)
 
 **RLS is row-level and cannot hide a column.** A policy that lets someone read
