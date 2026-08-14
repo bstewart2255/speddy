@@ -1,8 +1,3 @@
-/* eslint-disable no-console -- every console call left here sits behind the `debug` prop */
-// Kept through SPE-97: that sweep removed UNGATED debug logging, which is
-// what polluted production. Opt-in output behind a flag was never the
-// problem, and deleting it would leave the surrounding block computing a
-// payload it then discards.
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -170,27 +165,34 @@ export function ScheduleSessions({ onComplete, currentSchool, unscheduledCount, 
         alert('All students are fully scheduled!');
         return;
       }
-      // Detailed logging to understand scheduling issues (only in debug mode)
+      // Why this is scoped rather than a file-wide disable: the guard below is
+      // the ONLY place console output is allowed in this file, so an ungated log
+      // added anywhere else still fails lint (SPE-97).
+      //
+      // No student identifiers here (SPE-371). `debug` is on for every
+      // development build, so initials printed here reach the browser console of
+      // anyone running the app locally — which is the exact thing that ticket
+      // exists to stop. The shortfall distribution answers "why is scheduling
+      // not placing everyone?" without naming anybody; a specific student is a
+      // question for the database, not the console.
+      /* eslint-disable no-console */
       if (debug) {
+        const shortfalls = allStudents
+          .map(s => s.sessions_per_week - (sessionCounts[s.id] || 0))
+          .filter(n => n > 0);
+        const bySize = shortfalls.reduce<Record<number, number>>((acc, n) => {
+          acc[n] = (acc[n] || 0) + 1;
+          return acc;
+        }, {});
+
         console.log('=== SCHEDULING ANALYSIS ===');
-        console.log(`Total students at ${currentSchool?.school_site}: ${allStudents.length}`);
-        console.log(`Total existing sessions: ${existingSessions?.length || 0}`);
-
-        // Log each student's status
-        allStudents.forEach(student => {
-          const currentSessions = sessionCounts[student.id] || 0;
-          const needed = student.sessions_per_week - currentSessions;
-          console.log(`Student ${student.initials}: ${currentSessions}/${student.sessions_per_week} sessions scheduled (${needed} needed)`);
-        });
-
+        console.log(`Students on caseload: ${allStudents.length}`);
+        console.log(`Existing sessions: ${existingSessions?.length || 0}`);
         console.log(`Students needing scheduling: ${studentsNeedingScheduling.length}`);
-        console.log('Students to schedule:', studentsNeedingScheduling.map(s => ({
-          initials: s.initials,
-          sessionsNeeded: s.sessions_per_week - (sessionCounts[s.id] || 0)
-        })));
+        console.log('Sessions still needed, by count of students:', bySize);
         console.log('=========================');
-        console.log(`Found ${studentsNeedingScheduling.length} students needing scheduling`);
       }
+      /* eslint-enable no-console */
 
       // Save snapshot before making changes
       await saveScheduleSnapshot(user.id);

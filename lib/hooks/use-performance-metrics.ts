@@ -1,8 +1,3 @@
-/* eslint-disable no-console -- every console call left here sits behind NODE_ENV === 'development' */
-// Kept through SPE-97: that sweep removed UNGATED debug logging, which is
-// what polluted production. Opt-in output behind a flag was never the
-// problem, and deleting it would leave the surrounding block computing a
-// payload it then discards.
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
@@ -87,6 +82,7 @@ export function usePerformanceMetrics(componentName: string) {
 
     // Log to console in development
     if (process.env.NODE_ENV === 'development') {
+      // eslint-disable-next-line no-console -- development-only metrics output, inside a NODE_ENV === 'development' guard
       console.log(`[Performance] ${componentName}:`, {
         renderTime: `${renderTime.toFixed(2)}ms`,
         renderCount: renderCount.current,

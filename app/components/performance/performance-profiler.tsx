@@ -1,8 +1,3 @@
-/* eslint-disable no-console -- every console call left here sits behind NODE_ENV === 'development' */
-// Kept through SPE-97: that sweep removed UNGATED debug logging, which is
-// what polluted production. Opt-in output behind a flag was never the
-// problem, and deleting it would leave the surrounding block computing a
-// payload it then discards.
 'use client';
 
 import React, { Profiler, ProfilerOnRenderCallback, useState } from 'react';
@@ -55,6 +50,7 @@ export function PerformanceProfiler({
 
     // Log in development
     if (process.env.NODE_ENV === 'development') {
+      // eslint-disable-next-line no-console -- the profiler exists to print, and this is inside a NODE_ENV === 'development' guard
       console.log(`[Profiler] ${id} (${phase}):`, {
         actualDuration: `${actualDuration.toFixed(2)}ms`,
         baseDuration: `${baseDuration.toFixed(2)}ms`,

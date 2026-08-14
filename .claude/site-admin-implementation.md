@@ -186,7 +186,10 @@ VALUES (
    - Delete incomplete or duplicate records
 
 4. **Link Teacher Portal Accounts:**
-   - For teachers who have portal accounts (role='teacher')
+   - Applies to the SDC dual-role shape: a provider who also has a classroom, so
+     the account is a **`role='resource'` profile**, not `role='teacher'`. Both
+     auto-link trigger paths filter on `p.role = 'resource'` (the SPE-355 SDC
+     convention), so a `teacher`-role profile will not match and will not link.
    - **This links itself now (SPE-481).** Two SECURITY DEFINER triggers create
      `teachers.account_id` in either entry order: a new `teachers` row matching
      exactly one Resource Specialist profile (email, case-insensitive, same
