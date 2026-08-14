@@ -12,6 +12,14 @@
 >
 > Companion to `docs/integrations/aeries.md`. Related: SPE-276 (Chrome
 > extension, parked), the *SIS Integration* project (SPE-392 → SPE-420).
+>
+> **Follow-ups to this document:**
+> [**SEIS — how to approach CodeStack**](./seis-outreach.md) — how we actually
+> make the ask (framing, draft email, channels), the follow-through on the "ask
+> them directly" recommendation in Path 1 below.
+> [**IEP systems outside California**](./iep-vendor-landscape.md) — the same
+> question asked of every IEP system *outside* California, where the answer is
+> markedly more positive.
 
 ## What we upload manually today
 
@@ -44,6 +52,9 @@ and manages integrations internally, so a private or negotiated interface can't
 be ruled out from the outside. **Asking CodeStack directly is the only way to
 close this**, and it's worth doing before concluding Path 1 is dead — a single
 email could make the rest of this document moot.
+**See [how to approach CodeStack](./seis-outreach.md)** for how to make that ask:
+who to contact, the framing that makes a public agency say yes, and a draft to
+send.
 
 The one thing SEIS calls "integration" is **SEIS Integration**: an automated
 **nightly sync between a district's SIS and SEIS**, arranged directly between the
