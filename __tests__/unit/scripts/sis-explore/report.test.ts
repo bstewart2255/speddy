@@ -149,10 +149,18 @@ describe('the summary refuses to be read out of context', () => {
       matchRate: { ...f.matchRate, probableDuplicateChild: 11, backfillGap: 0 },
     });
     expect(summary).toMatch(/11 student\(s\)/);
-    expect(summary).toMatch(/already belongs to a different child record/i);
+    expect(summary).toMatch(/another child record would also hold/i);
     expect(summary).toMatch(/Do not copy it across/i);
     // and none of the copy-it-across language from the other branch
     expect(summary).not.toMatch(/moving it onto the child record/i);
+
+    // It reports the collision and stops. Naming a remedy the data cannot
+    // single out — "merge these" — is this metric's original sin one level up:
+    // an ID collision is equally consistent with two records for one student
+    // and one ID typed against two different students.
+    expect(summary).not.toMatch(/need(s)? merging/i);
+    expect(summary).toMatch(/Check the identities first/i);
+    expect(summary).toMatch(/two different\s+students/i);
   });
 
   it('reports both states side by side when a district has each', () => {

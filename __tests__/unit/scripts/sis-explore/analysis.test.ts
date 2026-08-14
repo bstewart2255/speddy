@@ -208,6 +208,21 @@ describe('analyzeMatchRate', () => {
     expect(r.backfillGap).toBe(0);
   });
 
+  it('finds a co-served child\'s stranded ID whichever caseload row carries it', () => {
+    // `districtStudentId` is the same on every row for a child (it comes off the
+    // child record), but the legacy ID lives on each provider's own `students`
+    // row — so a co-served child can carry it on the second row and nothing on
+    // the first. Collapsing to one arbitrary row hides it, and which row wins
+    // depends on the order the query happened to return.
+    const rows = [
+      student({ childId: 'a', studentId: 's1', districtStudentId: null }),
+      student({ childId: 'a', studentId: 's2', districtStudentId: null, legacyDistrictStudentId: '100002' }),
+    ];
+    expect(analyzeMatchRate(rows, sis).backfillGap).toBe(1);
+    // Same rows, other order — the answer must not move.
+    expect(analyzeMatchRate([...rows].reverse(), sis).backfillGap).toBe(1);
+  });
+
   it('splits a mixed caseload into the two states rather than lumping them', () => {
     const r = analyzeMatchRate(
       [

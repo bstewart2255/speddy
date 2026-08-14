@@ -240,30 +240,46 @@ export function analyzeMatchRate(
     collisions.set(key, list);
   }
 
-  const stranded = children.filter(
-    (c) => !c.districtStudentId && !!c.legacyDistrictStudentId,
-  );
+  // `districtStudentId` comes from the child record, so it is the same on every
+  // caseload row for a child — reading it off the first row is fine. The legacy
+  // id does NOT: it lives on each provider's own `students` row, so a co-served
+  // child can carry one on the second row and nothing on the first. Collapsing
+  // to one arbitrary row would then hide the stranded id entirely, and which
+  // row wins depends on the order Supabase happened to return. Gather them from
+  // every row instead.
+  const legacyIdsByChild = new Map<string, Set<string>>();
+  for (const s of speddy) {
+    const id = norm(s.legacyDistrictStudentId);
+    if (id === '') continue;
+    const set = legacyIdsByChild.get(s.childId) ?? new Set<string>();
+    set.add(id);
+    legacyIdsByChild.set(s.childId, set);
+  }
+  const strandedIds = (c: SpeddyStudent): string[] =>
+    c.districtStudentId ? [] : [...(legacyIdsByChild.get(c.childId) ?? [])];
 
-  // How many children would hold each ID once every stranded one is copied
-  // across. Counting is cheap, and it is the whole difference between "copy
-  // this across" and "merge these two children" — so the tool decides it
-  // rather than whoever reads the report.
+  const stranded = children.filter((c) => strandedIds(c).length > 0);
+
+  // How many children would hold each id once every stranded one is copied
+  // across. Counting is cheap, and it is the whole difference between a safe
+  // copy and a collision — so the tool decides it rather than whoever reads
+  // the report.
   //
   // Both sources have to be counted, not just the child records: two stranded
-  // children can carry the SAME legacy ID with neither holding it on a child
+  // children can carry the SAME legacy id with neither holding it on a child
   // record yet. Looking only at child records calls both of those a safe
-  // backfill, and following that advice lands one district student ID on two
+  // backfill, and following that advice lands one district student id on two
   // children — the exact outcome SPE-409 exists to prevent.
   const claims = new Map<string, number>();
   const claim = (id: string) => {
     if (id !== '') claims.set(id, (claims.get(id) ?? 0) + 1);
   };
   for (const c of children) claim(norm(c.districtStudentId));
-  for (const c of stranded) claim(norm(c.legacyDistrictStudentId));
+  for (const c of stranded) for (const id of strandedIds(c)) claim(id);
 
   // >1 means somebody else claims it too, so a copy would collide.
-  const probableDuplicateChild = stranded.filter(
-    (c) => (claims.get(norm(c.legacyDistrictStudentId)) ?? 0) > 1,
+  const probableDuplicateChild = stranded.filter((c) =>
+    strandedIds(c).some((id) => (claims.get(id) ?? 0) > 1),
   ).length;
   const backfillGap = stranded.length - probableDuplicateChild;
 
