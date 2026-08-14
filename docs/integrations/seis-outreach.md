@@ -4,15 +4,16 @@
 > team that runs it) about building an integration, what do we actually say?*
 >
 > This is the follow-through on the open recommendation in
-> `docs/integrations/seis.md`: *"Asking CodeStack directly is the only way to
-> close this… a single email could make the rest of this document moot."*
-> That doc establishes **what** we want and why no public API turned up. This
-> one covers **who to ask, how to frame it, and what to send.**
+> [`seis.md`](./seis.md): *"Asking CodeStack directly is the only way to close
+> this… a single email could make the rest of this document moot."* That doc
+> establishes **what** we want and why no public API turned up. This one covers
+> **who to ask, how to frame it, and what to send.**
 >
-> **Status:** not yet sent. Companion to `docs/integrations/seis.md` and
-> `docs/integrations/iep-vendor-landscape.md` (the same question asked about
-> every other state). Related: SPE-276 (Chrome extension, parked), the *SIS
-> Integration* project (SPE-392 → SPE-420).
+> **Status:** not yet sent. Companion to
+> [**SEIS — can we pull data automatically?**](./seis.md) and
+> [**IEP systems outside California**](./iep-vendor-landscape.md) (the same
+> question asked about every other state). Related: SPE-276 (Chrome extension,
+> parked), the *SIS Integration* project (SPE-392 → SPE-420).
 
 ## The core reframe
 

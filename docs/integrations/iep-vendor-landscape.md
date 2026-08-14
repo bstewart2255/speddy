@@ -10,9 +10,10 @@
 > new open standard (Ed-Fi's Special Education Data Model, May 2026) is the first
 > credible path to the one thing no SIS integration can ever carry: **goal text**.
 >
-> Companion to `docs/integrations/seis.md` (the same question asked about
-> California) and `docs/integrations/seis-outreach.md` (how we approach
-> CodeStack). Related: the *SIS Integration* project (SPE-392 → SPE-420).
+> Companion to [**SEIS — can we pull data automatically?**](./seis.md) (the same
+> question asked about California) and
+> [**SEIS — how to approach CodeStack**](./seis-outreach.md) (how we make that
+> ask). Related: the *SIS Integration* project (SPE-392 → SPE-420).
 >
 > **This is a market scan, not a build plan.** Nothing here has been verified
 > against a vendor directly — see *Verification limits* at the bottom before
@@ -35,7 +36,7 @@ public agency for a favor and start offering a vendor a selling point.
 
 | Vendor | Footprint | Openness | The precedent |
 |---|---|---|---|
-| **Frontline IEP** | Strong in NJ, NY, PA, TX | Documented third-party integrations; SOC 2; sFTP flat files + API over SSL | **CentralReach LiftEd receives an automated nightly send of new-student demographics *and* in-force IEP data**, plus updates and newly issued IEPs through the year — provided at no cost to NJ districts. Also integrates with Genesis Educational Services, Education Solutions Development, Computer Resource Inc., Computer Solutions Inc., and Mindex SchoolTool. |
+| **Frontline IEP** (formerly IEP Direct) | Strong in NJ, NY, PA, TX | Documented third-party integrations; SOC 2; sFTP flat files + API over SSL | **CentralReach LiftEd receives an automated nightly feed carrying student demographics *and IEP goals and objectives*** — delivered as two files (a Student File and an IEP File), updated nightly as new IEPs are issued, at no cost to NJ districts. Also integrates with Genesis Educational Services, Education Solutions Development, Computer Resource Inc., Computer Solutions Inc., and Mindex SchoolTool. |
 | **Everway** (Embrace + SpedTrack) | SpedTrack alone across 26 states, strong Midwest/South | Publishes a public integration guide; advertises two-way SIS sync | Consolidating fast, see below |
 | **PowerSchool Special Programs** | Very large | Formal **ISV Partner Program** with a three-badge certification process (integration testing, survey, session with a PowerSchool solutions engineer); Special Programs integrates via the PowerSchool SIS REST API | **Stepwell**, a third-party special-education compliance and monitoring platform, integrated with Special Programs |
 | **PCG** (EDPlan / EasyIEP) | EDPlan 3,000+ districts; EasyIEP across 30+ states; runs statewide systems | Least approachable directly — statewide contracts, government-consulting sales motion | But they **co-authored the Ed-Fi special education standard** (below), which may matter more |
@@ -43,11 +44,17 @@ public agency for a favor and start offering a vendor a selling point.
 ### The Frontline precedent deserves emphasis
 
 A third-party special-education application **already receives a nightly
-automated feed of live IEP data from a major IEP vendor.** That is precisely the
-thing we're trying to get out of SEIS, it exists in production for somebody
-else, and it was framed as a benefit to districts rather than a favor to a
-vendor. When we approach Frontline we are asking for a second instance of an
-established pattern, not for a first.
+automated feed of live IEP data — including goals and objectives — from a major
+IEP vendor.** Per CentralReach's own documentation the sync produces a *Student
+File* with demographics and an *IEP File* containing goals and objectives,
+delivered nightly to a secure site.
+
+That matters more than a generic "they do integrations." **Goal text is the hard
+part** — it's the one thing no SIS-mediated path we've examined can carry (see
+`docs/integrations/aeries-sped-mapping.md`, gap #3), and it's the reason the
+SEIS problem stays manual. Frontline is proof that a commercial IEP vendor will
+move goal data to a third party when a district wants it. When we approach them
+we're asking for a second instance of an established pattern, not a first.
 
 ### Everway is consolidating the mid-market
 
@@ -92,14 +99,25 @@ implementation overhead while the model matures, Ed-Fi recommends **initial
 adoption by special education vendors rather than SIS vendors.** That is an open
 door aimed at exactly our category.
 
-**Second, it is the only path that has ever addressed goals.** The reason the
-SEIS problem is hard — and the reason `docs/integrations/aeries-sped-mapping.md`
-lists goal text as gap #3 — is that goals are free-text IEP content with no
-field in any student information system to land in. Every SIS-mediated path we
-have (Aeries today, any other SIS tomorrow) structurally cannot carry them.
-SEDM is the first serious attempt to model IEP goals as structured, exchangeable
-data. If it takes hold, the hardest part of this problem stops being N private
-negotiations and becomes a standard we implement once.
+**Second, it is the first *vendor-neutral* standard for goals we've found.**
+Goal text is the part that stays stuck: it's free-text IEP content, and none of
+the SIS-mediated paths we've actually examined expose it —
+`docs/integrations/aeries-sped-mapping.md` lists it as gap #3 for **Aeries**,
+which is the only SIS API we've inspected in depth.
+
+Scope that honestly: it's a finding about the paths we've reviewed, not a law
+about every SIS. Another vendor's special-education module, a custom field
+mapping, or a different API may well expose goals, and we haven't checked —
+Infinite Campus's special-education surface (below) is explicitly unverified.
+Don't discard a non-Aeries district's SIS path on this basis without inspecting
+that SIS first.
+
+What's distinctive about SEDM is that it isn't vendor-specific. Frontline
+already moves goals to a third party (above), but on Frontline's terms, for
+Frontline customers. SEDM is the first serious attempt to model IEP goals as
+structured, exchangeable data in a standard anyone can implement. If it takes
+hold, the hardest part of this problem stops being N private negotiations and
+becomes one implementation.
 
 **Caveats, stated plainly:**
 
@@ -115,19 +133,25 @@ negotiations and becomes a standard we implement once.
   evidence of statewide California Ed-Fi adoption turned up. Either way, this is
   an advantage we only get by selling outside California.
 
-**A cheap credibility hook:** the CA-NDPA we're already executing is a Student
-Data Privacy Consortium instrument, and SDPC sits inside Access 4 Learning — the
-same standards community where SEDM lives in CEDS. We're already a participant
-in that world, which is worth saying out loud when we engage.
+**A possible credibility hook — but not yet.** The CA-NDPA we're working through
+is a Student Data Privacy Consortium instrument, and SDPC sits inside Access 4
+Learning, the same standards community where SEDM lives in CEDS. That's a real
+connection *once it's real*: as of this writing the DPA is unsigned and
+**CITE/CSPA registration is still outstanding**
+(`docs/ndpa/ca-ndpa-execution-packet.md` §8, item 17). **Do not describe Speddy
+as a participant in that community during outreach until registration is
+complete** — describe the draft-agreement work instead. Overstating affiliation
+to a standards body is precisely the kind of claim that costs credibility the
+moment someone checks it (the SPE-134 claim-accuracy principle).
 
 ## What does not get easier anywhere
 
 - **Rostering aggregators will not solve this.** Clever, ClassLink and Edlink
   carry demographics, rosters, sections and SSO. They do **not** carry IEP
   content. They solve a different problem and are not a shortcut here.
-- **Every path still requires district authorization.** That is FERPA, not
-  vendor obstruction, and it is correct. No standard or partner program removes
-  it.
+- **Every path still needs district approval and a FERPA-compliant data-sharing
+  basis.** That's a feature, not vendor obstruction. No standard or partner
+  program removes it.
 - **The per-district sales motion is unchanged.** An integration makes the
   product better; it does not make distribution free.
 - **Infinite Campus is gated.** Per third-party integration documentation
@@ -148,10 +172,12 @@ answer an email and has done this before.**
    engage a startup.
 3. **PowerSchool Special Programs.** Real program, real precedent, but
    large-company slow — and understandably conservative since the December 2024
-   breach of its PowerSource support portal (disclosed to customers 7 January
-   2025; roughly 60M student and 10M teacher records across ~18,000 districts;
-   the largest K-12 education data breach on record). They also own the SIS, so
-   they are partly a competitor.
+   breach of its PowerSource support portal, disclosed to customers on 7 January
+   2025 and affecting a very large number of students across many thousands of
+   schools. (Reported record counts and "largest ever" framings vary by outlet;
+   we haven't verified any specific figure against a primary source, and none of
+   them change the conclusion — the posture is what matters.) They also own the
+   SIS, so they are partly a competitor.
 4. **Ed-Fi SEDM.** Not a partner — a standard. Engage now: read the model,
    comment on RFC 28b, join the community conversation. Nearly free, costs
    nothing if it stalls, and positions us early on the only generic path to
@@ -159,8 +185,10 @@ answer an email and has done this before.**
 
 ## Keeping this in proportion
 
-SEIS covers on the order of 1,000–1,500 California LEAs and we have a pilot
-there. **This is not an argument to leave California.** It's an argument that
+SEIS covers 1,500+ California LEAs (`docs/integrations/seis.md`; CodeStack's own
+page cites 1,100+ districts — the discrepancy is recorded in
+`docs/integrations/seis-outreach.md` and doesn't change the argument), and we
+have a pilot there. **This is not an argument to leave California.** It's an argument that
 the integration story gets dramatically better the moment we sell outside it —
 useful mainly for deciding where we expand *second*, and for knowing that the
 manual-upload burden is a California-specific tax rather than a permanent
@@ -168,19 +196,31 @@ feature of the category.
 
 ## Verification limits
 
-Everything here comes from public sources and **none of it has been confirmed
-with a vendor.** Specifically:
+Every **vendor-side** claim here comes from public sources, and **none of it has
+been confirmed with a vendor.** (The Speddy-side facts — our pilot district, our
+NDPA status, what our importer accepts — are internal and cited to repo docs in
+*Source of truth* below.) Specifically:
 
-- `docs.ed-fi.org` and `spedtrack.com` are **blocked by this environment's
-  network egress proxy**, so the Ed-Fi SEDM details and SpedTrack's integration
-  posture are grounded in search-result excerpts of those pages rather than a
-  direct read. The SEDM entity list and the "special education vendors rather
-  than SIS vendors" guidance should be confirmed against the Ed-Fi docs directly
-  before we design against them.
+- `docs.ed-fi.org`, `spedtrack.com` and `help.theliftedapp.com` are **blocked by
+  this environment's network egress proxy**, so the Ed-Fi SEDM details,
+  SpedTrack's integration posture, and the LiftEd field list are grounded in
+  search-result excerpts and secondary pages rather than a direct read. The SEDM
+  entity list and the "special education vendors rather than SIS vendors"
+  guidance should be confirmed against the Ed-Fi docs directly before we design
+  against them.
+- **The Frontline→LiftEd goals claim is the load-bearing one in this document**
+  and rests on two independent CentralReach-authored sources (their blog and
+  their release notes) rather than a direct read of the LiftEd help article.
+  Confirm it before we build a strategy on it. And note: what that feed carries
+  for *them* is not a commitment of what it would carry for us.
+- **The Stepwell↔PowerSchool integration is unverified** — it surfaced in a
+  search summary of PowerSchool's partner material, and we have no primary
+  source for its scope. Treat it as "a third-party SpEd tool appears to have
+  integrated," not as a known-good precedent.
+- **Everway's integration posture is inferred**, not documented to us. The
+  acquisition facts are sourced (below); the claim that they'd be easiest to
+  engage is a judgement call about company size and incentives.
 - Vendor footprint numbers come from vendor marketing and vary by source.
-- The Frontline↔CentralReach integration is described in CentralReach's and
-  LiftEd's own documentation. What it carries for *them* is not a commitment of
-  what it would carry for us.
 - General market-size figures were deliberately excluded; the available sources
   were low-quality SEO market-research aggregators and none of them would change
   a decision.
@@ -191,7 +231,12 @@ with a vendor.** Specifically:
   [A4L — SEDM in CEDS](https://files.a4l.org/home/Events/2025_03_17_A4L-Annual-Meeting/Presentations/2025_03_19-3b-SEDM.pdf) ·
   [Ed-Fi state case studies](https://www.ed-fi.org/resources/case-studies/indiana/) ·
   [Data Standard overview](https://docs.ed-fi.org/reference/data-exchange/data-standards/)
-- **Frontline:** [CR LiftEd ↔ Frontline IEP automated integration](https://help.theliftedapp.com/en/articles/8181959-the-frontline-iep-automated-integration-with-cr-lifted) ·
+- **Frontline:** [Frontline + CR LiftEd — integrating data collection with IEP management](https://centralreach.com/blog/frontline-and-cr-lifted-integrating-data-collection-with-iep-management/)
+  and [LiftEd 4.7.0 release notes](https://centralreach.my.site.com/s/article/lifted-4-7-0-frontline-iep-integration-platform-stability-and-bug-fixes)
+  (the two sources for the *Student File + IEP File containing goals and
+  objectives* claim) ·
+  [CR LiftEd ↔ Frontline IEP automated integration](https://help.theliftedapp.com/en/articles/8181959-the-frontline-iep-automated-integration-with-cr-lifted)
+  (egress-blocked here) ·
   [CentralReach announcement](https://centralreach.com/blog/centralreach-announces-new-integration-with-frontline-iep-software-leader/) ·
   [Frontline Special Ed technical buying guide FAQs](https://www.frontlineeducation.com/wp-content/uploads/2018/11/Frontline_Special_Ed_Interventions_Technical_Buying_Guide_FAQs_.pdf)
 - **PowerSchool:** [ISV partner badging](https://www.powerschool.com/news/powerschools-new-partner-badging-system-provides-verification-independent-software-vendor-integration/) ·
