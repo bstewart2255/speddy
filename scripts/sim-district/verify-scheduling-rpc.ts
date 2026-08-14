@@ -49,6 +49,15 @@ const admin = createAdmin();
 
 /** A year no fixture uses, so a copy into it can never collide with real data. */
 const PROBE_YEAR = '2098-2099';
+/**
+ * The authorization probe's source and target. The source is asserted EMPTY
+ * before the call (see main), so that if the RPC lets a non-admin through — as
+ * it currently does — the copy moves nothing. That assertion is the difference
+ * between a safety property and a hope: this probe must never become the thing
+ * that writes a schedule it wasn't authorized to write.
+ */
+const SEA_SOURCE_YEAR = '1900-1901';
+const SEA_TARGET_YEAR = '1901-1902';
 /** Tables copy_schedule_to_year writes, in FK-safe delete order. */
 const COPIED_TABLES = [
   'rotation_group_members',
@@ -99,7 +108,7 @@ async function signIn(personaKey: string): Promise<SupabaseClient> {
  * NEXT run's first copy fail on "target year already has data" — a failure that
  * would be blamed on the RPC rather than on this teardown.
  */
-async function cleanup(): Promise<void> {
+async function cleanupYear(year: string): Promise<void> {
   const fail = (what: string, message: string): never => {
     throw new Error(`probe cleanup failed (${what}): ${message} — probe-year rows may remain`);
   };
@@ -108,7 +117,7 @@ async function cleanup(): Promise<void> {
   // via the probe-year pairs first so nothing is orphaned.
   const { data: pairs, error: pairErr } = await admin
     .from('rotation_activity_pairs').select('id')
-    .eq('school_id', WILLOW).eq('school_year', PROBE_YEAR);
+    .eq('school_id', WILLOW).eq('school_year', year);
   if (pairErr) fail('rotation_activity_pairs lookup', pairErr.message);
   const pairIds = (pairs ?? []).map(p => p.id);
   if (pairIds.length) {
@@ -130,15 +139,30 @@ async function cleanup(): Promise<void> {
   for (const table of COPIED_TABLES) {
     if (table.startsWith('rotation_')) continue;
     const { error } = await admin.from(table).delete()
-      .eq('school_id', WILLOW).eq('school_year', PROBE_YEAR);
+      .eq('school_id', WILLOW).eq('school_year', year);
     if (error) fail(table, error.message);
   }
 }
 
+/** Sweep both years this probe can write to. */
+async function cleanup(): Promise<void> {
+  await cleanupYear(PROBE_YEAR);
+  await cleanupYear(SEA_TARGET_YEAR);
+}
+
+/**
+ * Count rows for WILLOW in a year, THROWING on a query error.
+ *
+ * Swallowing the error and returning 0 would make the persistence check compare
+ * 0 to 0 and pass — reporting that a copy landed when in fact neither count
+ * could be read. A probe whose failure mode is a false "ok" is worse than one
+ * that crashes.
+ */
 async function countIn(table: string, year: string): Promise<number> {
-  const { count } = await admin
+  const { count, error } = await admin
     .from(table).select('id', { count: 'exact', head: true })
     .eq('school_id', WILLOW).eq('school_year', year);
+  if (error) throw new Error(`count failed for ${table} ${year}: ${error.message}`);
   return count ?? 0;
 }
 
@@ -187,9 +211,35 @@ async function main(): Promise<void> {
   // administer. An empty source year is used deliberately so that if the call
   // IS allowed through it copies nothing: this probe must not become the thing
   // that corrupts a school's schedule.
-  const { error: seaErr } = await leah.rpc('copy_schedule_to_year', {
-    p_school_id: WILLOW, p_from_year: '1900-1901', p_to_year: '1901-1902',
-  });
+  //
+  // PROVE the source is empty rather than assuming it. The RPC currently lets
+  // this call through, so "the source has no rows" is the only thing standing
+  // between this probe and an unauthorized write to a real school year. If that
+  // ever stops being true, refuse to make the call at all.
+  const sourceRows = await Promise.all(
+    COPIED_TABLES.filter(t => !t.startsWith('rotation_group'))
+      .map(async t => [t, await countIn(t, SEA_SOURCE_YEAR)] as const)
+  );
+  const nonEmpty = sourceRows.filter(([, n]) => n > 0);
+  if (nonEmpty.length) {
+    throw new Error(
+      `refusing to run the authorization probe: source year ${SEA_SOURCE_YEAR} is NOT empty ` +
+        `(${nonEmpty.map(([t, n]) => `${t}=${n}`).join(', ')}). The call is currently allowed ` +
+        'through, so running it would copy real rows. Clear that year or pick another.'
+    );
+  }
+
+  let seaErr: { code?: string; message: string } | null = null;
+  try {
+    ({ error: seaErr } = await leah.rpc('copy_schedule_to_year', {
+      p_school_id: WILLOW, p_from_year: SEA_SOURCE_YEAR, p_to_year: SEA_TARGET_YEAR,
+    }));
+  } finally {
+    // Sweep the target unconditionally. Today the source is empty so nothing
+    // lands, but that is asserted above rather than guaranteed forever, and a
+    // probe that can write rows must own removing them on every path.
+    await cleanupYear(SEA_TARGET_YEAR);
+  }
   // Match the AUTHORIZATION error specifically, not merely "something failed".
   // `!!seaErr` would go green the day the RPC starts validating year ranges or
   // rejecting an empty source — and this probe deliberately passes an empty

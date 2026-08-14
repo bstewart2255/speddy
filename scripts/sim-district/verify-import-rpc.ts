@@ -75,14 +75,26 @@ async function profileId(personaKey: string): Promise<string> {
 
 const PROBE_INITIALS = 'ZZ';       // the authorized insert
 const IMPERSONATION_INITIALS = 'YY'; // only ever lands if the guard is missing
+/**
+ * The probe-only identity marker, written into student_details by both inserts.
+ *
+ * Initials are NOT a safe identity predicate: seed.ts derives them from a SHA-1
+ * of (provider, school, index) reduced to two A–Z letters, so 'ZZ' and 'YY' are
+ * both reachable — a reseed with different student counts could hand one to a
+ * real fixture student, whom this cleanup would then delete. These names are
+ * written by nothing but this script.
+ */
+const PROBE_FIRST_NAME = 'SimProbe';
+const PROBE_LAST_NAME = 'DoNotKeep';
 
 /**
  * Remove this probe's rows — and ONLY this probe's rows.
  *
- * Scoped to the two sim provider ids on purpose. This runs against the
- * production database, where most students belong to real customers, so a sweep
- * keyed on initials alone would hard-delete a real "ZZ" student and their whole
- * session history. Initials are not unique and are not ours to match on.
+ * Three predicates, all required: the provider must be one of the two sim
+ * personas, the initials must be one of the probe's, AND student_details must
+ * carry the probe marker above. This runs against the production database, so
+ * the cost of matching one row too many is a real deletion; the cost of
+ * matching one too few is a leftover row that `sim:verify` will report.
  *
  * Also clears the `children` row the students_child_link insert trigger
  * creates: leaving it behind makes the next `sim:verify` fail on an exact
@@ -90,9 +102,19 @@ const IMPERSONATION_INITIALS = 'YY'; // only ever lands if the guard is missing
  */
 async function cleanup(providerIds: string[]): Promise<void> {
   if (providerIds.length === 0) return;
+  const { data: marked, error: mErr } = await admin
+    .from('student_details')
+    .select('student_id')
+    .eq('first_name', PROBE_FIRST_NAME)
+    .eq('last_name', PROBE_LAST_NAME);
+  if (mErr) throw new Error(`probe marker lookup failed: ${mErr.message}`);
+  const markedIds = (marked ?? []).map(m => m.student_id as string);
+  if (markedIds.length === 0) return;
+
   const { data: probes, error } = await admin
     .from('students')
     .select('id, child_id')
+    .in('id', markedIds)
     .in('provider_id', providerIds)
     .in('initials', [PROBE_INITIALS, IMPERSONATION_INITIALS]);
   if (error) throw new Error(`probe cleanup lookup failed: ${error.message}`);
@@ -144,8 +166,8 @@ async function main(): Promise<void> {
     stateId: sibling.state_id,
     sessionsPerWeek: 2,
     minutesPerSession: 30,
-    firstName: 'Probe',
-    lastName: 'Student',
+    firstName: PROBE_FIRST_NAME,
+    lastName: PROBE_LAST_NAME,
     goals: ['probe goal'],
   };
 
@@ -164,26 +186,54 @@ async function main(): Promise<void> {
       : 'no payload'
   );
 
-  // Read it back rather than trusting the return value — the whole point.
-  const { data: persisted } = await admin
+  // Read it back rather than trusting the return value — the whole point. And
+  // read it through RACHEL'S OWN SESSION, not the service role: `admin`
+  // bypasses RLS, so an admin readback proves the row is in the table while
+  // saying nothing about whether the provider who imported it can see it. That
+  // gap is exactly SPE-332 — a policy that crashed for seven months behind
+  // green checks. The claim worth asserting is "the importer can read what she
+  // imported".
+  const { data: persisted, error: readErr } = await rachel
     .from('students').select('id, provider_id, initials, sessions_per_week')
     .eq('provider_id', rachelId).eq('initials', PROBE_INITIALS);
-  check((persisted ?? []).length === 1, 'the student row is actually in the table afterwards',
-    `${(persisted ?? []).length} row(s)`);
+  check(!readErr && (persisted ?? []).length === 1,
+    'the importing provider can read the row back (RLS included)',
+    readErr ? readErr.message : `${(persisted ?? []).length} row(s)`);
+
+  // Diagnostic only: if Rachel sees nothing, say whether the row is missing or
+  // merely invisible to her. Those need different fixes.
+  if (!readErr && (persisted ?? []).length === 0) {
+    const { count: adminCount } = await admin
+      .from('students').select('id', { count: 'exact', head: true })
+      .eq('provider_id', rachelId).eq('initials', PROBE_INITIALS);
+    console.log(
+      `       ↳ service role sees ${adminCount ?? 0} row(s): ` +
+        `${(adminCount ?? 0) > 0 ? 'the row EXISTS but RLS hides it from its own provider' : 'the row was never written'}`
+    );
+  }
+
   const probeId = persisted?.[0]?.id as string | undefined;
   check(persisted?.[0]?.provider_id === rachelId, 'the row is owned by the calling provider',
     `provider_id ${persisted?.[0]?.provider_id === rachelId ? 'matches' : 'MISMATCH'}`);
 
   if (probeId) {
-    const { data: det } = await admin
+    const { data: det, error: detErr } = await rachel
       .from('student_details').select('student_id, first_name').eq('student_id', probeId);
-    check((det ?? []).length === 1, 'the details row was written in the same transaction',
-      `${(det ?? []).length} row(s)`);
+    check(!detErr && (det ?? []).length === 1,
+      'the details row was written in the same transaction',
+      detErr ? detErr.message : `${(det ?? []).length} row(s)`);
 
-    const { count: sessionCount } = await admin
+    const { count: sessionCount, error: sessErr } = await rachel
       .from('schedule_sessions').select('id', { count: 'exact', head: true }).eq('student_id', probeId);
-    check(sessionCount === 2, 'one unscheduled session per sessions_per_week was created',
-      `${sessionCount} session(s), expected 2`);
+    check(!sessErr && sessionCount === 2,
+      'one unscheduled session per sessions_per_week was created',
+      sessErr ? sessErr.message : `${sessionCount} session(s), expected 2`);
+  } else {
+    // Do not let a missing row silently skip two checks and still report
+    // "All checks passed" — that is the failure mode this whole PR exists to
+    // stop. Count them as failures explicitly.
+    check(false, 'the details row was written in the same transaction', 'SKIPPED — no probe row');
+    check(false, 'one unscheduled session per sessions_per_week was created', 'SKIPPED — no probe row');
   }
 
   // --- 2. impersonating another provider is refused, for the right reason -----
@@ -197,9 +247,16 @@ async function main(): Promise<void> {
     p_students: [{ ...newStudent, initials: IMPERSONATION_INITIALS }],
   });
   check(!!impErr, 'passing another provider_id is REFUSED', impErr ? 'refused' : 'ACCEPTED — LEAK');
+  // BOTH signals, not either. The RPC's guard raises 42501 *with* the message
+  // "Unauthorized" — observed, not assumed — so requiring both pins the actual
+  // contract. `||` would accept any 42501 the database happens to raise, and a
+  // plain permission error on some unrelated table would keep this green after
+  // the provider-ID guard was gone. (The scheduling probe's equivalent check
+  // deliberately uses `||`, because SPE-511's guard does not exist yet and its
+  // exact message is not something this script gets to dictate.)
   check(
-    impErr?.code === '42501' || /unauthorized/i.test(impErr?.message ?? ''),
-    'refused with the RPC\'s own guard (42501 / Unauthorized)',
+    impErr?.code === '42501' && /unauthorized/i.test(impErr?.message ?? ''),
+    'refused with the RPC\'s own guard (42501 AND Unauthorized)',
     impErr ? `code=${impErr.code} msg=${impErr.message.slice(0, 48)}` : 'n/a'
   );
 
@@ -210,9 +267,20 @@ async function main(): Promise<void> {
     `${tomasBefore} -> ${tomasAfter}`);
 
   // --- 3. updating a student you do not own is refused ------------------------
-  const { data: tomasStudent } = await admin
+  // Throw rather than skip when the target is missing. `if (tomasStudent)`
+  // meant an empty fixture silently dropped three authorization assertions and
+  // the script still printed "All checks passed" — a probe reporting success
+  // for a path it never exercised.
+  const { data: tomasStudent, error: tomasErr } = await admin
     .from('students').select('id, grade_level').eq('provider_id', tomasId).limit(1).maybeSingle();
-  if (tomasStudent) {
+  if (tomasErr) throw new Error(`ownership-test target lookup failed: ${tomasErr.message}`);
+  if (!tomasStudent) {
+    throw new Error(
+      'no student found for Tomás — the cross-owner update check cannot run. ' +
+        'Re-seed with: npm run sim:reset -- --yes'
+    );
+  }
+  {
     const { data: updResult } = await rachel.rpc('upsert_students_atomic', {
       p_provider_id: rachelId,
       p_students: [{ action: 'update', studentId: tomasStudent.id, gradeLevel: '12' }],
