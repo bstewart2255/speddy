@@ -43,6 +43,9 @@ module.exports = [
       'lib/sis/key-boot-check.ts',
       'lib/lessons/test-generator.ts',
       'app/api/cron/**/*.ts',
+      // Installs a development-only console.log filter — the console access is
+      // the entire file.
+      'instrumentation.ts',
     ],
     rules: { 'no-console': 'off' },
   },

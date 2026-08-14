@@ -1,8 +1,3 @@
-/* eslint-disable no-console -- every console call left here sits behind DEBUG / DEBUG_LOG */
-// Kept through SPE-97: that sweep removed UNGATED debug logging, which is
-// what polluted production. Opt-in output behind a flag was never the
-// problem, and deleting it would leave the surrounding block computing a
-// payload it then discards.
 // Unified API endpoint for JSON-first lesson generation
 import { NextResponse } from 'next/server';
 import { lessonGenerator } from '@/lib/lessons/generator';
@@ -50,6 +45,7 @@ export const POST = withRoute(
 
       // Log metadata capture status on startup (only in debug mode)
       if (DEBUG && SHOULD_CAPTURE_METADATA) {
+        // eslint-disable-next-line no-console -- gated on DEBUG / DEBUG_LOG
         console.log('[DEBUG] Full metadata capture is ENABLED:', {
           CAPTURE_FULL_PROMPTS,
           CAPTURE_AI_RAW
@@ -71,8 +67,10 @@ export const POST = withRoute(
 
         // Handle batch lesson generation
         if (DEBUG) {
+          // eslint-disable-next-line no-console -- gated on DEBUG / DEBUG_LOG
           console.log(`[DEBUG] Processing batch request with ${body.batch.length} lesson groups`);
           // Log only non-sensitive summary data
+          // eslint-disable-next-line no-console -- gated on DEBUG / DEBUG_LOG
           console.log(`[DEBUG] Batch request summary:`, body.batch.map((group: { lessonDate?: string; timeSlot?: string; subject?: string; students?: unknown[]; teacherRole?: string }, i: number) => ({
             index: i,
             lessonDate: group.lessonDate || 'not-provided',
@@ -125,6 +123,7 @@ export const POST = withRoute(
           try {
             // Debug logging for each group (no PII)
             if (DEBUG) {
+              // eslint-disable-next-line no-console -- gated on DEBUG / DEBUG_LOG
               console.log(`[DEBUG] Processing batch group ${groupIndex}:`, {
                 lessonDate: group.lessonDate || 'not-provided',
                 timeSlot: group.timeSlot || 'not-provided',
@@ -181,6 +180,7 @@ export const POST = withRoute(
             
             // Debug logging for lesson request (no PII)
             if (DEBUG) {
+              // eslint-disable-next-line no-console -- gated on DEBUG / DEBUG_LOG
               console.log(`[DEBUG] Lesson request for group ${groupIndex}:`, {
                 lessonDate: lessonRequest.lessonDate || 'not-provided',
                 timeSlot: lessonRequest.timeSlot || 'not-provided',
@@ -233,10 +233,12 @@ export const POST = withRoute(
         
         // Wait for all lessons to complete
         if (DEBUG) {
+          // eslint-disable-next-line no-console -- gated on DEBUG / DEBUG_LOG
           console.log(`[DEBUG] Waiting for ${lessonPromises.length} lesson generation promises...`);
         }
         const results = await Promise.allSettled(lessonPromises);
         if (DEBUG) {
+          // eslint-disable-next-line no-console -- gated on DEBUG / DEBUG_LOG
           console.log(`[DEBUG] All promises completed. Processing results...`);
         }
         
@@ -578,6 +580,7 @@ async function saveLessonToDatabase(
       debugData.willCaptureResponse = CAPTURE_AI_RAW && !!generationMetadata?.aiRawResponse;
     }
     
+    // eslint-disable-next-line no-console -- gated on DEBUG / DEBUG_LOG
     console.log(`[DEBUG] Saving lesson to database:`, debugData);
   }
 
@@ -658,6 +661,7 @@ async function saveLessonToDatabase(
   if (existingLesson) {
     // Update existing lesson using upsert
     if (DEBUG_LOG) {
+      // eslint-disable-next-line no-console -- gated on DEBUG / DEBUG_LOG
       console.log(`[DEBUG] Updating existing lesson with ID: ${existingLesson.id}`);
     }
     
@@ -695,6 +699,7 @@ async function saveLessonToDatabase(
       // Check if it's a duplicate key error - might have been created between our check and insert
       if (insertError.code === '23505') {
         if (DEBUG_LOG) {
+          // eslint-disable-next-line no-console -- gated on DEBUG / DEBUG_LOG
           console.log(`[DEBUG] Duplicate key error - lesson was created concurrently, attempting to fetch existing`);
         }
         
@@ -753,6 +758,7 @@ async function saveLessonToDatabase(
   }
 
   if (DEBUG_LOG) {
+    // eslint-disable-next-line no-console -- gated on DEBUG / DEBUG_LOG
     console.log(`[DEBUG] Successfully saved/updated lesson with ID: ${lessonRecord.id}`);
   }
   

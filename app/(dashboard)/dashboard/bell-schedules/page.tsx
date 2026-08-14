@@ -60,15 +60,12 @@ export default function BellSchedulesPage() {
   // Fetch bell schedules from database with intelligent filtering
   const fetchSchedules = useCallback(async () => {
     try {
-      const startTime = performance.now();
 
       const data = await getBellSchedules(currentSchool || undefined, getCurrentSchoolYear());
       
       // Fetch last saved timestamp
       const lastUpdated = await getLastSavedBellSchedule(currentSchool || undefined);
       setLastSaved(lastUpdated);
-
-      const endTime = performance.now();
 
       setBellSchedules(Array.isArray(data) ? data : []);
     } catch (error) {

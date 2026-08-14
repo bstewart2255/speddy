@@ -87,10 +87,6 @@ export function useSessionSync({
             }
             const updateIndex = updatedSessions.findIndex(s => s.id === session.id);
             if (updateIndex !== -1) {
-              const localSession = updatedSessions[updateIndex];
-              const optimisticUpdate = optimisticUpdatesRef.current.get(session.id);
-
-              // Check if this update matches our optimistic update
 
               // Apply update (last-write-wins)
               updatedSessions[updateIndex] = session;

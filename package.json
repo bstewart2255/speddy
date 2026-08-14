@@ -16,7 +16,7 @@
     "build": "next build",
     "dev": "next dev",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "next lint --dir app --dir lib --dir components --dir pages --dir src --file middleware.ts --file instrumentation.ts",
     "lint:fix": "next lint --fix",
     "lint:db": "tsx scripts/db-conventions/check.ts",
     "test:integration": "node scripts/run-integration-tests.js",

@@ -45,10 +45,6 @@ export function SessionAssignmentPopup({
     setCalculatedPosition(optimalPosition);
   }, [triggerRect]);
 
-  // Log session info when popup opens
-  useEffect(() => {
-  }, [session.id, session.student_id, sessionTags]);
-
   // Auto-save when assignment changes
   const handleAssignmentChange = async (value: string) => {
     // Parse the value to determine assignment type

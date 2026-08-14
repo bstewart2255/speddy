@@ -1722,30 +1722,6 @@ export function CalendarWeekView({
     }
   };
 
-  // Helper function to safely parse activities field
-  const parseActivities = (activities?: string): any[] => {
-    if (!activities) return [];
-    if (typeof activities !== 'string') return activities;
-
-    // Trim whitespace
-    const trimmed = activities.trim();
-
-    // Check if it looks like JSON (starts with '[' or '{')
-    if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
-      try {
-        const parsed = JSON.parse(trimmed);
-        return Array.isArray(parsed) ? parsed : [parsed];
-      } catch (error) {
-        console.warn('Failed to parse activities as JSON, using as plain text:', error);
-        // Fall back to treating it as plain text
-        return [{ description: trimmed }];
-      }
-    }
-
-    // Plain text - wrap in object
-    return [{ description: trimmed }];
-  };
-
   return (
     <div className="w-full">
       {/* View Mode Toggle - Hidden for SEA users */}

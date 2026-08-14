@@ -171,7 +171,6 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
   }, [supabase, schoolCache]);
 
   const fetchProviderSchools = useCallback(async () => {
-    const startTime = performance.now();
     
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -327,8 +326,6 @@ export function SchoolProvider({ children }: { children: ReactNode }) {
           setCurrentSchoolState(schoolToSet || null);
         }
       }
-      
-      const endTime = performance.now();
     } catch (error) {
       console.error('Error fetching provider schools:', error);
     } finally {

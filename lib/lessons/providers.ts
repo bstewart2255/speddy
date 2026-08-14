@@ -1,3 +1,7 @@
+/* eslint-disable no-console -- sanitizeAndLogDebug early-returns unless DEBUG_OPENAI or development, and redacts PII first */
+// Kept through SPE-97: that sweep removed UNGATED debug logging. Opt-in output
+// behind a flag was never the problem, and removing it would leave the
+// surrounding block computing a payload it discards.
 // AI Provider abstraction for model flexibility
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
@@ -74,6 +78,7 @@ function sanitizeAndLogDebug(context: string, content: string): void {
     ? `${sanitized.substring(0, 200)}... [truncated, total length: ${content.length}]`
     : sanitized;
   
+  console.debug(`[${context}] Response preview:`, truncated);
 }
 
 // Model token limits (context window - input + output combined)

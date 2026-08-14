@@ -1,3 +1,7 @@
+/* eslint-disable no-console -- every console call left here sits behind `debugEnabled` (DEBUG_LESSON_GENERATION) or `isDevelopment` */
+// Kept through SPE-97: that sweep removed UNGATED debug logging. Opt-in output
+// behind a flag was never the problem, and removing it would leave the
+// surrounding block computing a payload it discards.
 // Main lesson generator that orchestrates the JSON-first generation
 import { LessonRequest, LessonResponse, LessonMetadata, StudentMaterial, WorksheetItem } from './schema';
 import { createAIProvider, AIProvider, GenerationMetadata } from './providers';
@@ -155,6 +159,12 @@ export class LessonGenerator {
       const minProblems = Math.ceil(baseMin * multiplier);
       const maxProblems = Math.ceil(baseMax * multiplier);
 
+      console.log(`[Generator] Lesson generation for group of ${request.students.length} students:
+  - Generating ONE worksheet for the entire group
+  - Grade range: ${Math.min(...request.students.map(s => s.grade))}-${maxGrade}
+  - Duration: ${request.duration || 30} minutes
+  - Duration multiplier: ${multiplier}
+  - Expected problems for worksheet: ${minProblems}-${maxProblems}`);
     }
 
     // No longer using chunked generation since we generate one worksheet for all
@@ -222,11 +232,21 @@ export class LessonGenerator {
             }
           }
 
+          console.log(`[Generator] Generation Result:
+  - Group size: ${request.students.length} students
+  - Single worksheet generated: YES
+  - Problems in worksheet: ${problemCount}
+  - Validation: ${validation.isValid ? 'PASSED' : 'FAILED'}
+  - Errors: ${validation.errors.join('; ') || 'None'}`);
 
           // Check if generation_explanation exists
           const lessonWithExplanation = lesson as LessonResponse & { generation_explanation?: GenerationExplanation };
           if (lessonWithExplanation.generation_explanation) {
             const genExpl = lessonWithExplanation.generation_explanation;
+            console.log(`[Generator] AI Self-Reported:
+  - Problems generated: ${genExpl.actual_content_generated?.practice_problems || 'N/A'}
+  - Whiteboard examples: ${genExpl.actual_content_generated?.whiteboard_examples || 'N/A'}
+  - Reasoning: ${genExpl.actual_content_generated?.reasoning || 'N/A'}`);
           }
         }
 
@@ -258,6 +278,7 @@ export class LessonGenerator {
                             !process.env.OPENAI_API_KEY;
 
         if (isDevelopment) {
+          console.log('API key missing or development mode - returning mock lesson');
           return {
             lesson: this.createMockLesson(request),
             validation: {
@@ -361,7 +382,7 @@ Return ONLY the worksheet content in this structure:
             worksheetResponse = fullResponse;
           } catch (error) {
             // If that fails, it might be because we got worksheet-only JSON
-            worksheetResponse = { worksheet: null };
+                worksheetResponse = { worksheet: null };
           }
           
           // Extract worksheet from various possible response formats
