@@ -190,9 +190,11 @@ page cites 1,100+ districts — the discrepancy is recorded in
 `docs/integrations/seis-outreach.md` and doesn't change the argument), and we
 have a pilot there. **This is not an argument to leave California.** It's an argument that
 the integration story gets dramatically better the moment we sell outside it —
-useful mainly for deciding where we expand *second*, and for knowing that the
-manual-upload burden is a California-specific tax rather than a permanent
-feature of the category.
+useful mainly for deciding where we expand *second*, and as a reason to suspect
+the manual-upload burden may be specific to the California SEIS workflow rather
+than a permanent feature of the category. That's a hypothesis this scan
+motivates, not one it proves — a single automated feed at one vendor doesn't
+establish that districts elsewhere avoid manual uploads.
 
 ## Verification limits
 
@@ -209,8 +211,10 @@ NDPA status, what our importer accepts — are internal and cited to repo docs i
   guidance should be confirmed against the Ed-Fi docs directly before we design
   against them.
 - **The Frontline→LiftEd goals claim is the load-bearing one in this document**
-  and rests on two independent CentralReach-authored sources (their blog and
-  their release notes) rather than a direct read of the LiftEd help article.
+  and rests on two **separate but both CentralReach-authored** sources (their
+  blog and their release notes) rather than a direct read of the LiftEd help
+  article. Two documents from the same company are not independent
+  corroboration.
   Confirm it before we build a strategy on it. And note: what that feed carries
   for *them* is not a commitment of what it would carry for us.
 - **The Stepwell↔PowerSchool integration is unverified** — it surfaced in a

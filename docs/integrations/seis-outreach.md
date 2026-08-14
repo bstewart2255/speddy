@@ -157,8 +157,13 @@ we've asked.**
   (`docs/ndpa/jsusd-dpa-fix-sheet.md`). The draft email hedges this — replace
   the bracket with whatever is true on the day it's sent. Do not claim a signed
   agreement that isn't signed.
+- **Pilot still active.** The draft says we're "currently in a pilot with John
+  Swett Unified." Confirm that's still true on the day it's sent — a stale pilot
+  claim is worse than no pilot claim, and it's the sentence the whole
+  member-agency framing rests on.
 - **District consent to be named.** Confirm John Swett is comfortable being
-  referenced by name before sending, and before offering them for a call.
+  referenced by name and approves the exact wording, before sending and before
+  offering them for a call.
 - **Re-read `docs/integrations/seis.md`** for the current state of the three
   manual uploads — the specific reports named in the email should still match
   what `lib/import/detect-import-file.ts` recognises.
