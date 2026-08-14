@@ -52,11 +52,22 @@ export const BODY_LIMITS = {
    */
   iepGoalsImport: 12 * MB,
   /**
-   * Attached documents (IEP PDFs, reports, scans). No per-file check exists on
-   * these routes today, and scanned documents get large, so this is set purely
-   * as a memory backstop rather than as a limit anyone should reach.
+   * Attached documents (IEP PDFs, reports, scans). validateDocumentFile already
+   * rejects files over MAX_FILE_SIZE (25 MB) — but only once the body is
+   * buffered — so the ceiling clears that with room for multipart framing.
    */
-  document: 50 * MB,
+  document: 28 * MB,
+  /**
+   * The document routes' JSON branch, which records a link or pasted text
+   * rather than a file. Generous for that: 2 MB of text is on the order of a
+   * thousand pages.
+   */
+  documentMetadata: 2 * MB,
+  /**
+   * Accommodations extraction: the route already rejects PDFs over 4 MB, so the
+   * ceiling clears that plus multipart framing.
+   */
+  extractAccommodations: 6 * MB,
 } as const;
 
 /**

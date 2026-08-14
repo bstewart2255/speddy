@@ -459,8 +459,11 @@ export const POST = withRoute({ auth: false, aiGated: true }, async ({ req: requ
 
   } catch (error: any) {
     // The body outran the ceiling mid-read (SPE-505). Reported as 413 rather
-    // than falling through to the generic 500, and not retryable — resending
-    // the same oversized body will fail identically.
+    // than falling through to the generic 500. `retryable: false` is accurate —
+    // resending the same oversized body fails identically — but note the
+    // uploader's fetchWithRetry does not read it and retries 4xx anyway; that
+    // is pre-existing (it does the same with the 400 from the 10 MB check) and
+    // tracked separately.
     if (error instanceof BodyTooLargeError) {
       return NextResponse.json(
         {

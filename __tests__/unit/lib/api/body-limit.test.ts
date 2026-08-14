@@ -214,7 +214,17 @@ describe('BODY_LIMITS stay looser than the per-file rules they sit behind', () =
     expect(BODY_LIMITS.iepGoalsImport).toBeGreaterThan(TEN_MB);
   });
 
-  it('leaves documents room well past a large scan', () => {
-    expect(BODY_LIMITS.document).toBeGreaterThanOrEqual(50 * 1024 * 1024);
+  it('clears the 25 MB rule validateDocumentFile enforces', () => {
+    expect(BODY_LIMITS.document).toBeGreaterThan(25 * 1024 * 1024);
+  });
+
+  it('clears the 4 MB PDF rule on accommodations extraction', () => {
+    expect(BODY_LIMITS.extractAccommodations).toBeGreaterThan(4 * 1024 * 1024);
+  });
+
+  it('keeps the document metadata branch well under the file ceiling', () => {
+    // The JSON branch carries a link or pasted text, never a file — it has no
+    // reason to inherit the file ceiling.
+    expect(BODY_LIMITS.documentMetadata).toBeLessThan(BODY_LIMITS.document);
   });
 });

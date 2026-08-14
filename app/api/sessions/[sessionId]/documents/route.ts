@@ -259,9 +259,8 @@ export const POST = withRoute<{ sessionId: string }>({}, async ({ req: request, 
 
     if (isFormData) {
       // Handle file upload
-      // Capped read (SPE-505). This route had no size check at all; the ceiling
-      // is a memory backstop set well above any realistic document, not a limit
-      // anyone should reach.
+      // Capped read (SPE-505): validateDocumentFile enforces the real 25 MB
+      // rule below, but only once the whole body is already in memory.
       const formData = await readCappedFormData(request, BODY_LIMITS.document);
       const file = formData.get('file') as File | null;
       title = formData.get('title') as string | null;
@@ -344,7 +343,8 @@ export const POST = withRoute<{ sessionId: string }>({}, async ({ req: request, 
       });
     } else {
       // Handle JSON request (links)
-      const body = await readCappedJson<any>(request, BODY_LIMITS.document);
+      // Link/pasted-text branch — no file, so it gets the metadata ceiling.
+      const body = await readCappedJson<any>(request, BODY_LIMITS.documentMetadata);
       title = body.title;
       document_type = body.document_type;
       content = body.content;
