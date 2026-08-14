@@ -84,10 +84,26 @@ export default function SchedulePage() {
   // the "don't pull during PE" need lives (JSUSD). The blocks themselves are
   // respected at any school level.
   const [blockedTimeModalOpen, setBlockedTimeModalOpen] = useState(false);
+
+  // Deleting a block leaves any 'sits on protected/mainstreaming time' flag
+  // it earned at creation; the full-validation reconcile (SPE-288) is the
+  // safe way to clear the caller's now-stale flags — it re-checks EVERY rule,
+  // so a flag with any other live cause survives. Other providers' flags
+  // self-heal the same way on their next schedule view (Codex, PR #864).
+  const reconcileAfterBlockDelete = useCallback(async () => {
+    if (!currentUserId) return;
+    try {
+      await sessionUpdateService.reconcileStaleConflictsForProvider(currentUserId);
+    } catch (err) {
+      console.error('[schedule] post-delete reconcile failed:', err);
+    }
+  }, [currentUserId]);
+
   const handleBlockedTimeDelete = useCallback(
     async (blockId: string) => {
       try {
         await deleteStudentBlockedTime(blockId);
+        await reconcileAfterBlockDelete();
         showToast('Protected time removed', 'success');
         refreshData();
       } catch (err) {
@@ -97,12 +113,13 @@ export default function SchedulePage() {
         );
       }
     },
-    [showToast, refreshData]
+    [showToast, refreshData, reconcileAfterBlockDelete]
   );
   const handleMainstreamingBlockDelete = useCallback(
     async (blockId: string) => {
       try {
         await deleteMainstreamingBlock(blockId);
+        await reconcileAfterBlockDelete();
         showToast('Mainstreaming block removed', 'success');
         refreshData();
       } catch (err) {
@@ -112,7 +129,7 @@ export default function SchedulePage() {
         );
       }
     },
-    [showToast, refreshData]
+    [showToast, refreshData, reconcileAfterBlockDelete]
   );
 
   // Groups v2 (Phase 3): a click on a group plate or member pill opens the group
