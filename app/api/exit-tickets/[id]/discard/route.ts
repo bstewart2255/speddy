@@ -13,8 +13,18 @@ export const PATCH = withRoute<{ id: string }>({}, async ({ params }) => {
     .eq('id', ticketId)
     .single();
 
-  if (fetchError || !existingTicket) {
+  // `.single()` reports "no rows" as PGRST116, so a bare `if (fetchError)` would
+  // turn a legitimate 404 into a 500. Split the two: a real read failure is ours
+  // (500), an absent row is the caller's (404).
+  if (fetchError && fetchError.code !== 'PGRST116') {
     console.error('Error fetching exit ticket:', fetchError);
+    return NextResponse.json(
+      { error: 'Failed to fetch exit ticket', details: fetchError.message },
+      { status: 500 }
+    );
+  }
+
+  if (!existingTicket) {
     return NextResponse.json({ error: 'Exit ticket not found' }, { status: 404 });
   }
 

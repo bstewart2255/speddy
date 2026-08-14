@@ -20,7 +20,7 @@
  *
  * Usage: npm run sim:verify-rls
  */
-import { assertProjectRef, requireEnv } from './lib';
+import { assertProjectRef, noRedirectFetch, requireEnv } from './lib';
 import { DISTRICT, MAPLE, PERSONAS, derivePassword, simEmail } from './manifest';
 
 const url = requireEnv('NEXT_PUBLIC_SUPABASE_URL');
@@ -261,7 +261,10 @@ async function main(): Promise<void> {
   // so an invented id silently lands NULL and a NULL district matches nothing,
   // which would make this negative pass no matter what the policy said.
   const FOREIGN_DISTRICT = '0618990'; // John Swett Unified
-  const foreign = await fetch(
+  // Service-role on both headers, so this one refuses redirects (SPE-366) —
+  // unlike the anon-key + user-token reads above, which carry nothing secret
+  // that survives a cross-origin hop.
+  const foreign = await noRedirectFetch(
     `${url}/rest/v1/profiles?district_id=eq.${FOREIGN_DISTRICT}&select=id&limit=1`,
     { headers: { apikey: service, Authorization: `Bearer ${service}` } },
   );

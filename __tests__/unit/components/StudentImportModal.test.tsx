@@ -13,6 +13,25 @@ jest.mock('@/lib/import/detect-import-file', () => {
 
 const detectMock = () => detectModule.detectImportFile as jest.Mock;
 
+/**
+ * Wait for in-flight file detection to settle (SPE-354).
+ *
+ * `addFiles` reads each file's header before it renders a chip, and the
+ * change/drop handlers don't hand that promise back — so assertions used to race
+ * `findBy*`'s 1s default timeout, which expired under parallel-suite load and
+ * made this file flake. Awaiting the detection promises the action actually
+ * kicked off (plus one macrotask tick, to drain the `Promise.all` -> `setEntries`
+ * continuation behind them) settles the UI on the work itself rather than on the
+ * clock. Only for cases driving real detection: a test holding a detection
+ * pending on purpose must not await it.
+ */
+const settleDetection = async () => {
+  await act(async () => {
+    await Promise.allSettled(detectMock().mock.results.map((r) => r.value));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+};
+
 // SPE-231: the unified drop zone detects each dropped file's type client-side,
 // routes it to the right /api/import-students form key, and never nags about
 // missing files (additive framing, no Required/Optional tags).
@@ -92,9 +111,10 @@ describe('StudentImportModal (SPE-231)', () => {
       target: { files: [makeFile(`${DELIVERIES_HEADER}\n"A, B",1,330`, 'deliveries.csv')] },
     });
 
-    expect(await screen.findByText('deliveries.csv')).toBeInTheDocument();
+    await settleDetection();
+    expect(screen.getByText('deliveries.csv')).toBeInTheDocument();
     expect(screen.getByText(/Fills in schedules/i)).toBeInTheDocument();
-    await waitFor(() => expect(screen.getByRole('button', { name: /Import 1 file/i })).toBeEnabled());
+    expect(screen.getByRole('button', { name: /Import 1 file/i })).toBeEnabled();
   });
 
   it('detects a SEIS student/goals CSV as students & goals', async () => {
@@ -103,7 +123,8 @@ describe('StudentImportModal (SPE-231)', () => {
       target: { files: [makeFile(`${SEIS_HEADER}\n1,2,Doe,Jane,,3,Mt Diablo`, 'goals.csv')] },
     });
 
-    expect(await screen.findByText('goals.csv')).toBeInTheDocument();
+    await settleDetection();
+    expect(screen.getByText('goals.csv')).toBeInTheDocument();
     expect(screen.getByText(/Fills in students & goals/i)).toBeInTheDocument();
   });
 
@@ -113,9 +134,10 @@ describe('StudentImportModal (SPE-231)', () => {
       target: { files: [makeFile(`${ROSTER_HEADER}\nJD,3,Smith`, 'roster.csv')] },
     });
 
-    expect(await screen.findByText('roster.csv')).toBeInTheDocument();
+    await settleDetection();
+    expect(screen.getByText('roster.csv')).toBeInTheDocument();
     expect(screen.getByText(/Fills in student list/i)).toBeInTheDocument();
-    await waitFor(() => expect(screen.getByRole('button', { name: /Import 1 file/i })).toBeEnabled());
+    expect(screen.getByRole('button', { name: /Import 1 file/i })).toBeEnabled();
   });
 
   it('rejects an unsupported file with an actionable error and keeps Import disabled', async () => {
@@ -124,7 +146,8 @@ describe('StudentImportModal (SPE-231)', () => {
       target: { files: [makeFile('whatever', 'ParentLetter.docx', 'application/octet-stream')] },
     });
 
-    expect(await screen.findByText('ParentLetter.docx')).toBeInTheDocument();
+    await settleDetection();
+    expect(screen.getByText('ParentLetter.docx')).toBeInTheDocument();
     expect(screen.getByText(/Accepted: \.xlsx, \.xls, \.csv, \.txt/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^Import$/ })).toBeDisabled();
   });
@@ -134,10 +157,12 @@ describe('StudentImportModal (SPE-231)', () => {
     const input = fileInput();
 
     fireEvent.change(input, { target: { files: [makeFile(DELIVERIES_HEADER, 'first.csv')] } });
-    expect(await screen.findByText('first.csv')).toBeInTheDocument();
+    await settleDetection();
+    expect(screen.getByText('first.csv')).toBeInTheDocument();
 
     fireEvent.change(input, { target: { files: [makeFile(DELIVERIES_HEADER, 'second.csv')] } });
-    expect(await screen.findByText('second.csv')).toBeInTheDocument();
+    await settleDetection();
+    expect(screen.getByText('second.csv')).toBeInTheDocument();
     expect(screen.queryByText('first.csv')).not.toBeInTheDocument();
     expect(screen.getByText(/replaced first\.csv/i)).toBeInTheDocument();
   });
@@ -179,11 +204,12 @@ describe('StudentImportModal (SPE-231)', () => {
       target: { files: [makeFile('x', 'bad.csv'), makeFile(DELIVERIES_HEADER, 'good.csv')] },
     });
 
-    expect(await screen.findByText('good.csv')).toBeInTheDocument();
+    await settleDetection();
+    expect(screen.getByText('good.csv')).toBeInTheDocument();
     expect(screen.getByText('bad.csv')).toBeInTheDocument();
     expect(screen.getByText(/Could not read this file/i)).toBeInTheDocument();
     // The readable file is still importable.
-    await waitFor(() => expect(screen.getByRole('button', { name: /Import 1 file/i })).toBeEnabled());
+    expect(screen.getByRole('button', { name: /Import 1 file/i })).toBeEnabled();
   });
 
   it('discards a detection result when the modal is reset mid-detection', async () => {
@@ -222,7 +248,8 @@ describe('StudentImportModal (SPE-231)', () => {
     fireEvent.change(fileInput(), {
       target: { files: [makeFile(DELIVERIES_HEADER, 'deliveries.csv')] },
     });
-    await screen.findByText('deliveries.csv');
+    await settleDetection();
+    expect(screen.getByText('deliveries.csv')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /Import 1 file/i }));
 
