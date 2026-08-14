@@ -206,10 +206,17 @@ flowchart TD
 
 ### `SECURITY DEFINER` RPCs — the layer that opts *out* of RLS (SPE-511)
 
-A `SECURITY DEFINER` function runs as its owner, so **RLS does not apply to
-anything it does**. Layer 3 above is not protecting these. Whatever check the
-function body performs *is* the entire authorization, and most of them are
-granted `EXECUTE` to `authenticated` — i.e. to every signed-in user.
+A `SECURITY DEFINER` function runs as its **owner**, not its caller. Whether that
+bypasses RLS depends on the owner: a role is exempt from a table's policies if it
+owns the table and the table is not `FORCE ROW LEVEL SECURITY`, or if it is a
+superuser / has `BYPASSRLS`. Here it does bypass — ours are owned by `postgres`,
+which also owns the domain tables, and none of them sets `FORCE ROW LEVEL
+SECURITY` (`relforcerowsecurity = false`).
+
+So for our functions, **RLS does not apply to anything they do**. Layer 3 above is
+not protecting these. Whatever check the function body performs *is* the entire
+authorization, and most of them are granted `EXECUTE` to `authenticated` — i.e.
+to every signed-in user.
 
 That makes two rules non-negotiable for this class of function:
 
