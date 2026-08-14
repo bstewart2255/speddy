@@ -99,6 +99,7 @@ function schedulerWith(
     bellSchedulesByGrade: new Map(),
     specialActivitiesByTeacher: activitiesByKey,
     mainstreamingByStudent: new Map(),
+    blockedTimesByStudent: new Map(),
     cacheMetadata: { lastFetched: new Date(), isStale: false, fetchErrors: [], queryCount: 0 },
   };
   return scheduler;
