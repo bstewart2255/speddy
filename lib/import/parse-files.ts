@@ -26,7 +26,7 @@ export interface ImportForm {
 
 /** Read the multipart form into typed files + school context. */
 export async function readImportForm(request: Request): Promise<ImportForm> {
-  const formData = await request.formData();
+  const formData = await readBoundedFormData(request);
   return {
     studentsFile: formData.get('studentsFile') as File | null,
     deliveriesFile: formData.get('deliveriesFile') as File | null,
@@ -51,11 +51,88 @@ export const MAX_UPLOAD_FILE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
  *  cap, plus ~1 MB for multipart framing. */
 export const MAX_TOTAL_UPLOAD_BYTES = MAX_UPLOAD_FILE_BYTES * 4 + 1024 * 1024;
 
-/** True when the request's Content-Length exceeds the total-body ceiling. */
+/**
+ * True when the request's Content-Length *declares* a body over the ceiling.
+ *
+ * This is only a cheap fast path — it rejects an honest oversized upload
+ * without reading a byte. It is deliberately NOT the enforcement point: a
+ * client that omits Content-Length, uses chunked transfer-encoding, or simply
+ * understates the length sails straight through it. The real cap is applied by
+ * readImportForm(), which counts the bytes it actually reads (SPE-443).
+ */
 export function exceedsTotalUploadSize(request: Request): boolean {
   const raw = request.headers?.get?.('content-length');
   const len = raw == null ? NaN : Number(raw);
   return Number.isFinite(len) && len > MAX_TOTAL_UPLOAD_BYTES;
+}
+
+/** Thrown by readImportForm when the body read passes MAX_TOTAL_UPLOAD_BYTES. */
+export class UploadTooLargeError extends Error {
+  constructor(message = 'Upload exceeds the total size ceiling') {
+    super(message);
+    this.name = 'UploadTooLargeError';
+  }
+}
+
+/**
+ * Buffer the request body, aborting the moment it passes the total ceiling
+ * (SPE-443).
+ *
+ * The Content-Length check above can only act on what the client claims. This
+ * counts what the client actually sends, so an unbounded body cannot be
+ * buffered into memory by formData() no matter what the headers say. At most
+ * one chunk beyond the ceiling is ever held before the read is abandoned.
+ *
+ * Returns null when the request exposes no readable body — there is then
+ * nothing to buffer and so nothing to cap, and the caller reads the form
+ * directly.
+ */
+async function readBodyWithinLimit(request: Request): Promise<Uint8Array | null> {
+  const body = request.body;
+  if (!body || typeof body.getReader !== 'function') return null;
+
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      total += value.byteLength;
+      if (total > MAX_TOTAL_UPLOAD_BYTES) throw new UploadTooLargeError();
+      chunks.push(value);
+    }
+  } finally {
+    // Release the stream so an abandoned read doesn't hold the connection.
+    await reader.cancel().catch(() => {});
+  }
+
+  const buffer = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    buffer.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return buffer;
+}
+
+/** Parse the multipart form from a body read under the size ceiling. */
+async function readBoundedFormData(request: Request): Promise<FormData> {
+  const body = await readBodyWithinLimit(request);
+  if (body === null) return request.formData();
+
+  // Re-wrap the bytes actually read, so formData() parses those rather than the
+  // now-consumed original stream. Only content-type carries over: it holds the
+  // multipart boundary, whereas the original content-length may disagree with
+  // what was really sent — which is the whole point of SPE-443.
+  const contentType = request.headers?.get?.('content-type') ?? null;
+  const bounded = new Request(request.url, {
+    method: 'POST',
+    ...(contentType ? { headers: { 'content-type': contentType } } : {}),
+    body,
+  });
+  return bounded.formData();
 }
 
 /** The first present file over the per-file cap, or null if all are within it. */

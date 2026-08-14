@@ -19,6 +19,15 @@ on:
   schedule:
     - cron: '28 4 * * 1'
 
+# Auto-cancel superseded PR runs (SPE-405). Only pull_request runs share a
+# group; push-to-main and the weekly scheduled scan key on the unique run id,
+# so each sits in a group of one. That matters here specifically: schedule and
+# push both resolve `github.ref` to refs/heads/main, so a ref-based group would
+# make them contend — and main keeps a complete per-commit record either way.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
