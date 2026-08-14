@@ -494,6 +494,7 @@ async function main() {
   // sessions below (group_ref is ON DELETE RESTRICT). The SEA-run cluster is
   // delegated whole-group to Leah (assigned_to_sea_id).
   const rachelId = userIds.get('rachel')!;
+  const tomasId = userIds.get('tomas')!;
   counts['session_groups'] = await bulkInsert(admin, 'session_groups', SESSION_GROUPS.map(g => ({
     id: g.recordId,
     provider_id: rachelId,
@@ -515,6 +516,11 @@ async function main() {
       // are all delivered by the SEA (Leah). Groups v2 delegation (the SEA-run
       // cluster) is driven per-session by the assignment lookup below instead.
       const isDelegated = isRachel && i === EDGE.seaDelegatedIndex;
+      // The specialist mirror of the above (SPE-456): this student's sessions
+      // are delivered by Tomás, who does NOT have them on his caseload. Groups
+      // are never specialist-delegated, so this only applies to non-grouped
+      // slots, exactly like the SEA case.
+      const isSpecialistDelegated = isRachel && i === EDGE.specialistDelegatedIndex;
       for (let k = 0; k < mix.sessionsPerWeek; k++) {
         const templateId = sessionTemplateId(sid, k);
         // Groups v2 (SPE-315): if this (student, k) session belongs to a seeded
@@ -524,6 +530,7 @@ async function main() {
         const assignment = isRachel ? groupAssignmentFor(i, k) : undefined;
         const group = assignment ? simGroup(assignment.groupKey) : undefined;
         const delegated = group ? group.deliveredBy === 'sea' : isDelegated;
+        const toSpecialist = !group && isSpecialistDelegated;
         const dayOfWeek = assignment ? assignment.day : ((i + k * 2) % 5) + 1;
         const start = assignment ? assignment.start : SESSION_SLOTS[(i + k) % SESSION_SLOTS.length];
         const end = minutesAfter(start, mix.minutes);
@@ -535,8 +542,12 @@ async function main() {
           start_time: start,
           end_time: end,
           status: 'active',
-          delivered_by: delegated ? 'sea' : 'provider',
+          // The DB's delivered_by/assignee integrity check is strict: 'sea'
+          // needs assigned_to_sea_id and a NULL specialist, 'specialist' the
+          // reverse, 'provider' both NULL. Keep these three in lockstep.
+          delivered_by: delegated ? 'sea' : toSpecialist ? 'specialist' : 'provider',
           assigned_to_sea_id: delegated ? leahId : null,
+          assigned_to_specialist_id: toSpecialist ? tomasId : null,
           group_id: group ? group.legacyId : null,
           group_name: group ? group.name : null,
           group_color: group ? group.color : null,

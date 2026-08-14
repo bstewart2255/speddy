@@ -48,6 +48,9 @@
     "sim:verify-provider-schools-rls": "tsx scripts/sim-district/verify-provider-schools-rls.ts",
     "sim:verify-sis-rls": "tsx scripts/sim-district/verify-sis-connections-rls.ts",
     "sim:verify-sis-lifecycle": "tsx scripts/sim-district/verify-sis-lifecycle.ts",
+    "sim:verify-assistant-delegated-rls": "tsx scripts/sim-district/verify-assistant-delegated-rls.ts",
+    "sim:verify-import-rpc": "tsx scripts/sim-district/verify-import-rpc.ts",
+    "sim:verify-scheduling-rpc": "tsx scripts/sim-district/verify-scheduling-rpc.ts",
     "sis:explore": "tsx --conditions=react-server scripts/sis-explore/run.ts"
   },
   "dependencies": {
