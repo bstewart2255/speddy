@@ -116,10 +116,12 @@ async function main(): Promise<void> {
     check((hannahSees?.length ?? 0) === 1, 'Hannah (same school) sees the block — cross-provider warning works',
       `rows=${hannahSees?.length ?? 0}`);
 
-    const { data: junSees } = await jun.client
+    // Capture the error: an errored read yields undefined data, which would
+    // read as 0 rows and fake a pass without the probe ever running.
+    const { data: junSees, error: junReadError } = await jun.client
       .from('student_blocked_times').select('id').eq('id', createdId!);
-    check((junSees?.length ?? 0) === 0, 'Jun (different schools) sees nothing',
-      `rows=${junSees?.length ?? 0}`);
+    check(!junReadError && (junSees?.length ?? 0) === 0, 'Jun (different schools) sees nothing',
+      junReadError ? `error=${junReadError.code}` : `rows=${junSees?.length ?? 0}`);
   }
 
   console.log('same-school reader cannot write someone else\'s block:');

@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client';
 import { Database } from '../../../src/types/database';
 import { ConflictResolver } from '../../../lib/scheduling/conflict-resolver';
 import { useSchool } from '../../components/providers/school-context';
+import { getSecondaryGradeRange } from '../../../lib/school-helpers';
 import { generateActivityTimeOptions } from '../../../lib/utils/time-options';
 import {
   BELL_SCHEDULE_ACTIVITIES,
@@ -58,6 +59,14 @@ export default function AddBellScheduleForm({
     ? SECONDARY_BELL_SCHEDULE_ACTIVITIES
     : BELL_SCHEDULE_ACTIVITIES;
 
+  // A secondary period grid is school-wide: ONE row per day covering the
+  // whole grade span, in BOTH entry modes. Without this the site-admin path
+  // (multiSelectGrades, whose picker is TK-5) could not save secondary
+  // grades at all (CodeRabbit, PR #864).
+  const secondarySpanGrades = isSecondary
+    ? getSecondaryGradeRange(currentSchool)
+    : null;
+
   const daysOfWeek = [
     { id: 1, name: 'Monday', shortName: 'Mon' },
     { id: 2, name: 'Tuesday', shortName: 'Tue' },
@@ -82,8 +91,11 @@ export default function AddBellScheduleForm({
     );
   };
 
-  // Get effective grades to use (multi-select or single from prop)
-  const effectiveGrades = multiSelectGrades ? selectedGrades : (gradeLevel ? [gradeLevel] : []);
+  // Get effective grades to use: the school-wide span at secondary,
+  // otherwise multi-select or the single prop.
+  const effectiveGrades = secondarySpanGrades
+    ? [secondarySpanGrades.join(',')]
+    : multiSelectGrades ? selectedGrades : (gradeLevel ? [gradeLevel] : []);
   const totalSchedules = effectiveGrades.length * selectedDays.length;
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -243,8 +255,16 @@ export default function AddBellScheduleForm({
         </div>
       )}
 
+      {/* Secondary: the grid is school-wide, so no grade picking (the
+          provider page shows its own copy of this note above the form). */}
+      {multiSelectGrades && isSecondary && secondarySpanGrades && (
+        <p className="text-sm text-gray-600">
+          Applies to all grades ({secondarySpanGrades[0]}–{secondarySpanGrades[secondarySpanGrades.length - 1]}) — the period grid is school-wide.
+        </p>
+      )}
+
       {/* Grade Level Multi-Select (site admin feature) */}
-      {multiSelectGrades && (
+      {multiSelectGrades && !isSecondary && (
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
             Select Grade Levels
@@ -389,7 +409,7 @@ export default function AddBellScheduleForm({
           {submitting
             ? `Adding ${totalSchedules} ${totalSchedules === 1 ? 'Time Block' : 'Time Blocks'}...`
             : totalSchedules === 0
-            ? (multiSelectGrades ? 'Select Grades & Days' : 'Select Days')
+            ? (multiSelectGrades && !isSecondary ? 'Select Grades & Days' : 'Select Days')
             : `Add ${totalSchedules} ${totalSchedules === 1 ? 'Time Block' : 'Time Blocks'}`
           }
         </button>
