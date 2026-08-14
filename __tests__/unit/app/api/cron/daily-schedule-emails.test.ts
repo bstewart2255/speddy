@@ -37,10 +37,16 @@ jest.mock('@/lib/supabase/server', () => ({
 }));
 
 // --- Mock SessionGenerator ---
+// Both methods are stubbed so the cron's CHOICE between them is observable
+// (SPE-271). The cron must keep using the unscoped one: it has no current
+// school, and a provider who works across several schools needs their whole day
+// in one email, so scoping here would silently drop every school but one.
 const mockGetSessions = jest.fn();
+const mockGetSchoolScopedSessions = jest.fn();
 jest.mock('@/lib/services/session-generator', () => ({
   SessionGenerator: jest.fn().mockImplementation(() => ({
     getSessionsForDateRange: mockGetSessions,
+    getSchoolScopedSessionsForDateRange: mockGetSchoolScopedSessions,
   })),
 }));
 
@@ -89,6 +95,7 @@ describe('/api/cron/daily-schedule-emails', () => {
     mockGetSessions.mockReset().mockImplementation((userId: string) =>
       Promise.resolve([aSession({ provider_id: userId })])
     );
+    mockGetSchoolScopedSessions.mockReset();
     mockSend.mockReset().mockResolvedValue({ data: { id: 'email_1' }, error: null });
     mockCapture.mockReset();
     process.env.CRON_SECRET = 'test-secret';
@@ -192,6 +199,25 @@ describe('/api/cron/daily-schedule-emails', () => {
     expect(res.status).toBe(200);
     expect(body).toMatchObject({ sent: 0, failed: 1 });
     expect(mockCapture).toHaveBeenCalledTimes(1);
+  });
+
+  it('asks for UNSCOPED sessions — a school-scoped cron would drop schools (SPE-271)', async () => {
+    // The cron has no "current school" and must not acquire one: a provider who
+    // works across several schools needs their whole day in one email, so
+    // scoping would silently omit every school but one. SPE-271 moved every
+    // schedule-rendering caller onto getSchoolScopedSessionsForDateRange; this
+    // pins that the cron was deliberately left behind, and would fail if a
+    // later "finish the refactor" pass switched it over.
+    recipientsResult = {
+      data: [{ id: 'prov-1', email: 'p@example.com', role: 'resource', works_at_multiple_schools: true }],
+      error: null,
+    };
+
+    const res = await GET(makeRequest({ 'x-cron-secret': 'test-secret' }));
+
+    expect(res.status).toBe(200);
+    expect(mockGetSessions).toHaveBeenCalled();
+    expect(mockGetSchoolScopedSessions).not.toHaveBeenCalled();
   });
 
   it('excludes a provider’s delegated-out sessions (skips when only delegated)', async () => {

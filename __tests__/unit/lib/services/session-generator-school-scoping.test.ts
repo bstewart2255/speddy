@@ -10,11 +10,12 @@
  *     and SPE-270 is reintroduced silently, since callers no longer filter);
  *   - it keeps the fail-closed behaviour of SPE-141 — a school lookup that
  *     errors yields [] rather than everything;
- *   - the UNSCOPED method still returns unscoped rows, because the
- *     daily-schedule-email cron depends on that and a "tidy-up" that makes
- *     scoping unconditional would quietly drop every school but one from those
- *     emails;
  *   - no school context is a pass-through, matching filterSessionsBySchool.
+ *
+ * The matching guard for the cron — that it keeps asking for UNSCOPED sessions —
+ * lives in the cron's own test file, where the choice between the two methods is
+ * actually observable. Asserting it here would only have re-checked this file's
+ * own mock.
  */
 import { SessionGenerator } from '@/lib/services/session-generator';
 
@@ -109,25 +110,6 @@ describe('SessionGenerator school scoping (SPE-271)', () => {
       END,
       'resource',
       null
-    );
-
-    expect(result.map((s: any) => s.id)).toEqual(['s1', 's2']);
-  });
-
-  it('leaves the unscoped method unscoped — the cron depends on it', async () => {
-    // daily-schedule-emails calls getSessionsForDateRange deliberately: a cron
-    // has no current school, and a provider working across several schools must
-    // get their whole day in one email. If someone "finishes" this refactor by
-    // making scoping unconditional, this fails.
-    const generator = makeGenerator(
-      makeSupabase({ data: [{ id: 'student-in-school' }], error: null })
-    );
-
-    const result = await generator.getSessionsForDateRange(
-      'provider-1',
-      START,
-      END,
-      'resource'
     );
 
     expect(result.map((s: any) => s.id)).toEqual(['s1', 's2']);

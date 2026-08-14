@@ -365,11 +365,20 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
         // This includes role-based filtering for assigned sessions (specialist/SEA)
         //
         // School scoping is passed in rather than applied afterward (SPE-271).
-        // The condition is preserved exactly as it was: a provider at a single
-        // school has every session at that school, so the filter is a no-op
-        // there — and skipping it avoids both a school-membership round-trip
-        // per load and the fail-closed empty schedule (SPE-141) that a
-        // transient lookup error would otherwise cause for them.
+        // The condition is carried over verbatim so this refactor changes no
+        // behaviour, but it is worth being honest about what it does:
+        //
+        //   - single-school provider: skipping is right. Every session is at
+        //     that school, so the filter is a no-op, and skipping it avoids
+        //     both a membership round-trip per load and the fail-closed empty
+        //     schedule (SPE-141) a transient lookup error would hand them.
+        //   - multi-school provider on rows with a NULL school_id (not yet
+        //     migrated): skipping is NOT right — filterSessionsBySchool can
+        //     scope those by site+district, but this condition never lets it
+        //     try, so the week view shows every school. Pre-existing, same
+        //     family as SPE-270, tracked in SPE-510. Left alone here because
+        //     fixing it changes what those users see, which this refactor
+        //     promised not to do.
         const scopeToSchool =
           currentSchool && worksAtMultipleSchools && currentSchool.school_id
             ? currentSchool
