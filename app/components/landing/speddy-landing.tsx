@@ -216,9 +216,9 @@ function resolve(sel: Sel): Resolved {
         status: 'live',
         graphic: 'progress',
         benefit:
-          'Exit tickets and progress checks turn into per-goal trend dashboards — evidence collected as you work, not reconstructed before a meeting.',
+          'Progress logged against each IEP goal as you work — per-goal averages and a running timeline, not a reconstruction before a meeting.',
         points: [
-          'Exit tickets roll up into per-goal trends',
+          'Quick per-goal progress entries roll up into trends',
           'Evidence gathered as you teach, not the night before',
           'Walk into every meeting with the data ready',
         ],

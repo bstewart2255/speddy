@@ -1,17 +1,14 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { flushSync } from "react-dom";
 import { createClient } from '@/lib/supabase/client';
 import type { Database } from "@/src/types";
-import type { LessonContent } from "@/lib/types/lesson";
 import { SessionGenerator } from '@/lib/services/session-generator';
 import { SessionDetailsModal } from "../modals/session-details-modal";
 import { useToast } from "../../contexts/toast-context";
 import { sessionUpdateService } from '@/lib/services/session-update-service';
 import { cn } from '@/src/utils/cn';
-import { toLocalDateKey, formatTimeSlot, calculateDurationFromTimeSlot } from '@/lib/utils/date-time';
-import { parseGradeLevel } from '@/lib/utils/grade-parser';
+import { toLocalDateKey } from '@/lib/utils/date-time';
 import { useSchool } from '../providers/school-context';
 import { isScheduledSession } from '@/lib/utils/session-helpers';
 import { Printer, FileText, Paperclip } from "lucide-react";
