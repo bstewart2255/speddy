@@ -36,8 +36,14 @@ export function requireEnv(name: string): string {
  * about `apikey`, so a redirect off our origin would forward the service-role
  * key to wherever it points. `redirect: 'error'` rejects instead of following,
  * so there is no header-stripping behaviour to reason about at all.
+ *
+ * Exported because `createAdmin()` is not the only place the service-role key
+ * goes on the wire — the verify scripts make raw PostgREST calls with it too,
+ * and each of those needs the same refusal. Requests carrying only the anon key
+ * plus a user access token don't: the anon key is publishable, and the token
+ * rides in `Authorization`, which the spec does strip.
  */
-const noRedirectFetch: typeof fetch = (input, init) =>
+export const noRedirectFetch: typeof fetch = (input, init) =>
   fetch(input, { ...init, redirect: 'error' });
 
 /** Service-role client for the pinned project. Runs the host pin first, always. */
