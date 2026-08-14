@@ -335,9 +335,11 @@ export async function getStudentProgressData(
 
   const fetchPerf = measurePerformanceWithAlerts('fetch_student_progress_data', 'database');
 
-  // Calculate 30 days ago for timeline filter
+  // Calculate 30 days ago for the timeline filter. Normalize to local midnight
+  // so a date-only observation_date exactly 30 days old still passes the >=.
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  thirtyDaysAgo.setHours(0, 0, 0, 0);
 
   const manualProgressResult = await safeQuery(
     async () => {

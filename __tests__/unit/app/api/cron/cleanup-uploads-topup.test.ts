@@ -9,9 +9,11 @@
 import { NextRequest } from 'next/server';
 
 const mockRpc = jest.fn();
+const mockAnalyticsLt = jest.fn();
 jest.mock('@/lib/supabase/server', () => ({
   createServiceClient: () => ({
     rpc: mockRpc,
+    from: () => ({ delete: () => ({ lt: mockAnalyticsLt }) }),
   }),
 }));
 
@@ -29,6 +31,8 @@ describe('/api/cron/cleanup-uploads session top-up integration', () => {
 
   beforeEach(() => {
     mockRpc.mockReset();
+    mockAnalyticsLt.mockReset();
+    mockAnalyticsLt.mockResolvedValue({ error: null, count: 7 });
     process.env.CRON_SECRET = 'test-secret';
     delete process.env.CLEANUP_ANALYTICS;
   });
@@ -61,6 +65,35 @@ describe('/api/cron/cleanup-uploads session top-up integration', () => {
         weeksAhead: 12,
       },
     });
+  });
+
+  it('runs the retained analytics sweep when CLEANUP_ANALYTICS is on and reports its count', async () => {
+    process.env.CLEANUP_ANALYTICS = 'true';
+    mockRpc.mockResolvedValue({
+      data: [{ templates_processed: 1, instances_created: 2 }],
+      error: null,
+    });
+
+    const res = await GET(makeRequest());
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(mockAnalyticsLt).toHaveBeenCalledTimes(1);
+    expect(body.analyticsDeleted).toBe(7);
+  });
+
+  it('skips the analytics sweep when CLEANUP_ANALYTICS is off', async () => {
+    mockRpc.mockResolvedValue({
+      data: [{ templates_processed: 1, instances_created: 2 }],
+      error: null,
+    });
+
+    const res = await GET(makeRequest());
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(mockAnalyticsLt).not.toHaveBeenCalled();
+    expect(body.analyticsDeleted).toBeUndefined();
   });
 
   it('fails the run loud (5xx) when the top-up errors', async () => {

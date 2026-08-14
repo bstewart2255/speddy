@@ -1363,7 +1363,7 @@ Two properties worth knowing before relying on it:
 `lib/email/resend.ts`; `vercel.json`;
 `app/api/admin/students/[studentId]/route.ts`;
 `app/api/admin/care-referrals/[referralId]/route.ts`;
-`lib/supabase/audit-log.ts`; `docs/CRON_CLEANUP.md`.
+`lib/supabase/audit-log.ts`.
 
 ---
 
