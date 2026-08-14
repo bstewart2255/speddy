@@ -11,7 +11,6 @@ import { ToastProvider } from "../../../contexts/toast-context";
 import type { Database } from "../../../../src/types/database";
 import { getSchoolSite, getSchoolDistrict } from "@/lib/types/school";
 import { SessionWithCurriculum, SessionGenerator } from "@/lib/services/session-generator";
-import { filterSessionsBySchool } from "@/lib/utils/session-filters";
 
 type ViewType = 'week' | 'month';
 
@@ -185,11 +184,15 @@ export default function CalendarPage() {
 
       // Run sessions, students, calendar events, and holidays queries in parallel
       const [sessionsResult, studentsResult, eventsResult, holidaysResult] = await Promise.all([
-        sessionGenerator
-          .getSessionsForDateRange(user.id, startDate, endDate, profile?.role)
-          // getSessionsForDateRange has no school scoping — filter here or the
-          // calendar views receive cross-school data (SPE-270)
-          .then(result => filterSessionsBySchool(supabase, result, currentSchool)),
+        // School scoping is the method's job now (SPE-271), not something this
+        // page has to remember — forgetting it here is what SPE-270 was.
+        sessionGenerator.getSchoolScopedSessionsForDateRange(
+          user.id,
+          startDate,
+          endDate,
+          profile?.role,
+          currentSchool
+        ),
         fetchStudents(),
         getCalendarEvents(user.id),
         fetchHolidays()

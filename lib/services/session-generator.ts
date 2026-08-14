@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/client';
 import { Database } from '../../src/types/database';
 import { isSpecialistSourceRole } from '@/lib/auth/role-utils';
 import { formatDateLocal } from '@/lib/utils/date-helpers';
+import { filterSessionsBySchool, type SchoolContext } from '@/lib/utils/session-filters';
 
 type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
 type ScheduleSessionInsert = Database['public']['Tables']['schedule_sessions']['Insert'];
@@ -283,6 +284,42 @@ export class SessionGenerator {
     }
 
     return sessions;
+  }
+
+  /**
+   * The same sessions, scoped to one school (SPE-271).
+   *
+   * `getSessionsForDateRange` scopes by provider and role but NOT by school, so
+   * every caller rendering a schedule had to remember to pipe the result
+   * through `filterSessionsBySchool` itself. The Plan page is the one that
+   * forgot, and SPE-270 was the bug: a week view that flashed other schools'
+   * sessions before the school context settled. "Remember to filter" is not a
+   * contract — it is a bug waiting for the next caller.
+   *
+   * So anything rendering a schedule should call THIS, and get scoping by
+   * default. Same filter and the same fail-closed behaviour as before (SPE-141:
+   * a failed school lookup yields `[]` rather than unfiltered rows) — just
+   * moved behind the method instead of repeated at each call site.
+   *
+   * The unscoped method stays public on purpose: the daily-schedule-email cron
+   * has no "current school" and must not have one, since a provider who works
+   * across several schools should get their whole day in one email. That is the
+   * only caller that should be reaching for it.
+   */
+  async getSchoolScopedSessionsForDateRange(
+    providerId: string,
+    startDate: Date,
+    endDate: Date,
+    userRole: string | undefined,
+    currentSchool: SchoolContext | null | undefined
+  ): Promise<SessionWithCurriculum[]> {
+    const sessions = await this.getSessionsForDateRange(
+      providerId,
+      startDate,
+      endDate,
+      userRole
+    );
+    return filterSessionsBySchool(this.supabase, sessions, currentSchool);
   }
 
   /**

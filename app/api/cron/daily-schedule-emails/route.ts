@@ -261,6 +261,11 @@ export async function GET(request: NextRequest) {
         const daySessions = await withTimeout(
           `session generation for ${recipient.id}`,
           PER_RECIPIENT_TIMEOUT_MS,
+          // Deliberately the UNSCOPED method (SPE-271). Everything that renders
+          // a schedule uses getSchoolScopedSessionsForDateRange instead, but a
+          // cron has no "current school" and must not invent one: a provider
+          // who works across several schools needs their whole day in one
+          // email, and scoping here would silently drop every school but one.
           generator.getSessionsForDateRange(recipient.id, date, date, recipient.role)
         );
 
