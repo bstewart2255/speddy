@@ -38,7 +38,6 @@ module.exports = [
       'lib/logger.ts',
       'lib/monitoring/logger.ts',
       'lib/monitoring/sentry-options.ts',
-      'lib/connectivity-utils.ts',
       'lib/utils/performance-monitor.ts',
       'lib/sis/key-boot-check.ts',
       'app/api/cron/**/*.ts',

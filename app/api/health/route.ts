@@ -2,10 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
 /**
- * Health check endpoint for connectivity testing
- * 
- * Provides a simple endpoint to test API connectivity and basic system health.
- * Used by the connectivity testing utilities to diagnose "can't connect to server" issues.
+ * Health check endpoint
+ *
+ * Provides a simple endpoint to test API reachability and basic system health
+ * (e.g. for uptime monitors or manual curl checks).
  */
 export async function GET(request: NextRequest) {
   const startTime = Date.now();

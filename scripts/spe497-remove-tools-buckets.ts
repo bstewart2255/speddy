@@ -34,17 +34,25 @@ async function main() {
   for (const bucket of BUCKETS) {
     const { data: bucketInfo, error: headErr } = await supabase.storage.getBucket(bucket);
     if (headErr) {
-      // Only a confirmed 404 means "already removed" — storage-js exposes the
-      // structured statusCode (as a string). Anything else (network, auth,
-      // 5xx) must abort loudly: this script is the ONLY remaining deletion
-      // path for this data; a silent skip would report success while
-      // student-work objects survive.
-      const statusCode = (headErr as { statusCode?: string | number }).statusCode;
-      if (String(statusCode) === '404') {
-        console.log(`[${bucket}] not found (404) — already removed, skipping`);
+      // Only a confirmed bucket-not-found means "already removed". The pinned
+      // storage-js returns StorageApiError { status: 400, message: 'Bucket not
+      // found' } with NO statusCode field (observed on the 2026-08-15 prod
+      // apply); newer versions expose statusCode '404'. Accept exactly those
+      // two shapes. Anything else (network, auth, 5xx) must abort loudly:
+      // this script is the ONLY remaining deletion path for this data; a
+      // silent skip would report success while student-work objects survive.
+      const { status, statusCode } = headErr as {
+        status?: number;
+        statusCode?: string | number;
+      };
+      const notFound =
+        String(statusCode ?? '') === '404' ||
+        ((status === 400 || status === 404) && headErr.message === 'Bucket not found');
+      if (notFound) {
+        console.log(`[${bucket}] not found — already removed, skipping`);
         continue;
       }
-      throw new Error(`[${bucket}] getBucket failed (status ${statusCode ?? 'unknown'}, NOT treated as removed): ${headErr.message}`);
+      throw new Error(`[${bucket}] getBucket failed (status ${statusCode ?? status ?? 'unknown'}, NOT treated as removed): ${headErr.message}`);
     }
     if (!bucketInfo) {
       throw new Error(`[${bucket}] getBucket returned no bucket and no error — refusing to treat as removed`);
@@ -62,8 +70,22 @@ async function main() {
 
     const { error: emptyErr } = await supabase.storage.emptyBucket(bucket);
     if (emptyErr) throw new Error(`[${bucket}] emptyBucket failed: ${emptyErr.message}`);
-    const { error: delErr } = await supabase.storage.deleteBucket(bucket);
-    if (delErr) throw new Error(`[${bucket}] deleteBucket failed: ${delErr.message}`);
+
+    // emptyBucket resolves before the object removal fully settles server-side,
+    // so an immediate deleteBucket can fail with "not empty" (hit on the
+    // 2026-08-15 prod apply). Retry only that specific failure, briefly.
+    let deleted = false;
+    for (let attempt = 1; attempt <= 5 && !deleted; attempt++) {
+      const { error: delErr } = await supabase.storage.deleteBucket(bucket);
+      if (!delErr) {
+        deleted = true;
+      } else if (/not empty/i.test(delErr.message) && attempt < 5) {
+        console.warn(`[${bucket}] deleteBucket raced the empty (attempt ${attempt}) — retrying in 2s`);
+        await new Promise(r => setTimeout(r, 2000));
+      } else {
+        throw new Error(`[${bucket}] deleteBucket failed: ${delErr.message}`);
+      }
+    }
     console.log(`[${bucket}] emptied and deleted`);
   }
 
