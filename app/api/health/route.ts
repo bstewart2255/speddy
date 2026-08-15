@@ -11,11 +11,12 @@ export async function GET(request: NextRequest) {
   const startTime = Date.now();
   
   try {
-    // Test database connectivity with a lightweight query
+    // Test database connectivity with a lightweight query against a permanent
+    // core table (was `worksheets`, which is slated for removal — SPE-497).
     const supabase = await createClient();
     // Use COUNT instead of selecting actual data for efficiency
     const { count, error } = await supabase
-      .from('worksheets')
+      .from('profiles')
       .select('*', { count: 'exact', head: true })
       .limit(1);
 
@@ -68,7 +69,7 @@ export async function HEAD(request: NextRequest) {
     const supabase = await createClient();
     // Use COUNT for a lightweight check
     const { error } = await supabase
-      .from('worksheets')
+      .from('profiles')
       .select('*', { count: 'exact', head: true })
       .limit(1);
     

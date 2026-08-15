@@ -398,17 +398,17 @@ guarded by `npm run sim:verify-rls` ("district-scoped profile visibility").
 > user, so an "everything except" rule placed after it would wave the role
 > straight into both surfaces (SPE-393).
 
-> **Known gap — SPE-187 (security, Medium):** the AI generation routes
-> (`app/api/lessons/generate`, `lessons/v2`, `exit-tickets/generate`,
-> `progress-check/generate`) are `aiGated` + rate-limited but have
-> **no role check**. Any authenticated user — including `sea` (lesson view-only)
-> and `teacher` — could call them once AI is enabled. Not exploitable today
-> because `AI_FEATURES_ENABLED` is off (routes 404). For a non-lesson role,
-> `isValidTeacherRole` (`lib/lessons/schema.ts:552`,
-> `['resource','ot','speech','counseling']`) silently falls back to `resource`.
+> **Removed — the dark Tools suite (SPE-497, 2026-08):** the AI generation
+> routes this section used to flag (`lessons/generate`, `lessons/v2`,
+> `exit-tickets/generate`, `progress-check/generate`, plus the anonymous
+> `submit-worksheet` endpoint and the QR upload pages) were deleted with the
+> hidden Tools suite, which closed SPE-187's missing-role-check gap by
+> removal. The only `aiGated` routes left are the accommodations PDF import
+> (`students/[studentId]/extract-accommodations`) and the assistant
+> (`assistant/chat`, which its own `ASSISTANT_ENABLED` flag can enable
+> independently).
 
-**Source of truth:** `middleware.ts`; `lib/api/with-route.ts`;
-`lib/lessons/schema.ts`.
+**Source of truth:** `middleware.ts`; `lib/api/with-route.ts`.
 
 ---
 
@@ -1346,7 +1346,7 @@ All cron routes authenticate with a shared `CRON_SECRET` (header
 
 | Job | Schedule (UTC) | What it does |
 |---|---|---|
-| `cleanup-uploads` | `0 8 * * *` (08:00 daily) | Deletes `upload_rate_limits` older than **7 days**; optionally `analytics_events` older than **90 days** when `CLEANUP_ANALYTICS=true`. Then runs the **session-instance top-up** (SPE-291): extends every active scheduled template's dated instances to a rolling 12-week horizon. |
+| `cleanup-uploads` | `0 8 * * *` (08:00 daily) | Optionally deletes `analytics_events` older than **90 days** when `CLEANUP_ANALYTICS=true`, then runs the **session-instance top-up** (SPE-291): extends every active scheduled template's dated instances to a rolling 12-week horizon. (The `upload_rate_limits` purge it was named for went away with the QR upload feature, SPE-497.) |
 | `topup-session-instances` | — (not scheduled) | Same top-up, standalone. Manual/ops trigger only — Vercel Hobby caps cron jobs at two, so the daily trigger rides on `cleanup-uploads`; becomes its own cron slot on a paid plan. |
 | `cleanup-worksheet-images` | `0 9 * * *` (09:00 daily) | Deletes `worksheet_submissions` older than **12 months** + their Storage objects (storage-first, chunked, `moreRemaining` flag for backlog). |
 | `daily-schedule-emails` | `0 14 * * 1-5` (14:00 UTC weekdays → 7am PDT / 6am PST) | **SPE-320.** Emails each opted-in provider/SEA their day's schedule (student **initials only**). Recipients = profiles with `daily_schedule_email_enabled = true`; sessions come from `SessionGenerator` (service client injected) filtered to the **"my sessions"** predicate (what the user actually delivers — delegated-out sessions go to the assignee, not the delegating provider); zero-session days are skipped; per-email `Idempotency-Key` guards against retry double-sends. Sent via Resend from `Speddy <schedule@speddy.xyz>`. |
@@ -1411,7 +1411,7 @@ Two properties worth knowing before relying on it:
 `lib/email/resend.ts`; `vercel.json`;
 `app/api/admin/students/[studentId]/route.ts`;
 `app/api/admin/care-referrals/[referralId]/route.ts`;
-`lib/supabase/audit-log.ts`; `docs/CRON_CLEANUP.md`.
+`lib/supabase/audit-log.ts`.
 
 ---
 
@@ -1571,8 +1571,7 @@ the Deliveries import (`lib/parsers/deliveries-parser.ts` via
 roles (speech/OT/counseling) keep discrete sessions everywhere; elementary
 resource keeps the 30-minute chop.
 
-**Unchanged across both:** students/caseload, AI lessons/worksheets/exit tickets
-(grade-driven, not school-type-driven), IEP goals/accommodations, sign-up.
+**Unchanged across both:** students/caseload, IEP goals/accommodations, sign-up.
 **Admin and Speddy-Internal portals are unaffected** — admins manage both kinds
 of school (Master Schedule stays), and Internal sets the `school_type` /
 `grade_span` that drive the split.

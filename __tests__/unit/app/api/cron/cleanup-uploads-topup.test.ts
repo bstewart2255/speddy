@@ -1,18 +1,19 @@
 /**
- * Unit tests for the session-instance top-up riding along with the daily
- * cleanup-uploads cron (SPE-291). The cleanup cron is the production trigger
+ * Unit tests for the session-instance top-up carried by the daily
+ * cleanup-uploads cron (SPE-291). The cron is the production trigger
  * (Vercel Hobby's two cron slots are both taken), so its contract matters:
- * top-up runs after cleanup, its counts are reported, and a top-up failure
- * fails the whole run loud (5xx).
+ * the top-up runs, its counts are reported, and a top-up failure fails the
+ * whole run loud (5xx). The upload_rate_limits purge this route was named
+ * for was removed with the QR worksheet-upload feature (SPE-497).
  */
 import { NextRequest } from 'next/server';
 
 const mockRpc = jest.fn();
-const mockLt = jest.fn();
+const mockAnalyticsLt = jest.fn();
 jest.mock('@/lib/supabase/server', () => ({
   createServiceClient: () => ({
     rpc: mockRpc,
-    from: () => ({ delete: () => ({ lt: mockLt }) }),
+    from: () => ({ delete: () => ({ lt: mockAnalyticsLt }) }),
   }),
 }));
 
@@ -30,8 +31,8 @@ describe('/api/cron/cleanup-uploads session top-up integration', () => {
 
   beforeEach(() => {
     mockRpc.mockReset();
-    mockLt.mockReset();
-    mockLt.mockResolvedValue({ error: null, count: 3 });
+    mockAnalyticsLt.mockReset();
+    mockAnalyticsLt.mockResolvedValue({ error: null, count: 7 });
     process.env.CRON_SECRET = 'test-secret';
     delete process.env.CLEANUP_ANALYTICS;
   });
@@ -43,7 +44,7 @@ describe('/api/cron/cleanup-uploads session top-up integration', () => {
     else process.env.CLEANUP_ANALYTICS = originalAnalytics;
   });
 
-  it('runs the top-up after cleanup and reports its counts', async () => {
+  it('runs the top-up and reports its counts', async () => {
     mockRpc.mockResolvedValue({
       data: [{ templates_processed: 371, instances_created: 4200 }],
       error: null,
@@ -58,7 +59,6 @@ describe('/api/cron/cleanup-uploads session top-up integration', () => {
     });
     expect(body).toMatchObject({
       success: true,
-      deleted: 3,
       sessionTopup: {
         templatesProcessed: 371,
         instancesCreated: 4200,
@@ -67,7 +67,36 @@ describe('/api/cron/cleanup-uploads session top-up integration', () => {
     });
   });
 
-  it('fails the run loud (5xx) when the top-up errors, preserving the cleanup count', async () => {
+  it('runs the retained analytics sweep when CLEANUP_ANALYTICS is on and reports its count', async () => {
+    process.env.CLEANUP_ANALYTICS = 'true';
+    mockRpc.mockResolvedValue({
+      data: [{ templates_processed: 1, instances_created: 2 }],
+      error: null,
+    });
+
+    const res = await GET(makeRequest());
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(mockAnalyticsLt).toHaveBeenCalledTimes(1);
+    expect(body.analyticsDeleted).toBe(7);
+  });
+
+  it('skips the analytics sweep when CLEANUP_ANALYTICS is off', async () => {
+    mockRpc.mockResolvedValue({
+      data: [{ templates_processed: 1, instances_created: 2 }],
+      error: null,
+    });
+
+    const res = await GET(makeRequest());
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(mockAnalyticsLt).not.toHaveBeenCalled();
+    expect(body.analyticsDeleted).toBeUndefined();
+  });
+
+  it('fails the run loud (5xx) when the top-up errors', async () => {
     mockRpc.mockResolvedValue({ data: null, error: { message: 'boom' } });
 
     const res = await GET(makeRequest());
@@ -76,8 +105,6 @@ describe('/api/cron/cleanup-uploads session top-up integration', () => {
     expect(res.status).toBe(500);
     expect(body.success).toBe(false);
     expect(body.error).toContain('session top-up');
-    // The cleanup already ran; its count must survive in the failure body.
-    expect(body.deleted).toBe(3);
   });
 
   it('500s via the outer catch when the top-up rejects (rpc throws)', async () => {

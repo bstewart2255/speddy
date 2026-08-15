@@ -841,7 +841,6 @@ export default function StudentsPage() {
                   <TableHead>Grade</TableHead>
                   <TableHead>Teacher</TableHead>
                   <TableHead>Schedule Requirements</TableHead>
-                  {/* <TableHead>Progress</TableHead> */}
                   <TableHead>Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -930,14 +929,6 @@ export default function StudentsPage() {
                         <span className="text-gray-400 italic">Not configured</span>
                       )}
                     </TableCell>
-                    {/* <TableCell>
-                      <button
-                        onClick={() => router.push(`/progress/${student.id}`)}
-                        className="text-blue-600 hover:text-blue-800 text-sm font-medium"
-                      >
-                        View Progress
-                      </button>
-                    </TableCell> */}
                     <TableActionCell>
                       {!isViewOnly && (
                         <>

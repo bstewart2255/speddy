@@ -41,7 +41,6 @@ module.exports = [
       'lib/connectivity-utils.ts',
       'lib/utils/performance-monitor.ts',
       'lib/sis/key-boot-check.ts',
-      'lib/lessons/test-generator.ts',
       'app/api/cron/**/*.ts',
       // Installs a development-only console.log filter — the console access is
       // the entire file.

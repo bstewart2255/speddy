@@ -10,8 +10,7 @@ import { log } from '@/lib/monitoring/logger';
  * list is ever saved, through the existing student-details form.
  *
  * Privacy: never log document content or extracted accommodation text — counts
- * only (same posture as the lesson pipeline's redaction in
- * lib/lessons/providers.ts).
+ * only.
  */
 
 // Vercel serverless functions cap request bodies at ~4.5MB — a bigger stated

@@ -46,37 +46,11 @@ export async function GET(request: NextRequest) {
     // there is no user session for the cookie-based client to read.
     const supabase = createServiceClient();
 
-    // Calculate cutoff date (7 days ago)
-    const cutoffDate = new Date();
-    cutoffDate.setDate(cutoffDate.getDate() - 7);
+    // The upload_rate_limits purge this route was named for went away with the
+    // QR worksheet-upload feature (SPE-497); the daily session top-up below is
+    // the job that keeps this cron scheduled.
 
-    // Delete old rate limit records. The column is `uploaded_at` (not
-    // `created_at`); request a count rather than the deleted rows so we don't
-    // pull a large id list back over the wire.
-    const { error: deleteError, count } = await supabase
-      .from('upload_rate_limits')
-      .delete({ count: 'exact' })
-      .lt('uploaded_at', cutoffDate.toISOString());
-
-    if (deleteError) {
-      console.error('Error deleting old rate limit records:', deleteError);
-      // Fail loud (5xx) so a broken cleanup is visible instead of letting the
-      // table grow unbounded behind a 200.
-      return NextResponse.json({
-        success: false,
-        error: 'Database error during cleanup',
-        details: deleteError.message,
-        timestamp: new Date().toISOString()
-      }, { status: 500 });
-    }
-
-    const deletedCount = count ?? 0;
-    const processingTime = Date.now() - startTime;
-    
-    // Log the cleanup action
-    console.log(`Rate limit cleanup completed: ${deletedCount} records deleted in ${processingTime}ms`);
-    
-    // Optionally, also clean up old analytics events (older than 90 days)
+    // Optionally, clean up old analytics events (older than 90 days)
     const analyticsEnabled = process.env.CLEANUP_ANALYTICS === 'true';
     let analyticsDeleted = 0;
     
@@ -111,7 +85,6 @@ export async function GET(request: NextRequest) {
         success: false,
         error: 'Database error during session top-up',
         details: topupResult.error,
-        deleted: deletedCount,
         timestamp: new Date().toISOString()
       }, { status: 500 });
     }
@@ -123,14 +96,12 @@ export async function GET(request: NextRequest) {
     // Return success response
     return NextResponse.json({
       success: true,
-      deleted: deletedCount,
       analyticsDeleted: analyticsEnabled ? analyticsDeleted : undefined,
       sessionTopup: {
         templatesProcessed: topupResult.templatesProcessed,
         instancesCreated: topupResult.instancesCreated,
         weeksAhead: SESSION_TOPUP_WEEKS_AHEAD
       },
-      cutoffDate: cutoffDate.toISOString(),
       processingTimeMs: Date.now() - startTime,
       timestamp: new Date().toISOString()
     }, { status: 200 });

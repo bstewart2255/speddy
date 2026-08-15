@@ -1192,7 +1192,7 @@ function ProgressMock() {
         }}
       >
         <span style={{ width: 7, height: 7, borderRadius: 999, background: '#3B82F6' }} />
-        From 47 exit tickets logged during sessions
+        From 47 progress entries logged during sessions
       </div>
     </Card>
   );

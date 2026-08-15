@@ -1,6 +1,7 @@
 import { Resend } from 'resend';
 
-// Shared lazy Resend client (SPE-320, lifted from app/api/email-webhook/route.ts).
+// Shared lazy Resend client (SPE-320; originally lifted from the email-webhook
+// route, removed with the worksheet feature in SPE-497).
 //
 // Lazy-init so the client isn't constructed at module load — its constructor
 // throws on a missing key, which breaks `next build` in CI when RESEND_API_KEY

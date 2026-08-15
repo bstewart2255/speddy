@@ -98,7 +98,7 @@ person using it.
 | 3 | IEP meeting calendaring (Meetings) | Site admin + Provider | 🗓️ rolling out |
 | 4 | Referral tracking | All roles | ✅ |
 | 5 | Student & caseload management | Provider | ✅ |
-| 6 | Lesson planning & materials | Provider | 🔶 (AI features flag-gated) |
+| 6 | Lesson planning & materials | Provider | ✅ |
 | 7 | Progress monitoring & assessment | Provider | ✅ |
 | 8 | Team coordination & communication | All roles | ✅ |
 | 9 | Staff & account administration | Site + District admin | ✅ |
@@ -238,27 +238,23 @@ it.
   structured level dropdowns, other programs take a typed level. Until a
   district admin saves a list, the picker is empty.
 - Session documents: attach PDFs, links, and notes to a session or group.
-- **AI-generated materials** 🔶: worksheets, lesson plans, exit tickets, and
-  progress checks generated from a student's grade level and IEP goals, with
-  a printable student page and a matching teacher plan; a saved-worksheet
-  library for reuse; QR-code worksheet submission for scanning completed
-  work back in. *Built, currently behind a feature flag pending rollout — the
-  landing page should not advertise it until enabled.*
+*(An AI-materials generator — lesson plans, worksheets, exit tickets, progress
+checks, QR worksheet submission — was built behind a feature flag, never
+rolled out, and removed in 2026-08 (SPE-497). Some form of it may return
+later, redesigned on current foundations.)*
 
-**Who uses it:** providers. SEAs view lessons and the daily plan for their
-assigned sessions (deliberately view-only).
+**Who uses it:** providers. SEAs view the daily plan for their assigned
+sessions (deliberately view-only).
 
 ### 2.7 Progress monitoring & assessment
 
 Evidence of progress toward goals, collected as a by-product of the work
 instead of reconstructed the week before an IEP meeting.
 
-- Exit tickets: short, goal-aligned checks after a session; grade responses
-  as correct/incorrect/excluded.
-- Progress checks: longer assessments across multiple skills with per-goal,
-  per-question results.
-- Progress dashboards: per-student trends by subject (reading, math, writing,
-  spelling, phonics); improving / stable / needs-support flags.
+- Manual goal progress: score-based observations recorded per IEP goal on the
+  student's Progress tab, with per-goal averages and a 30-day timeline.
+  (AI-generated exit tickets and progress checks shipped dark and were removed
+  in 2026-08 — SPE-497.)
 - Attendance and session completion tracking, tied to the schedule that
   generated each session (elementary sites today).
 - Session notes: what was taught, with which students — searchable when a

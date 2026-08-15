@@ -7,9 +7,9 @@ export const dynamic = 'force-dynamic';
 /**
  * Which flag-gated features are available right now (SPE-494). Client surfaces
  * embedded in always-reachable UI (e.g. the accommodations PDF import inside
- * the student-details modal) ask this instead of rendering a dead entry point —
- * every other AI surface is simply unreachable while the kill switch is off
- * (the Tools page is not linked in any role's nav).
+ * the student-details modal) ask this instead of rendering a dead entry point.
+ * The accommodations import is the only flag-gated AI surface left — the
+ * hidden Tools suite this flag also used to gate was removed (SPE-497).
  *
  * Deliberately NOT aiGated: this route must answer while the switch is off.
  * The flag is read per request via the same helper the route gate uses, so
