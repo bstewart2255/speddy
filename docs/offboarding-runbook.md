@@ -63,8 +63,8 @@ cascade cannot reach (Storage, cross-RLS cleanup).
    (the same API routes). Run server-side with the service role / `CRON_SECRET`
    tooling; do **not** hand-run SQL against production.
 4. Revoke all district **extension API keys** so on-device caches clear.
-5. Confirm Storage is empty for the district's objects (worksheet/document
-   buckets) and that no orphaned rows remain.
+5. Confirm Storage is empty for the district's document objects and that no
+   orphaned rows remain.
 6. Update [`subprocessors.md`](./subprocessors.md) / notify per the executed NDPA
    if the offboarding changes anything externally disclosed.
 

@@ -34,19 +34,20 @@ async function main() {
   for (const bucket of BUCKETS) {
     const { data: bucketInfo, error: headErr } = await supabase.storage.getBucket(bucket);
     if (headErr) {
-      // Only a real not-found means "already removed". Anything else (network,
-      // auth, 5xx) must abort loudly — this script is the ONLY remaining
-      // deletion path for this data; a silent skip would report success while
+      // Only a confirmed 404 means "already removed" — storage-js exposes the
+      // structured statusCode (as a string). Anything else (network, auth,
+      // 5xx) must abort loudly: this script is the ONLY remaining deletion
+      // path for this data; a silent skip would report success while
       // student-work objects survive.
-      if (/not.*found/i.test(headErr.message)) {
-        console.log(`[${bucket}] not found — already removed, skipping`);
+      const statusCode = (headErr as { statusCode?: string | number }).statusCode;
+      if (String(statusCode) === '404') {
+        console.log(`[${bucket}] not found (404) — already removed, skipping`);
         continue;
       }
-      throw new Error(`[${bucket}] getBucket failed (NOT treated as removed): ${headErr.message}`);
+      throw new Error(`[${bucket}] getBucket failed (status ${statusCode ?? 'unknown'}, NOT treated as removed): ${headErr.message}`);
     }
     if (!bucketInfo) {
-      console.log(`[${bucket}] not found — already removed, skipping`);
-      continue;
+      throw new Error(`[${bucket}] getBucket returned no bucket and no error — refusing to treat as removed`);
     }
 
     // Count objects (top-level listing; the suite stored flat or one-folder

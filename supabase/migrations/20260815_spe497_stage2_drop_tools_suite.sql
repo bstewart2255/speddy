@@ -11,6 +11,21 @@
 -- 1. Pilot data on the one kept table: 321 ai_generated rows (4 pilot
 --    accounts, last write 2026-02-03). The 42 lesson_source='manual' rows are
 --    live group/session notes and MUST survive.
+--    Scope gate: stage 1 (PR #875) removed every writer of ai_generated rows,
+--    so the count cannot legitimately change between approval and apply. If it
+--    has, something is wrong — abort the whole (transactional) migration
+--    instead of deleting an unapproved set. A provider allowlist would add no
+--    safety beyond this: with zero writers, 321 rows matching the predicate
+--    are necessarily the approved pilot rows.
+DO $$
+DECLARE n integer;
+BEGIN
+  SELECT count(*) INTO n FROM public.lessons WHERE lesson_source = 'ai_generated';
+  IF n <> 321 THEN
+    RAISE EXCEPTION 'SPE-497 stage-2 scope gate: expected exactly 321 ai_generated lessons, found % — aborting, investigate before re-applying', n;
+  END IF;
+END $$;
+
 DELETE FROM public.lessons WHERE lesson_source = 'ai_generated';
 
 -- 2. Reporting view over the upload analytics tables (nothing queries it).
