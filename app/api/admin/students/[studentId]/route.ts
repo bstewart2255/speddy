@@ -17,11 +17,7 @@ const querySchema = z.object({ schoolId: z.string().uuid() });
  * every FK-linked child (details, assessments, exit tickets, progress, schedule,
  * worksheet rows, etc.). The service-role client is used ONLY to reach what RLS +
  * cascade cannot:
- *   1. Storage objects — Postgres cascade deletes rows, never Storage objects, and
- *      the admin is not the object owner. Worksheet images live in the private
- *      `worksheet-submissions` (path in worksheet_submissions.image_url) and
- *      `worksheets` (worksheets.uploaded_file_path) buckets.
- *   2. CARE referrals — linked to the student by free-text name, not a foreign key,
+ *   1. CARE referrals — linked to the student by free-text name, not a foreign key,
  *      so they never cascade. We surface name matches for the admin to confirm
  *      (handled by /api/admin/care-referrals/[referralId]); we never auto-delete
  *      them, since a name match can be ambiguous.
@@ -58,29 +54,7 @@ export const DELETE = withRoute<{ studentId: string }, undefined, { schoolId: st
 
     // --- Collect everything that does NOT cascade, BEFORE deleting the rows ---
 
-    // (1) Storage object paths for this student's worksheets + submissions.
-    const { data: worksheets } = await service
-      .from('worksheets')
-      .select('id, uploaded_file_path')
-      .eq('student_id', studentId);
-
-    const worksheetIds = (worksheets ?? []).map((w) => w.id);
-    const worksheetPaths = (worksheets ?? [])
-      .map((w) => w.uploaded_file_path)
-      .filter((p): p is string => !!p);
-
-    let submissionPaths: string[] = [];
-    if (worksheetIds.length) {
-      const { data: subs } = await service
-        .from('worksheet_submissions')
-        .select('image_url')
-        .in('worksheet_id', worksheetIds);
-      submissionPaths = (subs ?? [])
-        .map((s) => s.image_url)
-        .filter((p): p is string => !!p);
-    }
-
-    // (2) CARE referrals matched by the student's full name within this school.
+    // CARE referrals matched by the student's full name within this school.
     const { data: details } = await service
       .from('student_details')
       .select('first_name, last_name')
@@ -116,35 +90,15 @@ export const DELETE = withRoute<{ studentId: string }, undefined, { schoolId: st
       return NextResponse.json({ error: 'Failed to delete student' }, { status: 500 });
     }
 
-    // --- Remove Storage objects (service role; admin is not the object owner) ---
-    let storageErrors = 0;
-    if (submissionPaths.length) {
-      const { error } = await service.storage.from('worksheet-submissions').remove(submissionPaths);
-      if (error) {
-        storageErrors++;
-        log.error('Failed to remove worksheet-submission images', error);
-      }
-    }
-    if (worksheetPaths.length) {
-      const { error } = await service.storage.from('worksheets').remove(worksheetPaths);
-      if (error) {
-        storageErrors++;
-        log.error('Failed to remove worksheet images', error);
-      }
-    }
-
     log.info('Student deleted by admin', {
       studentId,
       deletedBy: userId,
-      storageObjectsRemoved: submissionPaths.length + worksheetPaths.length,
       careMatches: careMatches.length,
     });
 
     return NextResponse.json({
       success: true,
       careMatches,
-      storageObjectsRemoved: submissionPaths.length + worksheetPaths.length,
-      storageErrors: storageErrors || undefined,
     });
   }
 );

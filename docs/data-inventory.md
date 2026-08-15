@@ -52,11 +52,10 @@ California Student Privacy Alliance (see SPE-59), and the companion to
 | **Enrollment** | **Yes** | Required² | Grade level, school/district association, service minutes (sessions/week, minutes/session) | `students`, `children`, `profiles` |
 | **Schedule** | **Yes** | Provider-created | Session day/time, service type, group assignment; **IEP meeting records and attendee lists**; provider calendar events (title, description, location, attendees) | `schedule_sessions`, `session_groups`, `bell_schedules`, `special_activities`, `iep_meetings`, `iep_meeting_attendees`, `calendar_events` |
 | **Attendance** | **Yes** | Optional | Present/absent, absence reason, session date | `attendance`, `schedule_sessions` |
-| **Assessment** | **Yes** | Optional / Derived | Assessment type/date + scores; performance level, accuracy trend, error patterns, confidence; exit-ticket & progress-check results; IEP-goal progress/scores; **curriculum placement** (curriculum, level, current lesson — programs offered are curated per district, SPE-422); **per-lesson performance** (completion time, accuracy %, engagement level, free-text `teacher_notes`) and queued lesson adjustments | `student_assessments`, `student_performance_metrics`, `exit_tickets`, `exit_ticket_results`, `progress_checks`, `progress_check_results`, `iep_goal_progress`, `manual_goal_progress`, `curriculum_tracking`, `lesson_performance_history`, `lesson_adjustment_queue` |
-| **Student In-App Performance** | **Yes** | Derived | Worksheet responses, accuracy %, skills assessed, AI analysis | `worksheet_submissions` |
-| **Student Work** | **Yes** | Optional | Scanned worksheet **images**, generated worksheets/lessons, uploaded documents (rosters / IEP docs). **`lessons` carries `student_ids` and a `student_details` payload**, plus lesson content, provider notes, and the retained AI prompt/response when AI generation was used | `worksheet_submissions.image_url`, `documents`, `worksheets`, `saved_worksheets`, `lessons` |
+| **Assessment** | **Yes** | Optional / Derived | Assessment type/date + scores; manual IEP-goal progress scores/observations; **curriculum placement** (curriculum, level, current lesson — programs offered are curated per district, SPE-422). *(The Tools-suite result tables — exit tickets, progress checks, performance metrics, lesson history/adjustments — were dropped with their data in SPE-497 stage 2.)* | `student_assessments`, `manual_goal_progress`, `curriculum_tracking` |
+| **Student Work** | **Yes** | Optional | Uploaded documents (rosters / IEP docs); **`lessons` carries `student_ids` and a `student_details` payload** plus provider group-note content. *(Worksheet images, generated worksheets, and the retained AI prompt/response rows were deleted with the Tools suite — SPE-497 stage 2.)* | `documents`, `lessons` |
 | **Conduct / Behavior** | Limited | Optional | Behavior-area IEP goals; CARE referral reason | `student_details.iep_goals`, `care_referrals.referral_reason` |
-| **Communications** | **Yes** | Optional | Provider session/progress notes (free text); **staff-to-staff chat messages, including per-student group conversations** (`conversations.student_id`) and 1:1 DMs — message bodies are free text and may discuss students; student-progress notifications | `schedule_sessions.session_notes`, `manual_goal_progress.notes`, `care_meeting_notes`, `conversations`, `messages`, `conversation_participants`, `progress_notifications` |
+| **Communications** | **Yes** | Optional | Provider session/progress notes (free text); **staff-to-staff chat messages, including per-student group conversations** (`conversations.student_id`) and 1:1 DMs — message bodies are free text and may discuss students | `schedule_sessions.session_notes`, `manual_goal_progress.notes`, `care_meeting_notes`, `conversations`, `messages`, `conversation_participants` |
 | **Student Identifiers — provider-assigned** | **Yes** | Derived | Speddy student UUID; child UUID | `students.id`, `children.id` |
 | **Student Identifiers — local (district)** | **Yes** | Optional | **District-local student ID**, captured on import from the SEIS Student Goals report (col. B), Aeries class lists, and the roster template. Unique per provider (`students`) and per district (`children`). | `students.district_student_id`, `children.district_student_id` |
 | **Student Identifiers — state** | Extension only | Derived | **SEIS ID (SSID) is _not_ stored in the backend DB**, but the Chrome extension persists it — with student name, grade, and school — in the provider's local browser storage (`chrome.storage.local`, 7-day TTL) during passive discrepancy detection. | extension `chrome.storage.local` |
@@ -103,9 +102,11 @@ _Entry: all **auto-captured** (derived) — not provider- or student-entered._
 
 | Element | Source |
 |---|---|
-| IP address, user agent, device type | `analytics_events`, `sign_in_logs`, `upload_rate_limits` |
-| Product usage events (event type, method, processing time, upload source, error codes) | `analytics_events` |
-| API rate-limit counters | `api_rate_limits`, `upload_rate_limits` |
+| IP address, user agent, device type | `sign_in_logs` |
+| API rate-limit counters | `api_rate_limits` |
+
+*(`analytics_events` and `upload_rate_limits` — the QR-upload usage/IP tables —
+were dropped with their data in SPE-497 stage 2.)*
 
 ## D. Reference / configuration data (no personal data)
 
@@ -174,7 +175,7 @@ connection becomes §A student data and is disclosed there.
 
 ## Where each element flows (see [`subprocessors.md`](./subprocessors.md))
 
-- **Supabase** — system of record for everything above; **Storage** holds worksheet images and uploaded documents (private buckets).
+- **Supabase** — system of record for everything above; **Storage** holds uploaded documents (private buckets).
 - **Vercel** — hosting/network: all traffic transits Vercel compute in transit, and request-scoped data may appear in console/runtime logs (not every element is always logged).
 - **Sentry** — incidental error context only, minimized (no logs/replay; SPE-167).
 - **Anthropic** — the **AI assistant** ("Ask AI", SPE-450/452/455, enabled via `ASSISTANT_ENABLED`): student **initials + IEP goal text + upcoming IEP/triennial meeting dates + grade + session times and group names**, plus whatever the provider types into the chat (sent verbatim; the UI nudges toward initials). Goal text and group names are provider-authored (groups auto-name from initials but are editable), so they carry whatever the provider wrote. Also receives the signed-in **provider's** display name and role (prompt personalization). No student full-name columns, no session notes.
@@ -249,7 +250,7 @@ extension API key (`api_keys`); see [`offboarding-runbook.md`](./offboarding-run
    history — but it **changes what deletion means** for the NDPA and the
    offboarding runbook, neither of which has been revisited. Flag for review
    alongside SPE-143.
-9. **Provider IP addresses** are logged (`sign_in_logs`, `analytics_events`) —
+9. **Provider IP addresses** are logged (`sign_in_logs`) —
    provider PII, not student.
 10. **Google Calendar tokens (SPE-205)** are provider credentials, not student
     data: stored app-layer encrypted (AES-256-GCM, key only in server env),

@@ -47,30 +47,10 @@ export async function GET(request: NextRequest) {
     const supabase = createServiceClient();
 
     // The upload_rate_limits purge this route was named for went away with the
-    // QR worksheet-upload feature (SPE-497); the daily session top-up below is
-    // the job that keeps this cron scheduled.
+    // QR worksheet-upload feature, and the analytics_events sweep with the
+    // stage-2 table drops (SPE-497); the daily session top-up below is the job
+    // that keeps this cron scheduled.
 
-    // Optionally, clean up old analytics events (older than 90 days)
-    const analyticsEnabled = process.env.CLEANUP_ANALYTICS === 'true';
-    let analyticsDeleted = 0;
-    
-    if (analyticsEnabled) {
-      const analyticsCutoffDate = new Date();
-      analyticsCutoffDate.setDate(analyticsCutoffDate.getDate() - 90);
-      
-      const { error: analyticsError, count: analyticsCount } = await supabase
-        .from('analytics_events')
-        .delete({ count: 'exact' })
-        .lt('created_at', analyticsCutoffDate.toISOString());
-
-      if (analyticsError) {
-        console.error('Error deleting old analytics records:', analyticsError);
-      } else {
-        analyticsDeleted = analyticsCount ?? 0;
-        console.log(`Analytics cleanup: ${analyticsDeleted} records deleted`);
-      }
-    }
-    
     // SPE-291: daily session-instance top-up rides along with this cron.
     // Vercel Hobby allows only two cron jobs (both slots used), so this daily
     // job is the trigger; /api/cron/topup-session-instances remains available
@@ -96,7 +76,6 @@ export async function GET(request: NextRequest) {
     // Return success response
     return NextResponse.json({
       success: true,
-      analyticsDeleted: analyticsEnabled ? analyticsDeleted : undefined,
       sessionTopup: {
         templatesProcessed: topupResult.templatesProcessed,
         instancesCreated: topupResult.instancesCreated,

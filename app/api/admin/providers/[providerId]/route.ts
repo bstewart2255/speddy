@@ -127,41 +127,11 @@ export const DELETE = withRoute<{ providerId: string }>({}, async ({ userId, par
   }
 
   // --- Collect provider-owned Storage paths BEFORE deleting (Storage never cascades). ---
-  const { data: saved } = await service
-    .from('saved_worksheets')
-    .select('file_path')
-    .eq('provider_id', providerId);
-  const savedPaths = (saved ?? []).map((s) => s.file_path).filter((p): p is string => !!p);
-
   const { data: docs } = await service
     .from('documents')
     .select('file_path')
     .eq('created_by', providerId);
   const docPaths = (docs ?? []).map((d) => d.file_path).filter((p): p is string => !!p);
-
-  const { data: provStudents } = await service
-    .from('students')
-    .select('id')
-    .eq('provider_id', providerId);
-  const studentIds = (provStudents ?? []).map((s) => s.id);
-
-  let worksheetPaths: string[] = [];
-  let submissionPaths: string[] = [];
-  if (studentIds.length) {
-    const { data: ws } = await service
-      .from('worksheets')
-      .select('id, uploaded_file_path')
-      .in('student_id', studentIds);
-    const wsIds = (ws ?? []).map((w) => w.id);
-    worksheetPaths = (ws ?? []).map((w) => w.uploaded_file_path).filter((p): p is string => !!p);
-    if (wsIds.length) {
-      const { data: subs } = await service
-        .from('worksheet_submissions')
-        .select('image_url')
-        .in('worksheet_id', wsIds);
-      submissionPaths = (subs ?? []).map((s) => s.image_url).filter((p): p is string => !!p);
-    }
-  }
 
   // --- Null the nullable NO ACTION references to this provider so the delete isn't blocked. ---
   const nullResults = await Promise.all([
@@ -171,9 +141,7 @@ export const DELETE = withRoute<{ providerId: string }>({}, async ({ userId, par
     service.from('care_cases').update({ assigned_to: null }).eq('assigned_to', providerId),
     service.from('schedule_sessions').update({ completed_by: null }).eq('completed_by', providerId),
     service.from('special_activities').update({ created_by_id: null }).eq('created_by_id', providerId),
-    service.from('analytics_events').update({ user_id: null }).eq('user_id', providerId),
     service.from('holidays').update({ created_by: null }).eq('created_by', providerId),
-    service.from('worksheet_submissions').update({ submitted_by: null }).eq('submitted_by', providerId),
   ]);
   const nullErr = nullResults.find((r) => r.error)?.error;
   if (nullErr) {
@@ -210,12 +178,7 @@ export const DELETE = withRoute<{ providerId: string }>({}, async ({ userId, par
 
   // --- Remove Storage objects (best effort; logged on failure) ---
   let storageErrors = 0;
-  const removals: Array<[string, string[]]> = [
-    ['saved-worksheets', savedPaths],
-    ['documents', docPaths],
-    ['worksheet-submissions', submissionPaths],
-    ['worksheets', worksheetPaths],
-  ];
+  const removals: Array<[string, string[]]> = [['documents', docPaths]];
   for (const [bucket, paths] of removals) {
     if (paths.length) {
       const { error } = await service.storage.from(bucket).remove(paths);
@@ -230,8 +193,7 @@ export const DELETE = withRoute<{ providerId: string }>({}, async ({ userId, par
 
   return NextResponse.json({
     success: true,
-    storageObjectsRemoved:
-      savedPaths.length + docPaths.length + submissionPaths.length + worksheetPaths.length,
+    storageObjectsRemoved: docPaths.length,
     storageErrors: storageErrors || undefined,
   });
 });

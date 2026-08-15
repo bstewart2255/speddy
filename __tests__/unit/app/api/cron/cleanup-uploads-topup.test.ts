@@ -4,16 +4,14 @@
  * (Vercel Hobby's two cron slots are both taken), so its contract matters:
  * the top-up runs, its counts are reported, and a top-up failure fails the
  * whole run loud (5xx). The upload_rate_limits purge this route was named
- * for was removed with the QR worksheet-upload feature (SPE-497).
+ * for and the analytics_events sweep were removed with SPE-497.
  */
 import { NextRequest } from 'next/server';
 
 const mockRpc = jest.fn();
-const mockAnalyticsLt = jest.fn();
 jest.mock('@/lib/supabase/server', () => ({
   createServiceClient: () => ({
     rpc: mockRpc,
-    from: () => ({ delete: () => ({ lt: mockAnalyticsLt }) }),
   }),
 }));
 
@@ -27,21 +25,15 @@ const makeRequest = () =>
 
 describe('/api/cron/cleanup-uploads session top-up integration', () => {
   const originalSecret = process.env.CRON_SECRET;
-  const originalAnalytics = process.env.CLEANUP_ANALYTICS;
 
   beforeEach(() => {
     mockRpc.mockReset();
-    mockAnalyticsLt.mockReset();
-    mockAnalyticsLt.mockResolvedValue({ error: null, count: 7 });
     process.env.CRON_SECRET = 'test-secret';
-    delete process.env.CLEANUP_ANALYTICS;
   });
 
   afterAll(() => {
     if (originalSecret === undefined) delete process.env.CRON_SECRET;
     else process.env.CRON_SECRET = originalSecret;
-    if (originalAnalytics === undefined) delete process.env.CLEANUP_ANALYTICS;
-    else process.env.CLEANUP_ANALYTICS = originalAnalytics;
   });
 
   it('runs the top-up and reports its counts', async () => {
@@ -65,35 +57,6 @@ describe('/api/cron/cleanup-uploads session top-up integration', () => {
         weeksAhead: 12,
       },
     });
-  });
-
-  it('runs the retained analytics sweep when CLEANUP_ANALYTICS is on and reports its count', async () => {
-    process.env.CLEANUP_ANALYTICS = 'true';
-    mockRpc.mockResolvedValue({
-      data: [{ templates_processed: 1, instances_created: 2 }],
-      error: null,
-    });
-
-    const res = await GET(makeRequest());
-    const body = await res.json();
-
-    expect(res.status).toBe(200);
-    expect(mockAnalyticsLt).toHaveBeenCalledTimes(1);
-    expect(body.analyticsDeleted).toBe(7);
-  });
-
-  it('skips the analytics sweep when CLEANUP_ANALYTICS is off', async () => {
-    mockRpc.mockResolvedValue({
-      data: [{ templates_processed: 1, instances_created: 2 }],
-      error: null,
-    });
-
-    const res = await GET(makeRequest());
-    const body = await res.json();
-
-    expect(res.status).toBe(200);
-    expect(mockAnalyticsLt).not.toHaveBeenCalled();
-    expect(body.analyticsDeleted).toBeUndefined();
   });
 
   it('fails the run loud (5xx) when the top-up errors', async () => {
