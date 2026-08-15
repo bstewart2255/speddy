@@ -28,8 +28,6 @@ if command -v supabase &> /dev/null; then
     # Run each VACUUM command separately (cannot be in transaction)
     echo "Running VACUUM ANALYZE on affected tables..."
 
-    supabase db execute --query "VACUUM ANALYZE public.saved_worksheets;" || echo "Warning: Failed to vacuum saved_worksheets"
-    supabase db execute --query "VACUUM ANALYZE public.exit_ticket_results;" || echo "Warning: Failed to vacuum exit_ticket_results"
     supabase db execute --query "VACUUM ANALYZE public.lessons;" || echo "Warning: Failed to vacuum lessons"
     supabase db execute --query "VACUUM ANALYZE public.documents;" || echo "Warning: Failed to vacuum documents"
 
@@ -40,7 +38,6 @@ if command -v supabase &> /dev/null; then
     supabase db execute --query "
         ANALYZE public.schedule_sessions;
         ANALYZE public.students;
-        ANALYZE public.exit_tickets;
         ANALYZE public.profiles;
         ANALYZE public.bell_schedules;
         ANALYZE public.calendar_events;
@@ -51,10 +48,7 @@ if command -v supabase &> /dev/null; then
         ANALYZE public.subscriptions;
         ANALYZE public.referral_relationships;
         ANALYZE public.holidays;
-        ANALYZE public.analytics_events;
         ANALYZE public.audit_logs;
-        ANALYZE public.worksheets;
-        ANALYZE public.worksheet_submissions;
         ANALYZE public.student_details;
     "
 
@@ -90,7 +84,6 @@ elif command -v psql &> /dev/null; then
     psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" << 'EOF'
         ANALYZE public.schedule_sessions;
         ANALYZE public.students;
-        ANALYZE public.exit_tickets;
         ANALYZE public.profiles;
         ANALYZE public.bell_schedules;
         ANALYZE public.calendar_events;
@@ -101,10 +94,7 @@ elif command -v psql &> /dev/null; then
         ANALYZE public.subscriptions;
         ANALYZE public.referral_relationships;
         ANALYZE public.holidays;
-        ANALYZE public.analytics_events;
         ANALYZE public.audit_logs;
-        ANALYZE public.worksheets;
-        ANALYZE public.worksheet_submissions;
         ANALYZE public.student_details;
 EOF
 

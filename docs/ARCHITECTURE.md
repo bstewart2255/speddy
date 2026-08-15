@@ -1349,12 +1349,13 @@ All cron routes authenticate with a shared `CRON_SECRET` (header
 | `cleanup-uploads` | `0 8 * * *` (08:00 daily) | Runs the **session-instance top-up** (SPE-291): extends every active scheduled template's dated instances to a rolling 12-week horizon. (The `upload_rate_limits` purge it was named for and the optional `analytics_events` sweep both went away with the Tools-suite teardown, SPE-497 — those tables no longer exist.) |
 | `topup-session-instances` | — (not scheduled) | Same top-up, standalone. Manual/ops trigger only — Vercel Hobby caps cron jobs at two, so the daily trigger rides on `cleanup-uploads`; becomes its own cron slot on a paid plan. |
 | `daily-schedule-emails` | `0 14 * * 1-5` (14:00 UTC weekdays → 7am PDT / 6am PST) | **SPE-320.** Emails each opted-in provider/SEA their day's schedule (student **initials only**). Recipients = profiles with `daily_schedule_email_enabled = true`; sessions come from `SessionGenerator` (service client injected) filtered to the **"my sessions"** predicate (what the user actually delivers — delegated-out sessions go to the assignee, not the delegating provider); zero-session days are skipped; per-email `Idempotency-Key` guards against retry double-sends. Sent via Resend from `Speddy <schedule@speddy.xyz>`. |
-| `health` | — | unauthenticated, read-only status. |
 
-> **Cron count / plan note (SPE-320).** `vercel.json` now declares **three**
-> scheduled crons. **Vercel Hobby caps cron jobs at two**, so `daily-schedule-emails`
-> (the third) requires a **paid (Pro) plan** to deploy — the same caveat that keeps
-> `topup-session-instances` riding on `cleanup-uploads` rather than owning a slot.
+> **Cron count / plan note (SPE-320, updated SPE-497).** `vercel.json` now
+> declares **two** scheduled crons (`cleanup-uploads`, `daily-schedule-emails`)
+> after the worksheet-images job was retired — exactly the **Vercel Hobby cap of
+> two**, so the schedule deploys on any plan again. The cap is also why
+> `topup-session-instances` still rides on `cleanup-uploads` rather than owning
+> a slot.
 
 ### Deletion semantics
 - **Soft delete:** `schedule_sessions.deleted_at`, `care_referrals.deleted_at`.

@@ -12,17 +12,12 @@
 --   supabase db execute -f supabase/migrations/post_migration_maintenance.sql --no-transaction
 
 -- Reclaim space from deleted indexes and optimize storage
-VACUUM ANALYZE public.saved_worksheets;
-VACUUM ANALYZE public.exit_ticket_results;
 VACUUM ANALYZE public.lessons;
 VACUUM ANALYZE public.documents;
 
 -- Update query planner statistics for tables with new indexes
 ANALYZE public.schedule_sessions;
 ANALYZE public.students;
-ANALYZE public.saved_worksheets;
-ANALYZE public.exit_tickets;
-ANALYZE public.exit_ticket_results;
 ANALYZE public.lessons;
 ANALYZE public.documents;
 ANALYZE public.profiles;
@@ -34,10 +29,7 @@ ANALYZE public.provider_schools;
 ANALYZE public.schools;
 -- Note: subscriptions and referral_relationships tables removed in 20251208_remove_subscription_tables.sql
 ANALYZE public.holidays;
-ANALYZE public.analytics_events;
 ANALYZE public.audit_logs;
-ANALYZE public.worksheets;
-ANALYZE public.worksheet_submissions;
 ANALYZE public.student_details;
 
 -- Display maintenance completion message

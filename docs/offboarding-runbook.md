@@ -95,12 +95,6 @@ The worksheet-image retention cron (`cleanup-worksheet-images`, 12-month TTL)
 was retired in SPE-497 stage 2 along with the tables and buckets it swept —
 there is no worksheet data left to retain or expire.
 
-**Scheduling is not wired automatically.** Register it with the same scheduler that
-runs the other cron routes (an external scheduler that sends `CRON_SECRET`, or a
-`vercel.json` `crons` entry). Recommended cadence: daily. Each run processes up to
-10,000 submissions; if the response reports `moreRemaining: true` (e.g. after a
-first deployment or a long gap), re-trigger until it clears.
-
 ---
 
 ## Safety notes
