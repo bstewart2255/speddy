@@ -40,9 +40,13 @@ DROP TABLE IF EXISTS public.student_performance_metrics;
 DROP TABLE IF EXISTS public.iep_goal_progress;
 DROP TABLE IF EXISTS public.progress_notifications;
 
--- 5. Orphaned trigger functions of the dropped worksheet_submissions triggers.
+-- 5. Orphaned functions: the two trigger functions of the dropped
+--    worksheet_submissions triggers, plus the PostgREST-exposed RPC that
+--    queried lesson_adjustment_queue (full-function-sweep verified these are
+--    the only three functions referencing any dropped object).
 DROP FUNCTION IF EXISTS public.check_progress_milestones();
 DROP FUNCTION IF EXISTS public.update_performance_metrics();
+DROP FUNCTION IF EXISTS public.get_pending_adjustments(uuid);
 
 -- 6. Storage policies scoped to the three suite buckets (verified: each
 --    policy's qual/with_check names exactly one of these buckets — nothing

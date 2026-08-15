@@ -33,7 +33,18 @@ async function main() {
 
   for (const bucket of BUCKETS) {
     const { data: bucketInfo, error: headErr } = await supabase.storage.getBucket(bucket);
-    if (headErr || !bucketInfo) {
+    if (headErr) {
+      // Only a real not-found means "already removed". Anything else (network,
+      // auth, 5xx) must abort loudly — this script is the ONLY remaining
+      // deletion path for this data; a silent skip would report success while
+      // student-work objects survive.
+      if (/not.*found/i.test(headErr.message)) {
+        console.log(`[${bucket}] not found — already removed, skipping`);
+        continue;
+      }
+      throw new Error(`[${bucket}] getBucket failed (NOT treated as removed): ${headErr.message}`);
+    }
+    if (!bucketInfo) {
       console.log(`[${bucket}] not found — already removed, skipping`);
       continue;
     }

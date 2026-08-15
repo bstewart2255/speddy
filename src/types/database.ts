@@ -4400,15 +4400,6 @@ export type Database = {
           school_id: string
         }[]
       }
-      get_pending_adjustments: {
-        Args: { p_student_id: string }
-        Returns: {
-          adjustment_details: Json
-          adjustment_type: string
-          priority: number
-          subject: string
-        }[]
-      }
       get_providers_at_my_schools: {
         Args: never
         Returns: {

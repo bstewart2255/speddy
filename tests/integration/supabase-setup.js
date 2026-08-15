@@ -123,14 +123,11 @@ export async function cleanupTestData(providerId) {
   if (!providerId) return;
 
   const tables = [
-    'worksheet_submissions',
-    'worksheets',
     'lessons',
     'manual_lesson_plans',
     'schedule_sessions',
     'special_activities',
     'bell_schedules',
-    'iep_goal_progress',
     'students',
     'provider_schools',
     'profiles'

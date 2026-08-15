@@ -943,11 +943,10 @@ export interface DeleteStudentResult {
    * /api/admin/care-referrals/[referralId].
    */
   careMatches?: Array<{ id: string; student_name: string; referral_reason: string | null }>;
-  storageObjectsRemoved?: number;
 }
 
 /**
- * Delete a student (and all their data, including Storage objects) as an admin.
+ * Delete a student (and all their FK-linked data) as an admin.
  *
  * SPE-143: this now routes through the server (`DELETE /api/admin/students/[id]`)
  * so it can remove the student's Storage objects and surface CARE referrals —
