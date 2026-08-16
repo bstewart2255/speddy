@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useSchool } from '@/app/components/providers/school-context';
 import { useToast } from '@/app/contexts/toast-context';
@@ -42,6 +42,13 @@ export function ResourceWeekView() {
 
   const schoolId = currentSchool?.school_id || null;
 
+  // Guards a school switch racing an in-flight fetch: a slow response for the
+  // PREVIOUS school must not paint over the newly selected one.
+  const schoolIdRef = useRef(schoolId);
+  useEffect(() => {
+    schoolIdRef.current = schoolId;
+  }, [schoolId]);
+
   const refresh = useCallback(async () => {
     if (!schoolId) return;
     try {
@@ -49,6 +56,7 @@ export function ResourceWeekView() {
         getSchoolPeriodGrid(schoolId),
         getMyServiceTimesForSchool(schoolId),
       ]);
+      if (schoolIdRef.current !== schoolId) return; // stale response
       setGridPeriods(grid.map(p => p.name));
       setServiceTimes(times);
     } catch (err) {
@@ -60,15 +68,20 @@ export function ResourceWeekView() {
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
-      // No school selected: nothing to load, but never strand the spinner.
+      // No school selected: clear school-scoped state (a previous school's
+      // week must not linger) and never strand the spinner.
       if (!currentSchool) {
+        setStudents([]);
+        setGridPeriods([]);
+        setServiceTimes([]);
         setLoading(false);
         return;
       }
       setLoading(true);
       try {
         const supabase = createClient();
-        const { data: auth } = await supabase.auth.getUser();
+        const { data: auth, error: authError } = await supabase.auth.getUser();
+        if (authError) throw authError;
         if (cancelled) return;
         const uid = auth?.user?.id ?? null;
         setCurrentUserId(uid);
@@ -77,7 +90,8 @@ export function ResourceWeekView() {
           // Own caseload at the active school — the modal's student picker.
           let query = supabase.from('students').select('*').eq('provider_id', uid);
           query = buildSchoolFilter(query, currentSchool);
-          const { data: rows } = await query;
+          const { data: rows, error: studentsError } = await query;
+          if (studentsError) throw studentsError;
           if (!cancelled) setStudents((rows as Student[]) ?? []);
         }
 
@@ -213,9 +227,12 @@ export function ResourceWeekView() {
                                   <span className="font-semibold">
                                     {entry.students?.initials ?? 'Student'}
                                   </span>
+                                  {/* Always visible: a hover-only reveal is
+                                      unreachable on touch devices (iPads are
+                                      the norm in schools) and via keyboard. */}
                                   <button
                                     onClick={() => handleDelete(entry.id)}
-                                    className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-600 transition-opacity"
+                                    className="text-gray-400 hover:text-red-600 focus-visible:text-red-600"
                                     aria-label="Remove service time"
                                     title="Remove"
                                   >
