@@ -6,6 +6,7 @@ import { requireNonNull } from '@/lib/types/utils';
 import { formatRoleLabel } from '@/lib/utils/role-utils';
 import { deleteFutureTemplateInstances } from '@/lib/supabase/queries/schedule-sessions';
 import { getCurrentSchoolYear } from '@/lib/school-year';
+import { bellTimesKey, collapseBellTimes } from '@/lib/scheduling/period-times';
 
 // Helper functions for time conversion
 const timeToMinutes = (time: string): number => {
@@ -200,7 +201,7 @@ export interface ValidationResult {
   valid: boolean;
   error?: string;
   conflicts?: {
-    type: 'bell_schedule' | 'special_activity' | 'session' | 'rule_violation' | 'mainstreaming' | 'blocked_time';
+    type: 'bell_schedule' | 'special_activity' | 'session' | 'rule_violation' | 'mainstreaming' | 'blocked_time' | 'push_in';
     description: string;
     conflictingItem?: any;
   }[];
@@ -491,6 +492,9 @@ export class SessionUpdateService {
       // SPE-492: hand-entered protected times ("don't pull during PE") — same
       // cross-provider posture as mainstreaming.
       this.checkBlockedTimeConflicts(studentId, targetDay, targetStartTime, targetEndTime),
+      // SPE-513: push-in support — a resource provider is IN the student's
+      // class during this period; a pull-out on top of it defeats the support.
+      this.checkPushInConflicts(studentId, targetDay, targetStartTime, targetEndTime),
       this.checkConcurrentSessionLimit(providerId, targetDay, targetStartTime, targetEndTime, session.id),
       this.checkConsecutiveSessionRules(providerId, studentId, targetDay, targetStartTime, targetEndTime, session.id),
       this.checkBreakRequirements(providerId, studentId, targetDay, targetStartTime, targetEndTime, session.id),
@@ -866,6 +870,133 @@ export class SessionUpdateService {
 
     const { data: blocks, error: blocksError } = await query;
     return { blocks: blocks || [], failed: !!blocksError };
+  }
+
+  /**
+   * SPE-513: check for push-in conflicts — a resource provider is IN the
+   * student's gen-ed class during this period (in-class support), so pulling
+   * the student out on top of it defeats the support. Same cross-provider
+   * posture as the mainstreaming/blocked-time checks: not scoped to the
+   * caller, resolved through the shared child, fail-open on the warn path.
+   */
+  private async checkPushInConflicts(
+    studentId: string,
+    day: number,
+    startTime: string,
+    endTime: string
+  ): Promise<NonNullable<ValidationResult['conflicts']>[0] | null> {
+    const { blocks } = await this.fetchPushInTimesForStudent(studentId, day);
+    if (blocks.length === 0) {
+      return null;
+    }
+
+    // Same pure overlap rule as the sibling protected-time checks — resolved
+    // push-in entries are {day, start, end, label} blocks like the rest.
+    const overlapping = findOverlappingMainstreamingBlock(blocks, day, startTime, endTime);
+    if (!overlapping) {
+      return null;
+    }
+
+    // Best-effort destination name for the message; the warning stands without it.
+    let where = 'their class';
+    if (overlapping.teacher_id) {
+      const { data: teacher } = await this.supabase
+        .from('teachers')
+        .select('first_name, last_name')
+        .eq('id', overlapping.teacher_id)
+        .single();
+      if (teacher?.last_name) {
+        where = `${[teacher.first_name, teacher.last_name].filter(Boolean).join(' ')}'s class`;
+      }
+    }
+
+    return {
+      type: 'push_in',
+      description: `Push-in support: a provider is with this student in ${where} during ${overlapping.label} (${overlapping.start_time} - ${overlapping.end_time}) — a pull-out here defeats that support`,
+      conflictingItem: overlapping
+    };
+  }
+
+  /**
+   * SPE-513: the student's PUSH-IN service times for one weekday, resolved to
+   * clock times. Entries are period-anchored (no stored times — SPE-424's
+   * weekly-bucket world), so each period resolves against the school's period
+   * grid (SPE-491 bell rows) for that day; an entry whose period has no bell
+   * row that day cannot be placed in time and is skipped — the warning
+   * degrades gracefully until the grid is entered. Own-room entries never
+   * conflict (a pull-out during the resource period is normal service).
+   * Child-resolved and `failed`-flagged like its blocked-time sibling.
+   */
+  private async fetchPushInTimesForStudent(
+    studentId: string,
+    day: number
+  ): Promise<{
+    blocks: Array<MainstreamingBlockLite & { teacher_id: string | null }>;
+    failed: boolean;
+  }> {
+    const { data: student, error: studentError } = await this.supabase
+      .from('students')
+      .select('child_id')
+      .eq('id', studentId)
+      .single();
+    if (studentError) {
+      return { blocks: [], failed: true };
+    }
+
+    let query = this.supabase
+      .from('student_service_times')
+      .select('*')
+      .eq('day_of_week', day)
+      .eq('school_year', getCurrentSchoolYear())
+      .eq('setting', 'push_in');
+
+    if (student?.child_id) {
+      query = query.or(`child_id.eq.${student.child_id},student_id.eq.${studentId}`);
+    } else {
+      query = query.eq('student_id', studentId);
+    }
+
+    const { data: entries, error: entriesError } = await query;
+    if (entriesError) {
+      return { blocks: [], failed: true };
+    }
+    if (!entries || entries.length === 0) {
+      return { blocks: [], failed: false };
+    }
+
+    // Resolve each entry's period to that day's times. Any provider's bell
+    // row counts — the SPE-491 period grid is school-wide even though rows
+    // carry whoever entered them; duplicates (several providers entering the
+    // same grid) collapse to the earliest-starting row per period
+    // (collapseBellTimes, shared with the auto-scheduler and the bands).
+    const schoolIds = Array.from(new Set(entries.map(e => e.school_id)));
+    const periodNames = Array.from(new Set(entries.map(e => e.period_name.trim())));
+    const { data: bellRows, error: bellError } = await this.supabase
+      .from('bell_schedules')
+      .select('day_of_week, period_name, start_time, end_time')
+      .in('school_id', schoolIds)
+      .eq('day_of_week', day)
+      .eq('school_year', getCurrentSchoolYear())
+      .in('period_name', periodNames);
+    if (bellError) {
+      return { blocks: [], failed: true };
+    }
+
+    const timesByPeriod = collapseBellTimes(bellRows || []);
+
+    const blocks: Array<MainstreamingBlockLite & { teacher_id: string | null }> = [];
+    for (const entry of entries) {
+      const times = timesByPeriod.get(bellTimesKey(day, entry.period_name));
+      if (!times) continue;
+      blocks.push({
+        day_of_week: entry.day_of_week,
+        start_time: times.start,
+        end_time: times.end,
+        label: entry.period_name,
+        teacher_id: entry.teacher_id,
+      });
+    }
+    return { blocks, failed: false };
   }
 
   /**
@@ -1245,6 +1376,19 @@ export class SessionUpdateService {
         blockedTimeCheckFailed = true;
       }
 
+      // SPE-513: and again for push-in support — an overridden "sits on
+      // push-in time" flag must survive sibling moves too.
+      let pushInTimes: MainstreamingBlockLite[] = [];
+      let pushInCheckFailed = false;
+      try {
+        const result = await this.fetchPushInTimesForStudent(studentId, day);
+        pushInTimes = result.blocks;
+        pushInCheckFailed = result.failed;
+      } catch (e) {
+        console.error('Push-in stale-check threw:', e);
+        pushInCheckFailed = true;
+      }
+
       // SPE-484: a flag may also exist because the session sits on the
       // student's teacher's special activity (an overridden drag warning).
       // Same retention contract as mainstreaming above — count the overlap
@@ -1276,6 +1420,7 @@ export class SessionUpdateService {
           crossCheckFailed ||
           mainstreamingCheckFailed ||
           blockedTimeCheckFailed ||
+          pushInCheckFailed ||
           activityCheckFailed ||
           flaggedSessionStillConflicts(flaggedSession, allSessions, otherProviderSessions) ||
           findOverlappingMainstreamingBlock(
@@ -1286,6 +1431,12 @@ export class SessionUpdateService {
           ) !== null ||
           findOverlappingMainstreamingBlock(
             blockedTimes,
+            day,
+            flaggedSession.start_time,
+            flaggedSession.end_time
+          ) !== null ||
+          findOverlappingMainstreamingBlock(
+            pushInTimes,
             day,
             flaggedSession.start_time,
             flaggedSession.end_time

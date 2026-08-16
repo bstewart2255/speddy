@@ -22,6 +22,7 @@ import { isSpecialistSourceRole } from '@/lib/auth/role-utils';
 
 type MainstreamingBlock = Database['public']['Tables']['mainstreaming_blocks']['Row'];
 type StudentBlockedTime = Database['public']['Tables']['student_blocked_times']['Row'];
+type StudentServiceTime = Database['public']['Tables']['student_service_times']['Row'];
 
 const DEFAULT_CONFIG: DataManagerConfig = {
   maxCacheAge: 15 * 60 * 1000, // 15 minutes
@@ -98,6 +99,11 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
   // SPE-492: every protected time at this school for the current year — same
   // school-wide posture as mainstreaming blocks.
   private studentBlockedTimes: StudentBlockedTime[] = [];
+  // SPE-513: every PUSH-IN service time at this school for the current year —
+  // in-class support the auto-scheduler must not place a pull-out over.
+  // Own-room entries are deliberately not loaded (a pull-out during the
+  // resource period is normal service, not a conflict).
+  private studentPushInTimes: StudentServiceTime[] = [];
 
   // SPE-318: the same activities cacheSpecialActivities indexes, kept flat for
   // the auto-scheduler (year-scoped and live-only at fetch — SPE-458/468).
@@ -230,6 +236,9 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
 
       // SPE-492: hand-entered protected times, same shape and posture.
       await this.loadStudentBlockedTimes();
+
+      // SPE-513: push-in service times, same shape and posture.
+      await this.loadStudentPushInTimes();
 
       this.cacheMetadata.lastFetched = new Date();
       this.cacheMetadata.isStale = false;
@@ -722,6 +731,35 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
   }
 
   /**
+   * SPE-513: load every PUSH-IN service time at this school for the current
+   * school year. Mirrors loadStudentBlockedTimes in every respect, including
+   * the legacy-school rule (no school_id -> none can exist). Entries are
+   * period-anchored; the scheduler resolves them against its bell rows.
+   */
+  private async loadStudentPushInTimes(): Promise<void> {
+    this.studentPushInTimes = [];
+    try {
+      if (!this.schoolId) {
+        return;
+      }
+      const { data, error } = await this.supabase
+        .from('student_service_times')
+        .select('*')
+        .eq('school_year', this.schoolYear)
+        .eq('school_id', this.schoolId)
+        .eq('setting', 'push_in');
+      if (error) {
+        this.cacheMetadata.fetchErrors.push(`Push-in times: ${error.message}`);
+        return;
+      }
+
+      this.studentPushInTimes = data || [];
+    } catch (e) {
+      this.cacheMetadata.fetchErrors.push(`Push-in times: ${e instanceof Error ? e.message : 'unknown error'}`);
+    }
+  }
+
+  /**
    * Fetch school hours
    */
   private async fetchSchoolHours(): Promise<any[]> {
@@ -1021,6 +1059,11 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
     return this.studentBlockedTimes;
   }
 
+  /** SPE-513: every push-in service time at this school (current year). */
+  public getStudentPushInTimes(): StudentServiceTime[] {
+    return this.studentPushInTimes;
+  }
+
   /** SPE-318: every live special activity at this school (current year), flat. */
   public getSpecialActivitiesFlat(): SpecialActivity[] {
     return this.specialActivitiesFlat;
@@ -1120,11 +1163,12 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
     this.crossProviderSessions.clear();
     this.mainstreamingBlocks = [];
     this.studentBlockedTimes = [];
+    this.studentPushInTimes = [];
     this.specialActivitiesFlat = [];
 
     this.cacheMetadata.isStale = true;
     this.conflicts = [];
-    
+
   }
   
   /**

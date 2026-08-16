@@ -28,6 +28,7 @@ import { getIepDateWarning } from '@/lib/utils/iep-date-utils';
 import { useSchool } from '../providers/school-context';
 import { TeamChatButton } from '../chat/team-chat-button';
 import { IepMinutesConverter } from './iep-minutes-converter';
+import { StudentServiceTimesSection } from './student-service-times-section';
 import { MAX_MINUTES_PER_SESSION } from '@/lib/services/weekly-minutes';
 import { canScheduleAtSecondary } from '@/lib/school-helpers';
 
@@ -594,6 +595,13 @@ export function StudentDetailsModal({
                       }
                     />
                   )}
+                  {/* SPE-513: period-anchored service times — the resource
+                      period plus any push-ins. Persisted immediately (own
+                      queries), separate from this form's save cycle. */}
+                  <StudentServiceTimesSection
+                    studentId={student.id}
+                    readOnly={readOnly}
+                  />
                 </div>
               )}
               {/* Related-service roles schedule discrete sessions at secondary

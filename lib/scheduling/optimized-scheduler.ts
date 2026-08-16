@@ -5,8 +5,9 @@ import { Database } from "../../src/types/database";
 import { SchedulingDataManager } from './scheduling-data-manager';
 import { ManualPlacementService } from '../services/manual-placement-service';
 import { filterScheduledSessions, type ScheduledSession } from '../utils/session-helpers';
-import { findOverlappingOtherProviderSession, findOverlappingMainstreamingBlock, findOverlappingSpecialActivity, type OtherProviderSessionLite } from '../services/session-update-service';
+import { findOverlappingOtherProviderSession, findOverlappingMainstreamingBlock, findOverlappingSpecialActivity, type OtherProviderSessionLite, type MainstreamingBlockLite } from '../services/session-update-service';
 import { DEFAULT_SCHEDULING_CONFIG } from './scheduling-config';
+import { bellTimesKey, collapseBellTimes } from './period-times';
 import {
   DEFAULT_SCHEDULING_STRATEGY,
   getGroupingKey,
@@ -19,7 +20,8 @@ import type {
   BellSchedule,
   SpecialActivity,
   MainstreamingBlock,
-  StudentBlockedTime
+  StudentBlockedTime,
+  StudentServiceTime
 } from './types/scheduling-data';
 
 /**
@@ -98,6 +100,11 @@ interface SchedulingContext {
   // SPE-492: student -> day -> that student's protected times ("don't pull
   // during PE"); same never-place-over rule as mainstreaming.
   blockedTimesByStudent: Map<string, Map<number, StudentBlockedTime[]>>;
+  // SPE-513: student -> day -> that student's PUSH-IN times, already resolved
+  // from period names to clock times against the school's bell rows (entries
+  // whose period has no bell row that day can't be placed in time and are
+  // dropped at index build). Same never-place-over rule as its siblings.
+  pushInTimesByStudent: Map<string, Map<number, MainstreamingBlockLite[]>>;
   
   // Cache metadata
   cacheMetadata: {
@@ -283,6 +290,9 @@ export class OptimizedScheduler {
     // SPE-492: protected times, same day-one wiring.
     const studentBlockedTimes = this.dataManager.getStudentBlockedTimes();
 
+    // SPE-513: push-in service times (period-anchored; resolved at index build).
+    const studentPushInTimes = this.dataManager.getStudentPushInTimes();
+
     // Get school hours from existing context or use defaults
     const schoolHours: Array<{ day_of_week: number; grade_level: string; start_time: string; end_time: string }> = [];
     
@@ -300,6 +310,7 @@ export class OptimizedScheduler {
       specialActivities,
       mainstreamingBlocks,
       studentBlockedTimes,
+      studentPushInTimes,
       existingSessions,
       schoolHours,
       crossProviderSessionsByStudent
@@ -481,6 +492,42 @@ export class OptimizedScheduler {
         indexBlockedTimeUnder(block.child_id, block);
       }
     }
+
+    // SPE-513: push-in service times, indexed the same way (row + shared
+    // child) but resolved from period names to that day's clock times first,
+    // against ALL bell rows for the school — including class periods, which
+    // the conflict index above deliberately excludes but which are exactly
+    // what a push-in entry names. Entries whose period has no bell row that
+    // day are dropped (no time to place them at; the drag path degrades the
+    // same way).
+    const pushInTimesByStudent = new Map<string, Map<number, MainstreamingBlockLite[]>>();
+    const bellTimesByDayPeriod = collapseBellTimes(preloadedData.bellSchedules);
+    const indexPushInUnder = (key: string, block: MainstreamingBlockLite) => {
+      if (!pushInTimesByStudent.has(key)) {
+        pushInTimesByStudent.set(key, new Map());
+      }
+      const keyMap = pushInTimesByStudent.get(key)!;
+      if (!keyMap.has(block.day_of_week)) {
+        keyMap.set(block.day_of_week, []);
+      }
+      keyMap.get(block.day_of_week)!.push(block);
+    };
+    for (const entry of (preloadedData.studentPushInTimes || []) as StudentServiceTime[]) {
+      const times = bellTimesByDayPeriod.get(
+        bellTimesKey(entry.day_of_week, entry.period_name)
+      );
+      if (!times) continue;
+      const resolved: MainstreamingBlockLite = {
+        day_of_week: entry.day_of_week,
+        start_time: times.start,
+        end_time: times.end,
+        label: entry.period_name,
+      };
+      indexPushInUnder(entry.student_id, resolved);
+      if (entry.child_id) {
+        indexPushInUnder(entry.child_id, resolved);
+      }
+    }
     
     // Build provider availability map for all weekdays
     const providerKey = `${this.providerId}-${schoolSite}`;
@@ -513,6 +560,7 @@ export class OptimizedScheduler {
       specialActivitiesByTeacher,
       mainstreamingByStudent,
       blockedTimesByStudent,
+      pushInTimesByStudent,
 
       // Cache metadata
       cacheMetadata: {
@@ -1296,6 +1344,13 @@ export class OptimizedScheduler {
           continue;
         }
 
+        // SPE-513: never place a session over the student's push-in support
+        // (a resource provider is IN their class during that period).
+        if (this.hasPushInConflict(student, day, slot.startTime, endTime)) {
+          this.log(`    ❌ Push-in conflict: a provider supports this student in class during this slot`);
+          continue;
+        }
+
         // Check for overlapping sessions FIRST
         if (!this.validateNoOverlap(student, day, slot.startTime, endTime, [...existingFoundSlots, ...foundSlots])) {
           this.log(`    ❌ Session overlap detected`);
@@ -1443,6 +1498,27 @@ export class OptimizedScheduler {
     endTime: string
   ): boolean {
     const index = this.context!.blockedTimesByStudent;
+    const blocks = [
+      ...(index.get(student.id)?.get(day) || []),
+      ...(student.child_id ? index.get(student.child_id)?.get(day) || [] : []),
+    ];
+    if (blocks.length === 0) return false;
+    return findOverlappingMainstreamingBlock(blocks, day, startTime, endTime) !== null;
+  }
+
+  /**
+   * SPE-513: does this slot overlap the student's push-in support time
+   * (a resource provider in their gen-ed class)? Entries were resolved from
+   * periods to clock times at index build; same pure overlap rule as the
+   * sibling checks.
+   */
+  private hasPushInConflict(
+    student: Pick<Student, 'id' | 'child_id'>,
+    day: number,
+    startTime: string,
+    endTime: string
+  ): boolean {
+    const index = this.context!.pushInTimesByStudent;
     const blocks = [
       ...(index.get(student.id)?.get(day) || []),
       ...(student.child_id ? index.get(student.child_id)?.get(day) || [] : []),

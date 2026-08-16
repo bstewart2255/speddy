@@ -885,6 +885,10 @@ export const SWEPT_TABLES: { table: string; column: string; identity: 'user' | '
   // Student blocked times (SPE-492): protected times ("don't pull during
   // PE") created live by verification walks; keyed to the owning provider.
   { table: 'student_blocked_times', column: 'provider_id', identity: 'user' },
+  // Student service times (SPE-513): where/when a secondary resource provider
+  // sees each student (own room / push-in), created live by verification
+  // walks; keyed to the owning provider.
+  { table: 'student_service_times', column: 'provider_id', identity: 'user' },
 ];
 
 /**

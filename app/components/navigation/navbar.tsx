@@ -44,6 +44,15 @@ const SECONDARY_HIDDEN_HREFS = new Set([
   '/dashboard/teacher/special-activities',
 ]);
 const SPECIAL_ACTIVITIES_HREF = '/dashboard/special-activities';
+// SPE-513: resource providers get Schedule back at secondary — the page
+// serves them the period week view (service-time entries), not the time
+// grid — plus Bell Schedules so they can enter the school's period grid.
+// Plan and Special Activities stay hidden for them.
+const RESOURCE_SECONDARY_HIDDEN_HREFS = new Set([
+  '/dashboard/special-activities',
+  '/dashboard/plan',
+  '/dashboard/teacher/special-activities',
+]);
 
 export default function Navbar() {
   const router = useRouter();
@@ -215,21 +224,23 @@ export default function Navbar() {
   // On secondary sites, drop scheduling-centric items (Schedule, Bell Schedules,
   // Special Activities, Plan) for providers/teachers; admin nav is unaffected.
   // Related-service roles keep scheduling at secondary (SPE-490), minus
-  // Special Activities (top-level item and Schedule sub-item alike).
+  // Special Activities (top-level item and Schedule sub-item alike). Resource
+  // keeps Schedule + Bell Schedules (SPE-513 — the page serves them the
+  // period week view); everyone else keeps the full trim.
   const schedulesAtSecondary = canScheduleAtSecondary(userRole);
+  const hiddenAtSecondary = schedulesAtSecondary
+    ? new Set([SPECIAL_ACTIVITIES_HREF])
+    : userRole.trim() === 'resource'
+      ? RESOURCE_SECONDARY_HIDDEN_HREFS
+      : SECONDARY_HIDDEN_HREFS;
   const navigation = getNavigationForRole(userRole)
-    .filter((item) =>
-      !isSecondary ||
-      (schedulesAtSecondary
-        ? item.href !== SPECIAL_ACTIVITIES_HREF
-        : !SECONDARY_HIDDEN_HREFS.has(item.href))
-    )
+    .filter((item) => !isSecondary || !hiddenAtSecondary.has(item.href))
     .map((item) =>
-      isSecondary && schedulesAtSecondary && item.subItems
+      isSecondary && item.subItems
         ? {
             ...item,
             subItems: item.subItems.filter(
-              (subItem) => subItem.href !== SPECIAL_ACTIVITIES_HREF
+              (subItem) => !hiddenAtSecondary.has(subItem.href)
             ),
           }
         : item
