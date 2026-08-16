@@ -60,30 +60,42 @@ export function ResourceWeekView() {
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
-      if (!currentSchool) return;
-      setLoading(true);
-      const supabase = createClient();
-      const { data: auth } = await supabase.auth.getUser();
-      if (cancelled) return;
-      const uid = auth?.user?.id ?? null;
-      setCurrentUserId(uid);
-
-      if (uid) {
-        // Own caseload at the active school — the modal's student picker.
-        let query = supabase.from('students').select('*').eq('provider_id', uid);
-        query = buildSchoolFilter(query, currentSchool);
-        const { data: rows } = await query;
-        if (!cancelled) setStudents((rows as Student[]) ?? []);
+      // No school selected: nothing to load, but never strand the spinner.
+      if (!currentSchool) {
+        setLoading(false);
+        return;
       }
+      setLoading(true);
+      try {
+        const supabase = createClient();
+        const { data: auth } = await supabase.auth.getUser();
+        if (cancelled) return;
+        const uid = auth?.user?.id ?? null;
+        setCurrentUserId(uid);
 
-      await refresh();
-      if (!cancelled) setLoading(false);
+        if (uid) {
+          // Own caseload at the active school — the modal's student picker.
+          let query = supabase.from('students').select('*').eq('provider_id', uid);
+          query = buildSchoolFilter(query, currentSchool);
+          const { data: rows } = await query;
+          if (!cancelled) setStudents((rows as Student[]) ?? []);
+        }
+
+        await refresh();
+      } catch (err) {
+        console.error('[resource-week-view] load failed:', err);
+        if (!cancelled) showToast('Failed to load your week', 'error');
+      } finally {
+        // The reset must survive a rejected auth/students call, or the page
+        // sits on "Loading your week…" forever (CodeRabbit, PR #878).
+        if (!cancelled) setLoading(false);
+      }
     };
     load();
     return () => {
       cancelled = true;
     };
-  }, [currentSchool, refresh]);
+  }, [currentSchool, refresh, showToast]);
 
   // Rows: the school's period grid in bell order, plus any period an entry
   // names that the grid doesn't know (grid edited later, or no grid yet).
