@@ -17,6 +17,7 @@ type BellSchedule = Database['public']['Tables']['bell_schedules']['Row'];
 type SpecialActivity = Database['public']['Tables']['special_activities']['Row'];
 type MainstreamingBlock = Database['public']['Tables']['mainstreaming_blocks']['Row'];
 type StudentBlockedTime = Database['public']['Tables']['student_blocked_times']['Row'];
+type StudentServiceTime = Database['public']['Tables']['student_service_times']['Row'];
 type Profile = Database['public']['Tables']['profiles']['Row'];
 
 interface ScheduleData {
@@ -27,6 +28,8 @@ interface ScheduleData {
   specialActivities: SpecialActivity[];
   mainstreamingBlocks: MainstreamingBlock[];
   studentBlockedTimes: StudentBlockedTime[];
+  /** SPE-513: school-wide PUSH-IN service times (in-class support). */
+  studentPushInTimes: StudentServiceTime[];
   schoolHours: SchoolHour[];
   seaProfiles: Array<{ id: string; full_name: string; is_shared?: boolean }>;
   otherSpecialists: Array<{ id: string; full_name: string; role: SpecialistSourceRole }>;
@@ -49,6 +52,7 @@ export function useScheduleData() {
     specialActivities: [],
     mainstreamingBlocks: [],
     studentBlockedTimes: [],
+    studentPushInTimes: [],
     schoolHours: [],
     seaProfiles: [],
     otherSpecialists: [],
@@ -109,6 +113,7 @@ export function useScheduleData() {
         activitiesResult,
         mainstreamingResult,
         blockedTimesResult,
+        pushInTimesResult,
         schoolHoursData,
         unscheduledCountData
       ] = await Promise.all([
@@ -187,6 +192,17 @@ export function useScheduleData() {
               .eq('school_id', currentSchool.school_id)
           : Promise.resolve({ data: [], error: null }),
 
+        // Push-in service times (SPE-513) - School-wide, PUSH-IN entries only
+        // (a resource provider in the student's class; own-room entries never
+        // conflict). Same posture and legacy rule as the two above.
+        currentSchool.school_id
+          ? supabase
+              .from('student_service_times')
+              .select('*')
+              .eq('school_year', getCurrentSchoolYear())
+              .eq('school_id', currentSchool.school_id)
+              .eq('setting', 'push_in')
+          : Promise.resolve({ data: [], error: null }),
 
         // School hours
         getSchoolHours(currentSchool),
@@ -373,6 +389,7 @@ export function useScheduleData() {
         specialActivities: activitiesResult.data || [],
         mainstreamingBlocks: mainstreamingResult.data || [],
         studentBlockedTimes: blockedTimesResult.data || [],
+        studentPushInTimes: pushInTimesResult.data || [],
         schoolHours: schoolHoursData,
         seaProfiles,
         otherSpecialists,

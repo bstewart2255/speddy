@@ -18,6 +18,7 @@ import type {
   SpecialActivity,
   Student,
   StudentBlockedTime,
+  StudentServiceTime,
 } from '@/src/types';
 import type { ScheduleDragPosition } from '../hooks/use-schedule-state';
 import type { SpecialistSourceRole } from '@/lib/auth/role-utils';
@@ -34,6 +35,8 @@ interface ScheduleGridProps {
   mainstreamingBlocks?: MainstreamingBlock[];
   /** SPE-492: protected times ("don't pull during X") at this school. */
   studentBlockedTimes?: StudentBlockedTime[];
+  /** SPE-513: push-in service times at this school (bands only — no owner grid blocks; owners use the week view). */
+  studentPushInTimes?: StudentServiceTime[];
   /** Present only for the blocks' owner (the SDC dual-role provider). */
   onMainstreamingBlockDelete?: (blockId: string) => void;
   onBlockedTimeDelete?: (blockId: string) => void;
@@ -102,6 +105,7 @@ export const ScheduleGrid = memo(function ScheduleGrid({
   specialActivities,
   mainstreamingBlocks = [],
   studentBlockedTimes = [],
+  studentPushInTimes = [],
   onMainstreamingBlockDelete,
   onBlockedTimeDelete,
   teachers,
@@ -482,6 +486,7 @@ export const ScheduleGrid = memo(function ScheduleGrid({
                       specialActivities={specialActivities}
                       mainstreamingBlocks={otherMainstreamingBlocks}
                       studentBlockedTimes={otherBlockedTimes}
+                      studentPushInTimes={studentPushInTimes}
                       schoolHours={schoolHours}
                       sessions={sessions}
                       students={students}

@@ -4,6 +4,8 @@ import React, { useMemo } from 'react';
 import { GRADE_COLOR_MAP } from '@/lib/scheduling/constants';
 import { formatTeacherName } from '@/lib/utils/teacher-utils';
 import { isClassPeriodBlock } from '@/lib/constants/activity-types';
+import { bellTimesKey, collapseBellTimes } from '@/lib/scheduling/period-times';
+import { getCurrentSchoolYear } from '@/lib/school-year';
 import type {
   BellSchedule,
   MainstreamingBlock,
@@ -12,6 +14,7 @@ import type {
   SpecialActivity,
   Student,
   StudentBlockedTime,
+  StudentServiceTime,
 } from '@/src/types';
 import type { Teacher } from '../types/teacher';
 import type { OtherProviderSession } from '../hooks/useOtherProviderSessions';
@@ -24,6 +27,8 @@ interface VisualAvailabilityLayerProps {
   mainstreamingBlocks?: MainstreamingBlock[];
   /** SPE-492: other providers' protected times (owner renders their own as grid blocks). */
   studentBlockedTimes?: StudentBlockedTime[];
+  /** SPE-513: push-in service times (a resource provider in the student's class). */
+  studentPushInTimes?: StudentServiceTime[];
   schoolHours: SchoolHour[];
   sessions: ScheduleSession[];
   students: Student[];
@@ -47,6 +52,7 @@ export function VisualAvailabilityLayer({
   specialActivities,
   mainstreamingBlocks = [],
   studentBlockedTimes = [],
+  studentPushInTimes = [],
   schoolHours,
   sessions,
   students,
@@ -61,7 +67,7 @@ export function VisualAvailabilityLayer({
       startMin: number;
       endMin: number;
       color: string;
-      type: 'bell' | 'activity' | 'other-provider' | 'mainstreaming' | 'blocked-time';
+      type: 'bell' | 'activity' | 'other-provider' | 'mainstreaming' | 'blocked-time' | 'push-in';
       opacity: number;
     }> = [];
 
@@ -241,6 +247,49 @@ export function VisualAvailabilityLayer({
       });
     }
 
+    // Push-in support (SPE-513, only when student is selected): periods where
+    // a resource provider is IN the student's class — indigo, apart from
+    // protected time's amber. Entries are period-anchored, so each resolves
+    // against this day's bell rows; a period with no bell row that day can't
+    // be placed and is skipped (the drag warning degrades identically).
+    if (filters.studentId && studentPushInTimes.length > 0) {
+      const selectedChildId = selectedStudent?.child_id ?? null;
+      const studentPushIns = studentPushInTimes.filter(
+        t =>
+          t.day_of_week === day &&
+          (t.student_id === filters.studentId ||
+            (selectedChildId !== null && t.child_id === selectedChildId))
+      );
+
+      // Year-scope the resolution input: this hook's bell fetch is NOT
+      // year-scoped (SPE-487 divergence), and earliest-start-wins across
+      // years would draw the band at a prior year's time while the drag
+      // warning and auto-scheduler (both year-scoped) enforce this year's.
+      const currentYear = getCurrentSchoolYear();
+      const periodTimes = collapseBellTimes(
+        bellSchedules.filter(bs => bs.school_year === currentYear)
+      );
+      studentPushIns.forEach(entry => {
+        const row = periodTimes.get(bellTimesKey(day, entry.period_name));
+        if (!row) return;
+
+        const [startH, startM] = row.start.split(':').map(Number);
+        const [endH, endM] = row.end.split(':').map(Number);
+        const startMin = startH * 60 + startM;
+        const endMin = endH * 60 + endM;
+
+        if (startMin < gridEndMin && endMin > gridStartMin) {
+          bands.push({
+            startMin: Math.max(startMin, gridStartMin),
+            endMin: Math.min(endMin, gridEndMin),
+            color: 'bg-indigo-400',
+            type: 'push-in',
+            opacity: 50,
+          });
+        }
+      });
+    }
+
     // Other Provider Sessions (only when student is selected)
     if (filters.studentId && otherProviderSessions.length > 0) {
       const studentOtherSessions = otherProviderSessions.filter(
@@ -266,7 +315,7 @@ export function VisualAvailabilityLayer({
     }
 
     return bands;
-  }, [day, bellSchedules, specialActivities, mainstreamingBlocks, studentBlockedTimes, students, teachers, filters, otherProviderSessions, gridConfig]);
+  }, [day, bellSchedules, specialActivities, mainstreamingBlocks, studentBlockedTimes, studentPushInTimes, students, teachers, filters, otherProviderSessions, gridConfig]);
 
   // Merge overlapping bands of the SAME TYPE only
   // Different types (bell, activity, other-provider) should not merge together

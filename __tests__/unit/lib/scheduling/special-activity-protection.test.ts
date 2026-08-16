@@ -100,6 +100,7 @@ function schedulerWith(
     specialActivitiesByTeacher: activitiesByKey,
     mainstreamingByStudent: new Map(),
     blockedTimesByStudent: new Map(),
+    pushInTimesByStudent: new Map(),
     cacheMetadata: { lastFetched: new Date(), isStale: false, fetchErrors: [], queryCount: 0 },
   };
   return scheduler;

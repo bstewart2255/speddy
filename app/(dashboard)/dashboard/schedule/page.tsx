@@ -29,8 +29,10 @@ import { deleteMainstreamingBlock } from '../../../../lib/supabase/queries/mains
 import { deleteStudentBlockedTime } from '../../../../lib/supabase/queries/student-blocked-times';
 import type { ScheduleSession } from '@/src/types';
 import { isSpecialistSourceRole } from '@/lib/auth/role-utils';
+import { ResourceWeekView } from './components/resource-week-view';
+import { getUserRole } from '../../../../lib/supabase/queries/sea-students';
 
-export default function SchedulePage() {
+function MainSchedule() {
   const { currentSchool, isSecondary } = useSchool();
   const { showToast } = useToast();
   const supabase = createClient();
@@ -46,6 +48,7 @@ export default function SchedulePage() {
     specialActivities,
     mainstreamingBlocks,
     studentBlockedTimes,
+    studentPushInTimes,
     schoolHours,
     seaProfiles,
     otherSpecialists,
@@ -649,6 +652,7 @@ export default function SchedulePage() {
             onMainstreamingBlockDelete={currentUserId ? handleMainstreamingBlockDelete : undefined}
             studentBlockedTimes={studentBlockedTimes}
             onBlockedTimeDelete={currentUserId ? handleBlockedTimeDelete : undefined}
+            studentPushInTimes={studentPushInTimes}
             teachers={teachers}
             visualFilters={visualFilters}
             otherProviderSessions={otherProviderSessions}
@@ -788,4 +792,61 @@ export default function SchedulePage() {
       </div>
     </ScheduleErrorBoundary>
   );
+}
+
+/**
+ * SPE-513: /dashboard/schedule is role-aware at secondary sites. Resource
+ * providers get the period week view (their service is a weekly minutes
+ * bucket embedded in class periods — SPE-424 — so the drag-and-drop time
+ * grid's machinery is all noise for them, and creating time-based sessions
+ * there is exactly the phantom-session mess SPE-425 cleaned up). Every other
+ * role keeps the Main Schedule grid, including related services at secondary
+ * (SPE-490).
+ */
+export default function SchedulePage() {
+  const { isSecondary, loading: schoolLoading } = useSchool();
+  const [role, setRole] = useState<string | null>(null);
+  const [roleLoaded, setRoleLoaded] = useState(false);
+  const supabase = useMemo(() => createClient(), []);
+
+  useEffect(() => {
+    // The role only matters on a secondary site — don't spend a round-trip
+    // (or delay first paint) on the elementary majority path.
+    if (schoolLoading || !isSecondary) return;
+    let cancelled = false;
+    const load = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        if (!cancelled) setRoleLoaded(true);
+        return;
+      }
+      const fetched = await getUserRole(user.id);
+      if (!cancelled) {
+        setRole(fetched);
+        setRoleLoaded(true);
+      }
+    };
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [supabase, schoolLoading, isSecondary]);
+
+  if (schoolLoading) {
+    return <ScheduleLoading />;
+  }
+
+  // Elementary (and unclassified) schools always get the grid — no role
+  // round-trip needed.
+  if (!isSecondary) {
+    return <MainSchedule />;
+  }
+
+  // Secondary: wait for the role so a resource provider never sees the grid
+  // flash before the week view replaces it.
+  if (!roleLoaded) {
+    return <ScheduleLoading />;
+  }
+
+  return role?.trim() === 'resource' ? <ResourceWeekView /> : <MainSchedule />;
 }

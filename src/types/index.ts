@@ -9,6 +9,7 @@ import type { Database } from './database';
 export type BellSchedule = Database['public']['Tables']['bell_schedules']['Row'];
 export type MainstreamingBlock = Database['public']['Tables']['mainstreaming_blocks']['Row'];
 export type StudentBlockedTime = Database['public']['Tables']['student_blocked_times']['Row'];
+export type StudentServiceTime = Database['public']['Tables']['student_service_times']['Row'];
 export type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
 export type SchoolHour = Database['public']['Tables']['school_hours']['Row'];
 export type SpecialActivity = Database['public']['Tables']['special_activities']['Row'];
@@ -44,6 +45,7 @@ export type TeacherAvailabilityPref = Database['public']['Tables']['teacher_avai
 export type BellScheduleInsert = Database['public']['Tables']['bell_schedules']['Insert'];
 export type MainstreamingBlockInsert = Database['public']['Tables']['mainstreaming_blocks']['Insert'];
 export type StudentBlockedTimeInsert = Database['public']['Tables']['student_blocked_times']['Insert'];
+export type StudentServiceTimeInsert = Database['public']['Tables']['student_service_times']['Insert'];
 export type ScheduleSessionInsert = Database['public']['Tables']['schedule_sessions']['Insert'];
 export type SchoolHourInsert = Database['public']['Tables']['school_hours']['Insert'];
 export type SpecialActivityInsert = Database['public']['Tables']['special_activities']['Insert'];

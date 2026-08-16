@@ -111,6 +111,7 @@ describe('OptimizedScheduler slot search consults the hard-avoid (SPE-287)', () 
       specialActivitiesByTeacher: new Map(),
       mainstreamingByStudent: new Map(),
       blockedTimesByStudent: new Map(),
+      pushInTimesByStudent: new Map(),
       cacheMetadata: { lastFetched: new Date(), isStale: false, fetchErrors: [], queryCount: 0 },
     };
     return scheduler;
