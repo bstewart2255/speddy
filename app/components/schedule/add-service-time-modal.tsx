@@ -176,10 +176,11 @@ export function AddServiceTimeModal({
   const handleClassChoice = (value: string) => {
     setClassChoice(value);
     if (value && value !== MANUAL_CLASS) {
-      // Picking a labeled class auto-fills the period when the label resolves.
+      // Picking a labeled class auto-fills the period when the label
+      // resolves — and CLEARS it when it doesn't, so switching classes can
+      // never silently keep the previous class's auto-filled period.
       const link = classLinks.find(l => l.teacherId === value);
-      const resolved = resolvePeriodLabel(link?.period, periodOptions);
-      if (resolved) setPeriodName(resolved);
+      setPeriodName(resolvePeriodLabel(link?.period, periodOptions) ?? '');
     }
   };
 

@@ -969,24 +969,33 @@ export class SessionUpdateService {
     // carry whoever entered them; duplicates (several providers entering the
     // same grid) collapse to the earliest-starting row per period
     // (collapseBellTimes, shared with the auto-scheduler and the bands).
+    // No period_name SQL filter: name matching is collapseBellTimes' job
+    // (trimmed, case-insensitive) and an exact .in() would silently exclude
+    // case/whitespace-variant rows the other surfaces DO match. Rows are
+    // collapsed PER SCHOOL — a child-linked entry set can span schools, and
+    // one school's period must never resolve to another school's times.
     const schoolIds = Array.from(new Set(entries.map(e => e.school_id)));
-    const periodNames = Array.from(new Set(entries.map(e => e.period_name.trim())));
     const { data: bellRows, error: bellError } = await this.supabase
       .from('bell_schedules')
-      .select('day_of_week, period_name, start_time, end_time')
+      .select('school_id, day_of_week, period_name, start_time, end_time')
       .in('school_id', schoolIds)
       .eq('day_of_week', day)
-      .eq('school_year', getCurrentSchoolYear())
-      .in('period_name', periodNames);
+      .eq('school_year', getCurrentSchoolYear());
     if (bellError) {
       return { blocks: [], failed: true };
     }
 
-    const timesByPeriod = collapseBellTimes(bellRows || []);
+    const timesBySchool = new Map<string, ReturnType<typeof collapseBellTimes>>();
+    for (const schoolId of schoolIds) {
+      timesBySchool.set(
+        schoolId,
+        collapseBellTimes((bellRows || []).filter(r => r.school_id === schoolId))
+      );
+    }
 
     const blocks: Array<MainstreamingBlockLite & { teacher_id: string | null }> = [];
     for (const entry of entries) {
-      const times = timesByPeriod.get(bellTimesKey(day, entry.period_name));
+      const times = timesBySchool.get(entry.school_id)?.get(bellTimesKey(day, entry.period_name));
       if (!times) continue;
       blocks.push({
         day_of_week: entry.day_of_week,

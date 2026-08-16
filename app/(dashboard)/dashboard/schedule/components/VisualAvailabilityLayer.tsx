@@ -5,6 +5,7 @@ import { GRADE_COLOR_MAP } from '@/lib/scheduling/constants';
 import { formatTeacherName } from '@/lib/utils/teacher-utils';
 import { isClassPeriodBlock } from '@/lib/constants/activity-types';
 import { bellTimesKey, collapseBellTimes } from '@/lib/scheduling/period-times';
+import { getCurrentSchoolYear } from '@/lib/school-year';
 import type {
   BellSchedule,
   MainstreamingBlock,
@@ -260,7 +261,14 @@ export function VisualAvailabilityLayer({
             (selectedChildId !== null && t.child_id === selectedChildId))
       );
 
-      const periodTimes = collapseBellTimes(bellSchedules);
+      // Year-scope the resolution input: this hook's bell fetch is NOT
+      // year-scoped (SPE-487 divergence), and earliest-start-wins across
+      // years would draw the band at a prior year's time while the drag
+      // warning and auto-scheduler (both year-scoped) enforce this year's.
+      const currentYear = getCurrentSchoolYear();
+      const periodTimes = collapseBellTimes(
+        bellSchedules.filter(bs => bs.school_year === currentYear)
+      );
       studentPushIns.forEach(entry => {
         const row = periodTimes.get(bellTimesKey(day, entry.period_name));
         if (!row) return;

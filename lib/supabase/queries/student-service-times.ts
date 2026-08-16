@@ -202,22 +202,25 @@ export async function getSchoolPeriodGrid(schoolId: string): Promise<SchoolPerio
     .not('period_name', 'is', null);
   if (error) throw error;
 
-  const earliestByName = new Map<string, string>();
+  // Dedup case-insensitively (the same rule every conflict surface applies
+  // via bellTimesKey), keeping the first-seen casing for display — two
+  // providers entering "Period 3" and "period 3" are one period, not two
+  // picker options.
+  const byKey = new Map<string, SchoolPeriod>();
   for (const row of data ?? []) {
     const name = row.period_name?.trim();
     if (!name) continue;
+    const key = name.toLowerCase();
     const start = (row.start_time ?? '').slice(0, 5);
-    const existing = earliestByName.get(name);
-    if (!existing || start < existing) {
-      earliestByName.set(name, start);
+    const existing = byKey.get(key);
+    if (!existing || start < existing.earliestStart) {
+      byKey.set(key, { name: existing?.name ?? name, earliestStart: start });
     }
   }
 
-  return Array.from(earliestByName.entries())
-    .map(([name, earliestStart]) => ({ name, earliestStart }))
-    .sort(
-      (a, b) =>
-        a.earliestStart.localeCompare(b.earliestStart) ||
-        a.name.localeCompare(b.name)
-    );
+  return Array.from(byKey.values()).sort(
+    (a, b) =>
+      a.earliestStart.localeCompare(b.earliestStart) ||
+      a.name.localeCompare(b.name)
+  );
 }

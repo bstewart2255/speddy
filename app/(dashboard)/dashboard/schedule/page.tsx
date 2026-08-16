@@ -810,6 +810,9 @@ export default function SchedulePage() {
   const supabase = useMemo(() => createClient(), []);
 
   useEffect(() => {
+    // The role only matters on a secondary site — don't spend a round-trip
+    // (or delay first paint) on the elementary majority path.
+    if (schoolLoading || !isSecondary) return;
     let cancelled = false;
     const load = async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -827,17 +830,23 @@ export default function SchedulePage() {
     return () => {
       cancelled = true;
     };
-  }, [supabase]);
+  }, [supabase, schoolLoading, isSecondary]);
 
-  // Wait for both halves of the gate: rendering the grid before the role
-  // resolves would flash the wrong surface at a secondary resource provider.
-  if (schoolLoading || !roleLoaded) {
+  if (schoolLoading) {
     return <ScheduleLoading />;
   }
 
-  if (isSecondary && role?.trim() === 'resource') {
-    return <ResourceWeekView />;
+  // Elementary (and unclassified) schools always get the grid — no role
+  // round-trip needed.
+  if (!isSecondary) {
+    return <MainSchedule />;
   }
 
-  return <MainSchedule />;
+  // Secondary: wait for the role so a resource provider never sees the grid
+  // flash before the week view replaces it.
+  if (!roleLoaded) {
+    return <ScheduleLoading />;
+  }
+
+  return role?.trim() === 'resource' ? <ResourceWeekView /> : <MainSchedule />;
 }
