@@ -1480,10 +1480,100 @@ describe('the teacher-side hunt settles a student-only first page (SPE-538)', ()
     const hunt = stepIn(steps, 'teacher-rosters')!;
     expect(hunt.status).toBe('ok');
     expect(hunt.message).toContain('via a role filter');
-    expect(hunt.message).toContain('students CAN be joined');
+    // The hunt claims only what it SAW — the join verdict belongs to the
+    // linkage step, computed from these very rows (SPE-538 review).
+    expect(hunt.message).toContain('Found: 1 teacher entries');
+    expect(hunt.message).not.toContain('joined');
     // The hunted teacher shares cls-hunt-1 with every student: linkage computes.
     expect(stepIn(steps, 'linkage')!.status).toBe('ok');
     expect(stepIn(steps, 'linkage')!.message).toContain('Sampled 3 students');
+  });
+
+  it('advances by rows RECEIVED, so a server that caps `limit` cannot hide teachers', async () => {
+    // The server caps every page at 100 rows. The full list is 120 students
+    // then a teacher — a fixed 200-stride would jump from row 100 to row 200,
+    // skip the teacher entirely, and declare the ENTIRE list teacher-less.
+    const fullList = [...studentRows(120), teacherRow('tea-hunt-1')];
+    handler = (req) => {
+      if (req.url.includes('/enrollments')) {
+        const params = new URL(req.url, origin).searchParams;
+        const offset = Number(params.get('offset') ?? '0');
+        return { status: 200, body: { enrollments: fullList.slice(offset, offset + 100) } };
+      }
+      return baseSurface(req);
+    };
+
+    const steps = await probe();
+
+    const hunt = stepIn(steps, 'teacher-rosters')!;
+    expect(hunt.status).toBe('ok');
+    expect(hunt.message).toContain('deep in the list');
+  });
+
+  it('detects a server that ignores `offset` and refuses to call an echo a walk', async () => {
+    handler = (req) => {
+      if (req.url.includes('/enrollments')) {
+        // Same full student page for every request, whatever the offset.
+        return { status: 200, body: { enrollments: studentRows(200) } };
+      }
+      if (req.url.includes('/classes/') && req.url.includes('/teachers')) {
+        return { status: 200, body: { users: [] } };
+      }
+      return baseSurface(req);
+    };
+
+    const steps = await probe();
+
+    const hunt = stepIn(steps, 'teacher-rosters')!;
+    expect(hunt.status).toBe('denied');
+    expect(hunt.message).toContain('list continues');
+    expect(hunt.message).not.toContain('ENTIRE');
+  });
+
+  it('a walk that stops answering is INCONCLUSIVE, never a data verdict', async () => {
+    handler = (req) => {
+      if (req.url.includes('/enrollments')) {
+        const params = new URL(req.url, origin).searchParams;
+        const offset = Number(params.get('offset') ?? '0');
+        if (offset === 0) return { status: 200, body: { enrollments: studentRows(200) } };
+        return { status: 500, body: {} };
+      }
+      return baseSurface(req);
+    };
+
+    const steps = await probe();
+
+    const hunt = stepIn(steps, 'teacher-rosters')!;
+    expect(hunt.status).toBe('error');
+    expect(hunt.message).toContain('inconclusive');
+    expect(hunt.message).not.toContain('not in Aeries yet');
+  });
+
+  it('a mid-hunt 401 is one strike: an error verdict and NOT another dial', async () => {
+    let requestsAfterStrike = 0;
+    let strikeSeen = false;
+    handler = (req) => {
+      if (strikeSeen && (req.url.includes('/enrollments') || req.url.includes('/teachers'))) {
+        requestsAfterStrike += 1;
+      }
+      if (req.url.includes('/enrollments')) {
+        const params = new URL(req.url, origin).searchParams;
+        if (params.get('filter')) {
+          strikeSeen = true;
+          return { status: 401, body: {} };
+        }
+        return { status: 200, body: { enrollments: studentRows(3) } };
+      }
+      return baseSurface(req);
+    };
+
+    const steps = await probe();
+
+    const hunt = stepIn(steps, 'teacher-rosters')!;
+    expect(hunt.status).toBe('error');
+    expect(hunt.message).toContain('sign-in stopped being accepted');
+    expect(hunt.message).not.toContain('not in Aeries yet');
+    expect(requestsAfterStrike).toBe(0);
   });
 
   it('door 2: an ignored filter falls through to the deep walk that finds page two', async () => {
@@ -1554,7 +1644,7 @@ describe('the teacher-side hunt settles a student-only first page (SPE-538)', ()
 
     const hunt = stepIn(steps, 'teacher-rosters')!;
     expect(hunt.status).toBe('ok');
-    expect(hunt.message).toContain('per-class teacher list answers');
+    expect(hunt.message).toContain("sampled class's teacher list answers");
 
     // Privacy holds on every hunt path: planted names and IDs never surface.
     const serialized = JSON.stringify(steps);

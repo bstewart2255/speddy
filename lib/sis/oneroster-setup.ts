@@ -659,12 +659,14 @@ const PROBE_PAGE_LIMIT = 200;
  */
 const HUNT_MAX_EXTRA_PAGES = 9;
 /**
- * Per-request ceiling, well under the client's 30s default. Five sequential
- * requests at the default could hold the route open for minutes on a slow
- * server; a healthy OneRoster answers these in a couple of seconds, and a
- * server that cannot answer in ten is itself a finding. Keeps the completed
- * CONNECTION verdict deliverable even when the probe crawls (CodeRabbit,
- * PR #827).
+ * Per-request ceiling, well under the client's 30s default. The probe makes
+ * five sequential requests, and the SPE-538 hunt can add up to thirteen more
+ * (filter + nine deep pages + three per-class checks) — at the client default
+ * that worst case could hold the route open for many minutes on a slow
+ * server; at ten seconds it stays inside the route's exported maxDuration. A
+ * healthy OneRoster answers each in a couple of seconds, and a server that
+ * cannot answer in ten is itself a finding. Keeps the completed CONNECTION
+ * verdict deliverable even when the probe crawls (CodeRabbit, PR #827).
  */
 const PROBE_REQUEST_TIMEOUT_MS = 10_000;
 
@@ -828,9 +830,13 @@ export async function probeOneRosterRosterData(params: {
         };
       }
       if (teachers === 0) {
+        // No conclusion clause here: whenever this state renders, the
+        // teacher-side hunt below runs and the CONCLUSION is its to make —
+        // a "cannot be joined" here would sit directly above a hunt line
+        // saying teachers were found two pages deeper (SPE-538 review).
         return {
           status: 'denied',
-          message: `${students} student entries but NO teacher entries in the first page — students cannot be joined to teachers from this data.`,
+          message: `${students} student entries but NO teacher entries in the first page — checked further below.`,
         };
       }
       if (students === 0) {
@@ -866,10 +872,30 @@ export async function probeOneRosterRosterData(params: {
       let found: { how: string; rows: RawOneRosterEnrollment[] } | null = null;
       let exhaustedAt: number | null = null;
       let walked = enrollments.length;
+      // Honesty state (SPE-538 review): a hunt that could not finish must
+      // never dress a failure up as "the district's data lacks teachers".
+      // `struck` mirrors sample()'s one-strike rule — a 401 or token failure
+      // rejects the TOKEN, so every further dial would re-fail the same way;
+      // `walkBroke` marks door 2 aborting mid-walk on any other error.
+      let struck = false;
+      let walkBroke = false;
+      const strikeOn = (err: unknown): boolean => {
+        if (
+          err instanceof OneRosterApiError &&
+          (err.phase === 'token' || (err.phase === 'request' && err.status === 401))
+        ) {
+          struck = true;
+          tokenDead = true;
+          return true;
+        }
+        return false;
+      };
 
       // Door 1 — ask for teacher rows by name. The spec's filter syntax; a
       // server may honor it (instant answer), ignore it (student rows again),
-      // or refuse it (fall through) — all three are handled, none is fatal.
+      // or refuse it (fall through) — all continuable. Only an auth strike
+      // stops the hunt: the deep walk can still settle the question when the
+      // filter merely failed.
       try {
         const filtered = await client.getEnrollments({
           limit: PROBE_PAGE_LIMIT,
@@ -878,52 +904,94 @@ export async function probeOneRosterRosterData(params: {
         });
         const teacherRows = teacherRowsOf(filtered);
         if (teacherRows.length > 0) found = { how: 'via a role filter', rows: teacherRows };
-      } catch {
-        // Filter unsupported or refused — the deep walk decides instead.
+      } catch (err) {
+        strikeOn(err);
       }
 
-      // Door 2 — walk deeper pages until teacher rows appear, the list ends
-      // (a short page: the definitive no), or the bound is spent.
-      if (!found) {
+      // Door 2 — walk deeper until teacher rows appear, the list truly ends,
+      // or the bound is spent. Two lessons from this module's own history are
+      // encoded here (SPE-538 review):
+      //  · The offset advances by rows RECEIVED, never by the size we asked
+      //    for — servers cap `limit` silently, and a fixed stride over a
+      //    capped server skips the very rows being hunted.
+      //  · Exhaustion means an EMPTY page. A short page may just be the cap;
+      //    only "asked past the end, got nothing" proves the end. A server
+      //    that ignores `offset` echoes the same page instead — detected by
+      //    its first row and reported as "cannot page deeper", not as a walk.
+      if (!found && !struck) {
+        let offset = enrollments.length;
+        let previousFirstId = enrollments[0]?.sourcedId;
         try {
           for (let page = 1; page <= HUNT_MAX_EXTRA_PAGES; page += 1) {
             const batch = await client.getEnrollments({
               limit: PROBE_PAGE_LIMIT,
-              offset: page * PROBE_PAGE_LIMIT,
+              offset,
               timeoutMs: PROBE_REQUEST_TIMEOUT_MS,
             });
+            if (batch.length === 0) {
+              exhaustedAt = walked;
+              break;
+            }
+            if (batch[0]?.sourcedId && batch[0].sourcedId === previousFirstId) {
+              // Same page again: this server ignores `offset`. Nothing past
+              // the first page is reachable; stop burning its requests.
+              break;
+            }
+            previousFirstId = batch[0]?.sourcedId;
             walked += batch.length;
+            offset += batch.length;
             const teacherRows = teacherRowsOf(batch);
             if (teacherRows.length > 0) {
               found = { how: `${walked} rows deep in the list`, rows: teacherRows };
               break;
             }
-            if (batch.length < PROBE_PAGE_LIMIT) {
-              exhaustedAt = walked;
-              break;
-            }
           }
-        } catch {
-          // A failed page leaves the walk inconclusive; the message says how
-          // far it actually got rather than claiming a conclusion.
+        } catch (err) {
+          if (!strikeOn(err)) walkBroke = true;
         }
       }
 
       // Door 3 — the spec's per-class teacher route, as an independent
-      // cross-check when the list itself yielded nothing.
+      // cross-check when the list itself yielded nothing. Sampled from the
+      // classes the SAMPLED STUDENTS actually sit in (up to three) — an
+      // arbitrary class can be an unstaffed placeholder, and a no built on
+      // one of those would overclaim (SPE-538 review). Falls back to the
+      // class records sample only when student rows named no class.
       let subroute: 'has-teachers' | 'empty' | 'absent' | 'refused' | 'unavailable' = 'unavailable';
-      if (!found && classes && classes.length > 0 && classes[0].sourcedId) {
-        try {
-          const perClass = await client.getClassTeachers(classes[0].sourcedId, {
-            limit: 5,
-            timeoutMs: PROBE_REQUEST_TIMEOUT_MS,
-          });
-          subroute = perClass.length > 0 ? 'has-teachers' : 'empty';
-        } catch (err) {
-          if (err instanceof OneRosterApiError && (err.status === 404 || err.status === 405)) {
-            subroute = 'absent';
-          } else if (err instanceof OneRosterApiError && err.status === 403) {
-            subroute = 'refused';
+      let subrouteClassesTried = 0;
+      if (!found && !struck) {
+        const studentClassIds = [
+          ...new Set(firstPage.filter((r) => r.role === 'student').map((r) => r.class!.sourcedId)),
+        ];
+        const fallbackIds = (classes ?? []).map((c) => c.sourcedId).filter(Boolean);
+        const candidates = (studentClassIds.length > 0 ? studentClassIds : fallbackIds).slice(0, 3);
+        for (const classId of candidates) {
+          try {
+            const perClass = await client.getClassTeachers(classId, {
+              limit: 5,
+              timeoutMs: PROBE_REQUEST_TIMEOUT_MS,
+            });
+            subrouteClassesTried += 1;
+            if (perClass.length > 0) {
+              subroute = 'has-teachers';
+              break;
+            }
+            subroute = 'empty';
+          } catch (err) {
+            if (strikeOn(err)) break;
+            if (err instanceof OneRosterApiError && (err.status === 404 || err.status === 405)) {
+              // The route itself is absent; asking more classes asks the
+              // same absent route again.
+              subroute = 'absent';
+              break;
+            }
+            if (err instanceof OneRosterApiError && err.status === 403) {
+              subroute = 'refused';
+              break;
+            }
+            // Any other failure: leave whatever verdict earlier classes
+            // established; 'unavailable' stays if none answered.
+            break;
           }
         }
       }
@@ -931,11 +999,22 @@ export async function probeOneRosterRosterData(params: {
       if (found) {
         huntedTeacherRows = found.rows;
         const classCount = new Set(found.rows.map((r) => r.class!.sourcedId)).size;
+        // Only what was SEEN: teacher entries exist. Whether they join to the
+        // sampled students is the linkage step's verdict, computed below from
+        // these very rows — claiming the join here could contradict it.
         steps.push({
           key,
           label,
           status: 'ok',
-          message: `Found: ${found.rows.length} teacher entries across ${classCount} classes, ${found.how} — students CAN be joined to teachers.`,
+          message: `Found: ${found.rows.length} teacher entries across ${classCount} classes, ${found.how}.`,
+        });
+      } else if (struck) {
+        steps.push({
+          key,
+          label,
+          status: 'error',
+          message:
+            'Could not finish checking — the sign-in stopped being accepted mid-hunt. Nothing about the data was learned; run the test again.',
         });
       } else if (subroute === 'has-teachers') {
         steps.push({
@@ -943,8 +1022,15 @@ export async function probeOneRosterRosterData(params: {
           label,
           status: 'ok',
           message:
-            `No teacher entries in ${walked} roster rows, but the per-class teacher list answers — ` +
+            `No teacher entries in ${walked} roster rows, but a sampled class's teacher list answers — ` +
             'teacher↔class links exist through that route instead.',
+        });
+      } else if (walkBroke && exhaustedAt === null) {
+        steps.push({
+          key,
+          label,
+          status: 'error',
+          message: `The deeper pages stopped answering after ${walked} rows, so this check is inconclusive. The connection result above is unaffected; run the test again.`,
         });
       } else {
         const listVerdict =
@@ -953,7 +1039,7 @@ export async function probeOneRosterRosterData(params: {
             : `no teacher entries in the first ${walked} rows (list continues)`;
         const subrouteVerdict =
           subroute === 'empty'
-            ? 'and the per-class teacher list answers with zero'
+            ? `and the teacher lists of ${subrouteClassesTried} sampled class(es) answer with zero`
             : subroute === 'absent'
               ? 'and the per-class teacher route is not provided'
               : subroute === 'refused'
