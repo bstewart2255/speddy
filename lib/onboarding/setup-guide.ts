@@ -186,7 +186,7 @@ export interface SiteAdminSetupFacts {
   hasStaff: boolean;
   hasBellSchedules: boolean;
   hasSpecialActivities: boolean;
-  /** Providers whose primary school is this school. */
+  /** Providers at this school: primary profiles ∪ provider_schools assignments. */
   providerCount: number;
   /** How many of those providers have at least one student here. */
   providersWithStudents: number;

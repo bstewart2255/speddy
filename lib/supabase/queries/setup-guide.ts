@@ -134,8 +134,10 @@ export async function getProviderSetupFacts(
  * All checks are keyed on the admin's granted school_id (admin grants always
  * carry a structured id, so no legacy fallback is needed). Bell schedules and
  * special activities use the same school-wide, current-year semantics as the
- * provider guide above. Provider counts are keyed on the profile's primary
- * school — itinerant providers are pulse-checked at their primary site.
+ * provider guide above. The provider set is primary profiles UNION
+ * provider_schools assignments (the merge getSchoolStaff already does from
+ * an admin session), restricted to the seven provider roles — SEAs never own
+ * caseload rows, so counting them would pin the item at waiting forever.
  */
 export async function getSiteAdminSetupFacts(schoolId: string): Promise<{
   isSecondary: boolean;
@@ -144,7 +146,7 @@ export async function getSiteAdminSetupFacts(schoolId: string): Promise<{
   const supabase = createClient<Database>();
   const schoolYear = getCurrentSchoolYear();
 
-  const [school, teachers, staff, bells, activities, providers] =
+  const [school, teachers, staff, bells, activities, providers, providerSchools] =
     await Promise.all([
       supabase
         .from('schools')
@@ -173,6 +175,10 @@ export async function getSiteAdminSetupFacts(schoolId: string): Promise<{
         .select('id')
         .eq('school_id', schoolId)
         .in('role', [...SPECIALIST_SOURCE_ROLES]),
+      supabase
+        .from('provider_schools')
+        .select('provider_id')
+        .eq('school_id', schoolId),
     ]);
 
   const firstError =
@@ -181,13 +187,36 @@ export async function getSiteAdminSetupFacts(schoolId: string): Promise<{
     staff.error ||
     bells.error ||
     activities.error ||
-    providers.error;
+    providers.error ||
+    providerSchools.error;
   if (firstError) throw firstError;
+
+  // Itinerant providers are assigned here through provider_schools while
+  // their primary profiles.school_id points elsewhere — fold them in, role-
+  // filtered (provider_schools also carries SEA assignments).
+  const primaryIds = (providers.data ?? []).map(p => p.id);
+  const assignedIds = [
+    ...new Set(
+      (providerSchools.data ?? [])
+        .map(r => r.provider_id)
+        .filter((id): id is string => !!id && !primaryIds.includes(id))
+    ),
+  ];
+  let itinerantIds: string[] = [];
+  if (assignedIds.length > 0) {
+    const itinerants = await supabase
+      .from('profiles')
+      .select('id')
+      .in('id', assignedIds)
+      .in('role', [...SPECIALIST_SOURCE_ROLES]);
+    if (itinerants.error) throw itinerants.error;
+    itinerantIds = (itinerants.data ?? []).map(p => p.id);
+  }
 
   // One head-check per provider rather than fetching a row per student: the
   // dashboard only needs "does this provider have any student here", and a
   // big school would otherwise ship hundreds of rows per visit.
-  const providerIds = (providers.data ?? []).map(p => p.id);
+  const providerIds = [...primaryIds, ...itinerantIds];
   const perProvider = await Promise.all(
     providerIds.map(id =>
       supabase
