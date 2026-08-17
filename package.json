@@ -52,6 +52,7 @@
     "sim:verify-assistant-delegated-rls": "tsx scripts/sim-district/verify-assistant-delegated-rls.ts",
     "sim:verify-import-rpc": "tsx scripts/sim-district/verify-import-rpc.ts",
     "sim:verify-scheduling-rpc": "tsx scripts/sim-district/verify-scheduling-rpc.ts",
+    "sim:verify-iep-meeting-rls": "tsx scripts/sim-district/verify-iep-meeting-rls.ts",
     "sis:explore": "tsx --conditions=react-server scripts/sis-explore/run.ts"
   },
   "dependencies": {

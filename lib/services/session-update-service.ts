@@ -483,7 +483,9 @@ export class SessionUpdateService {
     // Run the independent conflict checks concurrently. Order is preserved so
     // conflict priority (the conflicts[0] surfaced as `error`) is unchanged.
     const checks: Array<Promise<NonNullable<ValidationResult['conflicts']>[0] | null>> = [
-      this.checkBellScheduleConflicts(providerId, studentId, targetDay, targetStartTime, targetEndTime),
+      // SPE-485: school-wide, not caller-scoped — an admin-loaded bell schedule
+      // must warn every provider, not only whoever created it.
+      this.checkBellScheduleConflicts(studentId, targetDay, targetStartTime, targetEndTime),
       this.checkSpecialActivityConflicts(studentId, targetDay, targetStartTime, targetEndTime),
       // SPE-478: mainstreaming time is protected — warn any provider placing a
       // session over the student's time in a gen-ed class (overridable, like
@@ -537,10 +539,34 @@ export class SessionUpdateService {
   }
 
   /**
-   * Check for bell schedule conflicts
+   * SPE-485: check for bell-schedule conflicts on the drag path.
+   *
+   * School-wide, NOT scoped to the caller's provider_id — the same legacy
+   * quirk SPE-484 removed from the special-activity check. A bell schedule
+   * loaded by a site admin (as Rodeo Hills' was, SPE-462) displayed as a band
+   * but warned nobody else on drag; every bell block the grid shows is one the
+   * warning must honor. The auto-scheduler side was already school-keyed
+   * (SPE-463), so this closes the interactive path to match.
+   *
+   * Both school linkages are honored, mirroring fetchSpecialActivitiesForStudent
+   * — normalized rows under the student's school_id plus legacy rows carrying
+   * only a school_site name (school_id IS NULL, 60 of 783 rows today) — run as
+   * separate queries so PostgREST or-quoting never mangles a school name
+   * containing spaces or commas. Year-scoped: without it a prior year's grid
+   * still raises conflicts (SPE-469's family of bugs).
+   *
+   * HONEST LIMIT on that second pass, so nobody reads more into it than it
+   * delivers: every branch of the bell_schedules SELECT policy compares
+   * school_id, and none of them can match NULL, so a legacy row is visible ONLY
+   * to the provider who created it. The cross-provider half of "school-wide"
+   * therefore does not reach legacy rows — widening it needs the POLICY changed
+   * or those rows normalized, neither of which belongs in a client-query fix.
+   * What this pass does buy is real: all 60 legacy rows sit at Walnut Acres
+   * under a single owner, and that owner previously got NO bell warning at all
+   * there (the old query keyed on school_id, which their rows lack). Strictly
+   * better, not complete. Tracked as SPE-517.
    */
   private async checkBellScheduleConflicts(
-    providerId: string,
     studentId: string,
     day: number,
     startTime: string,
@@ -549,45 +575,62 @@ export class SessionUpdateService {
     // Get student information to determine grade level and school
     const { data: student } = await this.supabase
       .from('students')
-      .select('grade_level, school_id')
+      .select('grade_level, school_id, school_site')
       .eq('id', studentId)
       .single();
 
-    if (!student || !student.school_id) {
+    if (!student || (!student.school_id && !student.school_site)) {
+      return null;
+    }
+    // Grade is the join key against a bell block's grade list; without it no
+    // block can match this student.
+    if (!student.grade_level) {
       return null;
     }
 
-    // Check if session overlaps with bell schedule periods
     // Note: Bell schedules can have comma-separated grade levels like "1,2,3"
-    // Only check bell schedules from the same school as the student
-    const { data: bellSchedules } = await this.supabase
-      .from('bell_schedules')
-      .select('*')
-      .eq('provider_id', providerId)
-      .eq('day_of_week', day)
-      .eq('school_id', student.school_id);
+    const bellQuery = () =>
+      this.supabase
+        .from('bell_schedules')
+        .select('*')
+        .eq('day_of_week', day)
+        .eq('school_year', getCurrentSchoolYear());
 
-    if (bellSchedules) {
-      for (const schedule of bellSchedules) {
-        // Class periods (secondary period grid) are the slots pull-outs happen
-        // inside of — never a conflict (SPE-491). Breaks (Brunch/Lunch…) keep
-        // full conflict behavior.
-        if (isClassPeriodBlock(schedule.period_name)) {
-          continue;
-        }
+    const bellSchedules: Array<Database['public']['Tables']['bell_schedules']['Row']> = [];
 
-        // Parse comma-separated grade levels from bell schedule
-        const bellGrades = schedule.grade_level.split(',').map((g: string) => g.trim());
+    if (student.school_id) {
+      const { data } = await bellQuery().eq('school_id', student.school_id);
+      bellSchedules.push(...(data || []));
+    }
+    if (student.school_site) {
+      // Legacy rows predate school normalization — school_id was never set, so
+      // the branch above cannot see them. Mutually exclusive with it
+      // (school_id IS NULL here), so no dedupe is needed.
+      const { data } = await bellQuery()
+        .is('school_id', null)
+        .eq('school_site', student.school_site);
+      bellSchedules.push(...(data || []));
+    }
 
-        // Check if student's grade is in the bell schedule's grade list
-        if (bellGrades.includes(student.grade_level.trim())) {
-          if (this.hasTimeOverlap(startTime, endTime, schedule.start_time, schedule.end_time)) {
-            return {
-              type: 'bell_schedule',
-              description: `Conflicts with bell schedule period "${schedule.period_name}" (${schedule.start_time} - ${schedule.end_time})`,
-              conflictingItem: schedule
-            };
-          }
+    for (const schedule of bellSchedules) {
+      // Class periods (secondary period grid) are the slots pull-outs happen
+      // inside of — never a conflict (SPE-491). Breaks (Brunch/Lunch…) keep
+      // full conflict behavior.
+      if (isClassPeriodBlock(schedule.period_name)) {
+        continue;
+      }
+
+      // Parse comma-separated grade levels from bell schedule
+      const bellGrades = schedule.grade_level.split(',').map((g: string) => g.trim());
+
+      // Check if student's grade is in the bell schedule's grade list
+      if (bellGrades.includes(student.grade_level.trim())) {
+        if (this.hasTimeOverlap(startTime, endTime, schedule.start_time, schedule.end_time)) {
+          return {
+            type: 'bell_schedule',
+            description: `Conflicts with bell schedule period "${schedule.period_name}" (${schedule.start_time} - ${schedule.end_time})`,
+            conflictingItem: schedule
+          };
         }
       }
     }

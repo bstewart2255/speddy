@@ -219,10 +219,13 @@ export default function TeacherSpecialActivitiesPage() {
                   <label htmlFor="activity_name" className="block text-sm font-medium text-gray-700">
                     Activity Name
                   </label>
-                  {/* The DB CHECK constraint only admits SPECIAL_ACTIVITY_TYPES;
-                      free text let teachers submit values Postgres rejects with
-                      a raw constraint error (SPE-343). Same picker as the
-                      provider form (add-special-activity-form.tsx). */}
+                  {/* A picker, not free text, so teachers land on the same
+                      vocabulary the provider form uses
+                      (add-special-activity-form.tsx) — the original reason was
+                      that free text produced raw constraint errors (SPE-343),
+                      which SPE-501 has since fixed by bounding the column
+                      rather than enumerating it. The consistency argument is
+                      what keeps the picker here. */}
                   <select
                     name="activity_name"
                     id="activity_name"
