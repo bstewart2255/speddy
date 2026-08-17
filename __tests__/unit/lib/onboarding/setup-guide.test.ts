@@ -204,6 +204,17 @@ describe('deriveProviderSetupItems — when items count as done', () => {
     expect(schedule?.description).toContain('3 sessions still need a spot');
   });
 
+  it('uses singular phrasing for exactly one unscheduled session', () => {
+    const items = deriveProviderSetupItems({
+      role: 'resource',
+      isSecondary: false,
+      worksAtMultipleSchools: false,
+      facts: { ...completeFacts, unscheduledCount: 1 },
+    });
+    const schedule = items.find(item => item.id === 'schedule-sessions');
+    expect(schedule?.description).toContain('1 session still needs a spot');
+  });
+
   it('special activities complete via the "my teachers have none" escape hatch', () => {
     const items = deriveProviderSetupItems({
       role: 'counseling',

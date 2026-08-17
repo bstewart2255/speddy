@@ -32,6 +32,16 @@ export async function getProviderSetupFacts(
   const supabase = createClient<Database>();
   const schoolYear = getCurrentSchoolYear();
 
+  // Same contract as getUnscheduledSessionsCount: with no school_id and an
+  // incomplete legacy pair, buildSchoolFilter would silently not filter and
+  // every fact would go school-unscoped. Refuse instead — the card hides on
+  // error rather than showing another school's checkmarks.
+  if (!school.school_id && !(school.school_site && school.school_district)) {
+    throw new Error(
+      'Incomplete school data: school_id, or both school_site and school_district, are required'
+    );
+  }
+
   const studentsQuery = () =>
     buildSchoolFilter(
       supabase.from('students').select('id').eq('provider_id', userId),

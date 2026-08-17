@@ -145,7 +145,9 @@ export function deriveProviderSetupItems(args: {
       title: 'Schedule your sessions',
       description:
         facts.hasStudents && facts.unscheduledCount > 0
-          ? `${facts.unscheduledCount} session${facts.unscheduledCount === 1 ? '' : 's'} still need a spot — drag them on, or use Auto-Schedule.`
+          ? facts.unscheduledCount === 1
+            ? '1 session still needs a spot — drag it on, or use Auto-Schedule.'
+            : `${facts.unscheduledCount} sessions still need a spot — drag them on, or use Auto-Schedule.`
           : 'Place sessions by drag and drop, or let Auto-Schedule fill the week.',
       href: '/dashboard/schedule',
       state: scheduled ? 'done' : 'todo',

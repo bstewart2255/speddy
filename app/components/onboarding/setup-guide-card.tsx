@@ -190,7 +190,10 @@ export function SetupGuideCard({
     const showPill = !expanded && (dismissed || complete);
     if (showPill) {
       return (
-        <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-white px-4 py-2">
+        <div
+          role="status"
+          className="flex items-center justify-between rounded-lg border border-gray-200 bg-white px-4 py-2"
+        >
           <button
             type="button"
             onClick={() => setExpanded(true)}
@@ -228,7 +231,7 @@ export function SetupGuideCard({
             <h2 className="text-base font-semibold text-gray-900">
               Setup guide
             </h2>
-            <p className="mt-0.5 text-sm text-gray-500">
+            <p aria-live="polite" className="mt-0.5 text-sm text-gray-500">
               {doneCount} of {items.length} done
             </p>
           </div>
@@ -250,9 +253,11 @@ export function SetupGuideCard({
               {item.state === 'done' ? (
                 <span className="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-green-100">
                   <CheckIcon className="h-3 w-3 text-green-700" />
+                  <span className="sr-only">Done:</span>
                 </span>
               ) : (
                 <span className="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-blue-50 text-xs font-semibold text-blue-700">
+                  <span className="sr-only">To do, step </span>
                   {index + 1}
                 </span>
               )}
