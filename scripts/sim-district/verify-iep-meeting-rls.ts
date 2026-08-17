@@ -155,6 +155,31 @@ async function main(): Promise<void> {
       `code=${error?.code ?? 'none'} rows=${data?.length ?? 0} stored=${stillCedar}`);
   }
 
+  console.log('a student transfer must not brick the meeting:');
+  {
+    // The regression this pins: binding the UPDATE policy to students.school_id
+    // meant that once a student moved schools, EVERY update to their meeting was
+    // refused — including cancelling it — while DELETE is revoked. The row became
+    // service-role-only. school_id immutability now lives in a trigger instead,
+    // which reads OLD vs NEW and so is unaffected by where the student is today.
+    const { error: moveErr } = await admin
+      .from('students').update({ school_id: WILLOW }).eq('id', student.id);
+    check(!moveErr, 'fixture: student transferred to another school', moveErr?.message ?? '');
+
+    const { data: cancelled } = await tomas.client
+      .from('iep_meetings').update({ status: 'cancelled' }).eq('id', meetingId).select('id');
+    const { data: row } = await admin
+      .from('iep_meetings').select('status').eq('id', meetingId).maybeSingle();
+    check((cancelled?.length ?? 0) === 1 && row?.status === 'cancelled',
+      'organizer can still cancel after the student transfers',
+      `rows=${cancelled?.length ?? 0} status=${row?.status}`);
+
+    // Restore, so the rest of the run (and the fixture) sees the seeded school.
+    const { error: backErr } = await admin
+      .from('students').update({ school_id: student.school_id }).eq('id', student.id);
+    check(!backErr, 'fixture: student restored to their seeded school', backErr?.message ?? '');
+  }
+
   console.log('the same binding holds on INSERT:');
   {
     const { data, error } = await tomas.client

@@ -67,20 +67,40 @@ WHERE p.id = ps.provider_id
     HAVING count(*) FILTER (WHERE is_primary) > 1
   );
 
--- 2. Fail loudly rather than half-apply: if any provider still has two primaries,
---    the keep-rule above did not cover some shape and the index would fail with a
+-- 2. Fail loudly rather than half-apply, in BOTH directions.
+--
+--    Too many is the obvious check: if a provider still has two primaries the
+--    keep-rule did not cover some shape, and the index below would fail with a
 --    far less legible error.
+--
+--    Too few matters just as much and is easier to miss — the deep self-review
+--    caught this guard checking only `> 1`. The keep-rule preserves the row whose
+--    school_id equals profiles.school_id; if a provider's duplicate primaries BOTH
+--    differ from it (both legacy/NULL, say), the UPDATE strips every one and the
+--    provider is left with no primary at all. Production held no such shape, but a
+--    replay against another snapshot is not protected by a one-sided guard, and
+--    silently stripping a primary is worse than the duplicate it replaced.
 DO $$
 DECLARE
-  v_remaining integer;
+  v_multi integer;
+  v_none  integer;
 BEGIN
-  SELECT count(*) INTO v_remaining FROM (
+  SELECT count(*) INTO v_multi FROM (
     SELECT provider_id FROM public.provider_schools
     GROUP BY provider_id HAVING count(*) FILTER (WHERE is_primary) > 1
   ) x;
-  IF v_remaining > 0 THEN
+  IF v_multi > 0 THEN
     RAISE EXCEPTION
-      'SPE-363: % provider(s) still hold multiple primary schools after the collapse', v_remaining;
+      'SPE-363: % provider(s) still hold multiple primary schools after the collapse', v_multi;
+  END IF;
+
+  SELECT count(*) INTO v_none FROM (
+    SELECT provider_id FROM public.provider_schools
+    GROUP BY provider_id HAVING count(*) FILTER (WHERE is_primary) = 0
+  ) x;
+  IF v_none > 0 THEN
+    RAISE EXCEPTION
+      'SPE-363: % provider(s) were left with NO primary school — the keep-rule (school_id = profiles.school_id) matched none of their rows', v_none;
   END IF;
 END $$;
 
