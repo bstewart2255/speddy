@@ -684,7 +684,7 @@ export function WeeklyView({ viewMode, className }: WeeklyViewProps) {
 
   if (loading) {
     return (
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 h-[400px] flex items-center justify-center">
+      <div className={`bg-white rounded-lg shadow-sm border border-gray-200 p-4 min-h-[400px] flex items-center justify-center ${className ?? ''}`}>
         <div className="text-gray-500">Loading schedule...</div>
       </div>
     );
