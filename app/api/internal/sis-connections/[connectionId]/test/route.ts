@@ -11,6 +11,12 @@ import {
 } from '@/lib/sis/oneroster-setup';
 import type { SisTestResult } from '@/lib/sis/connections';
 
+// The connection test alone fans out several upstream requests; the SPE-538
+// teacher-side hunt can add up to thirteen more at a 10s per-request ceiling.
+// Without this the platform default would kill the function mid-hunt and the
+// staff user's re-click would re-hammer a production SIS.
+export const maxDuration = 300;
+
 const log = logger.child({ module: 'internal-sis-test' });
 
 /** One probed area or step, flattened across the two connectors (SPE-427). */
@@ -164,9 +170,10 @@ export const POST = withRoute<{ connectionId: string }>(
     }
 
     // The verdict is persisted BEFORE the roster probe runs (Codex, PR #827):
-    // the probe adds up to five more upstream requests, and a platform timeout
-    // or client abort during them must not cost the district their recorded
-    // green. The probe is exploratory; the record is not.
+    // the probe adds five more upstream requests — up to eighteen when the
+    // SPE-538 teacher-side hunt fires — and a platform timeout or client abort
+    // during them must not cost the district their recorded green. The probe
+    // is exploratory; the record is not.
     try {
       await recordTestResult({
         connectionId: connection.id,
