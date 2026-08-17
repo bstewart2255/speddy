@@ -201,9 +201,13 @@ describe('POST /api/assistant/chat', () => {
       expect(systemText).toContain(anchor);
     }
     // SPE-539: the product guide is the assistant's ONLY knowledge of the UI,
-    // so pin one distinctive anchor per topic. A trim that drops a topic, or a
-    // feature change that rewrites a flow without updating the guide, fails
-    // here instead of reaching a provider as a confidently wrong answer.
+    // so pin one distinctive anchor per topic. Scope of this check: it fails
+    // when a topic is DELETED or trimmed away. It cannot notice a flow changing
+    // underneath an anchor that still matches — that is what the standing rule
+    // in .claude/CLAUDE.md is for, and no test substitutes for it. The
+    // role/level qualifiers below are pinned because they are the corrections
+    // this ticket made, and a re-trim would silently reintroduce the exact
+    // wrong answers it removed.
     for (const anchor of [
       // Layout and where things live
       'the nav bar has Dashboard, Students, Schedule',
@@ -214,6 +218,11 @@ describe('POST /api/assistant/chat', () => {
       'Middle and high school (secondary) sites work differently, by role',
       'periods-by-days week view instead of the drag-and-drop grid',
       'Speech, OT, counseling and school psychologists keep everything except Special Activities',
+      'Resource specialists keep Schedule and Bell Schedules but lose Special Activities and Plan',
+      'Check this entry before giving anyone at a middle or high school step-by-step instructions',
+      'for resource specialists it asks for Minutes/Week',
+      'secondary resource specialists have no session grid',
+      'Push-in asks for the Class as well',
       // Students and the student record
       '"+ Add Student"',
       '"As the IEP states it:"',
