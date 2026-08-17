@@ -209,7 +209,7 @@ describe('POST /api/assistant/chat', () => {
       'the nav bar has Dashboard, Students, Schedule',
       '"Ask AI" button beside it opens this assistant',
       'Chat (in the nav) is messaging with colleagues',
-      'a setup checklist card beside it',
+      'The setup checklist shows only the steps that apply to that person',
       // Secondary sites split by role (SPE-490, SPE-491, SPE-513)
       'Middle and high school (secondary) sites work differently, by role',
       'periods-by-days week view instead of the drag-and-drop grid',
@@ -219,7 +219,7 @@ describe('POST /api/assistant/chat', () => {
       '"As the IEP states it:"',
       'Student Goals Report → Generate Report → Download',
       'Current Information, IEP Goals, Assessments, Progress, Attendance',
-      '"Import from IEP PDF"',
+      'it appears only where the wider AI features are switched on',
       // Scheduling
       'Balanced, Group by grade, Group by teacher, or Prefer mornings',
       'there is no "create group" button',
