@@ -522,6 +522,25 @@ export class OneRosterClient {
   }
 
   /**
+   * `GET /classes/{id}/teachers` — the spec's per-class teacher list (SPE-538).
+   *
+   * An independent door to teacher↔class links: some servers carry them here
+   * even when `/enrollments` pages carry only student rows. The id is a
+   * sourcedId the server itself issued, encoded because it is still a URL
+   * segment.
+   */
+  async getClassTeachers(
+    classSourcedId: string,
+    options?: OneRosterRequestOptions,
+  ): Promise<RawOneRosterUser[]> {
+    return this.namedCollection<RawOneRosterUser>(
+      `classes/${encodeURIComponent(classSourcedId)}/teachers`,
+      'users',
+      options,
+    );
+  }
+
+  /**
    * Walk a collection to completion, in bounded pages.
    *
    * OneRoster paginates with `limit`/`offset`, and a single large `limit` is

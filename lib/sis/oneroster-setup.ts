@@ -32,6 +32,7 @@ import {
   ONEROSTER_API_PATH,
   OneRosterApiError,
   OneRosterClient,
+  type RawOneRosterEnrollment,
 } from '@/lib/integrations/oneroster';
 import {
   ONEROSTER_URL_LABELS,
@@ -638,7 +639,7 @@ export function toStoredOneRosterTestResult(report: OneRosterTestReport): SisTes
  * the connection test's steps and the probe's can never collide.
  */
 export interface OneRosterRosterProbeStep {
-  key: 'teachers' | 'students' | 'classes' | 'rosters' | 'linkage';
+  key: 'teachers' | 'students' | 'classes' | 'rosters' | 'teacher-rosters' | 'linkage';
   label: string;
   status: 'ok' | 'denied' | 'error' | 'untested';
   /** Plain English, numbers and fixed words only. Never a name or an ID. */
@@ -647,6 +648,16 @@ export interface OneRosterRosterProbeStep {
 
 /** First page only — a probe measures presence and shape, not the district. */
 const PROBE_PAGE_LIMIT = 200;
+/**
+ * How many pages past the first the teacher-side hunt may walk. Teacher rows
+ * are rare by arithmetic — one per class against ~25 student rows — so a
+ * server that orders enrollments by role or by cohort can push every teacher
+ * entry past any single page. Ten pages bounds the hunt at ~2,000 rows: deep
+ * enough to settle JSUSD-sized districts outright (a short page ends the walk
+ * with a definitive answer), shallow enough that one staff click cannot lean
+ * on a production SIS (SPE-538).
+ */
+const HUNT_MAX_EXTRA_PAGES = 9;
 /**
  * Per-request ceiling, well under the client's 30s default. Five sequential
  * requests at the default could hold the route open for minutes on a slow
@@ -791,7 +802,7 @@ export async function probeOneRosterRosterData(params: {
   await sample('students', 'Student roster', () => client.getStudents({ limit: PROBE_PAGE_LIMIT, timeoutMs: PROBE_REQUEST_TIMEOUT_MS }), (rows) =>
     countMessage(rows.length, 'students'),
   );
-  await sample('classes', 'Class records', () => client.getClasses({ limit: PROBE_PAGE_LIMIT, timeoutMs: PROBE_REQUEST_TIMEOUT_MS }), (rows) =>
+  const classes = await sample('classes', 'Class records', () => client.getClasses({ limit: PROBE_PAGE_LIMIT, timeoutMs: PROBE_REQUEST_TIMEOUT_MS }), (rows) =>
     countMessage(rows.length, 'classes'),
   );
 
@@ -835,10 +846,137 @@ export async function probeOneRosterRosterData(params: {
     },
   );
 
-  // Teachers-per-student, from the same sample: student → their classes →
-  // every teacher-role entry sharing a class. First-page arithmetic, so it can
-  // undercount a student whose classes fall outside the page — stated in the
-  // message rather than silently presented as the whole truth.
+  // The teacher-side hunt (SPE-538): fires exactly on the state JSUSD showed
+  // the day rosters opened — student entries flowing, zero teacher entries in
+  // the first page. One page cannot tell "teacher rows sit deeper in the
+  // list" from "teacher↔class assignments do not exist yet", and those demand
+  // opposite responses (build vs. wait). Three doors, cheapest first, stopping
+  // at the first that answers; every message stays counts-and-fixed-words.
+  let huntedTeacherRows: RawOneRosterEnrollment[] = [];
+  if (enrollments !== null && !tokenDead) {
+    const firstPage = enrollments.filter((r) => r.user?.sourcedId && r.class?.sourcedId);
+    const firstPageTeachers = firstPage.filter((r) => r.role === 'teacher').length;
+    const firstPageStudents = firstPage.filter((r) => r.role === 'student').length;
+    if (firstPageTeachers === 0 && firstPageStudents > 0) {
+      const key = 'teacher-rosters' as const;
+      const label = 'Class rosters (teacher side)';
+      const teacherRowsOf = (rows: RawOneRosterEnrollment[]) =>
+        rows.filter((r) => r.role === 'teacher' && r.user?.sourcedId && r.class?.sourcedId);
+
+      let found: { how: string; rows: RawOneRosterEnrollment[] } | null = null;
+      let exhaustedAt: number | null = null;
+      let walked = enrollments.length;
+
+      // Door 1 — ask for teacher rows by name. The spec's filter syntax; a
+      // server may honor it (instant answer), ignore it (student rows again),
+      // or refuse it (fall through) — all three are handled, none is fatal.
+      try {
+        const filtered = await client.getEnrollments({
+          limit: PROBE_PAGE_LIMIT,
+          timeoutMs: PROBE_REQUEST_TIMEOUT_MS,
+          query: { filter: "role='teacher'" },
+        });
+        const teacherRows = teacherRowsOf(filtered);
+        if (teacherRows.length > 0) found = { how: 'via a role filter', rows: teacherRows };
+      } catch {
+        // Filter unsupported or refused — the deep walk decides instead.
+      }
+
+      // Door 2 — walk deeper pages until teacher rows appear, the list ends
+      // (a short page: the definitive no), or the bound is spent.
+      if (!found) {
+        try {
+          for (let page = 1; page <= HUNT_MAX_EXTRA_PAGES; page += 1) {
+            const batch = await client.getEnrollments({
+              limit: PROBE_PAGE_LIMIT,
+              offset: page * PROBE_PAGE_LIMIT,
+              timeoutMs: PROBE_REQUEST_TIMEOUT_MS,
+            });
+            walked += batch.length;
+            const teacherRows = teacherRowsOf(batch);
+            if (teacherRows.length > 0) {
+              found = { how: `${walked} rows deep in the list`, rows: teacherRows };
+              break;
+            }
+            if (batch.length < PROBE_PAGE_LIMIT) {
+              exhaustedAt = walked;
+              break;
+            }
+          }
+        } catch {
+          // A failed page leaves the walk inconclusive; the message says how
+          // far it actually got rather than claiming a conclusion.
+        }
+      }
+
+      // Door 3 — the spec's per-class teacher route, as an independent
+      // cross-check when the list itself yielded nothing.
+      let subroute: 'has-teachers' | 'empty' | 'absent' | 'refused' | 'unavailable' = 'unavailable';
+      if (!found && classes && classes.length > 0 && classes[0].sourcedId) {
+        try {
+          const perClass = await client.getClassTeachers(classes[0].sourcedId, {
+            limit: 5,
+            timeoutMs: PROBE_REQUEST_TIMEOUT_MS,
+          });
+          subroute = perClass.length > 0 ? 'has-teachers' : 'empty';
+        } catch (err) {
+          if (err instanceof OneRosterApiError && (err.status === 404 || err.status === 405)) {
+            subroute = 'absent';
+          } else if (err instanceof OneRosterApiError && err.status === 403) {
+            subroute = 'refused';
+          }
+        }
+      }
+
+      if (found) {
+        huntedTeacherRows = found.rows;
+        const classCount = new Set(found.rows.map((r) => r.class!.sourcedId)).size;
+        steps.push({
+          key,
+          label,
+          status: 'ok',
+          message: `Found: ${found.rows.length} teacher entries across ${classCount} classes, ${found.how} — students CAN be joined to teachers.`,
+        });
+      } else if (subroute === 'has-teachers') {
+        steps.push({
+          key,
+          label,
+          status: 'ok',
+          message:
+            `No teacher entries in ${walked} roster rows, but the per-class teacher list answers — ` +
+            'teacher↔class links exist through that route instead.',
+        });
+      } else {
+        const listVerdict =
+          exhaustedAt !== null
+            ? `the ENTIRE list (${exhaustedAt} rows) carries no teacher entries`
+            : `no teacher entries in the first ${walked} rows (list continues)`;
+        const subrouteVerdict =
+          subroute === 'empty'
+            ? 'and the per-class teacher list answers with zero'
+            : subroute === 'absent'
+              ? 'and the per-class teacher route is not provided'
+              : subroute === 'refused'
+                ? 'and the per-class teacher route was refused permission'
+                : 'and the per-class teacher route could not be checked';
+        steps.push({
+          key,
+          label,
+          status: 'denied',
+          message:
+            `${listVerdict}, ${subrouteVerdict}. Most likely teacher↔class assignments are not in ` +
+            'Aeries yet (new-year schedules), or a separate sharing setting covers them.',
+        });
+      }
+    }
+  }
+
+  // Teachers-per-student, from the sampled rows: student → their classes →
+  // every teacher-role entry sharing a class. Hunted teacher rows join the
+  // arithmetic — the first page told us where students are, the hunt where
+  // teachers are, and the join needs both. Sample arithmetic still, so it can
+  // undercount a student whose classes fall outside the sampled rows — stated
+  // in the message rather than silently presented as the whole truth.
   {
     const key = 'linkage' as const;
     const label = 'Teachers per student';
@@ -855,7 +993,9 @@ export async function probeOneRosterRosterData(params: {
         message: 'Not measured — no class-roster sample was available.',
       });
     } else {
-      const joinable = enrollments.filter((r) => r.user?.sourcedId && r.class?.sourcedId);
+      const joinable = [...enrollments, ...huntedTeacherRows].filter(
+        (r) => r.user?.sourcedId && r.class?.sourcedId,
+      );
       const teachersByClass = new Map<string, Set<string>>();
       for (const row of joinable) {
         if (row.role !== 'teacher') continue;
@@ -900,7 +1040,7 @@ export async function probeOneRosterRosterData(params: {
           key,
           label,
           status: 'ok',
-          message: `Sampled ${counts.length} students: fewest ${min}, typical ${median}, most ${max} teachers each (first-page sample).${gap}`,
+          message: `Sampled ${counts.length} students: fewest ${min}, typical ${median}, most ${max} teachers each (sampled rows only).${gap}`,
         });
       }
     }

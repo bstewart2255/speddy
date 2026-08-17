@@ -1392,6 +1392,179 @@ describe('the roster probe measures presence and joinability, never people (SPE-
   });
 });
 
+describe('the teacher-side hunt settles a student-only first page (SPE-538)', () => {
+  // JSUSD's live state the day rosters opened: student entries flowing, zero
+  // teacher entries in page one. One page cannot tell "teachers sit deeper"
+  // from "assignments not entered yet" — the hunt tries the role filter, then
+  // deeper pages, then the per-class teacher route, and reports which door
+  // answered. Fixtures plant names so the privacy negatives bite.
+  const PII_HUNT_TEACHER = 'Quincy Hunt-Teacher';
+
+  const studentRows = (n: number, offset = 0) =>
+    Array.from({ length: n }, (_, i) => ({
+      sourcedId: `e-stu-${offset + i}`,
+      role: 'student',
+      user: { sourcedId: `stu-hunt-${offset + i}` },
+      class: { sourcedId: 'cls-hunt-1' },
+    }));
+
+  const teacherRow = (id: string, cls = 'cls-hunt-1') => ({
+    sourcedId: `e-tea-${id}`,
+    role: 'teacher',
+    user: { sourcedId: id, givenName: PII_HUNT_TEACHER },
+    class: { sourcedId: cls },
+  });
+
+  /** Shared non-enrollment surface: teachers/students/classes all answer. */
+  const baseSurface: Handler = (req) => {
+    if (req.url.includes('/token')) {
+      return { status: 200, body: { access_token: TOKEN, token_type: 'bearer' } };
+    }
+    if (req.url.includes('/teachers') && !req.url.includes('/classes/')) {
+      return { status: 200, body: { users: [{ sourcedId: 'tea-hunt-1' }] } };
+    }
+    if (req.url.includes('/students')) {
+      return { status: 200, body: { users: [{ sourcedId: 'stu-hunt-0' }] } };
+    }
+    if (req.url.includes('/classes') && !req.url.includes('/classes/')) {
+      return { status: 200, body: { classes: [{ sourcedId: 'cls-hunt-1', title: 'Hunt Room' }] } };
+    }
+    return { status: 404, body: {} };
+  };
+
+  const probe = () =>
+    probeOneRosterRosterData({
+      baseUrl: `${origin}/admin`,
+      tokenUrl: `${origin}/admin/token/`,
+      clientId: CLIENT_ID,
+      clientSecret: CLIENT_SECRET,
+    });
+
+  const stepIn = (steps: Awaited<ReturnType<typeof probe>>, key: string) =>
+    steps.find((s) => s.key === key);
+
+  it('does NOT hunt when the first page already carries teacher entries', async () => {
+    let enrollmentRequests = 0;
+    handler = (req) => {
+      if (req.url.includes('/enrollments')) {
+        enrollmentRequests += 1;
+        return {
+          status: 200,
+          body: { enrollments: [...studentRows(3), teacherRow('tea-hunt-1')] },
+        };
+      }
+      return baseSurface(req);
+    };
+
+    const steps = await probe();
+
+    expect(enrollmentRequests).toBe(1);
+    expect(stepIn(steps, 'teacher-rosters')).toBeUndefined();
+    expect(stepIn(steps, 'rosters')!.status).toBe('ok');
+  });
+
+  it('door 1: a honored role filter answers instantly and feeds the linkage', async () => {
+    handler = (req) => {
+      if (req.url.includes('/enrollments')) {
+        const params = new URL(req.url, origin).searchParams;
+        if ((params.get('filter') ?? '').includes('teacher')) {
+          return { status: 200, body: { enrollments: [teacherRow('tea-hunt-1')] } };
+        }
+        return { status: 200, body: { enrollments: studentRows(3) } };
+      }
+      return baseSurface(req);
+    };
+
+    const steps = await probe();
+
+    const hunt = stepIn(steps, 'teacher-rosters')!;
+    expect(hunt.status).toBe('ok');
+    expect(hunt.message).toContain('via a role filter');
+    expect(hunt.message).toContain('students CAN be joined');
+    // The hunted teacher shares cls-hunt-1 with every student: linkage computes.
+    expect(stepIn(steps, 'linkage')!.status).toBe('ok');
+    expect(stepIn(steps, 'linkage')!.message).toContain('Sampled 3 students');
+  });
+
+  it('door 2: an ignored filter falls through to the deep walk that finds page two', async () => {
+    handler = (req) => {
+      if (req.url.includes('/enrollments')) {
+        const params = new URL(req.url, origin).searchParams;
+        const offset = Number(params.get('offset') ?? '0');
+        // The "filter" is ignored: same student-only full page comes back.
+        if (offset === 0) return { status: 200, body: { enrollments: studentRows(200) } };
+        return {
+          status: 200,
+          body: { enrollments: [teacherRow('tea-hunt-1'), ...studentRows(2, 900)] },
+        };
+      }
+      return baseSurface(req);
+    };
+
+    const steps = await probe();
+
+    const hunt = stepIn(steps, 'teacher-rosters')!;
+    expect(hunt.status).toBe('ok');
+    expect(hunt.message).toContain('deep in the list');
+    expect(stepIn(steps, 'linkage')!.status).toBe('ok');
+  });
+
+  it('a fully walked, teacher-less list with no per-class route is the definitive no', async () => {
+    handler = (req) => {
+      if (req.url.includes('/classes/') && req.url.includes('/teachers')) {
+        return { status: 404, body: {} };
+      }
+      if (req.url.includes('/enrollments')) {
+        const params = new URL(req.url, origin).searchParams;
+        const offset = Number(params.get('offset') ?? '0');
+        // Short first page = the whole list; filter door returns it unchanged.
+        if (offset === 0) return { status: 200, body: { enrollments: studentRows(3) } };
+        return { status: 200, body: { enrollments: [] } };
+      }
+      return baseSurface(req);
+    };
+
+    const steps = await probe();
+
+    const hunt = stepIn(steps, 'teacher-rosters')!;
+    expect(hunt.status).toBe('denied');
+    expect(hunt.message).toContain('ENTIRE list');
+    expect(hunt.message).toMatch(/not provided/i);
+    expect(hunt.message).toContain('not in Aeries yet');
+  });
+
+  it('door 3: the per-class teacher route rescues a teacher-less list', async () => {
+    handler = (req) => {
+      if (req.url.includes('/classes/') && req.url.includes('/teachers')) {
+        return {
+          status: 200,
+          body: { users: [{ sourcedId: 'tea-hunt-9', givenName: PII_HUNT_TEACHER }] },
+        };
+      }
+      if (req.url.includes('/enrollments')) {
+        const params = new URL(req.url, origin).searchParams;
+        const offset = Number(params.get('offset') ?? '0');
+        if (offset === 0) return { status: 200, body: { enrollments: studentRows(3) } };
+        return { status: 200, body: { enrollments: [] } };
+      }
+      return baseSurface(req);
+    };
+
+    const steps = await probe();
+
+    const hunt = stepIn(steps, 'teacher-rosters')!;
+    expect(hunt.status).toBe('ok');
+    expect(hunt.message).toContain('per-class teacher list answers');
+
+    // Privacy holds on every hunt path: planted names and IDs never surface.
+    const serialized = JSON.stringify(steps);
+    expect(serialized).not.toContain(PII_HUNT_TEACHER);
+    expect(serialized).not.toContain('Quincy');
+    expect(serialized).not.toContain('stu-hunt');
+    expect(serialized).not.toContain('cls-hunt');
+  });
+});
+
 describe('the GRANTED scope is logged from our own vocabulary — never verbatim (SPE-435)', () => {
   // The 403 on /enrollments made "what did the server actually grant us"
   // the deciding fact between our-request-too-narrow and their-console-says-no.
