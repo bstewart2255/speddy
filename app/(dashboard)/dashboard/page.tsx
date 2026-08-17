@@ -96,7 +96,7 @@ export default function DashboardPage() {
                 elementary-only. */}
             <SetupGuideCard userRole={userRole}>
               {!isSecondary || canScheduleAtSecondary(userRole) ? (
-                <WeeklyView viewMode="provider" />
+                <WeeklyView viewMode="provider" className="h-full" />
               ) : undefined}
             </SetupGuideCard>
 

@@ -46,6 +46,8 @@ const TIME_SLOTS = [
 
 interface WeeklyViewProps {
   viewMode: 'provider' | 'sea';
+  /** Extra classes for the card root (e.g. h-full to fill a grid row). */
+  className?: string;
 }
 
 // Type definitions for session blocks
@@ -65,7 +67,7 @@ type SessionBlock =
   | { type: 'group'; data: GroupBlockData }
   | { type: 'session'; data: SessionBlockData };
 
-export function WeeklyView({ viewMode }: WeeklyViewProps) {
+export function WeeklyView({ viewMode, className }: WeeklyViewProps) {
   const { showToast } = useToast();
   const schoolContext = useSchool();
   const currentSchool = schoolContext.currentSchool;
@@ -689,7 +691,7 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
   }
 
 return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+    <div className={`bg-white rounded-lg shadow-sm border border-gray-200 p-4 ${className ?? ''}`}>
       <div className="mb-4">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold">

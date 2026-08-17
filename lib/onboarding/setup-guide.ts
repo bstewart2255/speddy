@@ -125,7 +125,7 @@ export function deriveProviderSetupItems(args: {
       id: 'special-activities',
       title: 'Enter special activities',
       description:
-        "Your teachers' regular commitments — PE, library, assemblies — so pull-out sessions steer around them.",
+        "Your teachers' regular commitments — PE, library, music — so pull-out sessions steer around them.",
       href: '/dashboard/special-activities',
       state: activitiesDone ? 'done' : 'todo',
       shared: true,

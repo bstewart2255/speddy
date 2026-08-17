@@ -206,7 +206,7 @@ export function SetupGuideCard({
               </span>
             ) : (
               <>
-                Setup guide · {doneCount} of {items.length} done
+                Setup Guide · {doneCount} of {items.length} done
               </>
             )}
           </button>
@@ -229,7 +229,7 @@ export function SetupGuideCard({
         <div className="mb-3 flex items-start justify-between gap-3">
           <div>
             <h2 className="text-base font-semibold text-gray-900">
-              Setup guide
+              Setup Guide
             </h2>
             <p aria-live="polite" className="mt-0.5 text-sm text-gray-500">
               {doneCount} of {items.length} done
@@ -317,11 +317,14 @@ export function SetupGuideCard({
   })();
 
   // Side-by-side layout: main content at ~70% with the guide beside it at
-  // ~30%; full width the moment the guide has nothing to show.
+  // ~30%; full width the moment the guide has nothing to show. Grid items
+  // stretch, so the schedule card (given h-full by the page) matches the
+  // guide's height even when it has no sessions to show; the pill keeps its
+  // natural height, top-aligned in its cell.
   if (!guide) return <>{children ?? null}</>;
   if (!children) return guide;
   return (
-    <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-10">
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-10">
       <div className="lg:col-span-7">{children}</div>
       <div className="lg:col-span-3">{guide}</div>
     </div>
