@@ -5,6 +5,7 @@ import {
   type SchoolIdentifier,
 } from '@/lib/school-helpers';
 import { SPECIALIST_SOURCE_ROLES } from '@/lib/auth/role-utils';
+import { resolveCurriculumIds } from '@/lib/curriculums/catalog';
 import { getCurrentSchoolYear } from '@/lib/school-year';
 import type {
   DistrictAdminSetupFacts,
@@ -267,9 +268,8 @@ export async function getDistrictAdminSetupFacts(
       .eq('district_id', districtId),
     supabase
       .from('district_curriculums')
-      .select('id')
-      .eq('district_id', districtId)
-      .limit(1),
+      .select('curriculum_id')
+      .eq('district_id', districtId),
     supabase
       .from('district_sis_connections')
       .select('status')
@@ -338,7 +338,13 @@ export async function getDistrictAdminSetupFacts(
     ).length,
     schoolsWithSiteAdmin,
     providerCount: (providers.data ?? []).length,
-    hasCurriculums: (curriculums.data?.length ?? 0) > 0,
+    // A row whose curriculum_id the catalog no longer knows is dropped by the
+    // pickers (resolveCurriculumIds), so a stale-only list must not check the
+    // item while providers still see an empty picker.
+    hasCurriculums:
+      resolveCurriculumIds(
+        (curriculums.data ?? []).map(c => c.curriculum_id)
+      ).length > 0,
     sisStatus,
   };
 }

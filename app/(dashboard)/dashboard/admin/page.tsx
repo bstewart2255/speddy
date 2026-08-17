@@ -258,14 +258,24 @@ export default function AdminDashboardPage() {
           return;
         }
 
-        setPermissions(perms[0]); // Assuming single permission for now
+        // Admins normally hold one grant. If several exist, pick
+        // deterministically — lexicographically first scope id — matching the
+        // district curriculums API's own selection rule, so this dashboard
+        // (and its Setup Guide) can never describe a different district than
+        // the pages it links to act on.
+        const ordered = [...perms].sort((a, b) =>
+          (a.district_id ?? a.school_id ?? '').localeCompare(
+            b.district_id ?? b.school_id ?? ''
+          )
+        );
+        setPermissions(ordered[0]);
 
         // Different data fetching based on admin type
-        if (perms[0]?.role === 'district_admin' && perms[0]?.district_id) {
+        if (ordered[0]?.role === 'district_admin' && ordered[0]?.district_id) {
           // District admin - fetch district-level data
           const [district, counts] = await Promise.all([
-            getDistrictInfo(perms[0].district_id),
-            getDistrictStaffCounts(perms[0].district_id)
+            getDistrictInfo(ordered[0].district_id),
+            getDistrictStaffCounts(ordered[0].district_id)
           ]);
           setDistrictInfo(district);
           setStaffCounts({
@@ -274,12 +284,12 @@ export default function AdminDashboardPage() {
             schools: counts.schools ?? 0,
             students: 0 // Students not shown on district admin dashboard
           });
-        } else if (perms[0]?.school_id) {
+        } else if (ordered[0]?.school_id) {
           // Site admin - fetch school-level data
           const [staff, studentCount, scheduleData] = await Promise.all([
-            getSchoolStaff(perms[0].school_id),
-            getSchoolStudentCount(perms[0].school_id),
-            getTodaySchoolSessions(perms[0].school_id)
+            getSchoolStaff(ordered[0].school_id),
+            getSchoolStudentCount(ordered[0].school_id),
+            getTodaySchoolSessions(ordered[0].school_id)
           ]);
           setStaffCounts({
             teachers: staff.teachers.length,
