@@ -554,6 +554,17 @@ export class SessionUpdateService {
    * separate queries so PostgREST or-quoting never mangles a school name
    * containing spaces or commas. Year-scoped: without it a prior year's grid
    * still raises conflicts (SPE-469's family of bugs).
+   *
+   * HONEST LIMIT on that second pass, so nobody reads more into it than it
+   * delivers: every branch of the bell_schedules SELECT policy compares
+   * school_id, and none of them can match NULL, so a legacy row is visible ONLY
+   * to the provider who created it. The cross-provider half of "school-wide"
+   * therefore does not reach legacy rows — widening it needs the POLICY changed
+   * or those rows normalized, neither of which belongs in a client-query fix.
+   * What this pass does buy is real: all 60 legacy rows sit at Walnut Acres
+   * under a single owner, and that owner previously got NO bell warning at all
+   * there (the old query keyed on school_id, which their rows lack). Strictly
+   * better, not complete. Tracked as SPE-517.
    */
   private async checkBellScheduleConflicts(
     studentId: string,
