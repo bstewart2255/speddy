@@ -200,6 +200,43 @@ describe('POST /api/assistant/chat', () => {
     ]) {
       expect(systemText).toContain(anchor);
     }
+    // SPE-539: the product guide is the assistant's ONLY knowledge of the UI,
+    // so pin one distinctive anchor per topic. A trim that drops a topic, or a
+    // feature change that rewrites a flow without updating the guide, fails
+    // here instead of reaching a provider as a confidently wrong answer.
+    for (const anchor of [
+      // Layout and where things live
+      'the nav bar has Dashboard, Students, Schedule',
+      '"Ask AI" button beside it opens this assistant',
+      'Chat (in the nav) is messaging with colleagues',
+      'a setup checklist card beside it',
+      // Secondary sites split by role (SPE-490, SPE-491, SPE-513)
+      'Middle and high school (secondary) sites work differently, by role',
+      'periods-by-days week view instead of the drag-and-drop grid',
+      'Speech, OT, counseling and school psychologists keep the full scheduling grid',
+      // Students and the student record
+      '"+ Add Student"',
+      '"As the IEP states it:"',
+      'Student Goals Report → Generate Report → Download',
+      'Current Information, IEP Goals, Assessments, Progress, Attendance',
+      '"Import from IEP PDF"',
+      // Scheduling
+      'Balanced, Group by grade, Group by teacher, or Prefer mornings',
+      'there is no "create group" button',
+      '"Add Protected Time"',
+      '"Add Mainstreaming Block"',
+      '"Add Service Time"',
+      'Where I see this student',
+      // Everything else
+      '"All Present"',
+      "At a secondary site the page captures the school's period grid instead",
+      'Any activity name can be typed',
+      'cancelled but not deleted',
+      '"Add Referral"',
+      'Not possible in Speddy:',
+    ]) {
+      expect(systemText).toContain(anchor);
+    }
     expect(call.tools.map((t: { name: string }) => t.name)).toEqual([
       'get_caseload',
       'get_schedule',
