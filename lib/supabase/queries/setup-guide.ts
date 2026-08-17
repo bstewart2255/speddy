@@ -1,7 +1,15 @@
 import { createClient } from '@/lib/supabase/client';
-import { buildSchoolFilter, type SchoolIdentifier } from '@/lib/school-helpers';
+import {
+  buildSchoolFilter,
+  isSecondarySchool,
+  type SchoolIdentifier,
+} from '@/lib/school-helpers';
+import { SPECIALIST_SOURCE_ROLES } from '@/lib/auth/role-utils';
 import { getCurrentSchoolYear } from '@/lib/school-year';
-import type { ProviderSetupFacts } from '@/lib/onboarding/setup-guide';
+import type {
+  ProviderSetupFacts,
+  SiteAdminSetupFacts,
+} from '@/lib/onboarding/setup-guide';
 import { getUnscheduledSessionsCount } from './schedule-sessions';
 import type { Database } from '../../../src/types/database';
 
@@ -117,5 +125,96 @@ export async function getProviderSetupFacts(
     hasBellSchedules: (bells.data?.length ?? 0) > 0,
     hasSpecialActivities: (activities.data?.length ?? 0) > 0,
     unscheduledCount,
+  };
+}
+
+/**
+ * Existence checks behind the site admin setup guide (SPE-522).
+ *
+ * All checks are keyed on the admin's granted school_id (admin grants always
+ * carry a structured id, so no legacy fallback is needed). Bell schedules and
+ * special activities use the same school-wide, current-year semantics as the
+ * provider guide above. Provider counts are keyed on the profile's primary
+ * school — itinerant providers are pulse-checked at their primary site.
+ */
+export async function getSiteAdminSetupFacts(schoolId: string): Promise<{
+  isSecondary: boolean;
+  facts: SiteAdminSetupFacts;
+}> {
+  const supabase = createClient<Database>();
+  const schoolYear = getCurrentSchoolYear();
+
+  const [school, teachers, staff, bells, activities, providers] =
+    await Promise.all([
+      supabase
+        .from('schools')
+        // grade_span_low alone drives the level split (isSecondarySchool),
+        // so it is what "grade span present" means here.
+        .select('school_type, grade_span_low')
+        .eq('id', schoolId)
+        .single(),
+      supabase.from('teachers').select('id').eq('school_id', schoolId).limit(1),
+      supabase.from('staff').select('id').eq('school_id', schoolId).limit(1),
+      supabase
+        .from('bell_schedules')
+        .select('id')
+        .eq('school_id', schoolId)
+        .eq('school_year', schoolYear)
+        .limit(1),
+      supabase
+        .from('special_activities')
+        .select('id')
+        .eq('school_id', schoolId)
+        .eq('school_year', schoolYear)
+        .is('deleted_at', null)
+        .limit(1),
+      supabase
+        .from('profiles')
+        .select('id')
+        .eq('school_id', schoolId)
+        .in('role', [...SPECIALIST_SOURCE_ROLES]),
+    ]);
+
+  const firstError =
+    school.error ||
+    teachers.error ||
+    staff.error ||
+    bells.error ||
+    activities.error ||
+    providers.error;
+  if (firstError) throw firstError;
+
+  // One head-check per provider rather than fetching a row per student: the
+  // dashboard only needs "does this provider have any student here", and a
+  // big school would otherwise ship hundreds of rows per visit.
+  const providerIds = (providers.data ?? []).map(p => p.id);
+  const perProvider = await Promise.all(
+    providerIds.map(id =>
+      supabase
+        .from('students')
+        .select('id')
+        .eq('school_id', schoolId)
+        .eq('provider_id', id)
+        .limit(1)
+    )
+  );
+  const perProviderError = perProvider.find(r => r.error)?.error;
+  if (perProviderError) throw perProviderError;
+  const providersWithStudents = perProvider.filter(
+    r => (r.data?.length ?? 0) > 0
+  ).length;
+
+  return {
+    isSecondary: isSecondarySchool(school.data),
+    facts: {
+      schoolTypePresent: !!school.data?.school_type?.trim(),
+      gradeSpanPresent: !!school.data?.grade_span_low?.trim(),
+      hasTeachers: (teachers.data?.length ?? 0) > 0,
+      hasStaff: (staff.data?.length ?? 0) > 0,
+      hasBellSchedules: (bells.data?.length ?? 0) > 0,
+      hasSpecialActivities: (activities.data?.length ?? 0) > 0,
+      providerCount: providerIds.length,
+      providersWithStudents,
+    },
   };
 }

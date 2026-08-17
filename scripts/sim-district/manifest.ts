@@ -878,6 +878,10 @@ export const SWEPT_TABLES: { table: string; column: string; identity: 'user' | '
   { table: 'student_parent_contacts', column: 'student_id', identity: 'student' },
   { table: 'teacher_availability_prefs', column: 'profile_id', identity: 'user' },
   { table: 'site_meeting_rules', column: 'school_id', identity: 'school' },
+  // SPE-522 setup-guide walk: the site admin creates a staff member through
+  // the app. staff has no cascade path from schools, so the sweep is what
+  // cleans it.
+  { table: 'staff', column: 'school_id', identity: 'school' },
   // Mainstreaming blocks (SPE-478): verification walks create these live
   // through the app as the SDC dual-role persona; keyed to the owning
   // provider account.
@@ -909,8 +913,10 @@ export const DECLARED_UNSEEDED_TABLES: string[] = [
   // Progress/assessment surfaces (the Tools-suite tables were dropped in
   // SPE-497 stage 2):
   'manual_goal_progress', 'student_assessments', 'assessment_types',
-  // Staffing / master-schedule (site-admin surface; seed when a feature needs it):
-  'staff', 'staff_hours', 'staff_teacher_assignments', 'instruction_schedules',
+  // Staffing / master-schedule (site-admin surface; seed when a feature needs
+  // it). `staff` itself moved to SWEPT_TABLES for SPE-522 — the setup-guide
+  // walk has the site admin create one through the app:
+  'staff_hours', 'staff_teacher_assignments', 'instruction_schedules',
   'yard_duty_assignments', 'yard_duty_zones', 'rotation_groups',
   'rotation_group_members', 'rotation_activity_pairs', 'rotation_week_assignments',
   'activity_type_availability', 'activated_school_years', 'school_year_config',

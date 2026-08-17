@@ -2,37 +2,50 @@ import { canScheduleAtSecondary } from '@/lib/school-helpers';
 import { isSpecialistSourceRole } from '@/lib/auth/role-utils';
 
 /**
- * Provider setup guide (SPE-521).
+ * Setup guides (SPE-521 provider, SPE-522 site admin).
  *
- * Pure derivation of the dashboard setup-guide checklist: which items a
- * provider sees for the active school, and whether each is done. Data
- * fetching lives in `lib/supabase/queries/setup-guide.ts`; rendering in
- * `app/components/onboarding/setup-guide-card.tsx`. Keeping this pure makes
- * the role × school-level matrix unit-testable without a Supabase client.
+ * Pure derivation of the dashboard setup-guide checklists: which items each
+ * audience sees for a school, and whether each is done. Data fetching lives
+ * in `lib/supabase/queries/setup-guide.ts`; rendering in
+ * `app/components/onboarding/`. Keeping this pure makes the role ×
+ * school-level matrix unit-testable without a Supabase client.
  *
- * The guide stays at "is the tool in the drawer" altitude — data foundations
+ * The guides stay at "is the tool in the drawer" altitude — data foundations
  * only, never a feature tour (owner decision, 2026-08-17).
  */
 
 export type SetupGuideItemId =
+  // Provider guide
   | 'students'
   | 'work-schedule'
   | 'bell-schedules'
   | 'special-activities'
-  | 'schedule-sessions';
+  | 'schedule-sessions'
+  // Site admin guide
+  | 'school-facts'
+  | 'teachers-staff'
+  | 'master-schedule'
+  | 'caseloads';
 
 export interface SetupGuideItem {
   id: SetupGuideItemId;
   title: string;
   description: string;
-  href: string;
-  state: 'done' | 'todo';
+  /** Where the title links; omitted when there is no in-app page to act on. */
+  href?: string;
   /**
-   * Shared items have an ideal owner (the site admin, via the Master
-   * Schedule) but either party can complete them, and data from either
-   * source counts.
+   * done — auto-detected from real data; todo — actionable now;
+   * waiting — blocked on someone else (named in `waitingOn`).
    */
-  shared: boolean;
+  state: 'done' | 'todo' | 'waiting';
+  /** Who unblocks a waiting item (e.g. "your providers"). */
+  waitingOn?: string;
+  /**
+   * Shared items have an ideal owner but either party can complete them, and
+   * data from either source counts. The value is the tag text naming the
+   * partnership from this audience's side (e.g. "You or your site admin").
+   */
+  sharedWith?: string;
   /** Special-activities only: completed via the "my teachers have none" escape hatch. */
   markedNone?: boolean;
 }
@@ -64,6 +77,10 @@ export function schedulesSessionsAtLevel(
   return !isSecondary || canScheduleAtSecondary(role);
 }
 
+const PROVIDER_SHARED_TAG = 'You or your site admin';
+const PROVIDER_SHARED_NOTE =
+  ' Ideally your site admin enters this once for the whole school — add it yourself if you would rather not wait.';
+
 export function deriveProviderSetupItems(args: {
   role: string;
   isSecondary: boolean;
@@ -80,7 +97,6 @@ export function deriveProviderSetupItems(args: {
       'Import a list, add them one at a time — or your roster may arrive automatically if your district has an SIS sync running.',
     href: '/dashboard/students',
     state: facts.hasStudents ? 'done' : 'todo',
-    shared: false,
   });
 
   if (worksAtMultipleSchools) {
@@ -91,7 +107,6 @@ export function deriveProviderSetupItems(args: {
         'Which days you spend at which school, so sessions land on days you are actually on site.',
       href: '/dashboard/settings',
       state: facts.hasSiteSchedules ? 'done' : 'todo',
-      shared: false,
     });
   }
 
@@ -107,12 +122,14 @@ export function deriveProviderSetupItems(args: {
       title: isSecondary
         ? "Enter the school's period grid"
         : 'Enter bell schedules',
-      description: isSecondary
-        ? 'The period times the whole school runs on. Entered once, they cover every grade.'
-        : 'Recess, lunch and other grade-level blocks, so sessions never collide with them.',
+      description:
+        (isSecondary
+          ? 'The period times the whole school runs on. Entered once, they cover every grade.'
+          : 'Recess, lunch and other grade-level blocks, so sessions never collide with them.') +
+        PROVIDER_SHARED_NOTE,
       href: '/dashboard/bell-schedules',
       state: facts.hasBellSchedules ? 'done' : 'todo',
-      shared: true,
+      sharedWith: PROVIDER_SHARED_TAG,
     });
   }
 
@@ -125,10 +142,11 @@ export function deriveProviderSetupItems(args: {
       id: 'special-activities',
       title: 'Enter special activities',
       description:
-        "Your teachers' regular commitments — PE, library, music — so pull-out sessions steer around them.",
+        "Your teachers' regular commitments — PE, library, music — so pull-out sessions steer around them." +
+        PROVIDER_SHARED_NOTE,
       href: '/dashboard/special-activities',
       state: activitiesDone ? 'done' : 'todo',
-      shared: true,
+      sharedWith: PROVIDER_SHARED_TAG,
       markedNone: !facts.hasSpecialActivities && facts.activitiesMarkedNone,
     });
   }
@@ -151,9 +169,108 @@ export function deriveProviderSetupItems(args: {
           : 'Place sessions by drag and drop, or let Auto-Schedule fill the week.',
       href: '/dashboard/schedule',
       state: scheduled ? 'done' : 'todo',
-      shared: false,
     });
   }
+
+  return items;
+}
+
+// ---------------------------------------------------------------------------
+// Site admin guide (SPE-522)
+// ---------------------------------------------------------------------------
+
+export interface SiteAdminSetupFacts {
+  schoolTypePresent: boolean;
+  gradeSpanPresent: boolean;
+  hasTeachers: boolean;
+  hasStaff: boolean;
+  hasBellSchedules: boolean;
+  hasSpecialActivities: boolean;
+  /** Providers whose primary school is this school. */
+  providerCount: number;
+  /** How many of those providers have at least one student here. */
+  providersWithStudents: number;
+}
+
+export function deriveSiteAdminSetupItems(args: {
+  isSecondary: boolean;
+  facts: SiteAdminSetupFacts;
+}): SetupGuideItem[] {
+  const { isSecondary, facts } = args;
+  const items: SetupGuideItem[] = [];
+
+  // The school record's type and grade span decide the elementary vs
+  // secondary experience everywhere; only Speddy staff can correct them, so
+  // an unset value waits on support rather than linking anywhere.
+  const factsPresent = facts.schoolTypePresent && facts.gradeSpanPresent;
+  items.push({
+    id: 'school-facts',
+    title: "Check the school's facts",
+    description:
+      "The school's type and grade span decide whether staff get the elementary or secondary experience everywhere in Speddy. They are not set yet — contact Speddy support to fix them.",
+    state: factsPresent ? 'done' : 'waiting',
+    waitingOn: factsPresent ? undefined : 'Speddy support',
+  });
+
+  // Teachers arrive from the district's SIS sync; the staff list (aides, duty
+  // staff) is the admin's to build. One drawer item covering both lists.
+  const teachersStaffDone = facts.hasTeachers && facts.hasStaff;
+  items.push({
+    id: 'teachers-staff',
+    title: 'Teacher & staff lists',
+    description: !facts.hasTeachers
+      ? "Your teacher list fills from the district's SIS sync — no accounts to create. Add one by hand only for someone the SIS doesn't carry, and build your staff list (aides, duty staff) meanwhile."
+      : 'Teachers are in — now build your staff list (aides, duty staff), which providers reference on schedules.',
+    href: !facts.hasTeachers
+      ? '/dashboard/admin/teachers'
+      : '/dashboard/admin/staff',
+    state: teachersStaffDone
+      ? 'done'
+      : facts.hasTeachers
+        ? 'todo'
+        : 'waiting',
+    waitingOn: facts.hasTeachers ? undefined : "the district's SIS sync",
+  });
+
+  // Flip side of the provider guide's shared items: entered once here, every
+  // provider's checklist counts it — and provider-entered data counts here.
+  // At secondary the school runs on a period grid and special activities
+  // don't apply.
+  const scheduleDataDone =
+    facts.hasBellSchedules && (isSecondary || facts.hasSpecialActivities);
+  items.push({
+    id: 'master-schedule',
+    title: isSecondary
+      ? "Put the school's period grid in"
+      : 'Put bell schedules & special activities in',
+    description: isSecondary
+      ? 'The period times the whole school runs on, entered once — so providers scheduling here never collide with them.'
+      : "Recess, lunch and teachers' regular commitments (PE, library, music), entered once for the whole school — so your providers don't each have to. Anything a provider already entered counts too.",
+    href: '/dashboard/admin/master-schedule',
+    state: scheduleDataDone ? 'done' : 'todo',
+    sharedWith: 'You or your providers',
+  });
+
+  // The admin's rollout pulse-check: caseloads land as providers add
+  // students. Providers themselves arrive from the district kickoff import.
+  const caseloadsDone =
+    facts.providerCount > 0 &&
+    facts.providersWithStudents >= facts.providerCount;
+  items.push({
+    id: 'caseloads',
+    title: 'Watch the caseloads land',
+    description:
+      facts.providerCount === 0
+        ? 'No provider accounts at this school yet — they arrive with the district kickoff. The Students page fills as providers add their caseloads.'
+        : `${facts.providersWithStudents} of ${facts.providerCount} providers have students on their caseload. The Students page fills as they add the rest.`,
+    href: '/dashboard/admin/students',
+    state: caseloadsDone ? 'done' : 'waiting',
+    waitingOn: caseloadsDone
+      ? undefined
+      : facts.providerCount === 0
+        ? 'the district kickoff'
+        : 'your providers',
+  });
 
   return items;
 }
