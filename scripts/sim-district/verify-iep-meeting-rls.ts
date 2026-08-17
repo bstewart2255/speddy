@@ -234,6 +234,38 @@ async function main(): Promise<void> {
     check((theirs?.length ?? 0) === 0 && theirsErr?.code === '42501',
       'same-school non-organizer cannot attach an attendee (42501)',
       `code=${theirsErr?.code ?? 'none'} rows=${theirs?.length ?? 0}`);
+
+    // UPDATE and DELETE, which the migration also changed — without these a
+    // regression in either control would sail past this script (CodeRabbit, #879).
+    const attendeeId = mine?.[0]?.id as string | undefined;
+    if (!attendeeId) {
+      check(false, 'attendee fixture available for the update/delete probes', 'insert returned no id');
+    } else {
+      const { data: rename } = await tomas.client
+        .from('iep_meeting_attendees')
+        .update({ display_name: 'Interpreter (renamed)' }).eq('id', attendeeId).select('id');
+      check((rename?.length ?? 0) === 1, 'organizer can update an attendee', `rows=${rename?.length ?? 0}`);
+
+      const { data: adminRename } = await marcus.client
+        .from('iep_meeting_attendees')
+        .update({ display_name: 'Interpreter (admin edit)' }).eq('id', attendeeId).select('id');
+      check((adminRename?.length ?? 0) === 1, 'site admin can update an attendee',
+        `rows=${adminRename?.length ?? 0}`);
+
+      const { data: hijack, status } = await hannah.client
+        .from('iep_meeting_attendees')
+        .update({ display_name: 'HIJACKED' }).eq('id', attendeeId).select('id');
+      const { data: stored } = await admin
+        .from('iep_meeting_attendees').select('display_name').eq('id', attendeeId).maybeSingle();
+      check((hijack?.length ?? 0) === 0 && stored?.display_name === 'Interpreter (admin edit)',
+        'non-organizer attendee UPDATE affects 0 rows and does not persist',
+        `HTTP ${status}, stored=${stored?.display_name}`);
+
+      const { error: delErr } = await hannah.client
+        .from('iep_meeting_attendees').delete().eq('id', attendeeId).select('id');
+      check(delErr?.code === '42501', 'attendee DELETE is refused for everyone (grant revoked)',
+        `code=${delErr?.code ?? 'none'}`);
+    }
   }
 
   console.log('cleanup:');

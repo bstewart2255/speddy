@@ -53,6 +53,37 @@
 
 BEGIN;
 
+-- 0. Refuse to run against data the keep-rule cannot decide.
+--
+--    CodeRabbit (#879) asked for the update to be pinned to the five verified
+--    provider IDs. Hardcoding them is the wrong guard: it would make this a
+--    no-op on any restored snapshot or branch database that has the same
+--    problem, which is precisely where an unreviewed shape would show up.
+--
+--    The actual risk is not "a provider I did not list" — the keep-rule is
+--    deterministic and safe for any provider whose duplicate primaries include
+--    exactly one row matching profiles.school_id. The risk is the AMBIGUOUS
+--    shape, where none or several match and the rule has no basis to choose.
+--    Verified zero of those in production before applying (all five had exactly
+--    one). This aborts instead of guessing if a replay ever meets one.
+DO $$
+DECLARE
+  v_ambiguous integer;
+BEGIN
+  SELECT count(*) INTO v_ambiguous FROM (
+    SELECT ps.provider_id
+    FROM public.provider_schools ps
+    JOIN public.profiles p ON p.id = ps.provider_id
+    GROUP BY ps.provider_id
+    HAVING count(*) FILTER (WHERE ps.is_primary) > 1
+       AND count(*) FILTER (WHERE ps.is_primary AND ps.school_id = p.school_id) <> 1
+  ) x;
+  IF v_ambiguous > 0 THEN
+    RAISE EXCEPTION
+      'SPE-363: % provider(s) have multiple primary schools but not exactly one matching profiles.school_id — the keep-rule cannot choose; resolve these by hand before running', v_ambiguous;
+  END IF;
+END $$;
+
 -- 1. Collapse to a single primary per provider.
 UPDATE public.provider_schools ps
 SET is_primary = false

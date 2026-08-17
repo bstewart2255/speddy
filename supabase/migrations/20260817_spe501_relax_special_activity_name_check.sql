@@ -23,11 +23,18 @@
 ALTER TABLE public.special_activities
   DROP CONSTRAINT special_activities_activity_name_check;
 
+-- Not btrim(): with one argument it strips SPACES only, so a tab- or
+-- newline-only name satisfied a length(btrim(...)) > 0 test. Verified against
+-- this database before changing it — length(btrim(E'\t\t')) = 2,
+-- length(btrim(E'\n')) = 1, length(btrim('   ')) = 0. The regex covers every
+-- [[:space:]] character in one predicate, and '' still fails it (a zero-length
+-- string matches '^[[:space:]]*$'). Only ALL-whitespace is rejected — an
+-- internal tab, as in "Tech\tLab", stays legal. (CodeRabbit, PR #879.)
 ALTER TABLE public.special_activities
   ADD CONSTRAINT special_activities_activity_name_check CHECK (
     activity_name IS NULL
-    OR (length(btrim(activity_name)) > 0 AND length(activity_name) <= 100)
+    OR (activity_name !~ '^[[:space:]]*$' AND length(activity_name) <= 100)
   );
 
 COMMENT ON CONSTRAINT special_activities_activity_name_check ON public.special_activities IS
-  'SPE-501: activity_name is free text (the admin form offers "Other..."), so this bounds it rather than enumerating it — non-blank when present, at most 100 chars. SPECIAL_ACTIVITY_TYPES remains the suggested picklist in the UI, not the permitted set.';
+  'SPE-501: activity_name is free text (the admin form offers "Other..."), so this bounds it rather than enumerating it — not all-whitespace, at most 100 chars. SPECIAL_ACTIVITY_TYPES remains the suggested picklist in the UI, not the permitted set. Uses a whitespace regex, not btrim(), which strips spaces only.';
