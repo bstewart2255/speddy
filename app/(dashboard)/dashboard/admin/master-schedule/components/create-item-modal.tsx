@@ -6,7 +6,7 @@ import { addBellSchedule } from '../../../../../../lib/supabase/queries/bell-sch
 import { addSpecialActivityAsAdmin } from '../../../../../../lib/supabase/queries/special-activities';
 import { addYardDutyAssignment } from '../../../../../../lib/supabase/queries/yard-duty';
 import { addInstructionSchedule } from '../../../../../../lib/supabase/queries/instruction-schedules';
-import { BELL_SCHEDULE_ACTIVITIES, SPECIAL_ACTIVITY_TYPES, INSTRUCTION_SUBJECTS } from '../../../../../../lib/constants/activity-types';
+import { BELL_SCHEDULE_ACTIVITIES, SPECIAL_ACTIVITY_TYPES, INSTRUCTION_SUBJECTS, MAX_ACTIVITY_NAME_LENGTH } from '../../../../../../lib/constants/activity-types';
 import { TeacherAutocomplete } from '../../../../../components/teachers/teacher-autocomplete';
 import { FullDayAvailability, checkActivityAvailability } from '../../../../../../lib/supabase/queries/activity-availability';
 import type { Teacher, YardDutyAssignment, SpecialActivity } from '@/src/types';
@@ -545,6 +545,12 @@ export function CreateItemModal({
           setError('Please enter a custom activity name');
           return;
         }
+        // Mirrors the database bound (SPE-501) so an over-long custom name is
+        // named here rather than coming back as a raw check-constraint error.
+        if (effectiveActivityName.length > MAX_ACTIVITY_NAME_LENGTH) {
+          setError(`Activity name must be ${MAX_ACTIVITY_NAME_LENGTH} characters or fewer`);
+          return;
+        }
         // Validate time range
         if (activityEndTime <= activityStartTime) {
           setError('End time must be after start time');
@@ -1028,6 +1034,7 @@ export function CreateItemModal({
                     value={customActivityName}
                     onChange={(e) => setCustomActivityName(e.target.value)}
                     placeholder="Enter activity name"
+                    maxLength={MAX_ACTIVITY_NAME_LENGTH}
                     className="mt-2 w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500"
                     autoFocus
                   />

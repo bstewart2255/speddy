@@ -69,6 +69,20 @@ export const SPECIAL_ACTIVITY_TYPES = [
 
 export type SpecialActivityType = (typeof SPECIAL_ACTIVITY_TYPES)[number];
 
+/**
+ * SPECIAL_ACTIVITY_TYPES is a SUGGESTED picklist, not the permitted set — the
+ * admin master-schedule form offers "Other..." with a free-text box, and
+ * schools really do run Band, Choir, Computers, Drama, Adaptive PE. Until
+ * SPE-501 the database allow-listed only the seven above and refused every
+ * custom name the form invited; the CHECK now bounds the column instead of
+ * enumerating it.
+ *
+ * This mirrors that bound so the client can name the problem itself rather
+ * than surfacing a raw 23514. Keep in step with
+ * `special_activities_activity_name_check`.
+ */
+export const MAX_ACTIVITY_NAME_LENGTH = 100;
+
 // Instruction schedule subjects (teacher instruction blocks)
 export const INSTRUCTION_SUBJECTS = [
   'ELA',
