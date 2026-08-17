@@ -182,10 +182,16 @@ Two failure modes, and only one of them is loud:
   it happens precisely when a flow changes rather than when one is added.
 
 Verify against the JSX, never from memory or from a ticket description — quote
-the label the component actually renders. Check the gating too: a button behind
-`isSecondary` or a role check needs that condition stated, or the guide sends the
-wrong provider hunting for it. If a component exists but nothing mounts it, it
-does not go in the guide.
+the label the component actually renders. SPE-539 got this wrong even while
+writing this rule: SPE-501's commit message says the form "offers an 'Other...'
+free-text box", so the guide claimed any activity name can be typed. True of the
+*admin* form; the provider's own Special Activities page is a fixed picklist, and
+no assistant user can reach the admin one. A ticket describes the change, not the
+screen the reader is looking at.
+
+Check the gating too: a button behind `isSecondary` or a role check needs that
+condition stated, or the guide sends the wrong provider hunting for it. If a
+component exists but nothing mounts it, it does not go in the guide.
 
 Each topic in the guide is pinned by an anchor string in
 `__tests__/unit/app/api/assistant/chat.test.ts`. Deleting a topic fails a test;

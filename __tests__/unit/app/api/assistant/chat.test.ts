@@ -213,7 +213,7 @@ describe('POST /api/assistant/chat', () => {
       // Secondary sites split by role (SPE-490, SPE-491, SPE-513)
       'Middle and high school (secondary) sites work differently, by role',
       'periods-by-days week view instead of the drag-and-drop grid',
-      'Speech, OT, counseling and school psychologists keep the full scheduling grid',
+      'Speech, OT, counseling and school psychologists keep everything except Special Activities',
       // Students and the student record
       '"+ Add Student"',
       '"As the IEP states it:"',
@@ -230,7 +230,7 @@ describe('POST /api/assistant/chat', () => {
       // Everything else
       '"All Present"',
       "At a secondary site the page captures the school's period grid instead",
-      'Any activity name can be typed',
+      'The activity name is picked from a fixed list',
       'cancelled but not deleted',
       '"Add Referral"',
       'Not possible in Speddy:',
