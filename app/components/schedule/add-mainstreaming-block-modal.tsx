@@ -64,10 +64,22 @@ export function AddMainstreamingBlockModal({
     () => students.filter(s => s.provider_id === currentUserId),
     [students, currentUserId]
   );
-  // A student can't mainstream into the SDC teacher's own room.
+  // A student can't mainstream into the SDC teacher's own room, and the
+  // destination must be at THIS school.
+  //
+  // SPE-514: the insert policy's teacher clause requires
+  // teachers.school_id = the block's school_id, and no equality matches NULL —
+  // so a teacher whose school_id was never normalized could be picked from this
+  // list and then fail at the database with a bare 42501. The 20 such rows were
+  // backfilled in the same change, but the filter is the durable half: a future
+  // unnormalized row degrades to "not offered" rather than to a hard error the
+  // user cannot interpret.
   const destinationTeachers = useMemo(
-    () => teachers.filter(t => !currentUserId || t.account_id !== currentUserId),
-    [teachers, currentUserId]
+    () => teachers.filter(t =>
+      (!currentUserId || t.account_id !== currentUserId) &&
+      Boolean(schoolId) && t.school_id === schoolId
+    ),
+    [teachers, currentUserId, schoolId]
   );
 
   const timeOptions = useMemo(() => generateActivityTimeOptions(), []);
@@ -236,6 +248,16 @@ export function AddMainstreamingBlockModal({
                 </option>
               ))}
             </select>
+            {/* Say why the list is empty. Without this the filter above just
+                produces a dropdown with nothing in it and no explanation —
+                the same silent failure it exists to prevent. */}
+            {destinationTeachers.length === 0 && (
+              <p className="mt-1 text-sm text-amber-700">
+                {schoolId
+                  ? 'No other teachers are listed at this school yet. Add them to the teacher list first.'
+                  : 'Select a school first to choose a classroom teacher.'}
+              </p>
+            )}
           </div>
 
           <div>
