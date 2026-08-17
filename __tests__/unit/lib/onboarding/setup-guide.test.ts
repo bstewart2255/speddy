@@ -7,8 +7,10 @@
 
 import {
   deriveProviderSetupItems,
+  deriveSiteAdminSetupItems,
   isProviderSetupRole,
   type ProviderSetupFacts,
+  type SiteAdminSetupFacts,
 } from '@/lib/onboarding/setup-guide';
 
 const emptyFacts: ProviderSetupFacts = {
@@ -148,7 +150,7 @@ describe('deriveProviderSetupItems — which items appear', () => {
       facts: emptyFacts,
     });
     const sharedById = Object.fromEntries(
-      items.map(item => [item.id, item.shared])
+      items.map(item => [item.id, !!item.sharedWith])
     );
     expect(sharedById).toEqual({
       students: false,
@@ -241,5 +243,118 @@ describe('deriveProviderSetupItems — when items count as done', () => {
     const activities = items.find(item => item.id === 'special-activities');
     expect(activities?.state).toBe('done');
     expect(activities?.markedNone).toBe(false);
+  });
+});
+
+describe('deriveSiteAdminSetupItems (SPE-522)', () => {
+  const emptyAdminFacts: SiteAdminSetupFacts = {
+    schoolTypePresent: false,
+    gradeSpanPresent: false,
+    hasTeachers: false,
+    hasStaff: false,
+    hasBellSchedules: false,
+    hasSpecialActivities: false,
+    providerCount: 0,
+    providersWithStudents: 0,
+  };
+
+  const completeAdminFacts: SiteAdminSetupFacts = {
+    schoolTypePresent: true,
+    gradeSpanPresent: true,
+    hasTeachers: true,
+    hasStaff: true,
+    hasBellSchedules: true,
+    hasSpecialActivities: true,
+    providerCount: 3,
+    providersWithStudents: 3,
+  };
+
+  it('empty school: facts and teachers wait on their named blockers, schedule data is actionable', () => {
+    const items = deriveSiteAdminSetupItems({
+      isSecondary: false,
+      facts: emptyAdminFacts,
+    });
+    expect(items.map(item => [item.id, item.state])).toEqual([
+      ['school-facts', 'waiting'],
+      ['teachers-staff', 'waiting'],
+      ['master-schedule', 'todo'],
+      ['caseloads', 'waiting'],
+    ]);
+    const byId = Object.fromEntries(items.map(item => [item.id, item]));
+    expect(byId['school-facts'].waitingOn).toBe('Speddy support');
+    expect(byId['teachers-staff'].waitingOn).toBe("the district's SIS sync");
+    expect(byId['caseloads'].waitingOn).toBe('the district kickoff');
+  });
+
+  it('fully set up elementary school: everything done', () => {
+    const items = deriveSiteAdminSetupItems({
+      isSecondary: false,
+      facts: completeAdminFacts,
+    });
+    expect(items.every(item => item.state === 'done')).toBe(true);
+  });
+
+  it('secondary school: period-grid title, and bells alone complete the schedule item', () => {
+    const items = deriveSiteAdminSetupItems({
+      isSecondary: true,
+      facts: {
+        ...completeAdminFacts,
+        hasSpecialActivities: false,
+      },
+    });
+    const schedule = items.find(item => item.id === 'master-schedule');
+    expect(schedule?.title).toBe("Put the school's period grid in");
+    expect(schedule?.state).toBe('done');
+  });
+
+  it('elementary needs activities too: bells alone leave the schedule item todo', () => {
+    const items = deriveSiteAdminSetupItems({
+      isSecondary: false,
+      facts: {
+        ...completeAdminFacts,
+        hasSpecialActivities: false,
+      },
+    });
+    expect(items.find(item => item.id === 'master-schedule')?.state).toBe(
+      'todo'
+    );
+  });
+
+  it('teachers arrived but no staff yet: item becomes actionable and links to the staff page', () => {
+    const items = deriveSiteAdminSetupItems({
+      isSecondary: false,
+      facts: { ...completeAdminFacts, hasStaff: false },
+    });
+    const lists = items.find(item => item.id === 'teachers-staff');
+    expect(lists?.state).toBe('todo');
+    expect(lists?.href).toBe('/dashboard/admin/staff');
+  });
+
+  it('caseloads wait on providers and report progress counts', () => {
+    const items = deriveSiteAdminSetupItems({
+      isSecondary: false,
+      facts: {
+        ...completeAdminFacts,
+        providerCount: 3,
+        providersWithStudents: 2,
+      },
+    });
+    const caseloads = items.find(item => item.id === 'caseloads');
+    expect(caseloads?.state).toBe('waiting');
+    expect(caseloads?.waitingOn).toBe('your providers');
+    expect(caseloads?.description).toContain('2 of 3 providers');
+  });
+
+  it('only the schedule-data item is shared, from the admin side of the partnership', () => {
+    const items = deriveSiteAdminSetupItems({
+      isSecondary: false,
+      facts: emptyAdminFacts,
+    });
+    expect(
+      items.filter(item => item.sharedWith).map(item => item.id)
+    ).toEqual(['master-schedule']);
+    expect(items.find(item => item.id === 'master-schedule')?.sharedWith).toBe(
+      'You or your providers'
+    );
   });
 });

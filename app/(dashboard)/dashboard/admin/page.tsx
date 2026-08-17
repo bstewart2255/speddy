@@ -15,6 +15,7 @@ import {
 } from '@/lib/supabase/queries/admin-dashboard';
 import Link from 'next/link';
 import { Card } from '@/app/components/ui/card';
+import { SiteAdminSetupGuideCard } from '@/app/components/onboarding/site-admin-setup-guide-card';
 import type { District, Profile } from '@/src/types';
 
 type AdminPermission = Awaited<ReturnType<typeof getCurrentAdminPermissions>>[number];
@@ -371,6 +372,11 @@ export default function AdminDashboardPage() {
           )}
         </div>
       </div>
+
+      {/* Setup Guide (SPE-522): the school-launch checklist, site admins only. */}
+      {!isDistrictAdmin && permissions.school_id && (
+        <SiteAdminSetupGuideCard schoolId={permissions.school_id} />
+      )}
 
       {/* Stats Overview */}
       <div className={`grid grid-cols-1 ${isDistrictAdmin ? 'md:grid-cols-4' : 'md:grid-cols-3'} gap-6 mb-8`}>

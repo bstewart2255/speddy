@@ -1,7 +1,15 @@
 import { createClient } from '@/lib/supabase/client';
-import { buildSchoolFilter, type SchoolIdentifier } from '@/lib/school-helpers';
+import {
+  buildSchoolFilter,
+  isSecondarySchool,
+  type SchoolIdentifier,
+} from '@/lib/school-helpers';
+import { SPECIALIST_SOURCE_ROLES } from '@/lib/auth/role-utils';
 import { getCurrentSchoolYear } from '@/lib/school-year';
-import type { ProviderSetupFacts } from '@/lib/onboarding/setup-guide';
+import type {
+  ProviderSetupFacts,
+  SiteAdminSetupFacts,
+} from '@/lib/onboarding/setup-guide';
 import { getUnscheduledSessionsCount } from './schedule-sessions';
 import type { Database } from '../../../src/types/database';
 
@@ -117,5 +125,125 @@ export async function getProviderSetupFacts(
     hasBellSchedules: (bells.data?.length ?? 0) > 0,
     hasSpecialActivities: (activities.data?.length ?? 0) > 0,
     unscheduledCount,
+  };
+}
+
+/**
+ * Existence checks behind the site admin setup guide (SPE-522).
+ *
+ * All checks are keyed on the admin's granted school_id (admin grants always
+ * carry a structured id, so no legacy fallback is needed). Bell schedules and
+ * special activities use the same school-wide, current-year semantics as the
+ * provider guide above. The provider set is primary profiles UNION
+ * provider_schools assignments (the merge getSchoolStaff already does from
+ * an admin session), restricted to the seven provider roles — SEAs never own
+ * caseload rows, so counting them would pin the item at waiting forever.
+ */
+export async function getSiteAdminSetupFacts(schoolId: string): Promise<{
+  isSecondary: boolean;
+  facts: SiteAdminSetupFacts;
+}> {
+  const supabase = createClient<Database>();
+  const schoolYear = getCurrentSchoolYear();
+
+  const [school, teachers, staff, bells, activities, providers, providerSchools] =
+    await Promise.all([
+      supabase
+        .from('schools')
+        // grade_span_low alone drives the level split (isSecondarySchool),
+        // so it is what "grade span present" means here.
+        .select('school_type, grade_span_low')
+        .eq('id', schoolId)
+        .single(),
+      supabase.from('teachers').select('id').eq('school_id', schoolId).limit(1),
+      supabase.from('staff').select('id').eq('school_id', schoolId).limit(1),
+      supabase
+        .from('bell_schedules')
+        .select('id')
+        .eq('school_id', schoolId)
+        .eq('school_year', schoolYear)
+        .limit(1),
+      supabase
+        .from('special_activities')
+        .select('id')
+        .eq('school_id', schoolId)
+        .eq('school_year', schoolYear)
+        .is('deleted_at', null)
+        .limit(1),
+      supabase
+        .from('profiles')
+        .select('id')
+        .eq('school_id', schoolId)
+        .in('role', [...SPECIALIST_SOURCE_ROLES]),
+      supabase
+        .from('provider_schools')
+        .select('provider_id')
+        .eq('school_id', schoolId),
+    ]);
+
+  const firstError =
+    school.error ||
+    teachers.error ||
+    staff.error ||
+    bells.error ||
+    activities.error ||
+    providers.error ||
+    providerSchools.error;
+  if (firstError) throw firstError;
+
+  // Itinerant providers are assigned here through provider_schools while
+  // their primary profiles.school_id points elsewhere — fold them in, role-
+  // filtered (provider_schools also carries SEA assignments).
+  const primaryIds = (providers.data ?? []).map(p => p.id);
+  const assignedIds = [
+    ...new Set(
+      (providerSchools.data ?? [])
+        .map(r => r.provider_id)
+        .filter((id): id is string => !!id && !primaryIds.includes(id))
+    ),
+  ];
+  let itinerantIds: string[] = [];
+  if (assignedIds.length > 0) {
+    const itinerants = await supabase
+      .from('profiles')
+      .select('id')
+      .in('id', assignedIds)
+      .in('role', [...SPECIALIST_SOURCE_ROLES]);
+    if (itinerants.error) throw itinerants.error;
+    itinerantIds = (itinerants.data ?? []).map(p => p.id);
+  }
+
+  // One head-check per provider rather than fetching a row per student: the
+  // dashboard only needs "does this provider have any student here", and a
+  // big school would otherwise ship hundreds of rows per visit.
+  const providerIds = [...primaryIds, ...itinerantIds];
+  const perProvider = await Promise.all(
+    providerIds.map(id =>
+      supabase
+        .from('students')
+        .select('id')
+        .eq('school_id', schoolId)
+        .eq('provider_id', id)
+        .limit(1)
+    )
+  );
+  const perProviderError = perProvider.find(r => r.error)?.error;
+  if (perProviderError) throw perProviderError;
+  const providersWithStudents = perProvider.filter(
+    r => (r.data?.length ?? 0) > 0
+  ).length;
+
+  return {
+    isSecondary: isSecondarySchool(school.data),
+    facts: {
+      schoolTypePresent: !!school.data?.school_type?.trim(),
+      gradeSpanPresent: !!school.data?.grade_span_low?.trim(),
+      hasTeachers: (teachers.data?.length ?? 0) > 0,
+      hasStaff: (staff.data?.length ?? 0) > 0,
+      hasBellSchedules: (bells.data?.length ?? 0) > 0,
+      hasSpecialActivities: (activities.data?.length ?? 0) > 0,
+      providerCount: providerIds.length,
+      providersWithStudents,
+    },
   };
 }
