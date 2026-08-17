@@ -25,7 +25,11 @@ export type SetupGuideItemId =
   | 'school-facts'
   | 'teachers-staff'
   | 'master-schedule'
-  | 'caseloads';
+  | 'caseloads'
+  // District admin guide
+  | 'kickoff-import'
+  | 'curriculums'
+  | 'sis-sync';
 
 export interface SetupGuideItem {
   id: SetupGuideItemId;
@@ -270,6 +274,86 @@ export function deriveSiteAdminSetupItems(args: {
       : facts.providerCount === 0
         ? 'the district kickoff'
         : 'your providers',
+  });
+
+  return items;
+}
+
+// ---------------------------------------------------------------------------
+// District admin guide (SPE-523)
+// ---------------------------------------------------------------------------
+
+export interface DistrictAdminSetupFacts {
+  schoolCount: number;
+  /** Schools whose school_type and grade_span_low are both set. */
+  schoolsWithFacts: number;
+  /** Schools with at least one site_admin profile. */
+  schoolsWithSiteAdmin: number;
+  /** Provider-role profiles in the district. */
+  providerCount: number;
+  hasCurriculums: boolean;
+  /**
+   * none = no connection row; pending = in progress (awaiting credentials /
+   * testing); error = last test failed; disabled = deliberately off.
+   */
+  sisStatus: 'none' | 'pending' | 'error' | 'disabled' | 'connected';
+}
+
+export function deriveDistrictAdminSetupItems(args: {
+  facts: DistrictAdminSetupFacts;
+}): SetupGuideItem[] {
+  const { facts } = args;
+  const items: SetupGuideItem[] = [];
+
+  // Schools, site admins and providers are loaded together with a Speddy rep
+  // at kickoff — the item shows progress, never solo homework. The DPA is
+  // deliberately absent from this guide (owner decision, 2026-08-17).
+  const kickoffDone =
+    facts.schoolCount > 0 &&
+    facts.schoolsWithFacts === facts.schoolCount &&
+    facts.schoolsWithSiteAdmin === facts.schoolCount &&
+    facts.providerCount > 0;
+  items.push({
+    id: 'kickoff-import',
+    title: 'Kickoff import with your Speddy rep',
+    description:
+      facts.schoolCount === 0
+        ? 'Schools, site admins and providers are loaded together in a working session with your Speddy rep — not typed in alone.'
+        : `So far: ${facts.schoolCount} school${facts.schoolCount === 1 ? '' : 's'} (${facts.schoolsWithFacts} with grade span & type set), site admins at ${facts.schoolsWithSiteAdmin} of ${facts.schoolCount}, ${facts.providerCount} provider${facts.providerCount === 1 ? '' : 's'}. Loaded together with your Speddy rep.`,
+    href: '/dashboard/admin/schools',
+    state: kickoffDone ? 'done' : 'waiting',
+    waitingOn: kickoffDone ? undefined : 'your Speddy kickoff',
+  });
+
+  items.push({
+    id: 'curriculums',
+    title: 'Curate the curriculum list',
+    description:
+      'Pick which curriculums providers plan lessons from — until you do, every provider in the district sees an empty picker.',
+    href: '/dashboard/admin/curriculums',
+    state: facts.hasCurriculums ? 'done' : 'todo',
+  });
+
+  const sisDescriptions: Record<
+    Exclude<DistrictAdminSetupFacts['sisStatus'], 'connected'>,
+    string
+  > = {
+    none: 'Brings teachers and rosters district-wide — the biggest lever for middle and high schools. Your tech admin connects it in their portal; this just shows where it stands.',
+    pending:
+      "A connection is set up but hasn't tested green yet. Your tech admin finishes it in their portal — this just shows where it stands.",
+    error:
+      'The last connection test failed — your tech admin can see the details in their portal.',
+    disabled:
+      'A connection exists but is currently disabled. Your tech admin can re-enable it in their portal.',
+  };
+  items.push({
+    id: 'sis-sync',
+    title: 'SIS sync comes online',
+    description:
+      facts.sisStatus === 'connected' ? '' : sisDescriptions[facts.sisStatus],
+    state: facts.sisStatus === 'connected' ? 'done' : 'waiting',
+    waitingOn:
+      facts.sisStatus === 'connected' ? undefined : 'your district tech admin',
   });
 
   return items;

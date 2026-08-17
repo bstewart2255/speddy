@@ -15,7 +15,15 @@ import {
 } from '@/lib/supabase/queries/admin-dashboard';
 import Link from 'next/link';
 import { Card } from '@/app/components/ui/card';
-import { SiteAdminSetupGuideCard } from '@/app/components/onboarding/site-admin-setup-guide-card';
+import { AdminSetupGuideCard } from '@/app/components/onboarding/admin-setup-guide-card';
+import {
+  deriveDistrictAdminSetupItems,
+  deriveSiteAdminSetupItems,
+} from '@/lib/onboarding/setup-guide';
+import {
+  getDistrictAdminSetupFacts,
+  getSiteAdminSetupFacts,
+} from '@/lib/supabase/queries/setup-guide';
 import type { District, Profile } from '@/src/types';
 
 type AdminPermission = Awaited<ReturnType<typeof getCurrentAdminPermissions>>[number];
@@ -373,9 +381,27 @@ export default function AdminDashboardPage() {
         </div>
       </div>
 
-      {/* Setup Guide (SPE-522): the school-launch checklist, site admins only. */}
+      {/* Setup Guide: the school-launch checklist for site admins (SPE-522),
+          the district-launch checklist for district admins (SPE-523). */}
       {!isDistrictAdmin && permissions.school_id && (
-        <SiteAdminSetupGuideCard schoolId={permissions.school_id} />
+        <AdminSetupGuideCard
+          reloadKey={permissions.school_id}
+          loadItems={async () => {
+            const scope = await getSiteAdminSetupFacts(permissions.school_id!);
+            return deriveSiteAdminSetupItems(scope);
+          }}
+        />
+      )}
+      {isDistrictAdmin && permissions.district_id && (
+        <AdminSetupGuideCard
+          reloadKey={permissions.district_id}
+          loadItems={async () => {
+            const facts = await getDistrictAdminSetupFacts(
+              permissions.district_id!
+            );
+            return deriveDistrictAdminSetupItems({ facts });
+          }}
+        />
       )}
 
       {/* Stats Overview */}

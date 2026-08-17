@@ -7,9 +7,11 @@
 
 import {
   deriveProviderSetupItems,
+  deriveDistrictAdminSetupItems,
   deriveSiteAdminSetupItems,
   isProviderSetupRole,
   type ProviderSetupFacts,
+  type DistrictAdminSetupFacts,
   type SiteAdminSetupFacts,
 } from '@/lib/onboarding/setup-guide';
 
@@ -356,5 +358,93 @@ describe('deriveSiteAdminSetupItems (SPE-522)', () => {
     expect(items.find(item => item.id === 'master-schedule')?.sharedWith).toBe(
       'You or your providers'
     );
+  });
+});
+
+describe('deriveDistrictAdminSetupItems (SPE-523)', () => {
+  const emptyDistrict: DistrictAdminSetupFacts = {
+    schoolCount: 0,
+    schoolsWithFacts: 0,
+    schoolsWithSiteAdmin: 0,
+    providerCount: 0,
+    hasCurriculums: false,
+    sisStatus: 'none',
+  };
+
+  const launchedDistrict: DistrictAdminSetupFacts = {
+    schoolCount: 5,
+    schoolsWithFacts: 5,
+    schoolsWithSiteAdmin: 5,
+    providerCount: 8,
+    hasCurriculums: true,
+    sisStatus: 'connected',
+  };
+
+  it('empty district: kickoff and SIS wait on their named blockers, curriculums actionable', () => {
+    const items = deriveDistrictAdminSetupItems({ facts: emptyDistrict });
+    expect(items.map(item => [item.id, item.state])).toEqual([
+      ['kickoff-import', 'waiting'],
+      ['curriculums', 'todo'],
+      ['sis-sync', 'waiting'],
+    ]);
+    const byId = Object.fromEntries(items.map(item => [item.id, item]));
+    expect(byId['kickoff-import'].waitingOn).toBe('your Speddy kickoff');
+    expect(byId['sis-sync'].waitingOn).toBe('your district tech admin');
+  });
+
+  it('fully launched district: everything done', () => {
+    const items = deriveDistrictAdminSetupItems({ facts: launchedDistrict });
+    expect(items.every(item => item.state === 'done')).toBe(true);
+  });
+
+  it('kickoff shows live progress counts while incomplete', () => {
+    const items = deriveDistrictAdminSetupItems({
+      facts: {
+        ...launchedDistrict,
+        schoolsWithSiteAdmin: 3,
+        sisStatus: 'none',
+        hasCurriculums: false,
+      },
+    });
+    const kickoff = items.find(item => item.id === 'kickoff-import');
+    expect(kickoff?.state).toBe('waiting');
+    expect(kickoff?.description).toContain('site admins at 3 of 5');
+    expect(kickoff?.description).toContain('8 providers');
+  });
+
+  it('a school missing its facts keeps kickoff waiting even with admins and providers in', () => {
+    const items = deriveDistrictAdminSetupItems({
+      facts: { ...launchedDistrict, schoolsWithFacts: 4 },
+    });
+    expect(items.find(item => item.id === 'kickoff-import')?.state).toBe(
+      'waiting'
+    );
+  });
+
+  it('an untested SIS connection stays waiting with the halfway description', () => {
+    const items = deriveDistrictAdminSetupItems({
+      facts: { ...launchedDistrict, sisStatus: 'pending' },
+    });
+    const sis = items.find(item => item.id === 'sis-sync');
+    expect(sis?.state).toBe('waiting');
+    expect(sis?.description).toContain("hasn't tested green yet");
+  });
+
+  it('a failed connection test gets its own copy, still waiting on the tech admin', () => {
+    const items = deriveDistrictAdminSetupItems({
+      facts: { ...launchedDistrict, sisStatus: 'error' },
+    });
+    const sis = items.find(item => item.id === 'sis-sync');
+    expect(sis?.state).toBe('waiting');
+    expect(sis?.description).toContain('test failed');
+  });
+
+  it('never mentions the DPA (pushed at contract start, not a reminder)', () => {
+    for (const facts of [emptyDistrict, launchedDistrict]) {
+      const items = deriveDistrictAdminSetupItems({ facts });
+      for (const item of items) {
+        expect(`${item.title} ${item.description}`).not.toMatch(/DPA/i);
+      }
+    }
   });
 });
