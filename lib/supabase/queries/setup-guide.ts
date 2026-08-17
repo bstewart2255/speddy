@@ -5,8 +5,10 @@ import {
   type SchoolIdentifier,
 } from '@/lib/school-helpers';
 import { SPECIALIST_SOURCE_ROLES } from '@/lib/auth/role-utils';
+import { resolveCurriculumIds } from '@/lib/curriculums/catalog';
 import { getCurrentSchoolYear } from '@/lib/school-year';
 import type {
+  DistrictAdminSetupFacts,
   ProviderSetupFacts,
   SiteAdminSetupFacts,
 } from '@/lib/onboarding/setup-guide';
@@ -245,5 +247,104 @@ export async function getSiteAdminSetupFacts(schoolId: string): Promise<{
       providerCount: providerIds.length,
       providersWithStudents,
     },
+  };
+}
+
+/**
+ * Existence checks behind the district admin setup guide (SPE-523).
+ *
+ * district_sis_connections is the column-restricted table (SPE-395): name the
+ * columns — `select('*')` fails for browser sessions by design.
+ */
+export async function getDistrictAdminSetupFacts(
+  districtId: string
+): Promise<DistrictAdminSetupFacts> {
+  const supabase = createClient<Database>();
+
+  const [schools, curriculums, sisConnections] = await Promise.all([
+    supabase
+      .from('schools')
+      .select('id, school_type, grade_span_low')
+      .eq('district_id', districtId),
+    supabase
+      .from('district_curriculums')
+      .select('curriculum_id')
+      .eq('district_id', districtId),
+    supabase
+      .from('district_sis_connections')
+      .select('status')
+      .eq('district_id', districtId),
+  ]);
+
+  const firstError =
+    schools.error || curriculums.error || sisConnections.error;
+  if (firstError) throw firstError;
+
+  const schoolRows = schools.data ?? [];
+  const schoolIds = schoolRows.map(s => s.id);
+
+  // Providers by district stamp OR by school — pre-provisioning accounts can
+  // carry school_id without district_id, and the site-admin guide counts them
+  // by school; the two guides must agree.
+  let providersQuery = supabase
+    .from('profiles')
+    .select('id')
+    .in('role', [...SPECIALIST_SOURCE_ROLES]);
+  providersQuery =
+    schoolIds.length > 0
+      ? providersQuery.or(
+          `district_id.eq.${districtId},school_id.in.(${schoolIds.join(',')})`
+        )
+      : providersQuery.eq('district_id', districtId);
+  const providers = await providersQuery;
+  if (providers.error) throw providers.error;
+
+  // Site-admin coverage per school, from profiles (a site_admin profile at
+  // the school implies the grant — the provisioning routes create both).
+  let schoolsWithSiteAdmin = 0;
+  if (schoolIds.length > 0) {
+    const siteAdmins = await supabase
+      .from('profiles')
+      .select('school_id')
+      .eq('role', 'site_admin')
+      .in('school_id', schoolIds);
+    if (siteAdmins.error) throw siteAdmins.error;
+    schoolsWithSiteAdmin = new Set(
+      (siteAdmins.data ?? [])
+        .map(p => p.school_id)
+        .filter((id): id is string => !!id)
+    ).size;
+  }
+
+  // One connected connection wins; otherwise surface the most actionable
+  // remaining state (error beats disabled beats in-progress).
+  const statuses = (sisConnections.data ?? []).map(c => c.status);
+  const sisStatus: DistrictAdminSetupFacts['sisStatus'] = statuses.includes(
+    'connected'
+  )
+    ? 'connected'
+    : statuses.includes('error')
+      ? 'error'
+      : statuses.includes('disabled')
+        ? 'disabled'
+        : statuses.length > 0
+          ? 'pending'
+          : 'none';
+
+  return {
+    schoolCount: schoolRows.length,
+    schoolsWithFacts: schoolRows.filter(
+      s => !!s.school_type?.trim() && !!s.grade_span_low?.trim()
+    ).length,
+    schoolsWithSiteAdmin,
+    providerCount: (providers.data ?? []).length,
+    // A row whose curriculum_id the catalog no longer knows is dropped by the
+    // pickers (resolveCurriculumIds), so a stale-only list must not check the
+    // item while providers still see an empty picker.
+    hasCurriculums:
+      resolveCurriculumIds(
+        (curriculums.data ?? []).map(c => c.curriculum_id)
+      ).length > 0,
+    sisStatus,
   };
 }
