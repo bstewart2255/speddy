@@ -1,3 +1,23 @@
+-- ⚠️ SUPERSEDED — this ran, then was reverted the same day by
+-- 20260817_spe514_revert_teacher_school_id_backfill.sql. Kept because it is
+-- recorded in schema_migrations and the repo must reproduce the database. Do not
+-- re-run as-is; see that file for why, and fix these two defects first (found by
+-- the deep self-review, after this had already been applied):
+--
+--   1. The closing assertion scans the WHOLE table and raises inside the
+--      transaction, so one unrelated row with school_id AND school_site both NULL
+--      would roll back an otherwise successful backfill instead of reporting it.
+--      It should scope the assertion to the rows this migration targeted.
+--   2. The "refuse to guess" guard resolves school_site through students with no
+--      DISTRICT scoping. A school name shared by two districts, where only one
+--      has students, still counts as "exactly one" — silently assigning teachers
+--      into another district's school. Prod has no such collision today, which is
+--      why it did not bite. Join through districts before trusting the match.
+--
+-- The substantive reason for the revert was neither of those: it is that this
+-- makes 20 nameless duplicate rows visible at two live schools. Original notes
+-- follow.
+--
 -- SPE-514: 20 of 172 teachers rows carry school_id IS NULL — all 2025 legacy
 -- rows predating school normalization. The mainstreaming_blocks INSERT policy
 -- requires the destination teacher to be at the block's school:
