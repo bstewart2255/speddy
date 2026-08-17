@@ -9,6 +9,7 @@ import { Card, CardHeader, CardTitle, CardBody } from '../../components/ui/card'
 import { Button } from '../../components/ui/button';
 import { TodoWidget } from '../../components/todo-widget';
 import { WeeklyView } from '../../components/weekly-view';
+import { SetupGuideCard } from '../../components/onboarding/setup-guide-card';
 import { AttendanceWidget } from '../../components/dashboard/attendance-widget';
 import { ToastProvider } from '../../contexts/toast-context';
 import { useSchool } from '../../components/providers/school-context';
@@ -85,13 +86,19 @@ export default function DashboardPage() {
 
           {/* Main Content Area */}
           <div className="space-y-4">
-            {/* Scheduling & attendance views don't apply on secondary
-                (middle/high) sites — except the Weekly view for related-service
-                roles, which schedule sessions at secondary too (SPE-490).
-                Attendance stays elementary-only. */}
-            {(!isSecondary || canScheduleAtSecondary(userRole)) && (
-              <WeeklyView viewMode="provider" />
-            )}
+            {/* Setup guide (SPE-521) sits beside Today's Schedule (70/30)
+                while it has items to show; the wrapper hands the width back
+                the moment the guide hides (complete + dismissed, or not a
+                provider role).
+                The Weekly view itself doesn't apply on secondary (middle/high)
+                sites — except for related-service roles, which schedule
+                sessions at secondary too (SPE-490). Attendance stays
+                elementary-only. */}
+            <SetupGuideCard userRole={userRole}>
+              {!isSecondary || canScheduleAtSecondary(userRole) ? (
+                <WeeklyView viewMode="provider" className="h-full" />
+              ) : undefined}
+            </SetupGuideCard>
 
             <div className={`grid grid-cols-1 gap-4 ${isSecondary ? '' : 'lg:grid-cols-2'}`}>
               {!isSecondary && <AttendanceWidget />}

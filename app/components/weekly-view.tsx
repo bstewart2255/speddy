@@ -46,6 +46,8 @@ const TIME_SLOTS = [
 
 interface WeeklyViewProps {
   viewMode: 'provider' | 'sea';
+  /** Extra classes for the card root (e.g. h-full to fill a grid row). */
+  className?: string;
 }
 
 // Type definitions for session blocks
@@ -65,7 +67,7 @@ type SessionBlock =
   | { type: 'group'; data: GroupBlockData }
   | { type: 'session'; data: SessionBlockData };
 
-export function WeeklyView({ viewMode }: WeeklyViewProps) {
+export function WeeklyView({ viewMode, className }: WeeklyViewProps) {
   const { showToast } = useToast();
   const schoolContext = useSchool();
   const currentSchool = schoolContext.currentSchool;
@@ -682,14 +684,14 @@ export function WeeklyView({ viewMode }: WeeklyViewProps) {
 
   if (loading) {
     return (
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 h-[400px] flex items-center justify-center">
+      <div className={`bg-white rounded-lg shadow-sm border border-gray-200 p-4 min-h-[400px] flex items-center justify-center ${className ?? ''}`}>
         <div className="text-gray-500">Loading schedule...</div>
       </div>
     );
   }
 
 return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+    <div className={`bg-white rounded-lg shadow-sm border border-gray-200 p-4 flex flex-col ${className ?? ''}`}>
       <div className="mb-4">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold">
@@ -731,7 +733,9 @@ return (
         </div>
       </div>
 
-      <div className="space-y-4">
+      {/* flex-1 lets the day box fill the card when the card is stretched
+          (e.g. beside the Setup Guide); at natural height it changes nothing. */}
+      <div className="flex-1 flex flex-col space-y-4">
         {[0].map(dayOffset => {
           const currentDate = addDays(startDay, dayOffset);
           // Get the day of week for the current date (0 = Sunday, 1 = Monday, etc.)
@@ -902,12 +906,12 @@ return (
           };
 
           return (
-            <div key={dayOffset} className={`border rounded-lg ${isToday ? 'border-blue-400' : 'border-gray-200'}`}>
+            <div key={dayOffset} className={`flex-1 flex flex-col border rounded-lg ${isToday ? 'border-blue-400' : 'border-gray-200'}`}>
               <div className="px-3 py-2 font-medium text-sm bg-gray-50 rounded-t-lg">
                 {format(currentDate, 'EEEE, MMM d')}
               </div>
 
-              <div className="grid grid-cols-2 divide-x divide-gray-200">
+              <div className="flex-1 grid grid-cols-2 divide-x divide-gray-200">
                 {/* Morning */}
                 <div className="p-2 space-y-2">
                   <div className="text-xs font-medium text-gray-600 mb-2">Morning</div>
