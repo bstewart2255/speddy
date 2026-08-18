@@ -243,6 +243,21 @@ export function StudentDetailsModal({
       );
       return;
     }
+    // Half of the pair is not a saveable state. The write below omits BOTH
+    // fields while either is unset (they are one requirement, and 0 fails the
+    // check constraints), so picking only Sessions per Week would drop the
+    // choice on the floor and still report success. Ask for the other half —
+    // after the weekly-bucket check above, which owns the same shape on the
+    // secondary-resource surface and names its own field.
+    if (
+      !readOnly &&
+      (studentInfo.sessions_per_week > 0) !== (studentInfo.minutes_per_session > 0)
+    ) {
+      alert(
+        'Set both Sessions per Week and Minutes per Session, or leave both as Not configured.'
+      );
+      return;
+    }
     setLoading(true);
     try {
       // Save student details

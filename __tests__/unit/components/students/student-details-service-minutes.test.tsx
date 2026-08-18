@@ -144,6 +144,24 @@ describe('service minutes for a student with none configured', () => {
     expect(updates.grade_level).toBe('3');
   });
 
+  it('refuses a half-set pair instead of silently dropping the one that was picked', async () => {
+    const alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
+    const onUpdateStudent = renderModal(UNCONFIGURED);
+
+    // Pick Sessions per Week but leave Minutes on "Not configured". Saving
+    // would otherwise omit BOTH (they go together) and still report success.
+    await userEvent.selectOptions(
+      await screen.findByLabelText('Sessions per Week'),
+      '3'
+    );
+    await userEvent.click(screen.getByRole('button', { name: /save details/i }));
+
+    await waitFor(() => expect(alertSpy).toHaveBeenCalled());
+    expect(alertSpy.mock.calls[0][0]).toMatch(/set both/i);
+    expect(onUpdateStudent).not.toHaveBeenCalled();
+    alertSpy.mockRestore();
+  });
+
   it('still sends a configured pair through unchanged', async () => {
     const onUpdateStudent = renderModal(
       { ...UNCONFIGURED, sessions_per_week: 3, minutes_per_session: 45 },

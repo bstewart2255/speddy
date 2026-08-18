@@ -119,8 +119,8 @@ export default function StudentsPage() {
   const [formData, setFormData] = useState({
     first_name: '',
     last_name: '',
-    // Blank means "follow the name" — see `addInitials` below. Only ever
-    // non-empty when the user has typed an override into the Initials box.
+    // Only read once the user has taken the Initials box over — see
+    // `initialsEdited` below.
     initials: '',
     grade_level: '',
     sessions_per_week: '',
@@ -129,11 +129,18 @@ export default function StudentsPage() {
     // saved as sessions_per_week = 1 × this many minutes.
     weekly_minutes: ''
   });
+  // The Initials box follows the name until the user types in it. A flag, and
+  // not "an empty box means follow the name": with the empty string as the
+  // sentinel, backspacing the box clear instantly refills it from the name
+  // with the caret left at the end, so the next keystroke appends to a value
+  // the user had just deleted — "JD" + "M" = "JDM", which passes both the 2–4
+  // guard and check_initials_length and saves silently wrong.
+  const [initialsEdited, setInitialsEdited] = useState(false);
 
-  // The initials the form will actually save: derived from the name, unless the
-  // user has overridden them. Clearing the box hands it back to the name.
-  const addInitials =
-    formData.initials || deriveInitials(formData.first_name, formData.last_name);
+  // The initials the form will actually save.
+  const addInitials = initialsEdited
+    ? formData.initials
+    : deriveInitials(formData.first_name, formData.last_name);
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editFormData, setEditFormData] = useState({
@@ -387,6 +394,9 @@ export default function StudentsPage() {
         minutes_per_session: '30',
         weekly_minutes: ''
       });
+      // The next student's initials follow their own name, not the override
+      // the last one may have needed.
+      setInitialsEdited(false);
       setTeacherLinks([]);
       setTeacherFieldKey((k) => k + 1);
       // Both follow-up writes can fail independently; one message names
@@ -425,6 +435,7 @@ export default function StudentsPage() {
     setAddFormError(null);
     setAddFormConfirmation(null);
     setTeacherLinks([]);
+    setInitialsEdited(false);
     setFormData({
       first_name: '',
       last_name: '',
@@ -726,7 +737,10 @@ export default function StudentsPage() {
                       type="text"
                       required
                       value={addInitials}
-                      onChange={(e) => setFormData({...formData, initials: e.target.value.toUpperCase()})}
+                      onChange={(e) => {
+                        setInitialsEdited(true);
+                        setFormData({...formData, initials: e.target.value.toUpperCase()});
+                      }}
                       minLength={2}
                       maxLength={4}
                       className={FIELD_CONTROL_CLASS}
