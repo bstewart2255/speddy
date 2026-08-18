@@ -118,7 +118,60 @@ export async function listConnections(
   return (data ?? []) as SisConnectionSummary[];
 }
 
+/**
+ * One district's usable OneRoster connection + decrypted credential, as a
+ * status union (SPE-545). BOTH consumers of this decision — the district-admin
+ * gate (which turns each status into its pinned HTTP refusal) and the
+ * unattended auto-link runner (which turns them into outcome words) — resolve
+ * through here, so "does this district have a dialable OneRoster setup"
+ * cannot drift between the attended and unattended paths.
+ *
+ * `load-failed` carries which phase broke because the remedies differ: a
+ * connections read is our database; a credential decrypt is key material.
+ */
+export type OneRosterResolution =
+  | {
+      status: 'connected';
+      connection: { id: string; district_id: string; base_url: string; token_url: string | null };
+      credential: { clientId: string; clientSecret: string };
+    }
+  | { status: 'no-connection' }
+  | { status: 'no-credential'; connectionId: string }
+  | { status: 'load-failed'; phase: 'connections' | 'credential'; connectionId?: string };
+
+export async function resolveOneRosterConnection(districtId: string): Promise<OneRosterResolution> {
+  let connections: SisConnectionSummary[];
+  try {
+    connections = await listConnections(districtId);
+  } catch {
+    return { status: 'load-failed', phase: 'connections' };
+  }
+  const connection = connections.find((c) => c.sis_type === 'oneroster');
+  if (!connection || !connection.base_url) return { status: 'no-connection' };
+
+  let credential: Awaited<ReturnType<typeof getDecryptedCredential>>;
+  try {
+    credential = await getDecryptedCredential(connection.id);
+  } catch {
+    return { status: 'load-failed', phase: 'credential', connectionId: connection.id };
+  }
+  if (!credential || credential.sisType !== 'oneroster') {
+    return { status: 'no-credential', connectionId: connection.id };
+  }
+  return {
+    status: 'connected',
+    connection: {
+      id: connection.id,
+      district_id: connection.district_id,
+      base_url: connection.base_url,
+      token_url: connection.token_url ?? null,
+    },
+    credential: { clientId: credential.clientId, clientSecret: credential.clientSecret },
+  };
+}
+
 /** A single connection by id — status only, never credentials. */
+
 export async function getConnection(
   connectionId: string
 ): Promise<SisConnectionSummary | null> {

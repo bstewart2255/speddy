@@ -72,11 +72,24 @@ jest.mock('@/lib/supabase/server', () => ({
         };
         return chain;
       }
+      if (table === 'schools') {
+        const chain = {
+          select: () => chain,
+          in: async (_col: string, ids: string[]) => ({
+            data: ids
+              .filter((id) => id === 'sch-1')
+              .map((id) => ({ id, district_id: 'district-1' })),
+            error: null,
+          }),
+        };
+        return chain;
+      }
       throw new Error(`unexpected table ${table}`);
     },
     rpc: async (fn: string) => {
       if (fn === 'user_accessible_school_ids') {
-        return { data: [{ school_id: 'sch-1' }], error: null };
+        // sch-nodistrict is accessible but has no district row below.
+        return { data: [{ school_id: 'sch-1' }, { school_id: 'sch-nodistrict' }], error: null };
       }
       if (fn === 'upsert_students_atomic') {
         return { data: { results: upsertResults }, error: null };
@@ -146,17 +159,29 @@ describe('the auto-link trigger', () => {
     expect(afterCallbacks).toHaveLength(0);
   });
 
-  it('a row without its own district falls back to the provider’s profile district', async () => {
+  it('the district comes from OUR schools table — a crafted body district is ignored', async () => {
+    // PR #895 review (all three layers): the body's districtId must never
+    // pick which district's SIS gets walked. Even naming another district
+    // outright resolves to the VALIDATED school's own district.
     upsertResults = [{ success: true }];
-    const res = await call([{ ...student('AB', null), schoolId: 'sch-1' }]);
+    const res = await call([student('AB', 'district-EVIL')]);
     expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.data.summary.inserted).toBe(1);
-    expect(afterCallbacks).toHaveLength(1);
     await afterCallbacks[0]();
+    expect(mockRunAutoLinkSync).toHaveBeenCalledTimes(1);
     expect(mockRunAutoLinkSync).toHaveBeenCalledWith(
       expect.objectContaining({ districtId: 'district-1' }),
     );
+    const named = mockRunAutoLinkSync.mock.calls.map((c) => c[0].districtId);
+    expect(named).not.toContain('district-EVIL');
+  });
+
+  it('a written school with no resolvable district row queues nothing', async () => {
+    upsertResults = [{ success: true }];
+    const res = await call([{ ...student('AB'), schoolId: 'sch-nodistrict' }]);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.data.summary.inserted).toBe(1);
+    expect(afterCallbacks).toHaveLength(0);
   });
 
   it('the import response is already complete before the sync ever runs', async () => {

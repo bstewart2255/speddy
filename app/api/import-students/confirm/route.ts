@@ -17,6 +17,14 @@ import type { StudentToImport } from '@/lib/types/student-import';
 
 export const runtime = 'nodejs';
 
+// SPE-545: the post-response auto link sync (after(), below) walks the
+// district's SIS to completion, and after() work is still bounded by THIS
+// route's execution window — without this, the platform's default deadline
+// would kill the sync mid-walk, or worse mid-apply, leaving service-role
+// writes with no audit record (PR #895 review). Same ceiling as every other
+// route that runs the walk.
+export const maxDuration = 300;
+
 // Canonical UUID form; mirrors the check in app/api/sessions/ungroup/route.ts.
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -106,6 +114,7 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
       PendingUpsert & {
         index: number; // original position in `students`, for input-ordered results
         student: StudentToImport;
+        schoolId: string | null; // validated against accessibleSchoolSet
         newRequirements: { sessions_per_week: number | null; minutes_per_session: number | null };
       }
     > = [];
@@ -379,6 +388,10 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
         batchPending.push({
           index,
           student,
+          // The school this row was VALIDATED against (accessibleSchoolSet
+          // above) — the only identifier the auto-link trigger may derive a
+          // district from (SPE-545; a request must never name a district).
+          schoolId: requestedSchoolId,
           initials: initialsNormalized,
           // Metadata only (feeds the "already exists" error message via
           // mapUpsertResults, never a write) — the write payload above keeps the
@@ -429,9 +442,14 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
       }
     }
 
-    // Districts whose students actually landed — the SPE-545 auto link sync
-    // runs once per district after the response goes out.
-    const districtsToAutoLink = new Set<string>();
+    // Schools whose students actually landed. The SPE-545 auto link sync
+    // derives its districts from THESE — each was validated against the
+    // caller's accessible schools above, and school → district resolves from
+    // our own `schools` table below. The request body's districtId is never
+    // consulted: a client-named district would hand any provider a lever to
+    // walk (and write) an arbitrary district's SIS (PR #895 review, all
+    // three layers).
+    const schoolsOfWrittenStudents = new Set<string>();
 
     // Phase 3 + 4: one batched write, then map the per-element results back to
     // per-student outcomes and sync sessions for the updated students.
@@ -474,11 +492,10 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
             continue;
           }
 
-          // A written student's district is a candidate for auto-linking —
-          // updates included, since a re-import can be what ADDS the district
-          // student ID the matcher needs (SPE-545).
-          const writtenDistrictId = p.student.districtId || userProfile?.district_id || null;
-          if (writtenDistrictId) districtsToAutoLink.add(writtenDistrictId);
+          // A written student's VALIDATED school is a candidate for
+          // auto-linking — updates included, since a re-import can be what
+          // ADDS the district student ID the matcher needs (SPE-545).
+          if (p.schoolId) schoolsOfWrittenStudents.add(p.schoolId);
 
           if (outcome === 'updated') {
             updatedCount++;
@@ -544,16 +561,36 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
     });
 
     // SPE-545: connect the just-imported students to their classroom teachers
-    // from the district's SIS class rosters. Post-response via after() — the
-    // provider's import must never wait on, or fail because of, the district
-    // SIS. runAutoLinkSync never throws, debounces itself (a burst of imports
-    // costs the SIS one walk), and no-ops in districts without a connection.
-    if (districtsToAutoLink.size > 0) {
-      after(async () => {
-        for (const districtId of districtsToAutoLink) {
-          await runAutoLinkSync({ districtId, trigger: 'import', actorId: userId });
-        }
-      });
+    // from the district's SIS class rosters. The district set comes from OUR
+    // schools table keyed by the validated school ids — never the request.
+    // Post-response via after(): the provider's import must never wait on,
+    // or fail because of, the district SIS. runAutoLinkSync never throws,
+    // debounces itself (a burst of imports costs the SIS one walk), and
+    // no-ops in districts without a connection.
+    if (schoolsOfWrittenStudents.size > 0) {
+      const districtsToAutoLink = new Set<string>();
+      const { data: schoolRows, error: schoolRowsError } = await supabase
+        .from('schools')
+        .select('id, district_id')
+        .in('id', [...schoolsOfWrittenStudents]);
+      if (schoolRowsError) {
+        // The import itself succeeded; losing the auto-link trigger costs a
+        // wait until the nightly, never the import.
+        log.warn('Could not resolve districts for the auto link sync', {
+          userId,
+          reason: schoolRowsError.message
+        });
+      }
+      for (const row of schoolRows ?? []) {
+        if (row.district_id) districtsToAutoLink.add(String(row.district_id));
+      }
+      if (districtsToAutoLink.size > 0) {
+        after(async () => {
+          for (const districtId of districtsToAutoLink) {
+            await runAutoLinkSync({ districtId, trigger: 'import', actorId: userId });
+          }
+        });
+      }
     }
 
     perf.end({ success: errorCount === 0 });

@@ -22,7 +22,8 @@
  */
 import { logger } from '@/lib/logger';
 import { createServiceClient } from '@/lib/supabase/server';
-import { getDecryptedCredential, listConnections } from '@/lib/sis/connections';
+import { logServerAuditEvent } from '@/lib/supabase/audit-log-server';
+import { resolveOneRosterConnection } from '@/lib/sis/connections';
 import {
   applyLinkSyncPlan,
   linkPlanCounts,
@@ -35,11 +36,20 @@ const log = logger.child({ module: 'auto-link-sync' });
 
 /**
  * Two runs inside this window collapse to one. Manual applies count too —
- * the debounce reads the same audit trail every apply writes — so five
- * providers importing in one afternoon cost the district's SIS one walk,
- * and an admin who JUST clicked Apply doesn't get an echo run.
+ * the debounce reads the same audit trail — and completed NO-OP runs leave a
+ * marker as well (below), so an import burst in an already-current district
+ * still costs the SIS one walk, not one per import (PR #895 review).
+ *
+ * Three minutes, not ten: a provider whose import lands just after another
+ * run finished waits at most this long for the next trigger to take — the
+ * guide says links appear "shortly after" an import, and a ten-minute hole
+ * would make that claim quietly false (PR #895 review).
  */
-export const AUTO_LINK_DEBOUNCE_MINUTES = 10;
+export const AUTO_LINK_DEBOUNCE_MINUTES = 3;
+
+/** The no-write debounce marker; applied runs are marked by the engine. */
+const ATTEMPT_AUDIT_ACTION = 'sis_link_sync_attempted';
+const APPLY_AUDIT_ACTION = 'sis_link_sync_applied';
 
 export type AutoLinkOutcome =
   | 'applied'
@@ -66,49 +76,42 @@ export async function runAutoLinkSync(params: {
 }): Promise<AutoLinkOutcome> {
   const { districtId, trigger, actorId } = params;
   try {
-    let connections;
-    try {
-      connections = await listConnections(districtId);
-    } catch (err) {
-      log.error('Auto link sync could not load connections', err, { districtId, trigger });
+    // Shared with the district-admin gate (SPE-545): one definition of "this
+    // district has a dialable OneRoster setup" for attended and unattended
+    // paths alike.
+    const resolved = await resolveOneRosterConnection(districtId);
+    if (resolved.status === 'load-failed') {
+      log.error('Auto link sync could not resolve the connection', undefined, {
+        districtId,
+        trigger,
+        phase: resolved.phase,
+      });
       return 'failed';
     }
-    const connection = connections.find((c) => c.sis_type === 'oneroster');
-    if (!connection || !connection.base_url) {
+    if (resolved.status !== 'connected') {
       // Most districts simply have no SIS wired up — routine, not an error.
-      log.info('Auto link sync skipped: no OneRoster connection', { districtId, trigger });
-      return 'no-connection';
-    }
-
-    let credential;
-    try {
-      credential = await getDecryptedCredential(connection.id);
-    } catch (err) {
-      log.error('Auto link sync could not decrypt the stored credential', err, {
-        connectionId: connection.id,
+      log.info('Auto link sync skipped: no usable OneRoster connection', {
+        districtId,
         trigger,
-      });
-      return 'failed';
-    }
-    if (!credential || credential.sisType !== 'oneroster') {
-      log.info('Auto link sync skipped: no stored OneRoster credential', {
-        connectionId: connection.id,
-        trigger,
+        reason: resolved.status,
       });
       return 'no-connection';
     }
+    const { connection, credential } = resolved;
 
-    // Debounce on the audit trail rather than new state: every apply —
-    // manual, import, cron — records `sis_link_sync_applied` against the
-    // connection, so "ran recently" needs no schema and cannot drift from
-    // the truth. A failed read proceeds: the debounce is SIS courtesy, not
-    // a safety rail, and a broken read must not silently stop the nightly.
+    // Debounce on the audit trail rather than new state: applies mark
+    // themselves (`sis_link_sync_applied`, written by the engine — manual,
+    // import, and cron alike), and completed NO-OP runs leave an
+    // `sis_link_sync_attempted` marker below, so an already-current district
+    // debounces too. A failed read proceeds: the debounce is SIS courtesy,
+    // not a safety rail, and a broken read must not silently stop the
+    // nightly.
     try {
       const since = new Date(Date.now() - AUTO_LINK_DEBOUNCE_MINUTES * 60_000).toISOString();
       const { data: recent, error: recentError } = await createServiceClient()
         .from('audit_logs')
         .select('id')
-        .eq('action', 'sis_link_sync_applied')
+        .in('action', [APPLY_AUDIT_ACTION, ATTEMPT_AUDIT_ACTION])
         .eq('resource_id', connection.id)
         .gte('timestamp', since)
         .limit(1);
@@ -119,7 +122,7 @@ export async function runAutoLinkSync(params: {
           reason: recentError.message,
         });
       } else if ((recent ?? []).length > 0) {
-        log.info('Auto link sync debounced: a run applied within the window', {
+        log.info('Auto link sync debounced: a run completed within the window', {
           connectionId: connection.id,
           trigger,
         });
@@ -150,6 +153,19 @@ export async function runAutoLinkSync(params: {
       return 'failed';
     }
 
+    // The debounce marker for runs that end without writing. Failed runs are
+    // deliberately NOT marked — a transient SIS failure retrying on the next
+    // trigger is wanted behavior. Best-effort by the audit writer's design.
+    const markAttempt = async (outcome: 'refused' | 'nothing-to-do') => {
+      await logServerAuditEvent({
+        user_id: actorId,
+        action: ATTEMPT_AUDIT_ACTION,
+        resource_type: 'district_sis_connection',
+        resource_id: connection.id,
+        metadata: { districtId: connection.district_id, trigger, outcome },
+      });
+    };
+
     const plan = planStudentTeacherLinkSync(input);
     if (plan.refusal) {
       // The engine's mass-delete rails saying no — by design this is the
@@ -159,6 +175,7 @@ export async function runAutoLinkSync(params: {
         trigger,
         plan: linkPlanCounts(plan),
       });
+      await markAttempt('refused');
       return 'refused';
     }
     if (writableLinkChangeCount(plan) === 0) {
@@ -167,6 +184,7 @@ export async function runAutoLinkSync(params: {
         trigger,
         plan: linkPlanCounts(plan),
       });
+      await markAttempt('nothing-to-do');
       return 'nothing-to-do';
     }
 

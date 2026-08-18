@@ -17,11 +17,14 @@ jest.mock('@/lib/logger', () => {
   return { logger: fake };
 });
 
-const mockListConnections = jest.fn();
-const mockGetCredential = jest.fn();
+const mockResolveConnection = jest.fn();
 jest.mock('@/lib/sis/connections', () => ({
-  listConnections: (...a: unknown[]) => mockListConnections(...a),
-  getDecryptedCredential: (...a: unknown[]) => mockGetCredential(...a),
+  resolveOneRosterConnection: (...a: unknown[]) => mockResolveConnection(...a),
+}));
+
+const mockAudit = jest.fn().mockResolvedValue(undefined);
+jest.mock('@/lib/supabase/audit-log-server', () => ({
+  logServerAuditEvent: (...a: unknown[]) => mockAudit(...a),
 }));
 
 /** The debounce read's answer; null data + error simulates a broken read. */
@@ -43,6 +46,10 @@ jest.mock('@/lib/supabase/server', () => ({
           select: () => chain,
           eq: (col: string, val: unknown) => {
             auditFilters.push(['eq', [col, val]]);
+            return chain;
+          },
+          in: (col: string, vals: unknown) => {
+            auditFilters.push(['in', [col, vals]]);
             return chain;
           },
           gte: (col: string) => {
@@ -134,11 +141,15 @@ beforeEach(() => {
   auditFilters.length = 0;
   auditRows = { data: [], error: null };
   connectionRows = { data: [], error: null };
-  mockListConnections.mockResolvedValue([CONNECTION]);
-  mockGetCredential.mockResolvedValue({
-    sisType: 'oneroster',
-    clientId: 'consumer-id',
-    clientSecret: 'consumer-secret',
+  mockResolveConnection.mockResolvedValue({
+    status: 'connected',
+    connection: {
+      id: CONNECTION.id,
+      district_id: CONNECTION.district_id,
+      base_url: CONNECTION.base_url,
+      token_url: CONNECTION.token_url,
+    },
+    credential: { clientId: 'consumer-id', clientSecret: 'consumer-secret' },
   });
   mockLoad.mockResolvedValue(INPUT);
   mockApply.mockResolvedValue([]);
@@ -146,14 +157,14 @@ beforeEach(() => {
 
 describe('quiet no-ops', () => {
   it('a district with no OneRoster connection dials nothing', async () => {
-    mockListConnections.mockResolvedValue([{ ...CONNECTION, sis_type: 'aeries' }]);
+    mockResolveConnection.mockResolvedValue({ status: 'no-connection' });
     expect(await run()).toBe('no-connection');
     expect(mockLoad).not.toHaveBeenCalled();
     expect(mockApply).not.toHaveBeenCalled();
   });
 
   it('a district with no stored credential dials nothing', async () => {
-    mockGetCredential.mockResolvedValue(null);
+    mockResolveConnection.mockResolvedValue({ status: 'no-credential', connectionId: CONNECTION.id });
     expect(await run()).toBe('no-connection');
     expect(mockLoad).not.toHaveBeenCalled();
   });
@@ -164,8 +175,13 @@ describe('the debounce', () => {
     auditRows = { data: [{ id: 'audit-1' }], error: null };
     expect(await run()).toBe('debounced');
     expect(mockLoad).not.toHaveBeenCalled();
-    // Dropping either filter would debounce against the wrong events.
-    expect(auditFilters).toContainEqual(['eq', ['action', 'sis_link_sync_applied']]);
+    // Dropping either filter would debounce against the wrong events, and
+    // dropping the attempted marker re-opens the no-op-runs-never-debounce
+    // hole (PR #895 review).
+    expect(auditFilters).toContainEqual([
+      'in',
+      ['action', ['sis_link_sync_applied', 'sis_link_sync_attempted']],
+    ]);
     expect(auditFilters).toContainEqual(['eq', ['resource_id', 'conn-1']]);
     expect(auditFilters).toContainEqual(['gte', 'timestamp']);
   });
@@ -201,10 +217,34 @@ describe('what runs and what does not', () => {
     expect(mockApply).not.toHaveBeenCalled();
   });
 
-  it('an up-to-date district writes nothing', async () => {
+  it('an up-to-date district writes nothing — except its debounce marker', async () => {
     mockLoad.mockResolvedValue(UP_TO_DATE_INPUT);
     expect(await run()).toBe('nothing-to-do');
     expect(mockApply).not.toHaveBeenCalled();
+    // The marker is what makes the NEXT import in the window debounce
+    // instead of walking the SIS again (PR #895 review). Counts-only.
+    expect(mockAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'sis_link_sync_attempted',
+        resource_id: 'conn-1',
+        metadata: expect.objectContaining({ outcome: 'nothing-to-do', trigger: 'import' }),
+      }),
+    );
+  });
+
+  it('a refused run leaves the marker too; a FAILED run does not (retry wanted)', async () => {
+    mockLoad.mockResolvedValue(REFUSED_INPUT);
+    await run();
+    expect(mockAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'sis_link_sync_attempted',
+        metadata: expect.objectContaining({ outcome: 'refused' }),
+      }),
+    );
+    mockAudit.mockClear();
+    mockLoad.mockRejectedValue(new Error('sis down'));
+    expect(await run()).toBe('failed');
+    expect(mockAudit).not.toHaveBeenCalled();
   });
 });
 
@@ -219,8 +259,14 @@ describe('the never-throws contract', () => {
     await expect(run()).resolves.toBe('failed');
   });
 
-  it('a connections read failure is a failed outcome, not an exception', async () => {
-    mockListConnections.mockRejectedValue(new Error('db down'));
+  it('a connection-resolution failure is a failed outcome, not an exception', async () => {
+    mockResolveConnection.mockResolvedValue({ status: 'load-failed', phase: 'connections' });
+    await expect(run()).resolves.toBe('failed');
+    expect(mockLoad).not.toHaveBeenCalled();
+  });
+
+  it('even a resolver that THROWS is a failed outcome, not an exception', async () => {
+    mockResolveConnection.mockRejectedValue(new Error('db down'));
     await expect(run()).resolves.toBe('failed');
   });
 });
