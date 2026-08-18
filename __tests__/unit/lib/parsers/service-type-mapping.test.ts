@@ -13,6 +13,7 @@ import {
   getServiceTypeCode,
   getDeliveryServiceTypeCodes,
   isServiceCodeForRole,
+  SERVICE_TYPE_CODES,
 } from '@/lib/parsers/service-type-mapping';
 
 describe('doesTextMatchProvider — word-boundary matching', () => {
@@ -137,6 +138,20 @@ describe('goal visibility vs. delivered service (SPE-554)', () => {
 
   it('returns no codes for an unknown role rather than throwing', () => {
     expect(getDeliveryServiceTypeCodes('principal')).toEqual([]);
+  });
+
+  it('gives every goal-coded role a delivery filter too — the map fails CLOSED', () => {
+    // The two maps are maintained separately on purpose, which means a role
+    // added to SERVICE_TYPE_CODES alone would accept EVERY service on the
+    // delivery side — silently re-introducing SPE-554 for that role. If this
+    // fails, add the new role to DELIVERY_SERVICE_TYPE_CODES as well.
+    for (const [role, goalCode] of Object.entries(SERVICE_TYPE_CODES)) {
+      if (goalCode === null) continue; // no goal code by design; covered above
+      const deliveryCodes = getDeliveryServiceTypeCodes(role);
+      expect(deliveryCodes.length).toBeGreaterThan(0);
+      // A role's own service must stay importable on the delivery side.
+      expect(deliveryCodes).toContain(goalCode);
+    }
   });
 });
 
