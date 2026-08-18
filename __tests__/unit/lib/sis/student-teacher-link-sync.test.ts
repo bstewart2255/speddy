@@ -513,18 +513,18 @@ describe('removal suppression while the directory cannot resolve every teacher',
 });
 
 describe('Aeries compound identifiers (JSUSD live, 2026-08-18)', () => {
-  it('matches `33_STU_965791922` to Speddy’s bare `965791922`', () => {
+  it('matches `33_STU_900012345` to Speddy’s bare `900012345`', () => {
     const plan = planStudentTeacherLinkSync(
       input({
-        feedStudents: [{ sourcedId: 'sis-stu-1', identifier: '33_STU_965791922' }],
-        caseloadRows: [{ childId: 'child-1', districtStudentId: '965791922' }],
+        feedStudents: [{ sourcedId: 'sis-stu-1', identifier: '33_STU_900012345' }],
+        caseloadRows: [{ childId: 'child-1', districtStudentId: '900012345' }],
         childRecords: [
           {
             id: 'child-1',
             schoolId: SCHOOL.id,
             initials: 'AB',
             gradeLevel: '3',
-            districtStudentId: '965791922',
+            districtStudentId: '900012345',
           },
         ],
       }),
@@ -540,7 +540,9 @@ describe('Aeries compound identifiers (JSUSD live, 2026-08-18)', () => {
     expect(school(plan).matchedChildren).toBe(1);
   });
 
-  it('two DIFFERENT SIS students sharing a tail is a refusal, not a guess', () => {
+  it('a dual-site student (same number, two wrappers) refuses with ITS OWN reason', () => {
+    // `33_STU_N` + `44_STU_N` is Aeries' export for one student at two sites —
+    // not a district data error, so the admin must not be sent hunting for one.
     const plan = planStudentTeacherLinkSync(
       input({
         feedStudents: [
@@ -550,8 +552,38 @@ describe('Aeries compound identifiers (JSUSD live, 2026-08-18)', () => {
       }),
     );
     expect(school(plan).unmatched).toEqual([
+      { initials: 'AB', grade: '3', reason: 'multiple-sis-records' },
+    ]);
+    expect(school(plan).adds).toHaveLength(0);
+  });
+
+  it('two records with the SAME full identifier stay a duplicate-in-sis', () => {
+    const plan = planStudentTeacherLinkSync(
+      input({
+        feedStudents: [
+          { sourcedId: 'sis-stu-1', identifier: '33_STU_DS-100' },
+          { sourcedId: 'sis-stu-2', identifier: '33_STU_DS-100' },
+        ],
+      }),
+    );
+    expect(school(plan).unmatched).toEqual([
       { initials: 'AB', grade: '3', reason: 'duplicate-in-sis' },
     ]);
+  });
+
+  it('the unwrap is anchored to the STU marker — other vendors’ underscores stay verbatim', () => {
+    // `local_DS-100` exact-equals nothing; its tail must NOT be indexed, or a
+    // coincidental equality with an unrelated child's stored ID would write
+    // wrong links (PR #894 review).
+    const plan = planStudentTeacherLinkSync(
+      input({
+        feedStudents: [{ sourcedId: 'sis-stu-1', identifier: 'local_DS-100' }],
+      }),
+    );
+    expect(school(plan).unmatched).toEqual([
+      { initials: 'AB', grade: '3', reason: 'not-in-sis' },
+    ]);
+    expect(school(plan).adds).toHaveLength(0);
   });
 
   it('one student indexed under both key forms is NOT its own duplicate', () => {
