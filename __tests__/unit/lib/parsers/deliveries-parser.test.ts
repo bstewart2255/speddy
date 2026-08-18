@@ -162,9 +162,12 @@ describe('parseDeliveriesCSV', () => {
     expect([...psych.deliveries.keys()].sort()).toEqual([...counselor.deliveries.keys()].sort());
   });
 
-  it('psychologist imports nothing from an export with no counseling rows', async () => {
+  it('psychologist imports nothing from an export with no counseling rows, and says so', async () => {
     // The failure this fix exists to prevent: importing zero is correct, and
-    // strictly better than adopting the academic/speech minutes on offer.
+    // strictly better than adopting the academic/speech minutes on offer. But
+    // zero must not render as a silent success — the review receipt shows a
+    // fully-filtered file as "0 of 0 matched" with a green tick, so the parser
+    // has to supply the note that explains it.
     const result = await parseDeliveriesCSV(DELIVERIES_NO_COUNSELING_CSV(), {
       providerRole: 'psychologist',
     });
@@ -173,6 +176,30 @@ describe('parseDeliveriesCSV', () => {
     expect(result.metadata.totalRows).toBe(2);
     expect(result.metadata.filteredServiceRows).toBe(0);
     expect(result.errors).toEqual([]);
+
+    expect(result.warnings).toHaveLength(1);
+    expect(result.warnings[0].message).toMatch(/None of the 2 rows/);
+    expect(result.warnings[0].message).toMatch(/Individual Counseling \(510\)/);
+  });
+
+  it('stays quiet when a file merely drops SOME rows', async () => {
+    // A SEIS export carries the whole team's services, so partial filtering is
+    // the normal case and must not warn — only a 100%-filtered file does.
+    const result = await parseDeliveriesCSV(buffer(), { providerRole: 'psychologist' });
+
+    expect(result.metadata.filteredServiceRows).toBeGreaterThan(0);
+    expect(result.warnings).toEqual([]);
+  });
+
+  it('does not warn for a role that accepts every service', async () => {
+    // specialist has no code, so nothing is filtered and there is no mismatch
+    // to report — the warning would be nonsense.
+    const result = await parseDeliveriesCSV(DELIVERIES_NO_COUNSELING_CSV(), {
+      providerRole: 'specialist',
+    });
+
+    expect(result.deliveries.size).toBe(2);
+    expect(result.warnings).toEqual([]);
   });
 });
 

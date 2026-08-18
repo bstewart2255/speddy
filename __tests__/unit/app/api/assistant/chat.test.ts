@@ -245,6 +245,12 @@ describe('POST /api/assistant/chat', () => {
       'Not possible in Speddy:',
       // Automatic teacher links from the district SIS (SPE-545)
       'filled in automatically from the district\'s class rosters',
+      // What the Deliveries import fills in per role, and why an imported
+      // student can sit unschedulable with nothing on the grid (SPE-554)
+      'it reads only the service that role delivers',
+      'Other roles (specialists, intervention) have no single service of their own',
+      'cannot be scheduled and will not appear on the schedule grid',
+      'the row\'s Edit button sets sessions per week and minutes per session',
     ]) {
       expect(systemText).toContain(anchor);
     }

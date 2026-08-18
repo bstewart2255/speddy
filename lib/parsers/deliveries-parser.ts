@@ -6,7 +6,7 @@
 
 import { parse } from 'csv-parse/sync';
 import { normalizeStudentName } from './name-utils';
-import { isServiceCodeForRole, getDeliveryServiceTypeCode } from './service-type-mapping';
+import { isServiceCodeForRole, getDeliveryServiceTypeCode, getServiceTypeName } from './service-type-mapping';
 import {
   toWeeklyMinutes,
   calculateSessions,
@@ -306,6 +306,23 @@ export async function parseDeliveriesCSV(
       const message = error instanceof Error ? error.message : 'Unknown error';
       errors.push({ row: rowNum, message: `Error parsing row: ${message}` });
     }
+  }
+
+  // A file whose every row was filtered out by service code is indistinguishable
+  // from a successful import in the review receipt — 0 read, 0 matched, no notes,
+  // green tick. Dropping some rows is normal (a SEIS export carries the whole
+  // team's services); dropping ALL of them means the role's code is wrong for
+  // this district, so say so rather than reporting a silent success (SPE-554).
+  if (totalRows > 0 && filteredServiceRows === 0 && serviceTypeCode) {
+    const serviceName = getServiceTypeName(serviceTypeCode);
+    warnings.push({
+      row: 0,
+      message:
+        `None of the ${totalRows} row${totalRows !== 1 ? 's' : ''} in this file are ` +
+        `${serviceName ? `${serviceName} (${serviceTypeCode})` : `service ${serviceTypeCode}`} — ` +
+        `the service your role delivers — so no schedules were imported. ` +
+        `Check you exported the right report, or enter service minutes on the Students page.`,
+    });
   }
 
   return {
