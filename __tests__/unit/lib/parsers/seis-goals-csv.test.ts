@@ -355,6 +355,18 @@ describe('parseCSVReport — SEIS Student Goals Report (CSV)', () => {
       expect(result.warnings.some((w) => /route each goal/i.test(w.message))).toBe(true);
     });
 
+    it('warns that scoping and dedup are weakened when there is no school column', async () => {
+      // Both guards behind this column fail OPEN, so silence here means a
+      // provider imports other schools' students and can merge two children.
+      const csv = buildSeisGoalsCsvWithHeaders({ 6: 'Site' });
+      expect(detectSEISStudentGoalsFormat(toRecords(csv))).toBe(true);
+
+      const result = await parseCSVReport(csv, { userSchools: ['Mt Diablo Elementary School'] });
+
+      expect(result.students.every((s) => s.schoolOfAttendance === undefined)).toBe(true);
+      expect(result.warnings.some((w) => /school of attendance/i.test(w.message))).toBe(true);
+    });
+
     it('stays quiet when those columns are present', async () => {
       const result = await parseCSVReport(SEIS_GOALS_CSV(), { providerRole: 'resource' });
       expect(result.warnings.some((w) => /district student id|route each goal/i.test(w.message))).toBe(
@@ -363,10 +375,11 @@ describe('parseCSVReport — SEIS Student Goals Report (CSV)', () => {
     });
   });
 
-  // A genuine SEIS export with columns trimmed away still matches all six
-  // signature fields; requiring marker columns on top would push it to the
-  // generic path, which is the failure this whole ticket is about.
-  it('accepts a trimmed export that matches all six signature columns without markers', async () => {
+  // Header labels alone cannot separate a column-trimmed SEIS export from an
+  // ordinary goals spreadsheet — they can be identical — so the marker columns
+  // are required with no full-house waiver. This file goes to the generic path,
+  // which is exactly where the old fixed-index detector sent it.
+  it('leaves a marker-less SEIS-shaped file on the generic path, as before', async () => {
     const csv = Buffer.from(
       [
         'District ID,Last Name,First Name,Grade,School of Attendance,IEP Date,Area Of Need,Annual Goal #,Goal,Person Responsible',
@@ -376,15 +389,11 @@ describe('parseCSVReport — SEIS Student Goals Report (CSV)', () => {
       ].join('\r\n'),
       'utf-8',
     );
-    expect(detectSEISStudentGoalsFormat(toRecords(csv))).toBe(true);
 
-    const result = await parseCSVReport(csv, {});
-    const ana = result.students[0];
-
-    expect(ana.districtStudentId).toBe('100001');
-    expect(ana.schoolOfAttendance).toBe('Mt Diablo Elementary School');
-    expect(ana.iepDate).toBe('2026-05-01');
-    expect(ana.goals).toHaveLength(1);
+    expect(detectSEISStudentGoalsFormat(toRecords(csv))).toBe(false);
+    // And it still imports as a generic file rather than being filtered away.
+    const result = await parseCSVReport(csv, { providerRole: 'resource' });
+    expect(result.students).toHaveLength(1);
   });
 
   describe('per-role goal filtering', () => {

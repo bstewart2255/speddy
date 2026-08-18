@@ -214,6 +214,21 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
       });
     }
 
+    if (isSEISFormat && columnMapping.schoolOfAttendance === undefined) {
+      // Two guards downstream read this column and both fail OPEN without it:
+      // the `userSchools` check below skips entirely (importing students from
+      // schools this provider doesn't serve), and the dedup key loses its
+      // school part, so two same-name same-grade children at different schools
+      // merge into one record carrying both their goals (the SPE-264 case).
+      warnings.push({
+        row: 0,
+        message:
+          'No "School of Attendance" column found. These students cannot be limited to your school, ' +
+          'and two students with the same name and grade at different schools would be merged into one. ' +
+          'Check the students below carefully, or re-export this report with the School of Attendance column.',
+      });
+    }
+
     if (
       isSEISFormat &&
       options.providerRole &&
@@ -658,19 +673,15 @@ export function detectSEISStudentGoalsFormat(records: string[][]): boolean {
   ).length;
   if (signature < SEIS_SIGNATURE_FIELDS.length - 1) return false;
 
-  // A full house waives the marker requirement, so that a district's
-  // trimmed-column export of this very report isn't pushed onto the generic
-  // path — the failure this ticket is about. But the waiver rests entirely on
-  // the goal-type column being SEIS's own "Annual Goal #" numbering: the same
-  // field also accepts a bare "Goal Type", which any goals spreadsheet might
-  // carry, and waiving on that would readmit the false positive the markers
-  // exist to catch.
-  if (signature === SEIS_SIGNATURE_FIELDS.length) {
-    const goalTypeIndex = findSeisColumn(normalized, 'goalType');
-    const goalTypeLabel = goalTypeIndex === undefined ? '' : normalized[goalTypeIndex];
-    if (/^annual\s*goal(\s*#)?$/.test(goalTypeLabel)) return true;
-  }
-
+  // The markers are required unconditionally, with no full-house waiver.
+  // Header labels alone cannot separate a column-trimmed SEIS export from an
+  // ordinary goals spreadsheet — the two can be character-for-character
+  // identical — so any waiver just moves which one gets misread. Two earlier
+  // attempts at one ("Annual Goal #", then "Goal Type") each let a plain sheet
+  // through to per-role filtering, which imports zero students and reports a
+  // SEIS report the user never uploaded. A marker-less file goes to the generic
+  // path, which is where the fixed-index detector sent it too, so this is the
+  // status quo rather than a new restriction.
   const headers = new Set(normalized);
   const markers = SEIS_MARKER_HEADERS.filter((name) => headers.has(name)).length;
 
