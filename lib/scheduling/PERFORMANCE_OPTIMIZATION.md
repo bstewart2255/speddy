@@ -22,11 +22,36 @@ Created performance indexes in `/supabase/migrations/20250815_scheduling_perform
 
 ### 2. Batch Data Fetching
 
-Implemented `preloadAllSchedulingData()` method that:
+`SchedulingDataManager.loadAllData()` replaces the per-constraint queries with
+one grouped load: five **branches** issued together via `Promise.all`, instead
+of the 100+ the scheduler used to make. Branches are not reads — several issue a
+second, dependent read (the school_id / legacy school_site dual match, and the
+`provider_schools` lookup availability needs before it can filter by site), so
+the load is about **nine reads across a two-round-trip critical path**.
 
-- Fetches ALL scheduling data in a single batch operation
-- Uses parallel queries as fallback (5 queries instead of 100+)
-- Created database RPC function `get_scheduling_data_batch` for single-query fetching
+**The `get_scheduling_data_batch` RPC described here is gone (SPE-305).** It was
+meant to collapse that load into a single statement, and it never delivered data
+to the client in either of its two forms:
+
+- As committed (`20250815_scheduling_batch_rpc.sql`) it joined on
+  `ps.school_site = p_school_site` — text to text, so it could run — but it
+  returned camelCase keys (`workSchedule`, …) that `processBatchData`'s
+  snake_case tests never matched, so nothing was cached (SPE-56).
+- After an uncaptured rewrite (drift, SPE-116) the predicate became
+  `uss.site_id = p_school_site` — uuid against text — which Postgres rejects at
+  plan time, so it threw on every call. That body is reproduced in
+  `20260722_harden_get_scheduling_data_batch.sql`, dating the failure to
+  2026-07-22 at the latest.
+
+Either way the app took the parallel path. It was dropped rather than repaired.
+
+Do not "restore the optimization" without reading
+`supabase/migrations/20260818_spe305_drop_get_scheduling_data_batch.sql` first.
+A single-statement version must carry the school_id/legacy-school_site dual key
+(SPE-463), the school_year scope (SPE-458), the `deleted_at` filter
+(SPE-468/SPE-484) and the caller's expected key names (SPE-56), or it silently
+under-reads and the auto-scheduler books over protected time. Those four are
+production bugs already paid for once.
 
 ### 3. Enhanced Caching Structure
 
@@ -63,18 +88,21 @@ Added comprehensive performance tracking:
 
 ### After Optimization
 
-- **Queries per scheduling operation**: 1-3
-  - 1 batch fetch (or 5 parallel queries as fallback)
+- **Queries per scheduling operation**: a small constant, not per-student
+  - one grouped load — five branches issued together, a few of which make two
+    sequential reads internally (the dual-key school match, the availability
+    site lookup), so the critical path is about two round trips
   - 1 insert for saving sessions
 - **Time per operation**: <500ms
 - **Scalability**: Constant time regardless of student count
 
 ### Query Reduction
 
-- **Reduction**: ~98% fewer database queries
+- **Reduction**: ~94% fewer database reads
 - **Example**: Scheduling 5 students with 16 total sessions
-  - Before: ~160 queries
-  - After: 2 queries
+  - Before: ~160 reads, issued serially
+  - After: ~9 reads from five parallel branches, over a two-round-trip
+    critical path, plus 1 insert
 
 ## Usage
 

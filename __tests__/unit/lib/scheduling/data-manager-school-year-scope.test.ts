@@ -22,8 +22,9 @@ const mockState: { rows: Record<string, Row[]> } = { rows: {} };
 
 jest.mock('@/lib/supabase/client', () => ({
   createClient: () => ({
-    // The batch RPC throws for every provider at every school today (see the
-    // SPE-463 note in the data manager), so the parallel path is what runs.
+    // SPE-305 removed the batch RPC, so this stub is no longer about that. It
+    // still has to be here: the load path calls other RPCs (e.g.
+    // find_matching_provider_sessions_batch) and would throw without it.
     rpc: () => ({ single: async () => ({ data: null, error: { message: 'unavailable' } }) }),
     from: (table: string) => {
       const filters: Array<[string, string, unknown]> = [];

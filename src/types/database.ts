@@ -4497,10 +4497,6 @@ export type Database = {
           provider_id: string
         }[]
       }
-      get_scheduling_data_batch: {
-        Args: { p_provider_id: string; p_school_site: string }
-        Returns: Json
-      }
       get_school_migration_stats: {
         Args: never
         Returns: {

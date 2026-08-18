@@ -187,51 +187,38 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
     this.schoolYear = getCurrentSchoolYear();
 
     try {
-      // Try to use the batch RPC if available.
+      // SPE-305: this used to attempt a `get_scheduling_data_batch` RPC first
+      // and fall back to the queries below. That RPC never delivered data to
+      // this class, in two eras: as committed it returned camelCase keys that
+      // processBatchData's snake_case tests never matched, so nothing was
+      // cached (SPE-56); after an uncaptured rewrite (SPE-116) its
+      // work_schedule CTE compared `uss.site_id = p_school_site` — uuid
+      // against text — so Postgres rejected the statement at plan time (42883)
+      // on every call, for every provider, at every school. The broken body is
+      // reproduced in 20260722_harden_get_scheduling_data_batch.sql, dating
+      // that to 2026-07-22 at the latest. Every load came from here either
+      // way, and the RPC call was a failing round trip on the way. Both gone.
       //
-      // SPE-463 — READ BEFORE "FIXING" THIS RPC. `get_scheduling_data_batch`
-      // currently throws on EVERY call, for every provider at every school:
-      // its work_schedule CTE compares `uss.site_id = p_school_site`, and
-      // site_id is uuid while p_school_site is text, so Postgres rejects the
-      // statement at plan time (42883). The batch path has therefore never
-      // returned data — the parallel path below is what actually runs.
-      //
-      // Repairing only that type error would make the RPC start succeeding,
-      // and its bell_schedules / special_activities CTEs filter on
-      // `provider_id = p_provider_id AND school_site = p_school_site`. Both
-      // columns are NULL on site-admin-created rows, so it would return an
-      // empty set, processBatchData would cache that, and the auto-scheduler
-      // would go back to ignoring every bell schedule — the exact bug SPE-463
-      // fixed. Key those CTEs on school_id at the same time, or drop the RPC.
-      //
-      // SPE-458: those same CTEs also select every school_year at once, which
-      // the parallel path below no longer does. Repairing the RPC without
-      // adding a school_year filter would reintroduce that bug on this path
-      // only — visible just at schools holding two years of data.
-      //
-      // SPE-468/SPE-484: the special_activities CTE also has no deleted_at
-      // filter. The parallel path strips soft-deleted rows in fetchForSchool,
-      // and the scheduler now actually consumes this list (SPE-318), so a
-      // repaired RPC without that filter would resurrect deleted activities
-      // as scheduling blocks on this path only.
-      const { data, error } = await this.supabase.rpc('get_scheduling_data_batch', {
-        p_provider_id: this.providerId!,
-        p_school_site: this.schoolSite!
-      }).single();
+      // Before reaching for a batch RPC again: the filters below are not
+      // incidental, and a single-statement version has to carry all of them or
+      // it silently under-reads and the auto-scheduler books over protected
+      // time. It must key bell schedules and special activities on school_id
+      // *and* legacy school_site (SPE-463 — both shapes exist in production and
+      // either alone loads nothing for the other), scope every read to the
+      // current school_year (SPE-458), drop soft-deleted activities
+      // (SPE-468/SPE-484, now that SPE-318 feeds them to the scheduler), and
+      // return provider availability under the key the caller reads (SPE-56).
+      // That is four production bugs' worth of logic to duplicate and keep in
+      // sync — which is why this path is the only path.
+      await this.loadDataParallel();
 
-      if (error) {
-        await this.loadDataParallel();
-      } else {
-        this.processBatchData(data);
-      }
-
-      // SPE-287: load cross-provider sessions regardless of which path above ran (the
-      // batch RPC does not include them). Best-effort — never blocks the main load.
+      // SPE-287: cross-provider sessions are not part of the load above.
+      // Best-effort — never blocks the main load.
       await this.loadCrossProviderSessions();
 
-      // SPE-478: mainstreaming blocks, same shape — neither load path above
-      // includes them, and unlike special activities (SPE-318) they are wired
-      // into the scheduler from day one.
+      // SPE-478: mainstreaming blocks, same shape — also not part of the load
+      // above, and unlike special activities (SPE-318) they are wired into the
+      // scheduler from day one.
       await this.loadMainstreamingBlocks();
 
       // SPE-492: hand-entered protected times, same shape and posture.
@@ -256,7 +243,16 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
   }
   
   /**
-   * Load data using parallel queries as fallback
+   * Load the scheduling data set for the current provider and school.
+   *
+   * Five branches issued together, so they cost the slowest rather than their
+   * sum — but several make two sequential reads internally (the school_id /
+   * legacy school_site dual match, and the provider_schools lookup that
+   * availability needs before it can filter by site), so this is roughly nine
+   * queries across a two-round-trip critical path, not five across one.
+   *
+   * SPE-305: this was the fallback behind a batch RPC that never ran. It is
+   * now the only path.
    */
   private async loadDataParallel(): Promise<void> {
     const [
@@ -279,27 +275,6 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
     this.cacheSpecialActivities(specialActivities);
     this.cacheExistingSessions(existingSessions);
     this.data.data.schoolHours = schoolHours;
-  }
-  
-  /**
-   * Process batch data from RPC
-   */
-  private processBatchData(data: any): void {
-    if (data.provider_availability) {
-      this.cacheProviderAvailability(data.provider_availability);
-    }
-    if (data.bell_schedules) {
-      this.cacheBellSchedules(data.bell_schedules);
-    }
-    if (data.special_activities) {
-      this.cacheSpecialActivities(data.special_activities);
-    }
-    if (data.existing_sessions) {
-      this.cacheExistingSessions(data.existing_sessions);
-    }
-    if (data.school_hours) {
-      this.data.data.schoolHours = data.school_hours;
-    }
   }
   
   /**
