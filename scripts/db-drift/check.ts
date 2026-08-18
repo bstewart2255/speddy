@@ -76,8 +76,20 @@ export interface DbFunction {
 export interface MigrationFunction {
   /** Body of the LAST definition across sorted files — what a rebuild ends at. */
   bodyMd5: string | null;
-  /** How many CREATE statements define this name, across all files. */
-  definitions: number;
+  /**
+   * Distinct normalised argument lists seen for this name.
+   *
+   * Distinct, not a count of CREATE statements: a signature that was created
+   * once and `CREATE OR REPLACE`d twice is one overload, not three. Counting
+   * statements would let historical revisions of `f(uuid)` stand in as coverage
+   * for a live `f(text)` that no migration defines.
+   *
+   * These are compared only against each other, never against pg_proc's
+   * spelling, so type aliases need no mapping. The residual imprecision is that
+   * `varchar` and `character varying` for the same signature look like two —
+   * which under-reports rather than over-reports, and is the safe direction.
+   */
+  argSignatures: Set<string>;
 }
 
 export interface DriftedFunction {
@@ -89,7 +101,13 @@ export interface DriftReport {
   missing: DbFunction[];
   drifted: DriftedFunction[];
   orphaned: string[];
-  /** Names whose body could not be compared, with why — never silently skipped. */
+  /**
+   * Overloads the migrations demonstrably do not all define. Counts as a
+   * failure alongside missing and drifted — reporting a known rebuild gap and
+   * then exiting 0 would be the false-clean this tool exists to prevent.
+   */
+  underCovered: Array<{ signature: string; reason: string }>;
+  /** Bodies not compared for a benign reason, with why — never silently skipped. */
   notCompared: Array<{ name: string; reason: string }>;
 }
 
@@ -107,16 +125,115 @@ const md5 = (s: string): string => createHash('md5').update(s).digest('hex');
  * block, a string-literal body, or anything else this does not model. Callers
  * report those as not-compared rather than guessing, because a wrong DRIFTED is
  * worse than an absent one: it trains people to ignore the report.
+ *
+ * `to` bounds the search to the current statement, and is not optional in
+ * practice. Without it a definition with a non-dollar body (`AS 'select 1'`)
+ * scans past its own statement, finds the `$tag$` of the NEXT function in the
+ * file, and hands back that function's body — so the first one carries a
+ * foreign hash and is reported DRIFTED. Callers pass the start of the following
+ * CREATE.
+ *
+ * One residual limit: a body containing the literal text `CREATE FUNCTION` (in
+ * an EXECUTE string, say) shortens the window and yields null. That direction
+ * is safe — NOT COMPARED rather than a wrong DRIFTED.
  */
-function dollarQuotedBody(sql: string, from: number): string | null {
+/**
+ * Blank out SQL comments so a commented-out definition is not read as a real one.
+ *
+ * `-- CREATE FUNCTION legacy() ...` matches the definition pattern perfectly,
+ * and counting it would mark a database-only function as covered — the precise
+ * false-clean this tool exists to prevent. (Prose like "-- Create function to
+ * find schools" is already excluded by requiring the opening paren; a genuinely
+ * commented-out statement is not.)
+ *
+ * Two properties matter:
+ *   - Replacement is space-for-space so every index still lines up, and bodies
+ *     can still be sliced out of the ORIGINAL string by offset.
+ *   - Dollar-quoted regions are copied through untouched. A function body may
+ *     legitimately contain `--`, and blanking inside one would change the body
+ *     and produce phantom DRIFTED reports.
+ *
+ * Exported for tests.
+ */
+export function blankSqlComments(sql: string): string {
+  const out = sql.split('');
+  const blank = (from: number, to: number): void => {
+    for (let k = from; k < to && k < out.length; k++) {
+      if (out[k] !== '\n') out[k] = ' ';
+    }
+  };
+
+  let i = 0;
+  while (i < sql.length) {
+    const dollar = /^\$[A-Za-z0-9_]*\$/.exec(sql.slice(i, i + 64));
+    if (dollar) {
+      const tag = dollar[0];
+      const close = sql.indexOf(tag, i + tag.length);
+      i = close === -1 ? sql.length : close + tag.length;
+      continue;
+    }
+    if (sql.startsWith('--', i)) {
+      const nl = sql.indexOf('\n', i);
+      const end = nl === -1 ? sql.length : nl;
+      blank(i, end);
+      i = end;
+      continue;
+    }
+    if (sql.startsWith('/*', i)) {
+      // Postgres block comments nest.
+      let depth = 1;
+      let j = i + 2;
+      while (j < sql.length && depth > 0) {
+        if (sql.startsWith('/*', j)) { depth++; j += 2; }
+        else if (sql.startsWith('*/', j)) { depth--; j += 2; }
+        else j++;
+      }
+      blank(i, j);
+      i = j;
+      continue;
+    }
+    i++;
+  }
+  return out.join('');
+}
+
+/**
+ * The argument list of a definition whose name ends at `openParen`, normalised.
+ *
+ * Balanced-paren scan, because types carry their own parens (`numeric(10,2)`)
+ * and defaults can too. Returns null if the parens never close.
+ */
+export function argSignatureAt(sql: string, openParen: number): string | null {
+  let depth = 0;
+  for (let i = openParen; i < sql.length; i++) {
+    if (sql[i] === '(') depth++;
+    else if (sql[i] === ')') {
+      depth--;
+      if (depth === 0) {
+        return sql
+          .slice(openParen + 1, i)
+          .replace(/\s+/g, ' ')
+          // Normalise around commas too, or `f(uuid , text)` and
+          // `f(uuid, text)` count as two distinct signatures and the
+          // overload check under-reports.
+          .replace(/\s*,\s*/g, ',')
+          .trim()
+          .toLowerCase();
+      }
+    }
+  }
+  return null;
+}
+
+function dollarQuotedBody(sql: string, from: number, to: number = sql.length): string | null {
   const open = /\bas\s+(\$[A-Za-z0-9_]*\$)/gi;
   open.lastIndex = from;
   const m = open.exec(sql);
-  if (!m) return null;
+  if (!m || m.index >= to) return null;
   const tag = m[1];
   const start = m.index + m[0].length;
   const end = sql.indexOf(tag, start);
-  return end === -1 ? null : sql.slice(start, end);
+  return end === -1 || end > to ? null : sql.slice(start, end);
 }
 
 /**
@@ -136,16 +253,24 @@ export function functionsDefinedInMigrations(dir = MIGRATIONS_DIR): Map<string, 
 
   for (const file of readdirSync(dir).filter(f => f.endsWith('.sql')).sort()) {
     const sql = readFileSync(join(dir, file), 'utf8');
+    // Match against the comment-blanked text so a commented-out definition is
+    // not counted; slice bodies from `sql`, which the blanking keeps aligned.
+    const scannable = blankSqlComments(sql);
     // No dotAll flag: the pattern spans newlines via \s, never a bare dot.
     const re = /create\s+(?:or\s+replace\s+)?function\s+(?:public\.)?"?([a-z0-9_]+)"?\s*\(/gi;
-    let m: RegExpExecArray | null;
-    while ((m = re.exec(sql)) !== null) {
+    const matches = [...scannable.matchAll(re)];
+    for (const [idx, m] of matches.entries()) {
       const name = m[1].toLowerCase();
-      const body = dollarQuotedBody(sql, m.index);
+      // Bound each body to its own statement — see dollarQuotedBody.
+      const nextCreate = matches[idx + 1]?.index ?? sql.length;
+      const body = dollarQuotedBody(sql, m.index!, nextCreate);
+      const args = argSignatureAt(scannable, m.index! + m[0].length - 1);
       const prev = found.get(name);
+      const argSignatures = prev?.argSignatures ?? new Set<string>();
+      if (args !== null) argSignatures.add(args);
       found.set(name, {
         bodyMd5: body === null ? null : md5(normalizeBody(body)),
-        definitions: (prev?.definitions ?? 0) + 1,
+        argSignatures,
       });
     }
   }
@@ -162,6 +287,7 @@ export function buildReport(
 
   const missing: DbFunction[] = [];
   const drifted: DriftedFunction[] = [];
+  const underCovered: Array<{ signature: string; reason: string }> = [];
   const notCompared: Array<{ name: string; reason: string }> = [];
 
   for (const f of db) {
@@ -172,17 +298,21 @@ export function buildReport(
     }
 
     // Overloads share a name, so "the migration body" is ambiguous — and a name
-    // whose overloads outnumber its CREATEs is partly un-rebuildable, which
-    // name-level matching alone would hide.
+    // with fewer distinct signatures in the migrations than overloads in the
+    // database is partly un-rebuildable, which name-level matching would hide.
     const n = overloads.get(f.name) ?? 1;
     if (n > 1) {
-      if (mig.definitions < n) {
-        notCompared.push({
-          name: f.signature,
-          reason: `${n} overloads in the database but only ${mig.definitions} CREATE(s) in migrations — at least one overload is not reproducible`,
+      const defined = mig.argSignatures.size;
+      if (defined < n) {
+        underCovered.push({
+          signature: f.signature,
+          reason: `${n} overloads in the database, ${defined} distinct signature(s) in migrations — at least one overload cannot be rebuilt`,
         });
       } else {
-        notCompared.push({ name: f.signature, reason: `${n} overloads share this name; body not matched per signature` });
+        notCompared.push({
+          name: f.signature,
+          reason: `${n} overloads share this name; bodies not matched per signature`,
+        });
       }
       continue;
     }
@@ -198,12 +328,13 @@ export function buildReport(
     missing,
     drifted,
     orphaned: [...inMigrations.keys()].filter(n => !dbNames.has(n)).sort(),
+    underCovered,
     notCompared,
   };
 }
 
 export function formatReport(report: DriftReport): string {
-  const { missing, drifted, orphaned, notCompared } = report;
+  const { missing, drifted, orphaned, underCovered, notCompared } = report;
   const lines: string[] = [];
 
   const tagsFor = (f: DbFunction): string => {
@@ -225,6 +356,11 @@ export function formatReport(report: DriftReport): string {
     lines.push(`  ${d.db.signature}${tagsFor(d.db)}`);
     lines.push(`      database: ${d.db.body_md5}   migrations: ${d.migrationBodyMd5}`);
   }
+
+  lines.push('');
+  lines.push(`UNDER-COVERED — an overload the migrations do not define (${underCovered.length})`);
+  if (!underCovered.length) lines.push('  none');
+  for (const u of underCovered) lines.push(`  ${u.signature}\n      ${u.reason}`);
 
   lines.push('');
   lines.push(`ORPHANED — a migration creates it, the database has none (${orphaned.length})`);
@@ -277,11 +413,12 @@ function main(): void {
     );
   }
 
-  const broken = report.missing.length + report.drifted.length;
+  const broken = report.missing.length + report.drifted.length + report.underCovered.length;
   if (broken) {
     console.error(
       `\nFAIL: ${report.missing.length} function(s) exist only in the database, ` +
-      `${report.drifted.length} differ from what a rebuild would produce (SPE-116).`,
+      `${report.drifted.length} differ from what a rebuild would produce, ` +
+      `${report.underCovered.length} overload(s) are not defined (SPE-116).`,
     );
     process.exit(1);
   }
