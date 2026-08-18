@@ -598,10 +598,9 @@ export { normalizeGradeLevel };
 const SEIS_FIELDS = {
   lastName: { exact: ['last name'], pattern: /^(student\s*)?last\s*name$|^lastname$|^surname$/ },
   firstName: { exact: ['first name'], pattern: /^(student\s*)?first\s*name$|^firstname$/ },
-  // Most specific first: each exact name is scanned across the WHOLE row before
-  // the next is tried, so listing bare 'grade' first would bind a file whose
-  // student grade sits under "Grade Level" to some unrelated "Grade" column.
-  grade: { exact: ['grade level', 'grade'], pattern: /^(current\s*|student\s*)?grade(\s*level)?$/ },
+  // Order within `exact` carries no meaning — findSeisColumn takes the leftmost
+  // column matching any of them.
+  grade: { exact: ['grade', 'grade level'], pattern: /^(current\s*|student\s*)?grade(\s*level)?$/ },
   schoolOfAttendance: {
     exact: ['school of attendance'],
     pattern: /^(attending\s*)?school(\s*(of\s*attendance|name))?$/,
@@ -655,13 +654,22 @@ const SEIS_MARKER_HEADERS = [
   'goal met',
 ] as const;
 
-/** Resolve one SEIS field to a column index: exact names first, then pattern. */
+/**
+ * Resolve one SEIS field to a column index: the LEFTMOST column carrying any of
+ * the field's exact names, else the leftmost matching its pattern.
+ *
+ * Leftmost-across-all-names rather than name-by-name across the row, because
+ * name priority has a failure mode in both directions: with 'grade' tried
+ * first, a file whose grade sits under "Grade Level" binds to a stray "Grade"
+ * column; with 'grade level' first, a stray "Grade Level" beats the real
+ * "Grade". Position is the tie-breaker that is actually true of this report —
+ * identity and demographic columns come before the trailing metadata ones.
+ */
 function findSeisColumn(normalized: string[], field: keyof typeof SEIS_FIELDS): number | undefined {
   const { exact, pattern } = SEIS_FIELDS[field];
-  for (const name of exact) {
-    const index = normalized.indexOf(name);
-    if (index !== -1) return index;
-  }
+  const names = new Set<string>(exact);
+  const exactIndex = normalized.findIndex((header) => names.has(header));
+  if (exactIndex !== -1) return exactIndex;
   const index = normalized.findIndex((header) => pattern.test(header));
   return index === -1 ? undefined : index;
 }

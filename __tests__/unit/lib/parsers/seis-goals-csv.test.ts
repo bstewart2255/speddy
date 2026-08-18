@@ -380,15 +380,20 @@ describe('parseCSVReport — SEIS Student Goals Report (CSV)', () => {
       expect(result.warnings.filter((w) => w.row > 0)).toHaveLength(0);
     });
 
-    it('binds grade to "Grade Level" rather than an unrelated "Grade" column', async () => {
-      // Exact names are scanned across the whole row in order, so a bare 'grade'
-      // listed first would win from anywhere — here, from the standards column.
-      const csv = buildSeisGoalsCsvWithHeaders({ 5: 'Grade Level', 47: 'Grade' });
+    // Grade resolves to the leftmost accepted label, so neither spelling can be
+    // beaten by a stray copy of the other further right. Name priority failed
+    // one of these two directions whichever order it was listed in.
+    it.each([
+      ['student grade under "Grade Level", stray "Grade" at the far right', 'Grade Level', 'Grade'],
+      ['student grade under "Grade", stray "Grade Level" at the far right', 'Grade', 'Grade Level'],
+    ])('binds grade to the real column — %s', async (_label, realHeader, strayHeader) => {
+      const csv = buildSeisGoalsCsvWithHeaders({ 5: realHeader, 47: strayHeader });
 
       const result = await parseCSVReport(csv, {});
-      const ana = result.students.find((s) => s.lastName === 'Alvarez')!;
+      const ana = result.students.find((s) => s.lastName === 'Alvarez');
 
-      expect(ana.gradeLevel).toBe('1');
+      expect(ana).toBeDefined();
+      expect(ana!.gradeLevel).toBe('1');
     });
 
     it('stays quiet when those columns are present', async () => {
@@ -415,9 +420,20 @@ describe('parseCSVReport — SEIS Student Goals Report (CSV)', () => {
     );
 
     expect(detectSEISStudentGoalsFormat(toRecords(csv))).toBe(false);
-    // And it still imports as a generic file rather than being filtered away.
+
     const result = await parseCSVReport(csv, { providerRole: 'resource' });
     expect(result.students).toHaveLength(1);
+
+    // Pinning the KNOWN COST of that path, not endorsing it (SPE-564): the
+    // generic mapper has no district id / school / IEP date, and its unanchored
+    // goal sweep takes "Annual Goal #" as goal text. Identical on main — a
+    // marker-less file has always landed here — so this documents the gap
+    // rather than a regression. Change these expectations when SPE-564 lands.
+    const ana = result.students[0];
+    expect(ana.districtStudentId).toBeUndefined();
+    expect(ana.schoolOfAttendance).toBeUndefined();
+    expect(ana.iepDate).toBeUndefined();
+    expect(ana.goals).toContain('Academic #1');
   });
 
   describe('per-role goal filtering', () => {
