@@ -22,22 +22,22 @@ export const useTeachers = (supabase: SupabaseClient, currentSchool: SchoolInfo 
         return;
       }
 
-      const { data: allTeachers, error: checkError } = await supabase
-        .from('teachers')
-        .select('school_id');
-
-      if (checkError) {
-        if (isMounted) {
-          setTeachers([]);
-        }
-        return;
-      }
-
       let query = supabase
         .from('teachers')
         .select('*');
 
-      if (schoolId && allTeachers?.some(t => t.school_id)) {
+      // Scope to the caller's own school whenever we know it. This used to be
+      // gated on a second probe asking whether *any* teacher in the table had a
+      // school_id — a global answer deciding a per-caller question, so a single
+      // un-normalized environment dropped the filter and handed back every
+      // school's teachers (SPE-519). A school with no teachers now returns an
+      // empty list rather than everyone's.
+      //
+      // A caller with no active school_id still reads unfiltered, bounded only
+      // by RLS to their own schools. That fallback predates SPE-519 and is left
+      // as-is deliberately — narrowing it changes what those providers see, so
+      // it is a product call (SPE-544), not a drive-by.
+      if (schoolId) {
         query = query.eq('school_id', schoolId);
       }
 
