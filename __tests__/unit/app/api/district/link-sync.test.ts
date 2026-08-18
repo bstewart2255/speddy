@@ -109,7 +109,7 @@ const INPUT: LinkPlannerInput = {
     {
       id: 'child-1',
       schoolId: 'sch-1',
-      initials: 'AB',
+      initials: 'QZ',
       gradeLevel: '3',
       districtStudentId: 'DS-100',
     },
@@ -291,11 +291,24 @@ describe('dry-run vs apply', () => {
     expect(mockApply).not.toHaveBeenCalled();
   });
 
+  it('a mid-apply failure answers 500, sanitized, and admits changes may be saved', async () => {
+    mockApply.mockRejectedValue(
+      new Error('Removing stale links at Rodeo Vista Elementary failed: relation "student_teachers" denied'),
+    );
+    const res = await call({ mode: 'apply', expectedChanges: 1 });
+    expect(res.status).toBe(500);
+    const body = await res.json();
+    // Honest about partial state, silent about database internals.
+    expect(body.error).toMatch(/may already be saved/);
+    expect(body.error).not.toContain('student_teachers');
+    expect(body.error).not.toContain('Rodeo Vista');
+  });
+
   it('logs counts only — initials and district numbers never reach a log line', async () => {
     await call({ mode: 'dry-run' });
     const logged = JSON.stringify(logCalls);
     expect(logged).toContain('Link sync planned by district admin');
-    for (const value of ['AB', 'DS-100', 'child-1']) {
+    for (const value of ['QZ', 'DS-100', 'child-1']) {
       expect(logged).not.toContain(value);
     }
   });

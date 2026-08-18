@@ -449,3 +449,65 @@ describe('the counts-only log shape', () => {
     expect(counts.schools[0].unmatched).toBe(1);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Fix rounds from PR #886 review (Codex P1 + deep self-review)
+// ---------------------------------------------------------------------------
+
+describe('the partially-updated-snapshot refusal (Codex P1)', () => {
+  it('refuses when roster entries exist but NONE join the live class list', () => {
+    // Both roles present, an unrelated live class present — but every edge
+    // names a vanished class. Pre-fix this passed all zero-guards and
+    // planned removal of every synced link.
+    const plan = planStudentTeacherLinkSync(
+      input({
+        feedClasses: [{ sourcedId: 'cls-unrelated', title: 'Empty Room', periods: [] }],
+        feedEnrollments: [
+          { userSourcedId: 'sis-stu-1', classSourcedId: 'cls-gone', role: 'student' },
+          { userSourcedId: 'sis-tch-1', classSourcedId: 'cls-gone', role: 'teacher' },
+        ],
+        existingLinks: [link()],
+      }),
+    );
+    expect(plan.refusal).toMatch(/don't line up/);
+    expect(plan.schools).toHaveLength(0);
+    expect(writableLinkChangeCount(plan)).toBe(0);
+  });
+
+  it('does not refuse when at least one edge per side joins a live class', () => {
+    const plan = planStudentTeacherLinkSync(
+      input({
+        feedEnrollments: [
+          { userSourcedId: 'sis-stu-1', classSourcedId: 'cls-1', role: 'student' },
+          { userSourcedId: 'sis-tch-1', classSourcedId: 'cls-1', role: 'teacher' },
+          { userSourcedId: 'sis-stu-1', classSourcedId: 'cls-gone', role: 'student' },
+        ],
+      }),
+    );
+    expect(plan.refusal).toBeNull();
+    expect(plan.staleEnrollments).toBe(1);
+  });
+});
+
+describe('removal suppression while the directory cannot resolve every teacher', () => {
+  it('holds back a child’s removals when any of their teachers is missing from the directory', () => {
+    // The rosters assert TWO teachers; only one resolves to a directory row.
+    // The child's stale sync link must WAIT — this run cannot see the child's
+    // teacher set properly, and the amber hint tells the admin why.
+    const plan = planStudentTeacherLinkSync(
+      input({
+        feedEnrollments: [
+          { userSourcedId: 'sis-stu-1', classSourcedId: 'cls-1', role: 'student' },
+          { userSourcedId: 'sis-tch-1', classSourcedId: 'cls-1', role: 'teacher' },
+          { userSourcedId: 'sis-tch-unkeyed', classSourcedId: 'cls-1', role: 'teacher' },
+        ],
+        existingLinks: [link({ id: 'link-stale', teacherId: 'tch-row-stale' })],
+      }),
+    );
+    const s = school(plan);
+    expect(s.teachersNotInDirectory).toBe(1);
+    expect(s.removes).toHaveLength(0);
+    // Adds and label work for the RESOLVED teacher still proceed.
+    expect(s.adds).toHaveLength(1);
+  });
+});

@@ -136,7 +136,9 @@ beforeAll(async () => {
       // edge and a tobedeleted teacher edge must both contribute nothing.
       return respond({
         enrollments: [
-          { sourcedId: 'e1', role: 'teacher', user: { sourcedId: 'rescue-1' }, class: { sourcedId: 'c1' } },
+          // Cased on purpose: the rescue below only works because the pick
+          // normalizes vendor casing (PR #886 review).
+          { sourcedId: 'e1', role: 'Teacher', user: { sourcedId: 'rescue-1' }, class: { sourcedId: 'c1' } },
           { sourcedId: 'e2', role: 'student', user: { sourcedId: 'aide-1' }, class: { sourcedId: 'c1' } },
           {
             sourcedId: 'e3',

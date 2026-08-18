@@ -186,7 +186,22 @@ describe('what the writer sends', () => {
 
     const del = writes.find((w) => w.op === 'delete');
     expect(del?.filters).toContainEqual(['in', ['link-2', 'link-3']]);
+    expect(del?.filters).toContainEqual(['in-col', 'id']);
     expect(del?.filters).toContainEqual(['eq', ['source', LINK_SOURCE]]);
+  });
+
+  it('a big cleanup’s removals are chunked so no single request can overflow', async () => {
+    const removes = Array.from({ length: 250 }, (_, i) => ({ linkId: `link-${i}` }));
+    const results = await apply(plan([schoolPlan({ removes })]));
+
+    const deletes = writes.filter((w) => w.op === 'delete');
+    expect(deletes.length).toBe(3); // 100 + 100 + 50
+    for (const d of deletes) {
+      const ids = d.filters.find(([f]) => f === 'in')?.[1] as string[];
+      expect(ids.length).toBeLessThanOrEqual(100);
+      expect(d.filters).toContainEqual(['eq', ['source', LINK_SOURCE]]);
+    }
+    expect(results[0].removed).toBe(250);
   });
 
   it('a relabel whose row changed hands reports zero, not one', async () => {

@@ -266,6 +266,18 @@ describe('dry-run vs apply', () => {
     });
   });
 
+  it('a mid-apply failure answers 500, sanitized, and admits changes may be saved', async () => {
+    mockApply.mockRejectedValue(
+      new Error('Creating teachers for Rodeo Vista Elementary failed: relation "teachers" denied'),
+    );
+    const res = await call({ mode: 'apply', expectedChanges: 1 });
+    expect(res.status).toBe(500);
+    const body = await res.json();
+    expect(body.error).toMatch(/may already be added/);
+    expect(body.error).not.toContain('relation');
+    expect(body.error).not.toContain('Rodeo Vista');
+  });
+
   it('logs counts only — feed names and emails never reach a log line', async () => {
     await call({ mode: 'dry-run' });
     const logged = JSON.stringify(logCalls);

@@ -730,7 +730,12 @@ async function fetchTeachingUserIds(client: OneRosterClient): Promise<Set<string
     const ids = new Set<string>();
     for (const e of enrollments) {
       const userId = trimOrNull(e.user?.sourcedId);
-      if (e.role === 'teacher' && e.status !== 'tobedeleted' && userId) ids.add(userId);
+      // Normalized compare (trim + lowercase), same posture as the sentinel:
+      // a vendor's casing must not silently empty the evidence set while the
+      // plan still claims rosters were checked (CodeRabbit, PR #886).
+      const role = typeof e.role === 'string' ? e.role.trim().toLowerCase() : '';
+      const status = typeof e.status === 'string' ? e.status.trim().toLowerCase() : '';
+      if (role === 'teacher' && status !== 'tobedeleted' && userId) ids.add(userId);
     }
     return ids;
   } catch (err) {

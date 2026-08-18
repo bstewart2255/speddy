@@ -153,7 +153,7 @@ export default function DirectoriesPage() {
         <h1 className="text-2xl font-semibold text-slate-900">Directories</h1>
         <p className="text-sm text-slate-500 mt-1">
           What your district&apos;s SIS shares with Speddy, read live. The tabs below save
-          nothing; the teacher sync writes only when you apply a preview.
+          nothing; the syncs write only when you apply a preview.
         </p>
       </div>
 

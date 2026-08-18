@@ -42,7 +42,7 @@ const mockDb = {
     {
       id: 'child-1',
       school_id: 'sch-1',
-      initials: 'AB',
+      initials: 'QZ',
       grade_level: '3',
       district_student_id: 'DS-100',
     },
@@ -114,9 +114,15 @@ jest.mock('@/lib/supabase/server', () => ({
       if (table === 'student_teachers') {
         return {
           select: () => ({
-            in: async (_col: string, ids: string[]) => ({
-              data: mockDb.links.filter((l) => ids.includes(l.child_id)),
-              error: null,
+            in: (_col: string, ids: string[]) => ({
+              order: () => ({
+                range: async (from: number, to: number) => ({
+                  data: mockDb.links
+                    .filter((l) => ids.includes(l.child_id))
+                    .slice(from, to + 1),
+                  error: null,
+                }),
+              }),
             }),
           }),
         };
@@ -206,6 +212,8 @@ beforeAll(async () => {
           // An edge into the dead class below — survives the pick, and the
           // PLANNER counts it stale.
           { sourcedId: 'e5', role: 'student', user: { sourcedId: 'sis-stu-real' }, class: { sourcedId: 'cls-dead' } },
+          // Vendor casing: normalized in the pick, not dropped (PR #886).
+          { sourcedId: 'e6', role: ' Teacher ', user: { sourcedId: 'sis-tch-cased' }, class: { sourcedId: 'cls-1' } },
         ],
       });
     }
@@ -257,6 +265,8 @@ describe('loadLinkSyncInput', () => {
       { userSourcedId: 'sis-stu-real', classSourcedId: 'cls-1', role: 'student' },
       { userSourcedId: 'sis-tch-1', classSourcedId: 'cls-1', role: 'teacher' },
       { userSourcedId: 'sis-stu-real', classSourcedId: 'cls-dead', role: 'student' },
+      // ' Teacher ' arrived normalized, not dropped.
+      { userSourcedId: 'sis-tch-cased', classSourcedId: 'cls-1', role: 'teacher' },
     ]);
     expect(input.feedStudents.find((s) => s.sourcedId === 'sis-stu-real')?.identifier).toBe(
       'DS-100',
@@ -313,7 +323,7 @@ describe('loadLinkSyncInput', () => {
     expect(logCalls.length).toBeGreaterThan(0);
     for (const value of [
       'DS-100',
-      'AB',
+      'QZ',
       'JAMIE',
       'CASELOAD',
       'child-1',

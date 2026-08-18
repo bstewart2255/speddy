@@ -117,12 +117,32 @@ export const POST = withRoute<Record<string, string>, z.infer<typeof bodySchema>
       );
     }
 
-    const written = await applyTeacherSyncPlan({
-      plan,
-      actorId: userId,
-      connectionId: connection.id,
-      districtId: connection.district_id,
-    });
+    // Wrapped so a mid-apply failure answers honestly and SANITIZED (same
+    // treatment as the link-sync route, SPE-540): the writer's error names
+    // schools and database details, and completed schools stay committed —
+    // "nothing was written" would be a lie.
+    let written;
+    try {
+      written = await applyTeacherSyncPlan({
+        plan,
+        actorId: userId,
+        connectionId: connection.id,
+        districtId: connection.district_id,
+      });
+    } catch (err) {
+      log.error('Applying the teacher sync failed partway', err, {
+        connectionId: connection.id,
+        districtId: connection.district_id,
+      });
+      return NextResponse.json(
+        {
+          error:
+            'The apply hit an error partway — some teachers may already be added. ' +
+            'Run the preview again; it shows the current state.',
+        },
+        { status: 500 },
+      );
+    }
     return NextResponse.json({ mode: 'apply', plan, written });
   },
 );

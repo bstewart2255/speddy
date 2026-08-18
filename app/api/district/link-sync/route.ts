@@ -124,12 +124,32 @@ export const POST = withRoute<Record<string, string>, z.infer<typeof bodySchema>
       );
     }
 
-    const written = await applyLinkSyncPlan({
-      plan,
-      actorId: userId,
-      connectionId: connection.id,
-      districtId: connection.district_id,
-    });
+    // Wrapped so a mid-apply failure answers honestly and SANITIZED: the
+    // writer's stop-on-failure error names schools and database details that
+    // withRoute's dev-mode catch would echo, and by this point some schools
+    // may have committed — "nothing was written" would be a lie.
+    let written;
+    try {
+      written = await applyLinkSyncPlan({
+        plan,
+        actorId: userId,
+        connectionId: connection.id,
+        districtId: connection.district_id,
+      });
+    } catch (err) {
+      log.error('Applying the link sync failed partway', err, {
+        connectionId: connection.id,
+        districtId: connection.district_id,
+      });
+      return NextResponse.json(
+        {
+          error:
+            'The apply hit an error partway — some changes may already be saved. ' +
+            'Run the preview again; it shows the current state.',
+        },
+        { status: 500 },
+      );
+    }
     return NextResponse.json({ mode: 'apply', plan, written });
   },
 );
