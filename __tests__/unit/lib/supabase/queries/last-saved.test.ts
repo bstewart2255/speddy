@@ -77,13 +77,31 @@ import {
 
 const state = (jest.requireMock('@/lib/supabase/client') as { __state: MockState }).__state;
 
+// school_hours only carries school_site; the other two prefer school_id when the
+// caller has one. `schoolFilter` is the eq() each probe must issue for `school`
+// below — the mock does not filter rows, so a dropped school filter is only
+// visible as a missing eq().
 const probes = [
-  { name: 'bell schedules', table: 'bell_schedules', fn: getLastSavedBellSchedule },
-  { name: 'special activities', table: 'special_activities', fn: getLastSavedSpecialActivity },
-  { name: 'school hours', table: 'school_hours', fn: getLastSavedSchoolHours },
+  {
+    name: 'bell schedules',
+    table: 'bell_schedules',
+    fn: getLastSavedBellSchedule,
+    schoolFilter: ['school_id', 'school-1'],
+  },
+  {
+    name: 'special activities',
+    table: 'special_activities',
+    fn: getLastSavedSpecialActivity,
+    schoolFilter: ['school_id', 'school-1'],
+  },
+  {
+    name: 'school hours',
+    table: 'school_hours',
+    fn: getLastSavedSchoolHours,
+    schoolFilter: ['school_site', 'Fictional Elementary'],
+  },
 ] as const;
 
-// school_hours is only ever filtered by school_site; the other two prefer school_id.
 const school = { school_id: 'school-1', school_site: 'Fictional Elementary' };
 
 beforeEach(() => {
@@ -94,7 +112,7 @@ beforeEach(() => {
   state.lastResponse = null;
 });
 
-describe.each(probes)('getLastSaved — $name (SPE-542)', ({ table, fn }) => {
+describe.each(probes)('getLastSaved — $name (SPE-542)', ({ table, fn, schoolFilter }) => {
   it('treats "nothing saved yet" as null rather than a 406', async () => {
     state.rows = [];
 
@@ -115,10 +133,19 @@ describe.each(probes)('getLastSaved — $name (SPE-542)', ({ table, fn }) => {
     expect(state.lastResponse?.error).toBeNull();
   });
 
-  it('scopes the probe to the signed-in provider', async () => {
+  it('scopes the probe to the signed-in provider and the given school', async () => {
     await fn(school);
 
-    expect(state.eq).toContainEqual(['provider_id', 'provider-1']);
+    expect(state.eq).toEqual([['provider_id', 'provider-1'], schoolFilter]);
+  });
+
+  it('falls back to school_site for a school with no school_id', async () => {
+    await fn({ school_site: 'Fictional Elementary' });
+
+    expect(state.eq).toEqual([
+      ['provider_id', 'provider-1'],
+      ['school_site', 'Fictional Elementary'],
+    ]);
   });
 
   it('returns null without querying when there is no school', async () => {

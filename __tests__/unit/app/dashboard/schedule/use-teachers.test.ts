@@ -87,6 +87,27 @@ describe('useTeachers — per-school scoping (SPE-519)', () => {
     await waitFor(() => expect(result.current).toEqual([]));
   });
 
+  // Pins the fallback SPE-519 deliberately left in place rather than the one it
+  // removed: with no school to scope to, the query stays unfiltered and RLS is
+  // the only bound. SPE-544 decides whether that becomes an empty list — and
+  // will have to change this test on purpose to do it.
+  it.each([
+    ['a school with no school_id', { school_id: null }],
+    ['no school at all', null],
+  ])('reads unfiltered given %s', async (_label, currentSchool) => {
+    const rows: TeacherRow[] = [
+      { id: 't1', last_name: 'Alvarez', school_id: 'school-1' },
+      { id: 't2', last_name: 'Booker', school_id: 'school-2' },
+    ];
+    const { client, filters } = makeSupabase(rows);
+
+    const { result } = renderHook(() => useTeachers(client, currentSchool));
+    await settle();
+
+    expect(filters).toEqual([]);
+    expect(result.current).toEqual(rows);
+  });
+
   it('reads the teachers table once — the global school_id probe is gone', async () => {
     const rows: TeacherRow[] = [{ id: 't1', last_name: 'Alvarez', school_id: 'school-1' }];
     const { client, fromCalls } = makeSupabase(rows);
