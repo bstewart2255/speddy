@@ -12,10 +12,14 @@ const STAFF_ID = '11111111-1111-4111-8111-111111111111';
 const NON_STAFF_ID = '22222222-2222-4222-8222-222222222222';
 
 let currentUserId: string | null = STAFF_ID;
-let profileResult: { data: unknown; error: unknown } = {
-  data: { is_speddy_admin: true },
-  error: null,
+// Keyed by profile id, so the mock only answers "is staff" for the id the
+// route actually queried — a route that queried a hardcoded or wrong id
+// would get an undefined/null row here, not a false pass.
+const PROFILES: Record<string, { is_speddy_admin: boolean }> = {
+  [STAFF_ID]: { is_speddy_admin: true },
+  [NON_STAFF_ID]: { is_speddy_admin: false },
 };
+const profilesEqSpy = jest.fn();
 
 const insert = jest.fn();
 
@@ -33,15 +37,24 @@ jest.mock('@/lib/supabase/server', () => ({
 jest.mock('@supabase/supabase-js', () => ({
   createClient: () => ({
     from: (table: string) => {
+      let queriedId: string | null = null;
       const q: Record<string, unknown> = {};
       q.select = () => q;
-      q.eq = () => q;
+      q.eq = (col: string, val: string) => {
+        if (table === 'profiles') {
+          profilesEqSpy(col, val);
+          if (col === 'id') queriedId = val;
+        }
+        return q;
+      };
       q.insert = (rows: unknown) => {
         insert(table, rows);
         return Promise.resolve({ error: null });
       };
       q.single = () => {
-        if (table === 'profiles') return Promise.resolve(profileResult);
+        if (table === 'profiles') {
+          return Promise.resolve({ data: (queriedId && PROFILES[queriedId]) ?? null, error: null });
+        }
         if (table === 'states') return Promise.resolve({ data: { id: 'state-1', name: 'California' }, error: null });
         return Promise.resolve({ data: null, error: null });
       };
@@ -68,7 +81,7 @@ const req = (body: unknown) =>
 describe('POST /api/internal/create-district', () => {
   beforeEach(() => {
     currentUserId = STAFF_ID;
-    profileResult = { data: { is_speddy_admin: true }, error: null };
+    profilesEqSpy.mockClear();
     insert.mockClear();
   });
 
@@ -81,16 +94,17 @@ describe('POST /api/internal/create-district', () => {
 
   it('403s a non-staff caller without creating anything', async () => {
     currentUserId = NON_STAFF_ID;
-    profileResult = { data: { is_speddy_admin: false }, error: null };
     const res = await POST(req(validBody));
     expect(res.status).toBe(403);
     expect(await res.json()).toEqual({ error: 'Forbidden: Speddy admin access required' });
     expect(insert).not.toHaveBeenCalled();
+    expect(profilesEqSpy).toHaveBeenCalledWith('id', NON_STAFF_ID);
   });
 
-  it('lets a staff caller create the district', async () => {
+  it('lets a staff caller create the district, queried by their own id', async () => {
     const res = await POST(req(validBody));
     expect(res.status).toBe(200);
+    expect(profilesEqSpy).toHaveBeenCalledWith('id', STAFF_ID);
     expect(insert).toHaveBeenCalledWith('districts', expect.objectContaining({ name: 'Metro USD' }));
     const body = await res.json();
     expect(body).toMatchObject({ success: true, name: 'Metro USD' });

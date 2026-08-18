@@ -17,10 +17,14 @@ const NON_STAFF_ID = '22222222-2222-4222-8222-222222222222';
 const CONNECTION_ID = '33333333-3333-4333-8333-333333333333';
 
 let currentUserId: string | null = STAFF_ID;
-let profileRow: { data: unknown; error: unknown } = {
-  data: { is_speddy_admin: true },
-  error: null,
+// Keyed by profile id, so the mock only answers "is staff" for the id the
+// route actually queried — a route that queried a hardcoded or wrong id
+// would get an undefined/null row here, not a false pass.
+const PROFILES: Record<string, { is_speddy_admin: boolean }> = {
+  [STAFF_ID]: { is_speddy_admin: true },
+  [NON_STAFF_ID]: { is_speddy_admin: false },
 };
+const profilesEqSpy = jest.fn();
 
 jest.mock('@/lib/supabase/server', () => ({
   createClient: async () => ({
@@ -33,10 +37,16 @@ jest.mock('@/lib/supabase/server', () => ({
   }),
   createServiceClient: () => ({
     from: () => {
+      let queriedId: string | null = null;
       const q: Record<string, unknown> = {};
       q.select = () => q;
-      q.eq = () => q;
-      q.maybeSingle = () => Promise.resolve(profileRow);
+      q.eq = (col: string, val: string) => {
+        profilesEqSpy(col, val);
+        if (col === 'id') queriedId = val;
+        return q;
+      };
+      q.maybeSingle = () =>
+        Promise.resolve({ data: (queriedId && PROFILES[queriedId]) ?? null, error: null });
       return q;
     },
   }),
@@ -70,7 +80,7 @@ const call = (cleared: boolean) =>
 describe('PATCH /api/internal/sis-connections/[connectionId]/dpa', () => {
   beforeEach(() => {
     currentUserId = STAFF_ID;
-    profileRow = { data: { is_speddy_admin: true }, error: null };
+    profilesEqSpy.mockClear();
     setDpaCleared.mockReset().mockResolvedValue(undefined);
     getConnection.mockReset().mockResolvedValue({ id: CONNECTION_ID, dpa_cleared: true });
   });
@@ -84,16 +94,17 @@ describe('PATCH /api/internal/sis-connections/[connectionId]/dpa', () => {
 
   it('403s a non-staff caller (e.g. the district\'s own tech admin) without touching the DPA', async () => {
     currentUserId = NON_STAFF_ID;
-    profileRow = { data: { is_speddy_admin: false }, error: null };
     const res = await call(true);
     expect(res.status).toBe(403);
     expect(await res.json()).toEqual({ error: 'Forbidden: Speddy admin access required' });
     expect(setDpaCleared).not.toHaveBeenCalled();
+    expect(profilesEqSpy).toHaveBeenCalledWith('id', NON_STAFF_ID);
   });
 
-  it('lets a staff caller clear the DPA, opening credential intake', async () => {
+  it('lets a staff caller clear the DPA, queried by their own id, opening credential intake', async () => {
     const res = await call(true);
     expect(res.status).toBe(200);
+    expect(profilesEqSpy).toHaveBeenCalledWith('id', STAFF_ID);
     expect(setDpaCleared).toHaveBeenCalledWith({
       connectionId: CONNECTION_ID,
       actorId: STAFF_ID,

@@ -15,10 +15,15 @@ const NON_STAFF_ID = '22222222-2222-4222-8222-222222222222';
 const NEW_USER_ID = '33333333-3333-4333-8333-333333333333';
 
 let currentUserId: string | null = STAFF_ID;
-let profileResult: { data: unknown; error: unknown } = {
-  data: { is_speddy_admin: true },
-  error: null,
+// Keyed by profile id, so the mock only answers "is staff" for the id the
+// route actually queried — a route that queried a hardcoded or wrong id
+// would get an undefined/null row here, not a false pass.
+const PROFILES: Record<string, { is_speddy_admin: boolean }> = {
+  [STAFF_ID]: { is_speddy_admin: true },
+  [NON_STAFF_ID]: { is_speddy_admin: false },
 };
+let profileErrorOverride: { data: unknown; error: unknown } | null = null;
+const profilesEqSpy = jest.fn();
 
 const createUser = jest.fn();
 const deleteUser = jest.fn();
@@ -47,9 +52,16 @@ jest.mock('@supabase/supabase-js', () => ({
     },
     rpc: (...args: unknown[]) => rpc(...args),
     from: (table: string) => {
+      let queriedId: string | null = null;
       const q: Record<string, unknown> = {};
       q.select = () => q;
-      q.eq = () => q;
+      q.eq = (col: string, val: string) => {
+        if (table === 'profiles') {
+          profilesEqSpy(col, val);
+          if (col === 'id') queriedId = val;
+        }
+        return q;
+      };
       q.update = () => q;
       q.insert = () => Promise.resolve({ error: null });
       q.maybeSingle = () => {
@@ -57,7 +69,11 @@ jest.mock('@supabase/supabase-js', () => ({
         return Promise.resolve({ data: null, error: null });
       };
       q.single = () => {
-        if (table === 'profiles') return Promise.resolve(profileResult);
+        if (table === 'profiles') {
+          return Promise.resolve(
+            profileErrorOverride ?? { data: (queriedId && PROFILES[queriedId]) ?? null, error: null }
+          );
+        }
         if (table === 'districts') return Promise.resolve({ data: { name: 'Metro USD' }, error: null });
         if (table === 'schools') return Promise.resolve({ data: { name: 'Lincoln Elementary' }, error: null });
         return Promise.resolve({ data: null, error: null });
@@ -95,7 +111,8 @@ const req = (body: unknown) =>
 describe('POST /api/internal/create-admin-account', () => {
   beforeEach(() => {
     currentUserId = STAFF_ID;
-    profileResult = { data: { is_speddy_admin: true }, error: null };
+    profileErrorOverride = null;
+    profilesEqSpy.mockClear();
     createUser.mockReset().mockResolvedValue({ data: { user: { id: NEW_USER_ID } }, error: null });
     deleteUser.mockReset().mockResolvedValue({ error: null });
     rpc.mockReset().mockResolvedValue({ error: null });
@@ -110,23 +127,24 @@ describe('POST /api/internal/create-admin-account', () => {
 
   it('403s a non-staff caller without creating anything', async () => {
     currentUserId = NON_STAFF_ID;
-    profileResult = { data: { is_speddy_admin: false }, error: null };
     const res = await POST(req(validBody));
     expect(res.status).toBe(403);
     expect(await res.json()).toEqual({ error: 'Forbidden: Speddy admin access required' });
     expect(createUser).not.toHaveBeenCalled();
+    expect(profilesEqSpy).toHaveBeenCalledWith('id', NON_STAFF_ID);
   });
 
   it('403s when the profile lookup itself errors (fail closed, not open)', async () => {
-    profileResult = { data: null, error: { message: 'boom' } };
+    profileErrorOverride = { data: null, error: { message: 'boom' } };
     const res = await POST(req(validBody));
     expect(res.status).toBe(403);
     expect(createUser).not.toHaveBeenCalled();
   });
 
-  it('lets a staff caller create the account', async () => {
+  it('lets a staff caller create the account, queried by their own id', async () => {
     const res = await POST(req(validBody));
     expect(res.status).toBe(200);
+    expect(profilesEqSpy).toHaveBeenCalledWith('id', STAFF_ID);
     expect(createUser).toHaveBeenCalled();
     const body = await res.json();
     expect(body).toMatchObject({ success: true, userId: NEW_USER_ID });

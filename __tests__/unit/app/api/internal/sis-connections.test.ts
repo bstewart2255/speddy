@@ -17,10 +17,15 @@ const NON_STAFF_ID = '22222222-2222-4222-8222-222222222222';
 const DISTRICT_ID = '33333333-3333-4333-8333-333333333333';
 
 let currentUserId: string | null = STAFF_ID;
-let profileRow: { data: unknown; error: unknown } = {
-  data: { is_speddy_admin: true },
-  error: null,
+// Keyed by profile id, so the mock only answers "is staff" for the id the
+// route actually queried — a route that queried a hardcoded or wrong id
+// would get an undefined/null row here, not a false pass (SPE-421 Codex
+// review: a no-op `.eq` mock can't catch that class of bug).
+const PROFILES: Record<string, { is_speddy_admin: boolean }> = {
+  [STAFF_ID]: { is_speddy_admin: true },
+  [NON_STAFF_ID]: { is_speddy_admin: false },
 };
+const profilesEqSpy = jest.fn();
 
 jest.mock('@/lib/supabase/server', () => ({
   createClient: async () => ({
@@ -33,10 +38,16 @@ jest.mock('@/lib/supabase/server', () => ({
   }),
   createServiceClient: () => ({
     from: () => {
+      let queriedId: string | null = null;
       const q: Record<string, unknown> = {};
       q.select = () => q;
-      q.eq = () => q;
-      q.maybeSingle = () => Promise.resolve(profileRow);
+      q.eq = (col: string, val: string) => {
+        profilesEqSpy(col, val);
+        if (col === 'id') queriedId = val;
+        return q;
+      };
+      q.maybeSingle = () =>
+        Promise.resolve({ data: (queriedId && PROFILES[queriedId]) ?? null, error: null });
       return q;
     },
   }),
@@ -76,7 +87,7 @@ const validCreateBody = {
 describe('GET/POST /api/internal/sis-connections', () => {
   beforeEach(() => {
     currentUserId = STAFF_ID;
-    profileRow = { data: { is_speddy_admin: true }, error: null };
+    profilesEqSpy.mockClear();
     listConnections.mockReset().mockResolvedValue([{ id: 'conn-1' }]);
     createConnection.mockReset().mockResolvedValue({ id: 'conn-1' });
   });
@@ -91,16 +102,17 @@ describe('GET/POST /api/internal/sis-connections', () => {
 
     it('403s a non-staff caller without calling listConnections', async () => {
       currentUserId = NON_STAFF_ID;
-      profileRow = { data: { is_speddy_admin: false }, error: null };
       const res = await GET(getReq());
       expect(res.status).toBe(403);
       expect(await res.json()).toEqual({ error: 'Forbidden: Speddy admin access required' });
       expect(listConnections).not.toHaveBeenCalled();
+      expect(profilesEqSpy).toHaveBeenCalledWith('id', NON_STAFF_ID);
     });
 
-    it('lets a staff caller list connections', async () => {
+    it('lets a staff caller list connections, queried by their own id', async () => {
       const res = await GET(getReq());
       expect(res.status).toBe(200);
+      expect(profilesEqSpy).toHaveBeenCalledWith('id', STAFF_ID);
       expect(listConnections).toHaveBeenCalledWith(DISTRICT_ID);
       expect(await res.json()).toEqual({ connections: [{ id: 'conn-1' }] });
     });
@@ -116,15 +128,16 @@ describe('GET/POST /api/internal/sis-connections', () => {
 
     it('403s a non-staff caller without calling createConnection', async () => {
       currentUserId = NON_STAFF_ID;
-      profileRow = { data: { is_speddy_admin: false }, error: null };
       const res = await POST(postReq(validCreateBody));
       expect(res.status).toBe(403);
       expect(createConnection).not.toHaveBeenCalled();
+      expect(profilesEqSpy).toHaveBeenCalledWith('id', NON_STAFF_ID);
     });
 
-    it('lets a staff caller create a connection', async () => {
+    it('lets a staff caller create a connection, queried by their own id', async () => {
       const res = await POST(postReq(validCreateBody));
       expect(res.status).toBe(200);
+      expect(profilesEqSpy).toHaveBeenCalledWith('id', STAFF_ID);
       expect(createConnection).toHaveBeenCalledWith(
         expect.objectContaining({ districtId: DISTRICT_ID, sisType: 'aeries', actorId: STAFF_ID })
       );

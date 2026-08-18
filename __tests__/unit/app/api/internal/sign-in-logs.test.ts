@@ -14,10 +14,15 @@ const STAFF_ID = '11111111-1111-4111-8111-111111111111';
 const NON_STAFF_ID = '22222222-2222-4222-8222-222222222222';
 
 let currentUserId: string | null = STAFF_ID;
-let profileResult: { data: unknown; error: unknown } = {
-  data: { is_speddy_admin: true },
-  error: null,
+// Keyed by profile id, so the mock only answers "is staff" for the id the
+// route actually queried — a route that queried a hardcoded or wrong id
+// would get an undefined/null row here, not a false pass.
+const PROFILES: Record<string, { is_speddy_admin: boolean }> = {
+  [STAFF_ID]: { is_speddy_admin: true },
+  [NON_STAFF_ID]: { is_speddy_admin: false },
 };
+let profileErrorOverride: { data: unknown; error: unknown } | null = null;
+const profilesEqSpy = jest.fn();
 let rpcResult: { data: unknown; error: unknown } = { data: [], error: null };
 
 jest.mock('@/lib/supabase/server', () => ({
@@ -29,10 +34,18 @@ jest.mock('@/lib/supabase/server', () => ({
           : { data: { user: null }, error: { message: 'no session' } },
     },
     from: () => {
+      let queriedId: string | null = null;
       const q: Record<string, unknown> = {};
       q.select = () => q;
-      q.eq = () => q;
-      q.single = () => Promise.resolve(profileResult);
+      q.eq = (col: string, val: string) => {
+        profilesEqSpy(col, val);
+        if (col === 'id') queriedId = val;
+        return q;
+      };
+      q.single = () =>
+        Promise.resolve(
+          profileErrorOverride ?? { data: (queriedId && PROFILES[queriedId]) ?? null, error: null }
+        );
       return q;
     },
   }),
@@ -52,7 +65,8 @@ const req = () => new NextRequest('http://localhost/api/internal/sign-in-logs');
 describe('GET /api/internal/sign-in-logs', () => {
   beforeEach(() => {
     currentUserId = STAFF_ID;
-    profileResult = { data: { is_speddy_admin: true }, error: null };
+    profileErrorOverride = null;
+    profilesEqSpy.mockClear();
     rpcResult = {
       data: [
         {
@@ -77,21 +91,22 @@ describe('GET /api/internal/sign-in-logs', () => {
 
   it('403s a non-staff caller', async () => {
     currentUserId = NON_STAFF_ID;
-    profileResult = { data: { is_speddy_admin: false }, error: null };
     const res = await GET(req());
     expect(res.status).toBe(403);
     expect(await res.json()).toEqual({ error: 'Forbidden: Speddy admin access required' });
+    expect(profilesEqSpy).toHaveBeenCalledWith('id', NON_STAFF_ID);
   });
 
   it('403s when the profile lookup itself errors (fail closed, not open)', async () => {
-    profileResult = { data: null, error: { message: 'boom' } };
+    profileErrorOverride = { data: null, error: { message: 'boom' } };
     const res = await GET(req());
     expect(res.status).toBe(403);
   });
 
-  it('answers a staff caller with the sign-in logs', async () => {
+  it('answers a staff caller with the sign-in logs, queried by their own id', async () => {
     const res = await GET(req());
     expect(res.status).toBe(200);
+    expect(profilesEqSpy).toHaveBeenCalledWith('id', STAFF_ID);
     const body = await res.json();
     expect(body.logs).toHaveLength(1);
     expect(body.logs[0]).toMatchObject({ userId: 'u-1', email: 'someone@example.org' });
