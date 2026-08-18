@@ -283,6 +283,55 @@ export async function upsertStudentDetails(
   }
 }
 
+/**
+ * Write just a student's name into `student_details`.
+ *
+ * The manual add form (SPE-284 made the name the identity anchor) collects a
+ * first and last name and derives the initials from them, so a brand-new
+ * student needs its name row written the moment it is created. It does NOT go
+ * through `upsertStudentDetails`: that one carries the whole IEP record and
+ * spans two tables — it would clear a `district_student_id` the student never
+ * had and blank out date/goal columns to say nothing new. One statement, one
+ * table, and the `AFTER INSERT` trigger on `student_details` mirrors the name
+ * onto the linked child record.
+ *
+ * Upsert rather than insert so a re-run cannot fail on the `student_id`
+ * uniqueness constraint.
+ */
+export async function saveStudentName(
+  studentId: string,
+  firstName: string,
+  lastName: string
+): Promise<void> {
+  const supabase = createClient<Database>();
+
+  const savePerf = measurePerformanceWithAlerts('save_student_name', 'database');
+  const saveResult = await safeQuery(
+    async () => {
+      const { error } = await supabase
+        .from('student_details')
+        .upsert(
+          {
+            student_id: studentId,
+            first_name: firstName,
+            last_name: lastName,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'student_id' }
+        );
+      if (error) throw error;
+      return null;
+    },
+    { operation: 'save_student_name', studentId }
+  );
+  savePerf.end({ success: !saveResult.error });
+
+  if (saveResult.error) {
+    console.error('Error saving student name:', saveResult.error);
+    throw saveResult.error;
+  }
+}
+
 // =============================================================================
 // STUDENT PROGRESS DATA
 // =============================================================================

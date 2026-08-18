@@ -1,5 +1,41 @@
 import React from 'react';
 
+/**
+ * One box shape for every form control, so a row of mixed control types reads
+ * as one row instead of three different widgets.
+ *
+ * What used to diverge, and is pinned here: a native `<select>` draws its own
+ * chevron and sits a couple of pixels shorter than a text input, and a number
+ * input draws spinner arrows nothing else has. `h-10` settles the height for
+ * all of them; the two class variants below suppress the native decorations.
+ */
+export const FIELD_CONTROL_CLASS =
+  'block w-full h-10 px-3 bg-white border border-gray-300 rounded-md text-gray-900 ' +
+  'placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 ' +
+  'focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed';
+
+/**
+ * A `<select>`: native chevron hidden, right padding cleared for the
+ * `<SelectChevron />` that must be rendered beside it inside a `relative` box.
+ */
+export const SELECT_CONTROL_CLASS = `${FIELD_CONTROL_CLASS} appearance-none pr-9`;
+
+/** A number input, minus the spinner arrows no other control has. */
+export const NUMBER_CONTROL_CLASS =
+  `${FIELD_CONTROL_CLASS} [appearance:textfield] ` +
+  '[&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none';
+
+/** The chevron a SELECT_CONTROL_CLASS select draws in place of the native one. */
+export function SelectChevron() {
+  return (
+    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
+      <svg className="h-5 w-5 text-gray-400" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+        <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+      </svg>
+    </div>
+  );
+}
+
 // Label Component
 interface LabelProps extends React.LabelHTMLAttributes<HTMLLabelElement> {
   required?: boolean;

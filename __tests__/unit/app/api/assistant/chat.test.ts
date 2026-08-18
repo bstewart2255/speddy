@@ -225,6 +225,10 @@ describe('POST /api/assistant/chat', () => {
       'Push-in asks for the Class as well',
       // Students and the student record
       '"+ Add Student"',
+      // The add form takes a name and derives the initials from it; a stale
+      // "type the initials" answer here sends a provider looking for a box the
+      // form no longer leads with.
+      'the Initials box fills itself in from the name',
       '"As the IEP states it:"',
       'Student Goals Report → Generate Report → Download',
       'Current Information, IEP Goals, Assessments, Progress, Attendance',
