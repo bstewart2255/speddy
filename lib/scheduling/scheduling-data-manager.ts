@@ -188,12 +188,16 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
 
     try {
       // SPE-305: this used to attempt a `get_scheduling_data_batch` RPC first
-      // and fall back to the queries below. That RPC never once returned data
-      // — its work_schedule CTE compared `uss.site_id = p_school_site` (uuid
-      // against text), so Postgres rejected the statement at plan time (42883)
-      // on every call, for every provider, at every school, for its whole
-      // life. Every load has always come from here; the RPC call was a
-      // guaranteed-failing round trip on the way. Both are now gone.
+      // and fall back to the queries below. That RPC never delivered data to
+      // this class, in two eras: as committed it returned camelCase keys that
+      // processBatchData's snake_case tests never matched, so nothing was
+      // cached (SPE-56); after an uncaptured rewrite (SPE-116) its
+      // work_schedule CTE compared `uss.site_id = p_school_site` — uuid
+      // against text — so Postgres rejected the statement at plan time (42883)
+      // on every call, for every provider, at every school. The broken body is
+      // reproduced in 20260722_harden_get_scheduling_data_batch.sql, dating
+      // that to 2026-07-22 at the latest. Every load came from here either
+      // way, and the RPC call was a failing round trip on the way. Both gone.
       //
       // Before reaching for a batch RPC again: the filters below are not
       // incidental, and a single-statement version has to carry all of them or

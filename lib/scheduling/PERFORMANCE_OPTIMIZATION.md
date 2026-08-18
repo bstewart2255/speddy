@@ -23,14 +23,27 @@ Created performance indexes in `/supabase/migrations/20250815_scheduling_perform
 ### 2. Batch Data Fetching
 
 `SchedulingDataManager.loadAllData()` replaces the per-constraint queries with
-one grouped load: five reads issued together via `Promise.all`, instead of the
-100+ the scheduler used to make.
+one grouped load: five **branches** issued together via `Promise.all`, instead
+of the 100+ the scheduler used to make. Branches are not reads — several issue a
+second, dependent read (the school_id / legacy school_site dual match, and the
+`provider_schools` lookup availability needs before it can filter by site), so
+the load is about **nine reads across a two-round-trip critical path**.
 
 **The `get_scheduling_data_batch` RPC described here is gone (SPE-305).** It was
-meant to collapse that load into a single statement, but its `work_schedule` CTE
-compared `uss.site_id` (uuid) to `p_school_site` (text), so Postgres rejected it
-at plan time on every call — it never once returned data, and the app always
-took the parallel path. It was dropped rather than repaired.
+meant to collapse that load into a single statement, and it never delivered data
+to the client in either of its two forms:
+
+- As committed (`20250815_scheduling_batch_rpc.sql`) it joined on
+  `ps.school_site = p_school_site` — text to text, so it could run — but it
+  returned camelCase keys (`workSchedule`, …) that `processBatchData`'s
+  snake_case tests never matched, so nothing was cached (SPE-56).
+- After an uncaptured rewrite (drift, SPE-116) the predicate became
+  `uss.site_id = p_school_site` — uuid against text — which Postgres rejects at
+  plan time, so it threw on every call. That body is reproduced in
+  `20260722_harden_get_scheduling_data_batch.sql`, dating the failure to
+  2026-07-22 at the latest.
+
+Either way the app took the parallel path. It was dropped rather than repaired.
 
 Do not "restore the optimization" without reading
 `supabase/migrations/20260818_spe305_drop_get_scheduling_data_batch.sql` first.
@@ -85,10 +98,11 @@ Added comprehensive performance tracking:
 
 ### Query Reduction
 
-- **Reduction**: ~98% fewer database queries
+- **Reduction**: ~94% fewer database reads
 - **Example**: Scheduling 5 students with 16 total sessions
-  - Before: ~160 queries
-  - After: 2 queries
+  - Before: ~160 reads, issued serially
+  - After: ~9 reads from five parallel branches, over a two-round-trip
+    critical path, plus 1 insert
 
 ## Usage
 

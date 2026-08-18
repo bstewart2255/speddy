@@ -1,11 +1,14 @@
 /**
  * SPE-305: the scheduling load must not call `get_scheduling_data_batch`.
  *
- * That RPC threw at plan time on every call for its whole life (its
- * work_schedule CTE compared a uuid column to a text argument), so the app
- * always fell through to the parallel queries — the RPC call was a
- * guaranteed-failing round trip on every schedule load. The function is now
- * dropped from the database, so a re-added call would 404 rather than 42883.
+ * That RPC never delivered data to the client. As committed it returned
+ * camelCase keys the caller's snake_case tests never matched, so nothing was
+ * cached (SPE-56); after an uncaptured rewrite its work_schedule CTE compared
+ * a uuid column to a text argument, so Postgres rejected it at plan time on
+ * every call (documented in the live body by 2026-07-22). Either way the app
+ * fell through to the parallel queries, and the RPC call was a wasted round
+ * trip on every schedule load. The function is now dropped from the database,
+ * so a re-added call would 404 rather than 42883.
  *
  * The bigger risk is someone "restoring the optimization": a single-statement
  * version has to carry the school_id/school_site dual key (SPE-463), the

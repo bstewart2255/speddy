@@ -1,21 +1,38 @@
--- SPE-305: Drop get_scheduling_data_batch — it has never once returned data.
+-- SPE-305: Drop get_scheduling_data_batch — it has never delivered data to the
+-- client, first because nothing matched and later because it could not run.
 --
 -- public.get_scheduling_data_batch(uuid, text) was added as a batch RPC to
--- avoid N+1 queries on the scheduling hot path. Its work_schedule CTE compares
+-- avoid N+1 queries on the scheduling hot path. It failed to deliver in two
+-- distinct eras, and it is worth keeping them straight:
 --
---     uss.site_id = p_school_site
+-- 1. As committed in 20250815_scheduling_batch_rpc.sql, the work_schedule
+--    block joined provider_schools on `ps.school_site = p_school_site` — text
+--    to text, no type error. That definition could plan and run. But it
+--    returned camelCase keys ('workSchedule', 'bellSchedules', ...) while
+--    SchedulingDataManager.processBatchData tested snake_case ones
+--    ('provider_availability', 'bell_schedules', ...), so every branch was
+--    false and nothing was ever cached (SPE-56). The batch path was inert.
 --
--- but user_site_schedules.site_id is uuid (FK to provider_schools.id) while
--- p_school_site is a text school-site name. Postgres rejects that at plan time,
--- value-independently:
+-- 2. At some uncaptured point the body was rewritten (drift — SPE-116): the
+--    keys became snake_case, and the work_schedule predicate became
 --
---     ERROR: 42883: operator does not exist: uuid = text
+--        uss.site_id = p_school_site
 --
--- The whole single-SELECT statement fails, so the function has thrown on every
--- call, for every provider, at every school, for its entire life. Every
--- scheduling load in production has come from the parallel-query path in
--- SchedulingDataManager, which caught the error and carried on. Nothing has
--- ever consumed this function's output.
+--    where user_site_schedules.site_id is uuid (FK to provider_schools.id) and
+--    p_school_site is a text school-site name. Postgres rejects that at plan
+--    time, value-independently:
+--
+--        ERROR: 42883: operator does not exist: uuid = text
+--
+--    The whole single-SELECT statement fails, so from then on the function
+--    threw on every call, for every provider, at every school. That broken
+--    body is reproduced verbatim in 20260722_harden_get_scheduling_data_batch
+--    .sql, which dates the failure to 2026-07-22 at the latest; the drift is
+--    uncaptured, so it cannot be dated more precisely than that.
+--
+-- Throughout both eras, scheduling loads came from the parallel-query path in
+-- SchedulingDataManager, which caught the error (or cached nothing) and
+-- carried on. Nothing has ever consumed this function's output.
 --
 -- Why drop rather than repair (Blair's call, 2026-08-18):
 --
