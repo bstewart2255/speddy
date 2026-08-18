@@ -10,7 +10,6 @@ import { CollapsibleCard } from '../ui/collapsible-card';
 interface ProviderSchool {
   id: string;
   school_site: string;
-  school_district: string;
 }
 
 const DAYS_OF_WEEK = [
@@ -36,7 +35,7 @@ export function WorkScheduleSettings() {
       // Get provider's schools
       const { data: providerSchools } = await supabase
         .from('provider_schools')
-        .select('id, school_site, school_district')
+        .select('id, school_site')
         .eq('provider_id', user.id);
 
       if (providerSchools) {
@@ -128,9 +127,6 @@ export function WorkScheduleSettings() {
           <div key={school.id} className="border rounded-lg p-4">
             <h4 className="font-medium text-gray-900 mb-3">
               {school.school_site}
-              <span className="text-sm text-gray-500 ml-2">
-                ({school.school_district})
-              </span>
             </h4>
             <div className="flex gap-2">
               {DAYS_OF_WEEK.map((day) => {
