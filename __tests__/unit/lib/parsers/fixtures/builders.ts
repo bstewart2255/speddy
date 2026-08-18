@@ -242,11 +242,14 @@ export function buildSeisGoalsCsvFrom(rows: Array<Record<number, string>>): Buff
  * something else — `School` instead of `School of Attendance`, `IEP Goal`
  * instead of `Goal`. Exact-only lookups would silently drop that field.
  */
-export function buildSeisGoalsCsvWithHeaders(renames: Record<number, string>): Buffer {
+export function buildSeisGoalsCsvWithHeaders(
+  renames: Record<number, string>,
+  rows: Array<SparseRow> = SEIS_GOALS_ROWS,
+): Buffer {
   const headers = SEIS_HEADERS.map((header, i) => renames[i] ?? header);
   const lines = [
     headers.map(csvCell).join(','),
-    ...SEIS_GOALS_ROWS.map((r) => seisCsvLine(r, headers)),
+    ...rows.map((r) => seisCsvLine(r, headers)),
   ];
   return Buffer.from(lines.join('\r\n'), 'utf-8');
 }

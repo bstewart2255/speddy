@@ -192,16 +192,32 @@ describe('parseCSVReport — SEIS Student Goals Report (CSV)', () => {
       expect(ana.schoolOfAttendance).toBe('Mt Diablo Elementary School');
     });
 
-    it('finds the goal column when it is labelled "IEP Goal"', async () => {
-      const result = await parseCSVReport(buildSeisGoalsCsvWithHeaders({ 14: 'IEP Goal' }), {});
+    // The lookalike columns are POPULATED here on purpose. An earlier round of
+    // this fix passed the same test with them blank, which proved nothing: the
+    // fuzzy fallback it was guarding only misfires when they carry text.
+    it('finds the goal column when it is labelled "IEP Goal", without dragging in its lookalikes', async () => {
+      const goalText =
+        'By 5/1/2027, Ana will read 90 words per minute with 95% accuracy in 3 of 4 trials.';
+      const csv = buildSeisGoalsCsvWithHeaders({ 14: 'IEP Goal' }, [
+        {
+          0: '2000001', 1: '100001', 2: 'Alvarez', 3: 'Ana', 5: '01',
+          6: 'Mt Diablo Elementary School', 9: '05/01/2026', 11: 'Reading',
+          12: 'Academic #1', 13: 'Ana currently reads 40 words per minute.',
+          14: goalText,
+          15: 'Addresses other educational needs', // Purpose(s) of Goal
+          17: 'Resource Specialist',
+          18: 'Objective 1: Ana will read 60 words per minute by December.',
+          39: 'Limited Progress toward goal', // Goal Met
+          45: 'Progressing toward goal', // Comparison To Goal
+        },
+      ]);
+      expect(detectSEISStudentGoalsFormat(toRecords(csv))).toBe(true);
+
+      const result = await parseCSVReport(csv, {});
 
       expect(result.errors).toHaveLength(0);
-      expect(result.students.length).toBeGreaterThan(0);
-      const ana = result.students.find((s) => s.lastName === 'Alvarez')!;
-      expect(ana.goals[0]).toMatch(/90 words per minute/);
-      // The fuzzy fallback must still exclude the metadata lookalikes it sits
-      // beside — "Annual Goal #" is a claimed column, not goal text.
-      expect(ana.goals.some((g) => /^Academic #/.test(g))).toBe(false);
+      expect(result.students).toHaveLength(1);
+      expect(result.students[0].goals).toEqual([goalText]);
     });
 
     // One relabel at a time, deliberately: renaming two signature headers drops
@@ -226,6 +242,55 @@ describe('parseCSVReport — SEIS Student Goals Report (CSV)', () => {
 
       expect(result.errors).toHaveLength(0);
       expect(result.students.find((s) => s.lastName === 'Alvarez')!.gradeLevel).toBe('1');
+    });
+  });
+
+  // SPE-558 review round 2. The six signature fields are all common labels, so
+  // name-anywhere matching alone also describes an ordinary spreadsheet. Handing
+  // one of those to the SEIS path would subject it to per-role goal filtering
+  // and import zero students — worse than the fixed-index code, which such a
+  // file could never satisfy. SEIS-only marker columns are what keep them apart.
+  describe('does not claim ordinary spreadsheets', () => {
+    const GENERIC_CSV = Buffer.from(
+      [
+        'Last Name,First Name,Grade,School of Attendance,Goal',
+        'Alvarez,Ana,1,Mt Diablo Elementary School,' +
+          '"By 5/1/2027, Ana will read 90 words per minute with 95% accuracy in 3 of 4 trials."',
+      ].join('\r\n'),
+      'utf-8',
+    );
+
+    it('leaves a plain Last/First/Grade/School/Goal file on the generic path', async () => {
+      expect(detectSEISStudentGoalsFormat(toRecords(GENERIC_CSV))).toBe(false);
+
+      const result = await parseCSVReport(GENERIC_CSV, {});
+      expect(result.metadata.formatDetected).toBe('generic');
+    });
+
+    it('still imports that file for a keyworded role, rather than filtering it to nothing', async () => {
+      // The real damage of a false SEIS positive: role filtering needs Area of
+      // Need / Annual Goal # / Person Responsible, and a generic file has none,
+      // so every goal would be dropped.
+      const result = await parseCSVReport(GENERIC_CSV, { providerRole: 'resource' });
+
+      expect(result.students).toHaveLength(1);
+      expect(result.students[0].goals).toHaveLength(1);
+    });
+
+    it('refuses rather than reading a grade out of "Grade Level Standard"', async () => {
+      // With no real grade header, a bare /grade/ scan binds to the standards
+      // column (index 47, "Reading Standard 3.2") and every student imports as
+      // grade "3". The file is still SEIS by the 5-of-6 rule, so the honest
+      // outcome is a named error, not a silently wrong grade.
+      const csv = buildSeisGoalsCsvWithHeaders({ 5: 'Year Of Study' });
+      expect(detectSEISStudentGoalsFormat(toRecords(csv))).toBe(true);
+
+      const result = await parseCSVReport(csv, {});
+
+      expect(result.students).toHaveLength(0);
+      expect(result.errors.some((e) => /could not find expected columns/i.test(e.message))).toBe(
+        true,
+      );
     });
   });
 

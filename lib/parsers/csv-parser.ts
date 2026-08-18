@@ -527,19 +527,90 @@ export { normalizeGradeLevel };
  * goals, all without raising a single error. Matching on the header NAME
  * absorbs both shapes and any future column reorder.
  */
-const SEIS_SIGNATURE_HEADERS = [
-  'last name',
-  'first name',
+/**
+ * How each SEIS field is located in a header row: the exact normalized names
+ * first, then an ANCHORED pattern for the label variants.
+ *
+ * Anchored is the whole point. This report has ten headers containing the word
+ * "goal" ("Annual Goal #", "Purpose(s) of Goal", "Goal Met", "Comparison To
+ * Goal", "Goal Progress"...) and a "Grade Level Standard" that a bare /grade/
+ * scan binds to in preference to nothing. An unanchored sweep is what put
+ * "Limited Progress" into a child's IEP goals in the first place, so every
+ * pattern here matches a WHOLE header or not at all.
+ *
+ * One table, used by both the detector and the mapper below, so a file can
+ * never be recognized as this report on a column the mapper then fails to
+ * resolve.
+ */
+const SEIS_FIELDS = {
+  lastName: { exact: ['last name'], pattern: /^(student\s*)?last\s*name$|^lastname$|^surname$/ },
+  firstName: { exact: ['first name'], pattern: /^(student\s*)?first\s*name$|^firstname$/ },
+  grade: { exact: ['grade', 'grade level'], pattern: /^(current\s*|student\s*)?grade(\s*level)?$/ },
+  schoolOfAttendance: {
+    exact: ['school of attendance'],
+    pattern: /^(attending\s*)?school(\s*(of\s*attendance|name))?$/,
+  },
+  goalType: { exact: ['annual goal #', 'annual goal'], pattern: /^annual\s*goal(\s*#)?$|^goal\s*type$/ },
+  goal: { exact: ['goal'], pattern: /^(iep\s*)?goal(\s*(text|statement))?$/ },
+  // Anchored so it cannot match "District of Service" (SPE-339).
+  districtStudentId: {
+    exact: ['district id', 'district student id'],
+    pattern: /^district\s*(student\s*)?id$/,
+  },
+  iepDate: { exact: ['iep date'], pattern: /^iep\s*date$|^meeting\s*date$/ },
+  areaOfNeed: { exact: ['area of need'], pattern: /^area\s*(of\s*)?need$|^need\s*area$/ },
+  personResponsible: {
+    exact: ['person responsible'],
+    pattern: /^person\s*responsible$|^responsible\s*(person|party)$/,
+  },
+} as const;
+
+/** The six fields whose presence identifies the report (5 of 6 required). */
+const SEIS_SIGNATURE_FIELDS = [
+  'lastName',
+  'firstName',
   'grade',
-  'school of attendance',
-  'annual goal #',
+  'schoolOfAttendance',
+  'goalType',
   'goal',
 ] as const;
 
 /**
+ * Columns that only a SEIS export carries. The signature above is deliberately
+ * made of common labels, so on its own it also describes an ordinary
+ * Last/First/Grade/School/Goal spreadsheet — which would then be handed the
+ * SEIS path's per-role goal filtering and import as zero students. Requiring
+ * two of these keeps that file on the generic path where it belongs.
+ */
+const SEIS_MARKER_HEADERS = [
+  'seis id',
+  'district id',
+  'district of service',
+  'case manager',
+  'iep date',
+  'eligibility status',
+  'area of need',
+  'baseline',
+  'purpose(s) of goal',
+  'person responsible',
+  'goal met',
+] as const;
+
+/** Resolve one SEIS field to a column index: exact names first, then pattern. */
+function findSeisColumn(normalized: string[], field: keyof typeof SEIS_FIELDS): number | undefined {
+  const { exact, pattern } = SEIS_FIELDS[field];
+  for (const name of exact) {
+    const index = normalized.indexOf(name);
+    if (index !== -1) return index;
+  }
+  const index = normalized.findIndex((header) => pattern.test(header));
+  return index === -1 ? undefined : index;
+}
+
+/**
  * Detect if CSV is a SEIS Student Goals Report, by header NAME rather than
- * position (SPE-558). Still requires 5 of the 6 signature columns, so a file
- * missing one label degrades to the generic path exactly as before.
+ * position (SPE-558): 5 of the 6 signature fields resolvable, plus at least
+ * two SEIS-only marker columns.
  *
  * Exported for the parser golden-fixture suite (SPE-239).
  */
@@ -548,95 +619,48 @@ export function detectSEISStudentGoalsFormat(records: string[][]): boolean {
     return false;
   }
 
-  // A Set of exact normalized names: "Annual Goal #" must not be satisfied by
-  // "Purpose(s) of Goal", and "Grade" must not be satisfied by "Gradebook ID".
-  const headers = new Set((records[0] || []).map(normalizeHeaderName));
-  const matches = SEIS_SIGNATURE_HEADERS.filter((name) => headers.has(name)).length;
+  const normalized = (records[0] || []).map(normalizeHeaderName);
+  const signature = SEIS_SIGNATURE_FIELDS.filter(
+    (field) => findSeisColumn(normalized, field) !== undefined,
+  ).length;
+  if (signature < 5) return false;
 
-  return matches >= 5;
+  const headers = new Set(normalized);
+  const markers = SEIS_MARKER_HEADERS.filter((name) => headers.has(name)).length;
+
+  return markers >= 2;
 }
 
 /**
- * Map the SEIS Student Goals Report's columns by header name (SPE-558).
+ * Map the SEIS Student Goals Report's columns, using the same SEIS_FIELDS
+ * table the detector resolved them with (SPE-558) — so anything detection
+ * counted, mapping finds.
  *
- * Each field is looked up EXACT-first, then by a tolerant pattern. The exact
- * pass is what keeps the ambiguous headers apart in the real 59-column export
- * — `District ID` vs `District of Service`, and `Goal` vs `Annual Goal #` /
- * `Purpose(s) of Goal` / `Goal Met` / `Comparison To Goal`, the lookalikes that
- * dragged "Limited Progress" and "ST #1 2026-2027" in as goal text. The
- * tolerant pass is what keeps the 5-of-6 detection tolerance meaningful: a file
- * can be recognized as this report while labelling one column `School` or
- * `Student First Name`, and exact-only lookups would then silently drop school
- * scoping or fail the whole import.
- *
- * The patterns are `seis-parser.ts`'s (XLSX), deliberately — the two paths read
- * the same report and must not disagree about which column is which.
+ * The goal column is the anchored `Goal` / `IEP Goal` match and nothing else.
+ * There is deliberately NO fuzzy fallback: every fallback wide enough to catch
+ * an unusual goal label also catches "Purpose(s) of Goal", "Goal Met" and
+ * "Comparison To Goal", which is exactly how progress labels ended up in
+ * children's IEP goals. A detected file with no recognizable Goal column gets
+ * the explicit error instead.
  */
 function mapSeisColumnsByHeader(headers: string[]): ColumnMapping {
   const normalized = headers.map(normalizeHeaderName);
+  const at = (field: keyof typeof SEIS_FIELDS) => findSeisColumn(normalized, field);
 
-  /** Exact normalized name first, then the tolerant pattern. */
-  const find = (names: string[], pattern?: RegExp): number | undefined => {
-    for (const name of names) {
-      const index = normalized.indexOf(name);
-      if (index !== -1) return index;
-    }
-    if (!pattern) return undefined;
-    const index = normalized.findIndex((header) => pattern.test(header));
-    return index === -1 ? undefined : index;
+  const goal = at('goal');
+
+  return {
+    districtStudentId: at('districtStudentId'),
+    lastName: at('lastName'),
+    firstName: at('firstName'),
+    grade: at('grade'),
+    schoolOfAttendance: at('schoolOfAttendance'),
+    iepDate: at('iepDate'),
+    areaOfNeed: at('areaOfNeed'),
+    goalType: at('goalType'),
+    personResponsible: at('personResponsible'),
+    goalColumns: goal === undefined ? [] : [goal],
   };
-
-  const mapping: ColumnMapping = {
-    // Anchored so it cannot match "District of Service" (SPE-339).
-    districtStudentId: find(
-      ['district id', 'district student id'],
-      /^district\s*(student\s*)?id$/i,
-    ),
-    lastName: find(['last name'], /last\s*name|lastname|student\s*last|surname/i),
-    firstName: find(['first name'], /first\s*name|firstname|student\s*first/i),
-    grade: find(['grade', 'grade level'], /grade|current\s*grade/i),
-    schoolOfAttendance: find(
-      ['school of attendance'],
-      /school\s*of\s*attendance|school\s*name|attending\s*school|^school$/i,
-    ),
-    iepDate: find(['iep date'], /iep\s*date|meeting\s*date/i),
-    areaOfNeed: find(['area of need'], /area\s*of\s*need|area\s*need|need\s*area/i),
-    goalType: find(['annual goal #', 'annual goal'], /annual\s*goal|goal\s*type|service\s*type/i),
-    personResponsible: find(
-      ['person responsible'],
-      /person\s*responsible|responsible\s*person|responsible\s*party/i,
-    ),
-    goalColumns: [],
-  };
-
-  // Goal text. The exact `Goal` column is always preferred; only when the file
-  // doesn't have one do we sweep fuzzily — and then minus every column already
-  // claimed above, so "Annual Goal #" and friends can't come back in as goals.
-  // Same two-step, and the same reason, as seis-parser.ts.
-  const exactGoal = normalized.indexOf('goal');
-  if (exactGoal !== -1) {
-    mapping.goalColumns = [exactGoal];
-  } else {
-    const claimed = new Set(
-      [
-        mapping.districtStudentId,
-        mapping.lastName,
-        mapping.firstName,
-        mapping.grade,
-        mapping.schoolOfAttendance,
-        mapping.iepDate,
-        mapping.areaOfNeed,
-        mapping.goalType,
-        mapping.personResponsible,
-      ].filter((index): index is number => index !== undefined),
-    );
-    mapping.goalColumns = normalized
-      .map((header, index) => ({ header, index }))
-      .filter(({ header, index }) => !claimed.has(index) && /goal|objective|target/i.test(header))
-      .map(({ index }) => index);
-  }
-
-  return mapping;
 }
 
 /**
