@@ -235,6 +235,23 @@ export function buildSeisGoalsCsvFrom(rows: Array<Record<number, string>>): Buff
 }
 
 /**
+ * The canonical SEIS goals CSV with specific headers RELABELLED by index.
+ *
+ * For the variant-label cases (SPE-558 review): a file can still be recognized
+ * as this report on 5 of its 6 signature headers while labelling the sixth
+ * something else — `School` instead of `School of Attendance`, `IEP Goal`
+ * instead of `Goal`. Exact-only lookups would silently drop that field.
+ */
+export function buildSeisGoalsCsvWithHeaders(renames: Record<number, string>): Buffer {
+  const headers = SEIS_HEADERS.map((header, i) => renames[i] ?? header);
+  const lines = [
+    headers.map(csvCell).join(','),
+    ...SEIS_GOALS_ROWS.map((r) => seisCsvLine(r, headers)),
+  ];
+  return Buffer.from(lines.join('\r\n'), 'utf-8');
+}
+
+/**
  * Build the SEIS goals CSV with one extra column inserted at `atIndex`, every
  * column at or after it shifted one to the right. This is the exact transform
  * that separates SEIS's two real export shapes of the same report, and the one

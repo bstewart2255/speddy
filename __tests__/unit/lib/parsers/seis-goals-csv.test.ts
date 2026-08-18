@@ -12,9 +12,15 @@
  * ("Receptive Languge" -> not speech). See SPE-247.
  */
 
-import { parseCSVReport } from '@/lib/parsers/csv-parser';
+import { parse } from 'csv-parse/sync';
+import { detectSEISStudentGoalsFormat, parseCSVReport } from '@/lib/parsers/csv-parser';
+
+/** Header+rows view of a fixture, for asserting which detection path it takes. */
+const toRecords = (csv: Buffer): string[][] =>
+  parse(csv, { bom: true, relax_column_count: true, skip_empty_lines: true, trim: true });
 import {
   buildSeisGoalsCsvFrom,
+  buildSeisGoalsCsvWithHeaders,
   SEIS_GOALS_CSV,
   SEIS_GOALS_CSV_BOM,
   SEIS_GOALS_DISTRICT_CSV,
@@ -161,6 +167,66 @@ describe('parseCSVReport — SEIS Student Goals Report (CSV)', () => {
     expect(result.students[0].goals).toEqual([goalText]);
     // And the decoy in a "Grade"-containing header didn't become the grade.
     expect(result.students[0].gradeLevel).toBe('1');
+  });
+
+  // SPE-558 review. Detection tolerates one missing signature header (5 of 6),
+  // so the mapping has to tolerate the same variance — an exact-only lookup
+  // turns "recognized but labelled slightly differently" into a silent dropped
+  // field or a hard failure, both worse than the fixed-index code they replaced.
+  describe('variant header labels (5-of-6 detection still applies)', () => {
+    it('finds the school column when it is labelled just "School"', async () => {
+      const csv = buildSeisGoalsCsvWithHeaders({ 6: 'School' });
+
+      // Behavioral proof: school scoping still refuses an out-of-district
+      // student. An unresolved school column short-circuits that guard and
+      // imports them with no warning at all.
+      const result = await parseCSVReport(csv, { userSchools: ['Some Other School'] });
+
+      expect(result.students).toHaveLength(0);
+      expect(result.warnings.some((w) => /doesn't match your school/i.test(w.message))).toBe(true);
+    });
+
+    it('keeps the school on the parsed student when labelled just "School"', async () => {
+      const result = await parseCSVReport(buildSeisGoalsCsvWithHeaders({ 6: 'School' }), {});
+      const ana = result.students.find((s) => s.lastName === 'Alvarez')!;
+      expect(ana.schoolOfAttendance).toBe('Mt Diablo Elementary School');
+    });
+
+    it('finds the goal column when it is labelled "IEP Goal"', async () => {
+      const result = await parseCSVReport(buildSeisGoalsCsvWithHeaders({ 14: 'IEP Goal' }), {});
+
+      expect(result.errors).toHaveLength(0);
+      expect(result.students.length).toBeGreaterThan(0);
+      const ana = result.students.find((s) => s.lastName === 'Alvarez')!;
+      expect(ana.goals[0]).toMatch(/90 words per minute/);
+      // The fuzzy fallback must still exclude the metadata lookalikes it sits
+      // beside — "Annual Goal #" is a claimed column, not goal text.
+      expect(ana.goals.some((g) => /^Academic #/.test(g))).toBe(false);
+    });
+
+    // One relabel at a time, deliberately: renaming two signature headers drops
+    // detection to 4 of 6, and the file would reach the generic path — which
+    // handles these variants anyway, so such a test would pass without ever
+    // exercising the SEIS mapper it is meant to guard.
+    it('finds the first-name column when labelled "Student First Name"', async () => {
+      const csv = buildSeisGoalsCsvWithHeaders({ 3: 'Student First Name' });
+      expect(detectSEISStudentGoalsFormat(toRecords(csv))).toBe(true); // still the SEIS path
+
+      const result = await parseCSVReport(csv, {});
+
+      expect(result.errors).toHaveLength(0);
+      expect(result.students.find((s) => s.lastName === 'Alvarez')!.firstName).toBe('Ana');
+    });
+
+    it('finds the grade column when labelled "Current Grade"', async () => {
+      const csv = buildSeisGoalsCsvWithHeaders({ 5: 'Current Grade' });
+      expect(detectSEISStudentGoalsFormat(toRecords(csv))).toBe(true); // still the SEIS path
+
+      const result = await parseCSVReport(csv, {});
+
+      expect(result.errors).toHaveLength(0);
+      expect(result.students.find((s) => s.lastName === 'Alvarez')!.gradeLevel).toBe('1');
+    });
   });
 
   describe('per-role goal filtering', () => {

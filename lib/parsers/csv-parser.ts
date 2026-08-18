@@ -559,39 +559,84 @@ export function detectSEISStudentGoalsFormat(records: string[][]): boolean {
 /**
  * Map the SEIS Student Goals Report's columns by header name (SPE-558).
  *
- * Every lookup is an EXACT normalized-name match, which is what keeps the
- * ambiguous headers apart in the real 59-column export:
- *   - `District ID` vs `District of Service`
- *   - `Goal` vs `Annual Goal #` / `Purpose(s) of Goal` / `Goal Met` / `Goal
- *     Progress` — the fuzzy substring sweep the generic path uses is exactly
- *     what dragged "Limited Progress" and "ST #1 2026-2027" in as goal text.
- * Mirrors `seis-parser.ts`'s "prefer the exact Goal column" rule, so the CSV
- * and XLSX paths now agree on what a goal is.
+ * Each field is looked up EXACT-first, then by a tolerant pattern. The exact
+ * pass is what keeps the ambiguous headers apart in the real 59-column export
+ * — `District ID` vs `District of Service`, and `Goal` vs `Annual Goal #` /
+ * `Purpose(s) of Goal` / `Goal Met` / `Comparison To Goal`, the lookalikes that
+ * dragged "Limited Progress" and "ST #1 2026-2027" in as goal text. The
+ * tolerant pass is what keeps the 5-of-6 detection tolerance meaningful: a file
+ * can be recognized as this report while labelling one column `School` or
+ * `Student First Name`, and exact-only lookups would then silently drop school
+ * scoping or fail the whole import.
+ *
+ * The patterns are `seis-parser.ts`'s (XLSX), deliberately — the two paths read
+ * the same report and must not disagree about which column is which.
  */
 function mapSeisColumnsByHeader(headers: string[]): ColumnMapping {
   const normalized = headers.map(normalizeHeaderName);
-  const at = (...names: string[]): number | undefined => {
+
+  /** Exact normalized name first, then the tolerant pattern. */
+  const find = (names: string[], pattern?: RegExp): number | undefined => {
     for (const name of names) {
       const index = normalized.indexOf(name);
       if (index !== -1) return index;
     }
-    return undefined;
+    if (!pattern) return undefined;
+    const index = normalized.findIndex((header) => pattern.test(header));
+    return index === -1 ? undefined : index;
   };
 
-  const goalColumn = at('goal');
-
-  return {
-    districtStudentId: at('district id', 'district student id'),
-    lastName: at('last name'),
-    firstName: at('first name'),
-    grade: at('grade', 'grade level'),
-    schoolOfAttendance: at('school of attendance'),
-    iepDate: at('iep date'),
-    areaOfNeed: at('area of need'),
-    goalType: at('annual goal #', 'annual goal'),
-    personResponsible: at('person responsible'),
-    goalColumns: goalColumn === undefined ? [] : [goalColumn],
+  const mapping: ColumnMapping = {
+    // Anchored so it cannot match "District of Service" (SPE-339).
+    districtStudentId: find(
+      ['district id', 'district student id'],
+      /^district\s*(student\s*)?id$/i,
+    ),
+    lastName: find(['last name'], /last\s*name|lastname|student\s*last|surname/i),
+    firstName: find(['first name'], /first\s*name|firstname|student\s*first/i),
+    grade: find(['grade', 'grade level'], /grade|current\s*grade/i),
+    schoolOfAttendance: find(
+      ['school of attendance'],
+      /school\s*of\s*attendance|school\s*name|attending\s*school|^school$/i,
+    ),
+    iepDate: find(['iep date'], /iep\s*date|meeting\s*date/i),
+    areaOfNeed: find(['area of need'], /area\s*of\s*need|area\s*need|need\s*area/i),
+    goalType: find(['annual goal #', 'annual goal'], /annual\s*goal|goal\s*type|service\s*type/i),
+    personResponsible: find(
+      ['person responsible'],
+      /person\s*responsible|responsible\s*person|responsible\s*party/i,
+    ),
+    goalColumns: [],
   };
+
+  // Goal text. The exact `Goal` column is always preferred; only when the file
+  // doesn't have one do we sweep fuzzily — and then minus every column already
+  // claimed above, so "Annual Goal #" and friends can't come back in as goals.
+  // Same two-step, and the same reason, as seis-parser.ts.
+  const exactGoal = normalized.indexOf('goal');
+  if (exactGoal !== -1) {
+    mapping.goalColumns = [exactGoal];
+  } else {
+    const claimed = new Set(
+      [
+        mapping.districtStudentId,
+        mapping.lastName,
+        mapping.firstName,
+        mapping.grade,
+        mapping.schoolOfAttendance,
+        mapping.iepDate,
+        mapping.areaOfNeed,
+        mapping.goalType,
+        mapping.personResponsible,
+      ].filter((index): index is number => index !== undefined),
+    );
+    mapping.goalColumns = normalized
+      .map((header, index) => ({ header, index }))
+      .filter(({ header, index }) => !claimed.has(index) && /goal|objective|target/i.test(header))
+      .map(({ index }) => index);
+  }
+
+  return mapping;
 }
 
 /**
