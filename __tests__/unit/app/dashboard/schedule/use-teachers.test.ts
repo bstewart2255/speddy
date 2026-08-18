@@ -13,9 +13,14 @@
  * rest of the table looks like. All data is fictional.
  */
 
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { useTeachers } from '@/app/(dashboard)/dashboard/schedule/hooks/useTeachers';
+
+// The hook starts at [] and queries nothing, so asserting "empty" on the first
+// tick passes whether or not the code under test ever ran. Drain the microtask
+// queue past the auth await first, so these assertions describe a settled fetch.
+const settle = () => act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
 
 interface TeacherRow {
   id: string;
@@ -92,18 +97,27 @@ describe('useTeachers — per-school scoping (SPE-519)', () => {
     expect(fromCalls).toEqual(['teachers']);
   });
 
-  it('returns an empty list when the caller is signed out', async () => {
-    const { client, fromCalls } = makeSupabase([
-      { id: 't1', last_name: 'Alvarez', school_id: 'school-1' },
-    ]);
+  it('returns an empty list without querying when the caller is signed out', async () => {
+    const rows: TeacherRow[] = [{ id: 't1', last_name: 'Alvarez', school_id: 'school-1' }];
+    const { client, fromCalls } = makeSupabase(rows);
     const signedOut = {
       ...client,
       auth: { getUser: () => Promise.resolve({ data: { user: null } }) },
     } as unknown as SupabaseClient;
 
-    const { result } = renderHook(() => useTeachers(signedOut, { school_id: 'school-1' }));
+    // Control: the same fixture and the same settle window do reach the table
+    // when signed in, so an empty fromCalls below means the guard fired rather
+    // than that the fetch had not started yet.
+    const { result: signedIn } = renderHook(() => useTeachers(client, { school_id: 'school-1' }));
+    await settle();
+    expect(fromCalls).toEqual(['teachers']);
+    expect(signedIn.current).toEqual(rows);
 
-    await waitFor(() => expect(fromCalls).toEqual([]));
+    fromCalls.length = 0;
+    const { result } = renderHook(() => useTeachers(signedOut, { school_id: 'school-1' }));
+    await settle();
+
+    expect(fromCalls).toEqual([]);
     expect(result.current).toEqual([]);
   });
 });
