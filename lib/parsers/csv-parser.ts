@@ -658,11 +658,18 @@ export function detectSEISStudentGoalsFormat(records: string[][]): boolean {
   ).length;
   if (signature < SEIS_SIGNATURE_FIELDS.length - 1) return false;
 
-  // A full house — including "Annual Goal #", which an ordinary spreadsheet
-  // does not carry — is evidence enough on its own. Demanding markers here
-  // would reject a district's trimmed-column export of this very report and
-  // hand it to the generic path, which is the failure this ticket is about.
-  if (signature === SEIS_SIGNATURE_FIELDS.length) return true;
+  // A full house waives the marker requirement, so that a district's
+  // trimmed-column export of this very report isn't pushed onto the generic
+  // path — the failure this ticket is about. But the waiver rests entirely on
+  // the goal-type column being SEIS's own "Annual Goal #" numbering: the same
+  // field also accepts a bare "Goal Type", which any goals spreadsheet might
+  // carry, and waiving on that would readmit the false positive the markers
+  // exist to catch.
+  if (signature === SEIS_SIGNATURE_FIELDS.length) {
+    const goalTypeIndex = findSeisColumn(normalized, 'goalType');
+    const goalTypeLabel = goalTypeIndex === undefined ? '' : normalized[goalTypeIndex];
+    if (/^annual\s*goal(\s*#)?$/.test(goalTypeLabel)) return true;
+  }
 
   const headers = new Set(normalized);
   const markers = SEIS_MARKER_HEADERS.filter((name) => headers.has(name)).length;

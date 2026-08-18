@@ -295,6 +295,24 @@ describe('parseCSVReport — SEIS Student Goals Report (CSV)', () => {
       expect(result.students).toHaveLength(1);
     });
 
+    it('does not let a bare "Goal Type" column stand in for SEIS\'s "Annual Goal #"', async () => {
+      // The 6-of-6 waiver skips the marker requirement, so it must rest on the
+      // label that is actually SEIS's. "Goal Type" satisfies the same field but
+      // is ordinary spreadsheet vocabulary.
+      const csv = Buffer.from(
+        [
+          'Last Name,First Name,Grade,School of Attendance,Goal,Goal Type',
+          'Alvarez,Ana,1,Mt Diablo Elementary School,' +
+            '"By 5/1/2027, Ana will read 90 words per minute with 95% accuracy in 3 of 4 trials.",Academic',
+        ].join('\r\n'),
+        'utf-8',
+      );
+      expect(detectSEISStudentGoalsFormat(toRecords(csv))).toBe(false);
+
+      const result = await parseCSVReport(csv, { providerRole: 'resource' });
+      expect(result.students).toHaveLength(1);
+    });
+
     it('refuses rather than reading a grade out of "Grade Level Standard"', async () => {
       // With no real grade header, a bare /grade/ scan binds to the standards
       // column (index 47, "Reading Standard 3.2") and every student imports as
