@@ -1,0 +1,63 @@
+-- SPE-305: Drop get_scheduling_data_batch — it has never once returned data.
+--
+-- public.get_scheduling_data_batch(uuid, text) was added as a batch RPC to
+-- avoid N+1 queries on the scheduling hot path. Its work_schedule CTE compares
+--
+--     uss.site_id = p_school_site
+--
+-- but user_site_schedules.site_id is uuid (FK to provider_schools.id) while
+-- p_school_site is a text school-site name. Postgres rejects that at plan time,
+-- value-independently:
+--
+--     ERROR: 42883: operator does not exist: uuid = text
+--
+-- The whole single-SELECT statement fails, so the function has thrown on every
+-- call, for every provider, at every school, for its entire life. Every
+-- scheduling load in production has come from the parallel-query path in
+-- SchedulingDataManager, which caught the error and carried on. Nothing has
+-- ever consumed this function's output.
+--
+-- Why drop rather than repair (Blair's call, 2026-08-18):
+--
+-- Repairing only the type error would make the RPC start succeeding, and a
+-- succeeding-but-under-filtered RPC is far worse than a failing one — the
+-- client would cache its output and the auto-scheduler would book over
+-- protected time. Four separate fixes have landed in the parallel path that
+-- this body never received:
+--
+--   * SPE-463 — the bell_schedules and special_activities CTEs filter on
+--     `provider_id = p_provider_id AND school_site = p_school_site`. Both
+--     columns are NULL on site-admin-created rows, and production holds both
+--     shapes at once (Bancroft/Mt. Diablo/Rodeo Hills carry school_id with
+--     school_site NULL; Walnut Acres the reverse, 60 bell schedule rows). This
+--     body would return an empty set for whichever set it skips, which is the
+--     auto-scheduler booking straight over lunch.
+--   * SPE-458 — those CTEs read every school_year at once, so a period retimed
+--     or removed for the new year keeps blocking last year's slots.
+--   * SPE-468/SPE-484 — the special_activities CTE has no deleted_at filter,
+--     so soft-deleted activities return as scheduling blocks (live now that
+--     SPE-318 feeds that list to the scheduler).
+--   * SPE-56 — the function returns 'work_schedule' while the caller reads
+--     data.provider_availability, so availability is dropped on the floor even
+--     when the call succeeds.
+--
+-- Carrying all four in SQL alongside the TypeScript that already implements
+-- them means two copies that must never drift — and those four bugs are what
+-- drift already cost. The payoff would be lower database load, not latency the
+-- user feels: the parallel reads are issued together (cost = slowest, not sum)
+-- and four further round trips run sequentially after either path regardless.
+--
+-- Safe in any deploy order: the client fell back to parallel queries on ANY
+-- RPC error, so between this migration landing and the app deploy that removes
+-- the call, "function does not exist" simply takes the same fallback that has
+-- always run. The matching app change removes the call entirely.
+--
+-- Also retires the SECURITY DEFINER surface this function represented — its
+-- EXECUTE grants (see 20260529_revoke_anon_execute_security_definer_functions)
+-- and the SPE-278 auth.uid() guard go with it.
+--
+-- Supersedes: 20250815_scheduling_batch_rpc.sql,
+--             20260722_harden_get_scheduling_data_batch.sql
+-- Closes as moot: SPE-56, SPE-57.
+
+DROP FUNCTION IF EXISTS public.get_scheduling_data_batch(uuid, text);
