@@ -82,7 +82,8 @@
 4. [Account Creation Flows](#4-account-creation-flows)
 5. [Auth & Session Lifecycle](#5-auth--session-lifecycle)
 6. [Scheduling / Session Data Model](#6-scheduling--session-data-model)
-   — incl. [Student identity — `children` ↔ caseload rows](#student-identity--children--caseload-rows-spe-347)
+   — incl. [Student identity — `children` ↔ caseload rows](#student-identity--children--caseload-rows-spe-347),
+   [`school_year` — the Aug 1 flip, and who scopes on it](#school_year--the-aug-1-flip-and-who-scopes-on-it-spe-470)
 7. [Data Lifecycle & Retention](#7-data-lifecycle--retention)
 8. [CARE / Referrals Model](#8-care--referrals-model)
 9. [Elementary vs Secondary (school-level experience)](#9-elementary-vs-secondary-school-level-experience)
@@ -1334,6 +1335,108 @@ palette); `app/api/groups/mutate/route.ts` + the `groups_v2_*` RPCs
 (`lib/services/session-update-service.ts`) +
 `DEFAULT_SCHEDULING_CONFIG.maxConcurrentSessions`. Full design: the project doc
 **"Groups v2 — Design Spec"** (SPE-308…315).
+
+### `school_year` — the Aug 1 flip, and who scopes on it (SPE-470)
+
+13 tables carry a `school_year` column: `activated_school_years`,
+`activity_type_availability`, `bell_schedules`, `instruction_schedules`,
+`mainstreaming_blocks`, `rotation_activity_pairs`, `rotation_group_members`,
+`rotation_groups`, `rotation_week_assignments`, `special_activities`,
+`student_blocked_times`, `teacher_availability_prefs`, `yard_duty_assignments`.
+**`school_hours` conspicuously does not** — it cannot be year-scoped without a
+schema migration, a gap `school_year_config`'s own year-unawareness shares
+(SPE-461, open).
+
+This section exists because four bugs traced back to this one column in a
+single week (SPE-459, SPE-460, SPE-458, SPE-461), each found the hard way by
+tracing behavior back to it rather than by reading anything written down.
+
+- **The flip.** `getCurrentSchoolYear()` (`lib/school-year.ts`) and the SQL
+  `public.current_school_year()` both compute the same label —
+  `"YYYY-YYYY"`, flipping on **August 1 UTC** — and must stay in lockstep;
+  nothing enforces that beyond a comment on each pointing at the other.
+  `current_school_year()` is also the column default on the seven tables that
+  had a hardcoded `'2025-2026'` default before SPE-460 (`bell_schedules`,
+  `special_activities`, `activity_type_availability`,
+  `rotation_activity_pairs`, `rotation_groups`, `rotation_group_members`,
+  `rotation_week_assignments`), so an insert that omits `school_year` now gets
+  *this instant's* year rather than a stale literal — including on Aug 1
+  itself.
+- **Two distinct failure shapes, both from this one column.**
+  - **A write stamped the wrong (stale) year while a read filters to the
+    current one → the row goes invisible.** This is the more dangerous shape
+    because nothing errors — the row exists, just not where anything looks.
+    - **SPE-460** — new bell schedules/special activities were born under a
+      hardcoded `'2025-2026'` default while every read filtered on
+      `getCurrentSchoolYear()`. Once the calendar passed 2025-2026, a row
+      born under the stale default vanished the moment it was saved. Fixed
+      by wiring the default to `current_school_year()`.
+    - **SPE-459** — real-school rows were correctly tagged `'2025-2026'`
+      when written; the bug was that **nothing carried them forward** when
+      `getCurrentSchoolYear()` flipped to `'2026-2027'` on Aug 1. No school
+      had activated the next year yet, so there was no copy/retag
+      transition, and every read pins to the current label with no in-app
+      path back to a prior one. 819 rows across 9 tables went silently
+      unreachable until a one-off migration re-tagged them forward.
+  - **A read is unscoped (no year filter at all) → it unions every year at
+    once,** which is indistinguishable from correct right up until a school
+    has two years of data live simultaneously, because before that point an
+    unscoped read and a correctly-scoped one return the same rows.
+    - **SPE-458** — the scheduler's `SchedulingDataManager` read every year
+      of `bell_schedules`/`special_activities` at once, unioning last year's
+      rows into this year's conflict checks. Fixed for the data manager
+      only.
+  - **SPE-461** (open) — `school_year_config` isn't year-aware and still
+    holds last year's dates; a third shape (no `school_year` column at all
+    to scope by), not yet fixed.
+- **Who filters on it and who doesn't, today — and it's uneven even within one
+  file.** The provider Settings pages, the scheduler's
+  `SchedulingDataManager` (post-SPE-458), and `session-update-service`'s
+  `checkSpecialActivityConflicts` (via `fetchSpecialActivitiesForStudent`,
+  SPE-484) all filter on `getCurrentSchoolYear()`. Its sibling
+  `checkBellScheduleConflicts` in the same file does **not** — it filters
+  `provider_id`/`day_of_week`/`school_id` only, no year. The **schedule
+  grid**'s two display fetches (`use-schedule-data.ts`, both
+  `bell_schedules` and `special_activities`) are unscoped as well, by design
+  (SPE-487, open). Net effect once a school holds two years: bell-schedule
+  display and its drag-check agree with each other (both unscoped, so a
+  stale-year period still shows *and* still warns/blocks — consistently
+  wrong), but special-activity display and its drag-check disagree — the
+  grid can show a stale-year activity band that the drag-check, correctly
+  scoped, no longer warns about or protects. **Dormant today:** no school
+  holds two years of bell-schedule/special-activity rows yet in production,
+  so none of this is firing — the first real year-activation copy trips it.
+- **The year-activation copy flow is what puts a school into two years.** An
+  admin on the Master Schedule page (`SchoolYearToggle` /
+  `YearActivationDialog`) activates the next year for a school by picking one
+  of two options the dialog offers: **copy forward** or **start blank**.
+  Blank only calls `activateSchoolYear()` — one year stays live, nothing
+  duplicates. Copy calls `copyScheduleToNextYear()`, which invokes the
+  `copy_schedule_to_year(school_id, from_year, to_year)` RPC and then
+  `activateSchoolYear()`; the RPC copies
+  `bell_schedules`, `special_activities`, `activity_type_availability`,
+  `rotation_activity_pairs`, `rotation_groups`, `rotation_group_members`,
+  `yard_duty_assignments`, and `instruction_schedules` forward under the new
+  year label — the source rows are left untouched, so choosing copy is what
+  puts the school in two live years at once; choosing blank never does.
+  Either path finishes by upserting a row into `activated_school_years`,
+  which `checkYearActivated()` (and the toggle) treats as the source of
+  truth for "has this year started,"
+  falling back to a plain data check for schools activated before that table
+  existed. `mainstreaming_blocks`, `student_blocked_times`, and
+  `teacher_availability_prefs` are not copied forward by this RPC.
+
+**Source of truth:** `lib/school-year.ts`; SQL `public.current_school_year()`
+(`supabase/migrations/20260812_spe460_current_school_year_default.sql`);
+`copy_schedule_to_year()`
+(`supabase/migrations/20260413_update_copy_schedule_instruction.sql` +
+predecessors); `lib/supabase/queries/school-year-copy.ts`;
+`app/(dashboard)/dashboard/admin/master-schedule/page.tsx`
+(`SchoolYearToggle`, `YearActivationDialog`);
+`lib/services/session-update-service.ts` (`checkBellScheduleConflicts`
+unscoped; `checkSpecialActivityConflicts` / `fetchSpecialActivitiesForStudent`
+scoped); `lib/supabase/hooks/use-schedule-data.ts` (both display fetches
+unscoped).
 
 ---
 
