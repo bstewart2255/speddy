@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { resolveDistrictSisCaller } from '@/lib/api/district-sis-caller';
 import { createServiceClient } from '@/lib/supabase/server';
 import { logger } from '@/lib/logger';
-import { getDecryptedCredential, listConnections } from '@/lib/sis/connections';
+import { resolveOneRosterConnection } from '@/lib/sis/connections';
 
 const log = logger.child({ module: 'district-oneroster-gate' });
 
@@ -94,36 +94,30 @@ export async function requireDistrictAdminOneRoster(
     }
   }
 
-  // Wrapped: withRoute's catch echoes error.message to the client in
-  // development, and a Supabase error names tables and constraints.
-  let connections;
-  try {
-    connections = await listConnections(caller.districtId);
-  } catch (err) {
-    log.error(`Failed to load SIS connections for the ${surface.logLabel}`, err, {
-      districtId: caller.districtId,
-    });
-    return refuse({ error: 'Could not load your connection.' }, 500);
-  }
-
-  const connection = connections.find((c) => c.sis_type === 'oneroster');
-  if (!connection || !connection.base_url) {
-    return refuse({ error: surface.noConnectionMessage }, 409);
-  }
-
-  let credential: Awaited<ReturnType<typeof getDecryptedCredential>> = null;
-  try {
-    credential = await getDecryptedCredential(connection.id);
-  } catch (err) {
-    log.error('Could not decrypt the stored SIS credential', err, {
-      connectionId: connection.id,
+  // Connection + credential resolution is SHARED with the unattended runner
+  // (resolveOneRosterConnection, SPE-545) so the attended and unattended
+  // paths cannot drift on "does this district have a dialable setup". This
+  // gate owns only the mapping to its pinned HTTP refusals.
+  const resolved = await resolveOneRosterConnection(caller.districtId);
+  if (resolved.status === 'load-failed') {
+    if (resolved.phase === 'connections') {
+      log.error(`Failed to load SIS connections for the ${surface.logLabel}`, undefined, {
+        districtId: caller.districtId,
+      });
+      return refuse({ error: 'Could not load your connection.' }, 500);
+    }
+    log.error('Could not decrypt the stored SIS credential', undefined, {
+      connectionId: resolved.connectionId,
     });
     return refuse(
       { error: 'Your stored OneRoster credential could not be read. Re-save it in the tech portal.' },
       500,
     );
   }
-  if (!credential || credential.sisType !== 'oneroster') {
+  if (resolved.status === 'no-connection') {
+    return refuse({ error: surface.noConnectionMessage }, 409);
+  }
+  if (resolved.status === 'no-credential') {
     return refuse(
       { error: 'No OneRoster credentials are stored yet, so there is nothing to sync.' },
       409,
@@ -133,12 +127,7 @@ export async function requireDistrictAdminOneRoster(
   return {
     ok: true,
     districtId: caller.districtId,
-    connection: {
-      id: connection.id,
-      district_id: connection.district_id,
-      base_url: connection.base_url,
-      token_url: connection.token_url ?? null,
-    },
-    credential: { clientId: credential.clientId, clientSecret: credential.clientSecret },
+    connection: resolved.connection,
+    credential: resolved.credential,
   };
 }

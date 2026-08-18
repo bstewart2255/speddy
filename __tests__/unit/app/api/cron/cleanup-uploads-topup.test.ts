@@ -15,6 +15,16 @@ jest.mock('@/lib/supabase/server', () => ({
   }),
 }));
 
+// SPE-545: the nightly link sync rides along; both halves mocked so this
+// suite pins the WIRING (worklist → per-district run → counted outcomes)
+// without dialing anything.
+const mockListDistricts = jest.fn();
+const mockRunAutoLinkSync = jest.fn();
+jest.mock('@/lib/sis/auto-link-sync', () => ({
+  listAutoSyncDistrictIds: (...a: unknown[]) => mockListDistricts(...a),
+  runAutoLinkSync: (...a: unknown[]) => mockRunAutoLinkSync(...a),
+}));
+
 import { GET } from '@/app/api/cron/cleanup-uploads/route';
 
 const makeRequest = () =>
@@ -28,6 +38,8 @@ describe('/api/cron/cleanup-uploads session top-up integration', () => {
 
   beforeEach(() => {
     mockRpc.mockReset();
+    mockListDistricts.mockReset().mockResolvedValue([]);
+    mockRunAutoLinkSync.mockReset().mockResolvedValue('nothing-to-do');
     process.env.CRON_SECRET = 'test-secret';
   });
 
@@ -78,5 +90,70 @@ describe('/api/cron/cleanup-uploads session top-up integration', () => {
 
     expect(res.status).toBe(500);
     expect(body.success).toBe(false);
+  });
+});
+
+describe('/api/cron/cleanup-uploads nightly link-sync ride-along (SPE-545)', () => {
+  const originalSecret = process.env.CRON_SECRET;
+
+  beforeEach(() => {
+    mockRpc.mockReset().mockResolvedValue({
+      data: [{ templates_processed: 1, instances_created: 1 }],
+      error: null,
+    });
+    mockListDistricts.mockReset();
+    mockRunAutoLinkSync.mockReset();
+    process.env.CRON_SECRET = 'test-secret';
+  });
+
+  afterAll(() => {
+    if (originalSecret === undefined) delete process.env.CRON_SECRET;
+    else process.env.CRON_SECRET = originalSecret;
+  });
+
+  it('an unauthorized caller reaches neither the worklist nor a run', async () => {
+    const res = await GET(
+      new NextRequest('http://localhost/api/cron/cleanup-uploads', {
+        method: 'GET',
+        headers: { 'x-cron-secret': 'wrong' },
+      }),
+    );
+    expect(res.status).toBe(401);
+    expect(mockListDistricts).not.toHaveBeenCalled();
+    expect(mockRunAutoLinkSync).not.toHaveBeenCalled();
+  });
+
+  it('runs each connected district as a cron-triggered system action and counts outcomes', async () => {
+    mockListDistricts.mockResolvedValue(['d-1', 'd-2', 'd-3']);
+    mockRunAutoLinkSync
+      .mockResolvedValueOnce('applied')
+      .mockResolvedValueOnce('nothing-to-do')
+      .mockResolvedValueOnce('refused');
+
+    const res = await GET(makeRequest());
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(mockRunAutoLinkSync).toHaveBeenCalledTimes(3);
+    expect(mockRunAutoLinkSync).toHaveBeenCalledWith({
+      districtId: 'd-1',
+      trigger: 'cron',
+      actorId: null,
+    });
+    expect(body.linkSync).toEqual({ applied: 1, 'nothing-to-do': 1, refused: 1 });
+  });
+
+  it('a failed worklist read is reported without failing the jobs that ran', async () => {
+    mockListDistricts.mockRejectedValue(new Error('relation district_sis_connections denied'));
+
+    const res = await GET(makeRequest());
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.success).toBe(true);
+    expect(body.sessionTopup).toBeDefined();
+    expect(body.linkSync.error).toBe('Could not list SIS connections');
+    // Sanitized: the response never echoes database details.
+    expect(JSON.stringify(body)).not.toContain('district_sis_connections');
   });
 });

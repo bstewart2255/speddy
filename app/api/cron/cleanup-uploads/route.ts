@@ -4,7 +4,12 @@ import {
   runSessionInstanceTopup,
   SESSION_TOPUP_WEEKS_AHEAD
 } from '@/lib/services/session-instance-topup';
+import { listAutoSyncDistrictIds, runAutoLinkSync } from '@/lib/sis/auto-link-sync';
 import { cronTokenMatches } from '@/lib/api/cron-auth';
+
+// SPE-545: the nightly link sync below walks each connected district's SIS
+// to completion — well past the platform's default function window.
+export const maxDuration = 300;
 
 export async function GET(request: NextRequest) {
   const startTime = Date.now();
@@ -59,19 +64,60 @@ export async function GET(request: NextRequest) {
 
     if (!topupResult.success) {
       console.error('Error running session instance top-up:', topupResult.error);
+    } else {
+      console.log(
+        `Session top-up completed: ${topupResult.instancesCreated} instances created from ${topupResult.templatesProcessed} templates (${SESSION_TOPUP_WEEKS_AHEAD}w horizon)`
+      );
+    }
+
+    // SPE-545: nightly class-roster link sync rides along (both Vercel cron
+    // slots are used — same precedent as the SPE-291 top-up above). It runs
+    // REGARDLESS of the top-up's outcome — isolation between ride-along jobs
+    // must hold in both directions, or a broken top-up silently disables the
+    // nightly sync for every district (PR #895 review). runAutoLinkSync never
+    // throws; a worklist failure is reported without failing the jobs that
+    // ran. Outcomes are counts-by-word only.
+    //
+    // Wall-clock budget: districts run sequentially and a walk takes minutes
+    // at a real district, so the loop stops cleanly with headroom for the
+    // response instead of the platform killing the function mid-run and
+    // reporting nothing. Skipped districts are counted (never silent) and
+    // caught up by the next import trigger or tomorrow's run; a fair
+    // rotation cursor is deferred until district count makes it real.
+    const LINK_SYNC_BUDGET_MS = 240_000;
+    const linkSync: Record<string, number> & { error?: string } = {};
+    try {
+      const districtIds = await listAutoSyncDistrictIds();
+      let skipped = 0;
+      for (const districtId of districtIds) {
+        if (Date.now() - startTime > LINK_SYNC_BUDGET_MS) {
+          skipped++;
+          continue;
+        }
+        const outcome = await runAutoLinkSync({ districtId, trigger: 'cron', actorId: null });
+        linkSync[outcome] = (linkSync[outcome] ?? 0) + 1;
+      }
+      if (skipped > 0) {
+        console.warn(`Nightly link sync ran out of budget; districts skipped: ${skipped}`);
+        linkSync['budget-skipped'] = skipped;
+      }
+    } catch (linkErr: any) {
+      console.error('Nightly link sync worklist failed:', linkErr);
+      linkSync.error = 'Could not list SIS connections';
+    }
+
+    if (!topupResult.success) {
       // Fail loud (5xx) so a broken top-up is visible instead of the future-
-      // instance supply quietly running dry behind a 200.
+      // instance supply quietly running dry behind a 200 — but only AFTER the
+      // link sync above had its turn.
       return NextResponse.json({
         success: false,
         error: 'Database error during session top-up',
         details: topupResult.error,
+        linkSync,
         timestamp: new Date().toISOString()
       }, { status: 500 });
     }
-
-    console.log(
-      `Session top-up completed: ${topupResult.instancesCreated} instances created from ${topupResult.templatesProcessed} templates (${SESSION_TOPUP_WEEKS_AHEAD}w horizon)`
-    );
 
     // Return success response
     return NextResponse.json({
@@ -81,6 +127,7 @@ export async function GET(request: NextRequest) {
         instancesCreated: topupResult.instancesCreated,
         weeksAhead: SESSION_TOPUP_WEEKS_AHEAD
       },
+      linkSync,
       processingTimeMs: Date.now() - startTime,
       timestamp: new Date().toISOString()
     }, { status: 200 });

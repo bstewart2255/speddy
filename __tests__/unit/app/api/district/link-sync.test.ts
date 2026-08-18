@@ -66,12 +66,10 @@ jest.mock('@/lib/api/district-sis-caller', () => ({
   resolveDistrictSisCaller: (...a: unknown[]) => mockResolveCaller(...a),
 }));
 
-const mockListConnections = jest.fn();
-const mockGetCredential = jest.fn();
+const mockResolveConnection = jest.fn();
 jest.mock('@/lib/sis/connections', () => ({
   ...jest.requireActual('@/lib/sis/connections'),
-  listConnections: (...a: unknown[]) => mockListConnections(...a),
-  getDecryptedCredential: (...a: unknown[]) => mockGetCredential(...a),
+  resolveOneRosterConnection: (...a: unknown[]) => mockResolveConnection(...a),
 }));
 
 // The two functions that reach beyond this process: one dials the SIS, one
@@ -142,11 +140,15 @@ beforeEach(() => {
   currentUserId = ADMIN_ID;
   holdsAdminGrant = false;
   mockResolveCaller.mockResolvedValue({ ok: true, role: 'district_admin', districtId: DISTRICT_ID });
-  mockListConnections.mockResolvedValue([CONNECTION]);
-  mockGetCredential.mockResolvedValue({
-    sisType: 'oneroster',
-    clientId: 'consumer-id',
-    clientSecret: 'consumer-secret',
+  mockResolveConnection.mockResolvedValue({
+    status: 'connected',
+    connection: {
+      id: CONNECTION.id,
+      district_id: CONNECTION.district_id,
+      base_url: CONNECTION.base_url,
+      token_url: CONNECTION.token_url,
+    },
+    credential: { clientId: 'consumer-id', clientSecret: 'consumer-secret' },
   });
   mockLoad.mockResolvedValue(INPUT);
   mockApply.mockResolvedValue([
@@ -214,21 +216,21 @@ describe('the gate', () => {
 
 describe('connection gates', () => {
   it('409s when the district has no OneRoster connection, dialling nothing', async () => {
-    mockListConnections.mockResolvedValue([{ ...CONNECTION, sis_type: 'aeries' }]);
+    mockResolveConnection.mockResolvedValue({ status: 'no-connection' });
     const res = await call({ mode: 'dry-run' });
     expect(res.status).toBe(409);
     nothingHappened();
   });
 
   it('409s when no credential is stored, dialling nothing', async () => {
-    mockGetCredential.mockResolvedValue(null);
+    mockResolveConnection.mockResolvedValue({ status: 'no-credential', connectionId: CONNECTION.id });
     const res = await call({ mode: 'dry-run' });
     expect(res.status).toBe(409);
     nothingHappened();
   });
 
   it('500s a credential that cannot be decrypted, dialling nothing', async () => {
-    mockGetCredential.mockRejectedValue(new Error('decrypt failed'));
+    mockResolveConnection.mockResolvedValue({ status: 'load-failed', phase: 'credential', connectionId: CONNECTION.id });
     const res = await call({ mode: 'dry-run' });
     expect(res.status).toBe(500);
     nothingHappened();

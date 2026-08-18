@@ -280,7 +280,9 @@ describe('failure honesty', () => {
     );
     expect(mockAudit).toHaveBeenCalledTimes(1);
     const audit = mockAudit.mock.calls[0][0];
-    expect(audit.metadata).toMatchObject({ districtId: 'district-1', partial: false });
+    // trigger defaults to 'manual' — the SPE-545 unattended runners stamp
+    // 'import'/'cron' through the same field.
+    expect(audit.metadata).toMatchObject({ districtId: 'district-1', partial: false, trigger: 'manual' });
     expect(audit.metadata.written).toEqual([
       { schoolId: 'sch-1', added: 1, removed: 1, relabeled: 0 },
     ]);
