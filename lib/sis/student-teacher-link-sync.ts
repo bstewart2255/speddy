@@ -250,8 +250,12 @@ const teacherKey = (schoolId: string, sisId: string): string => `${schoolId}\u00
  * shares with this student. Deterministic (sorted, distinct) so re-running
  * the sync can never flap a label back and forth, and the relabel diff means
  * "the rosters changed", not "the join order changed".
+ *
+ * Exported for the import preview (SPE-546), which must show EXACTLY the
+ * label this sync will write — a preview computing its own sort order would
+ * make the label appear to change right after importing (PR #896 review).
  */
-function linkLabels(titles: Set<string>, periods: Set<string>): {
+export function linkLabels(titles: Set<string>, periods: Set<string>): {
   subject: string | null;
   period: string | null;
 } {
@@ -618,9 +622,28 @@ function chunked<T>(values: T[], size: number): T[][] {
  * Enrollments are fetched UNFILTERED here on purpose: this sync needs both
  * roles, and asking once beats trusting a server's filter support twice.
  */
-export async function loadLinkSyncInput(
-  params: LinkSyncConnectionParams,
-): Promise<LinkPlannerInput> {
+/** The SIS half of a roster read — what both roster consumers share. */
+export interface OneRosterRosterFeed {
+  feedStudents: LinkFeedStudent[];
+  feedEnrollments: LinkFeedEnrollment[];
+  feedClasses: LinkFeedClass[];
+}
+
+/**
+ * Walk the three roster collections to completion and apply the ONE set of
+ * row picks. Shared by the link sync and the import preview (SPE-546) so a
+ * feed-mapping fix — a new status value, the PR #886 role-normalization —
+ * can never land in one and silently not the other.
+ *
+ * The three walks run CONCURRENTLY (token fetched once first): they are
+ * independent reads and this path has a human waiting on it in the preview
+ * case (PR #896 review). Enrollments are fetched unfiltered on purpose:
+ * both roles are needed, and asking once beats trusting a server's filter
+ * support twice.
+ */
+export async function loadOneRosterRosterFeed(
+  params: Omit<LinkSyncConnectionParams, 'districtId'>,
+): Promise<OneRosterRosterFeed> {
   const tokenUrl =
     (params.tokenUrl ?? '').trim() || oneRosterTokenUrlCandidates(params.baseUrl)[0];
   if (!tokenUrl) throw new Error('This connection has no usable token address.');
@@ -635,17 +658,21 @@ export async function loadLinkSyncInput(
     clientSecret: params.clientSecret,
   });
 
-  const rawStudents = await client.getAllPages<RawOneRosterUser>('students', 'users');
+  // One token exchange, then the walks in parallel — without this, three
+  // concurrent first requests would each dial the token endpoint.
+  await client.fetchToken();
+  const [rawStudents, rawEnrollments, rawClasses] = await Promise.all([
+    client.getAllPages<RawOneRosterUser>('students', 'users'),
+    client.getAllPages<RawOneRosterEnrollment>('enrollments', 'enrollments'),
+    client.getAllPages<RawOneRosterClass>('classes', 'classes'),
+  ]);
+
   const feedStudents: LinkFeedStudent[] = rawStudents.flatMap((s) => {
     const sourcedId = trimOrNull(s.sourcedId);
     if (!sourcedId || s.status === 'tobedeleted') return [];
     return [{ sourcedId, identifier: trimOrNull(s.identifier) }];
   });
 
-  const rawEnrollments = await client.getAllPages<RawOneRosterEnrollment>(
-    'enrollments',
-    'enrollments',
-  );
   const feedEnrollments: LinkFeedEnrollment[] = rawEnrollments.flatMap((e) => {
     // Role and status are compared normalized (trim + lowercase): the spec's
     // canon is lowercase, but a vendor's casing must not silently drop a
@@ -660,7 +687,6 @@ export async function loadLinkSyncInput(
     return [{ userSourcedId, classSourcedId, role }];
   });
 
-  const rawClasses = await client.getAllPages<RawOneRosterClass>('classes', 'classes');
   const feedClasses: LinkFeedClass[] = rawClasses.flatMap((c) => {
     const sourcedId = trimOrNull(c.sourcedId);
     if (!sourcedId || c.status === 'tobedeleted') return [];
@@ -677,6 +703,14 @@ export async function loadLinkSyncInput(
       },
     ];
   });
+
+  return { feedStudents, feedEnrollments, feedClasses };
+}
+
+export async function loadLinkSyncInput(
+  params: LinkSyncConnectionParams,
+): Promise<LinkPlannerInput> {
+  const { feedStudents, feedEnrollments, feedClasses } = await loadOneRosterRosterFeed(params);
 
   const supabase = createServiceClient();
   const { data: schoolRows, error: schoolsError } = await supabase

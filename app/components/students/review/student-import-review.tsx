@@ -135,12 +135,17 @@ export function StudentImportReview({
           body: JSON.stringify({ schoolId, districtStudentIds }),
         });
         const json: unknown = await res.json().catch(() => null);
-        const body = json as { available?: unknown; entries?: unknown } | null;
+        const body = json as { available?: unknown; reason?: unknown; entries?: unknown } | null;
         if (res.ok && body?.available === true && typeof body.entries === 'object' && body.entries) {
           setSisPreview({ state: 'ready', entries: body.entries as Record<string, LinkPreviewEntry> });
-        } else if (res.ok && body?.available === false) {
+        } else if (res.ok && body?.available === false && body.reason === 'no-sis') {
+          // No sync exists for this district — a column promising links
+          // "after import" would be false, so it never appears.
           setSisPreview({ state: 'hidden' });
         } else {
+          // A configured SIS that couldn't be checked right now (or a
+          // transient error): the sync still runs after import, so the
+          // column stays and says so.
           setSisPreview({ state: 'unavailable' });
         }
       } catch {

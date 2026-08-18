@@ -61,7 +61,10 @@ function SisTeachersCell({
   if (sisPreview.state !== 'ready') {
     return <span className="text-gray-400">Will link after import</span>;
   }
-  const entry = sisPreview.entries[districtStudentId.trim()];
+  // Own-property lookup: a file-controlled id like 'constructor' must read
+  // as "no entry", never as an inherited Object.prototype member.
+  const key = districtStudentId.trim();
+  const entry = Object.hasOwn(sisPreview.entries, key) ? sisPreview.entries[key] : undefined;
   if (!entry) return <span className="text-gray-400">—</span>;
   if (entry.status === 'not-found') {
     return (
@@ -91,14 +94,19 @@ function SisTeachersCell({
   const more = entry.teachers.length - shown.length;
   return (
     <ul className="space-y-0.5 text-gray-900">
-      {shown.map((t) => (
-        <li key={t.name} className="whitespace-nowrap">
+      {shown.map((t, i) => (
+        <li key={`${t.name}:${i}`} className="whitespace-nowrap">
           {t.name}
           {t.subject && <span className="text-gray-400"> · {t.subject}</span>}
           {t.period && <span className="text-gray-400"> · P{t.period}</span>}
         </li>
       ))}
       {more > 0 && <li className="text-gray-500">+{more} more</li>}
+      {entry.missingFromDirectory > 0 && (
+        <li className="text-amber-700">
+          +{entry.missingFromDirectory} not in this school&apos;s teacher list yet
+        </li>
+      )}
     </ul>
   );
 }

@@ -147,14 +147,16 @@ describe('graceful degradation', () => {
     schoolRow = { district_id: null };
     const res = await call({ schoolId: 'sch-1', districtStudentIds: ['DS-100'] });
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ available: false });
+    expect(await res.json()).toEqual({ available: false, reason: 'no-sis' });
     expect(mockResolveConnection).not.toHaveBeenCalled();
   });
 
   it('an unconnected district answers unavailable without dialling the SIS', async () => {
     mockResolveConnection.mockResolvedValue({ status: 'no-connection' });
     const res = await call({ schoolId: 'sch-1', districtStudentIds: ['DS-100'] });
-    expect(await res.json()).toEqual({ available: false });
+    // 'no-sis' hides the column entirely — no sync exists, so a "will link
+    // after import" promise would be false.
+    expect(await res.json()).toEqual({ available: false, reason: 'no-sis' });
     expect(mockLoad).not.toHaveBeenCalled();
   });
 
@@ -163,7 +165,9 @@ describe('graceful degradation', () => {
     const res = await call({ schoolId: 'sch-1', districtStudentIds: ['DS-100'] });
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body).toEqual({ available: false });
+    // 'sis-unreachable' keeps the column with "Will link after import" —
+    // a sync IS configured, unlike the no-sis case above.
+    expect(body).toEqual({ available: false, reason: 'sis-unreachable' });
     expect(JSON.stringify(body)).not.toContain('district.example.org');
   });
 });
@@ -177,6 +181,7 @@ describe('the answer', () => {
     expect(body.entries['DS-100']).toEqual({
       status: 'matched',
       teachers: [{ name: 'EBONIE BARNETT', subject: 'Algebra I', period: '3' }],
+      missingFromDirectory: 0,
     });
     expect(body.entries['DS-999']).toEqual({ status: 'not-found' });
   });

@@ -9,55 +9,40 @@
  * fact. Read-only: this module NEVER writes; the links themselves are
  * written by the SPE-545 auto sync after the import commits.
  *
- * The matching spine is the link sync's, by construction, not by copy:
- * identifier keys come from `studentIdentifierKeys` (the one home of the
- * Aeries STU-wrapper dialect), enrollments join live classes only, and
- * teachers resolve to SIS-keyed directory rows at the ONE school being
- * imported into. What this module returns is a PREVIEW of what that sync
- * will do — matched teachers with class labels — so the two must never
- * disagree about a student.
+ * The matching spine is the link sync's BY CONSTRUCTION, not by copy: the
+ * feed comes from the shared `loadOneRosterRosterFeed`, identifier keys from
+ * the shared `studentIdentifierKeys`, and labels from the shared
+ * `linkLabels` — so a student the preview shows matched resolves the same
+ * way when the sync runs. One stated caveat: the preview resolves teachers
+ * at the school being IMPORTED INTO, while the sync resolves at the child
+ * record's canonical school — for the rare shared child whose canonical
+ * school differs from the importing school, the preview can show that
+ * school's view of the rosters rather than the canonical one. The sync
+ * remains the truth-writer either way.
  *
  * PRIVACY: the response carries teacher names and class labels keyed by the
  * district IDs the caller posted — directory data the provider already sees
- * everywhere teachers appear. Logs carry counts and fixed words only.
+ * wherever teachers appear. Logs carry counts and fixed words only.
  *
  * Server-only: dials an external SIS with a decrypted credential.
  */
 import { logger } from '@/lib/logger';
 import { createServiceClient } from '@/lib/supabase/server';
 import {
-  OneRosterClient,
-  type RawOneRosterClass,
-  type RawOneRosterEnrollment,
-  type RawOneRosterUser,
-} from '@/lib/integrations/oneroster';
-import { ONEROSTER_URL_LABELS, assertSafeSisUrl } from './ssrf-guard';
-import { oneRosterTokenUrlCandidates } from './oneroster-setup';
-import { studentIdentifierKeys } from './student-teacher-link-sync';
-import type { TeacherSyncConnectionParams } from './teacher-directory-sync';
+  linkLabels,
+  loadOneRosterRosterFeed,
+  studentIdentifierKeys,
+  type LinkFeedClass,
+  type LinkFeedEnrollment,
+  type LinkFeedStudent,
+} from './student-teacher-link-sync';
+import { TEACHER_SIS_SOURCE, type TeacherSyncConnectionParams } from './teacher-directory-sync';
 
 const log = logger.child({ module: 'import-link-preview' });
 
 // ---------------------------------------------------------------------------
 // Shapes — plain data, so the matcher is testable without HTTP.
 // ---------------------------------------------------------------------------
-
-export interface PreviewFeedStudent {
-  sourcedId: string;
-  identifier: string | null;
-}
-
-export interface PreviewFeedEnrollment {
-  userSourcedId: string;
-  classSourcedId: string;
-  role: 'student' | 'teacher';
-}
-
-export interface PreviewFeedClass {
-  sourcedId: string;
-  title: string | null;
-  periods: string[];
-}
 
 /** A SIS-keyed directory teacher at the school being imported into. */
 export interface PreviewSchoolTeacher {
@@ -66,9 +51,9 @@ export interface PreviewSchoolTeacher {
 }
 
 export interface LinkPreviewInput {
-  feedStudents: PreviewFeedStudent[];
-  feedEnrollments: PreviewFeedEnrollment[];
-  feedClasses: PreviewFeedClass[];
+  feedStudents: LinkFeedStudent[];
+  feedEnrollments: LinkFeedEnrollment[];
+  feedClasses: LinkFeedClass[];
   schoolTeachers: PreviewSchoolTeacher[];
 }
 
@@ -80,9 +65,18 @@ export interface PreviewTeacher {
 }
 
 export type LinkPreviewEntry =
-  | { status: 'matched'; teachers: PreviewTeacher[] }
-  /** The number found a SIS student, but their teachers aren't in the
-   *  school's directory yet (teacher sync not run / new hires). */
+  | {
+      status: 'matched';
+      teachers: PreviewTeacher[];
+      /**
+       * Roster teachers of this student with NO directory row at this school
+       * (teacher sync behind / new hires). Shown so a partially synced
+       * directory cannot make the list LOOK complete (PR #896 review).
+       */
+      missingFromDirectory: number;
+    }
+  /** The number found a SIS student, but NONE of their teachers are in the
+   *  school's directory yet. */
   | { status: 'teachers-not-in-directory' }
   | { status: 'not-found' }
   /** More than one SIS record answers to this number — same refusal the
@@ -99,7 +93,7 @@ export function previewTeacherLinks(
 ): Record<string, LinkPreviewEntry> {
   // Live classes only — an enrollment naming a vanished class carries no
   // teachers here, same as the sync counts it stale.
-  const classById = new Map<string, PreviewFeedClass>();
+  const classById = new Map<string, LinkFeedClass>();
   for (const c of input.feedClasses) {
     if (c.sourcedId) classById.set(c.sourcedId, c);
   }
@@ -132,163 +126,116 @@ export function previewTeacherLinks(
 
   const teacherBySisId = new Map(input.schoolTeachers.map((t) => [t.sisId, t.name]));
 
-  const entries: Record<string, LinkPreviewEntry> = {};
+  // Built as a Map so a district ID that collides with an Object.prototype
+  // member ('constructor', 'hasOwnProperty', …) — file-controlled input —
+  // cannot be silently skipped or resolve to an inherited value. Serialized
+  // to own-properties-only at the end (PR #896 review).
+  const entries = new Map<string, LinkPreviewEntry>();
   for (const raw of districtStudentIds) {
     const id = raw.trim();
-    if (!id || entries[id]) continue;
+    if (!id || entries.has(id)) continue;
     const matches = bySisKey.get(id) ?? [];
     if (matches.length === 0) {
-      entries[id] = { status: 'not-found' };
+      entries.set(id, { status: 'not-found' });
       continue;
     }
     if (matches.length > 1) {
-      entries[id] = { status: 'multiple-records' };
+      entries.set(id, { status: 'multiple-records' });
       continue;
     }
 
-    // Distinct teachers over all live classes, labels merged the way the
-    // sync writes them (titles alphabetical, periods numeric-aware).
-    const byTeacher = new Map<string, { titles: Set<string>; periods: Set<string> }>();
-    let sawRosterTeacher = false;
+    // Distinct teachers over all live classes, keyed by SIS IDENTITY — the
+    // same identity the sync links by — so two directory teachers who share
+    // a display name stay two rows, exactly as two links will be written
+    // (PR #896 review, self + Codex). Labels via the sync's own helper.
+    const bySisTeacher = new Map<string, { titles: Set<string>; periods: Set<string> }>();
+    const missingSisIds = new Set<string>();
     for (const classId of classesByStudent.get(matches[0]) ?? []) {
       const cls = classById.get(classId);
       if (!cls) continue;
       for (const teacherSisId of teachersByClass.get(classId) ?? []) {
-        sawRosterTeacher = true;
-        const name = teacherBySisId.get(teacherSisId);
-        if (!name) continue;
-        const entry = byTeacher.get(name) ?? { titles: new Set(), periods: new Set() };
+        if (!teacherBySisId.has(teacherSisId)) {
+          missingSisIds.add(teacherSisId);
+          continue;
+        }
+        const entry = bySisTeacher.get(teacherSisId) ?? { titles: new Set(), periods: new Set() };
         if (cls.title) entry.titles.add(cls.title);
         for (const p of cls.periods) {
           if (p) entry.periods.add(p);
         }
-        byTeacher.set(name, entry);
+        bySisTeacher.set(teacherSisId, entry);
       }
     }
 
-    if (byTeacher.size === 0) {
-      entries[id] = sawRosterTeacher
-        ? { status: 'teachers-not-in-directory' }
-        : { status: 'matched', teachers: [] };
+    if (bySisTeacher.size === 0 && missingSisIds.size > 0) {
+      entries.set(id, { status: 'teachers-not-in-directory' });
       continue;
     }
 
-    const numericAware = (a: string, b: string) =>
-      a.localeCompare(b, undefined, { numeric: true });
-    const teachers: PreviewTeacher[] = [...byTeacher.entries()]
-      .map(([name, { titles, periods }]) => ({
-        name,
-        subject: titles.size > 0 ? [...titles].sort(numericAware).join(' / ') : null,
-        period: periods.size > 0 ? [...periods].sort(numericAware).join('/') : null,
-      }))
+    const teachers: PreviewTeacher[] = [...bySisTeacher.entries()]
+      .map(([sisId, { titles, periods }]) => {
+        const { subject, period } = linkLabels(titles, periods);
+        return { name: teacherBySisId.get(sisId) as string, subject, period };
+      })
       .sort((a, b) => a.name.localeCompare(b.name));
-    entries[id] = { status: 'matched', teachers };
+    entries.set(id, {
+      status: 'matched',
+      teachers,
+      missingFromDirectory: missingSisIds.size,
+    });
   }
-  return entries;
+  return Object.fromEntries(entries);
 }
 
 // ---------------------------------------------------------------------------
-// IO — the SIS half plus the one school's directory teachers.
+// IO — the shared SIS feed plus the one school's directory teachers.
 // ---------------------------------------------------------------------------
 
-const trimOrNull = (v: unknown): string | null =>
-  typeof v === 'string' && v.trim() ? v.trim() : null;
-
 /**
- * Fetch everything `previewTeacherLinks` needs. Full pagination on the SIS
- * side, same reasoning as the sync loaders: a missed page reads as "this
- * student has no teachers", which the review screen would then show a
- * provider as fact.
+ * Fetch everything `previewTeacherLinks` needs: the shared roster feed (one
+ * pick set, full pagination, walks in parallel — a human is waiting on this
+ * path) and the school's SIS-keyed teacher names, read concurrently with it.
  */
 export async function loadLinkPreviewInput(
   params: TeacherSyncConnectionParams,
   schoolId: string,
 ): Promise<LinkPreviewInput> {
-  const tokenUrl =
-    (params.tokenUrl ?? '').trim() || oneRosterTokenUrlCandidates(params.baseUrl)[0];
-  if (!tokenUrl) throw new Error('This connection has no usable token address.');
-
-  await assertSafeSisUrl(params.baseUrl, ONEROSTER_URL_LABELS);
-  await assertSafeSisUrl(tokenUrl, ONEROSTER_URL_LABELS);
-
-  const client = new OneRosterClient({
-    baseUrl: params.baseUrl,
-    tokenUrl,
-    clientId: params.clientId,
-    clientSecret: params.clientSecret,
-  });
-
-  const rawStudents = await client.getAllPages<RawOneRosterUser>('students', 'users');
-  const feedStudents: PreviewFeedStudent[] = rawStudents.flatMap((s) => {
-    if (s.status === 'tobedeleted') return [];
-    const sourcedId = trimOrNull(s.sourcedId);
-    if (!sourcedId) return [];
-    return [{ sourcedId, identifier: trimOrNull(s.identifier) }];
-  });
-
-  const rawEnrollments = await client.getAllPages<RawOneRosterEnrollment>(
-    'enrollments',
-    'enrollments',
-  );
-  const feedEnrollments: PreviewFeedEnrollment[] = rawEnrollments.flatMap((e) => {
-    const role = typeof e.role === 'string' ? e.role.trim().toLowerCase() : '';
-    const status = typeof e.status === 'string' ? e.status.trim().toLowerCase() : '';
-    if (status === 'tobedeleted') return [];
-    if (role !== 'student' && role !== 'teacher') return [];
-    const userSourcedId = trimOrNull(e.user?.sourcedId);
-    const classSourcedId = trimOrNull(e.class?.sourcedId);
-    if (!userSourcedId || !classSourcedId) return [];
-    return [{ userSourcedId, classSourcedId, role }];
-  });
-
-  const rawClasses = await client.getAllPages<RawOneRosterClass>('classes', 'classes');
-  const feedClasses: PreviewFeedClass[] = rawClasses.flatMap((c) => {
-    if (c.status === 'tobedeleted') return [];
-    const sourcedId = trimOrNull(c.sourcedId);
-    if (!sourcedId) return [];
-    return [
-      {
-        sourcedId,
-        title: trimOrNull(c.title),
-        periods: Array.isArray(c.periods)
-          ? c.periods.flatMap((p) => {
-              const trimmed = trimOrNull(p);
-              return trimmed ? [trimmed] : [];
-            })
-          : [],
-      },
-    ];
-  });
-
-  // The one school's SIS-keyed teachers — names included, because the whole
-  // point is showing the provider WHO. Paged like every directory read.
-  const supabase = createServiceClient();
-  const schoolTeachers: PreviewSchoolTeacher[] = [];
-  const DB_PAGE = 1000;
-  for (let from = 0; ; from += DB_PAGE) {
-    const { data, error } = await supabase
-      .from('teachers')
-      .select('first_name, last_name, sis_id')
-      .eq('school_id', schoolId)
-      .eq('sis_source', 'oneroster')
-      .not('sis_id', 'is', null)
-      .order('id')
-      .range(from, from + DB_PAGE - 1);
-    if (error) throw new Error(`Could not load the school's teachers: ${error.message}`);
-    for (const t of data ?? []) {
-      const name = [t.first_name, t.last_name].filter(Boolean).join(' ').trim();
-      if (t.sis_id && name) schoolTeachers.push({ sisId: String(t.sis_id), name });
+  const loadSchoolTeachers = async (): Promise<PreviewSchoolTeacher[]> => {
+    const supabase = createServiceClient();
+    const schoolTeachers: PreviewSchoolTeacher[] = [];
+    const DB_PAGE = 1000;
+    for (let from = 0; ; from += DB_PAGE) {
+      const { data, error } = await supabase
+        .from('teachers')
+        .select('first_name, last_name, sis_id')
+        .eq('school_id', schoolId)
+        // The DIRECTORY's constant — the same filter the link sync applies.
+        .eq('sis_source', TEACHER_SIS_SOURCE)
+        .not('sis_id', 'is', null)
+        .order('id')
+        .range(from, from + DB_PAGE - 1);
+      if (error) throw new Error(`Could not load the school's teachers: ${error.message}`);
+      for (const t of data ?? []) {
+        const name = [t.first_name, t.last_name].filter(Boolean).join(' ').trim();
+        if (t.sis_id && name) schoolTeachers.push({ sisId: String(t.sis_id), name });
+      }
+      if (!data || data.length < DB_PAGE) break;
     }
-    if (!data || data.length < DB_PAGE) break;
-  }
+    return schoolTeachers;
+  };
+
+  const [feed, schoolTeachers] = await Promise.all([
+    loadOneRosterRosterFeed(params),
+    loadSchoolTeachers(),
+  ]);
 
   log.info('Import link preview input loaded', {
     schoolId,
-    feedStudents: feedStudents.length,
-    enrollments: feedEnrollments.length,
-    classes: feedClasses.length,
+    feedStudents: feed.feedStudents.length,
+    enrollments: feed.feedEnrollments.length,
+    classes: feed.feedClasses.length,
     schoolTeachers: schoolTeachers.length,
   });
 
-  return { feedStudents, feedEnrollments, feedClasses, schoolTeachers };
+  return { ...feed, schoolTeachers };
 }

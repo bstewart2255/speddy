@@ -16,9 +16,11 @@ const bodySchema = z.object({
   districtStudentIds: z
     .array(z.string().trim().min(1).max(64))
     .min(1)
-    // A review screen's worth, not a bulk export: the biggest real SEIS
-    // file seen is well under this, and the response is per-id.
-    .max(500),
+    // A review screen's worth, not a bulk export: sized to the largest real
+    // caseload file seen (~100 rows) with headroom. Together with the rate
+    // limit this bounds how fast the endpoint can be used as a lookup tool
+    // for ids outside an import (PR #896 review — see the route doc).
+    .max(150),
 });
 
 /**
@@ -40,7 +42,7 @@ export const POST = withRoute<Record<string, string>, z.infer<typeof bodySchema>
   {
     body: bodySchema,
     // Every run walks the district's production SIS to completion.
-    rateLimit: { requests: 6, windowSeconds: 60, name: 'import-link-preview' },
+    rateLimit: { requests: 4, windowSeconds: 60, name: 'import-link-preview' },
   },
   async ({ userId, body }) => {
     const supabase = await createClient();
@@ -76,7 +78,9 @@ export const POST = withRoute<Record<string, string>, z.infer<typeof bodySchema>
     }
     const districtId = schoolRow?.district_id ? String(schoolRow.district_id) : null;
     if (!districtId) {
-      return NextResponse.json({ available: false });
+      // reason 'no-sis': the column should not appear at all — there is no
+      // sync coming later, so "will link after import" would be false.
+      return NextResponse.json({ available: false, reason: 'no-sis' });
     }
 
     const resolved = await resolveOneRosterConnection(districtId);
@@ -84,7 +88,7 @@ export const POST = withRoute<Record<string, string>, z.infer<typeof bodySchema>
       // No SIS wired up (or its setup is broken) — the review screen just
       // stays as it is today. Not an error a provider can act on.
       log.info('Link preview unavailable', { districtId, reason: resolved.status });
-      return NextResponse.json({ available: false });
+      return NextResponse.json({ available: false, reason: 'no-sis' });
     }
 
     let input;
@@ -106,7 +110,9 @@ export const POST = withRoute<Record<string, string>, z.infer<typeof bodySchema>
         connectionId: resolved.connection.id,
         reason: err instanceof Error ? err.message : 'unknown',
       });
-      return NextResponse.json({ available: false });
+      // reason 'sis-unreachable': a sync IS configured, so the honest column
+      // state is "Will link after import", not a vanished column.
+      return NextResponse.json({ available: false, reason: 'sis-unreachable' });
     }
 
     const entries = previewTeacherLinks(input, body.districtStudentIds);
