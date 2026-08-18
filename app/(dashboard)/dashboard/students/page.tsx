@@ -313,19 +313,28 @@ export default function StudentsPage() {
       return;
     }
 
-    // `check_initials_length` (2–4) is the database's rule, and the derived
-    // value falls short of it whenever a name is a single character or is all
-    // whitespace — which `required` alone lets through. Catch it here so the
-    // user reads a sentence instead of a constraint violation. `minlength` on
-    // the input does not cover this: it only fires on a field the user typed
-    // in, and the whole point is that this one usually fills itself.
+    // The name is the identity anchor (SPE-284), so never store a blank one.
+    // `required` rejects only an EMPTY box, so a name of spaces sails past it,
+    // and the initials guard below does not cover the gap: with the initials
+    // typed in by hand they are perfectly valid, and the student would be
+    // created with no name at all.
+    const addedFirstName = formData.first_name.trim();
+    const addedLastName = formData.last_name.trim();
+    if (!addedFirstName || !addedLastName) {
+      setAddFormError('Enter both a first and last name.');
+      return;
+    }
+
+    // `check_initials_length` (2–4) is the database's rule. A hand-typed
+    // override can fall outside it; catch that here so the user reads a
+    // sentence instead of a constraint violation. `minlength` on the input is
+    // not enough on its own — it only fires on a field the user typed in, and
+    // the whole point of this one is that it usually fills itself.
     if (addInitials.length < 2 || addInitials.length > 4) {
       setAddFormError('Initials must be 2 to 4 characters — check the name, or type them in.');
       return;
     }
 
-    const addedFirstName = formData.first_name.trim();
-    const addedLastName = formData.last_name.trim();
     const addedInitials = addInitials;
     savingStudentRef.current = true;
     setSavingStudent(true);

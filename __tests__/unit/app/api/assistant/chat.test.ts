@@ -229,7 +229,10 @@ describe('POST /api/assistant/chat', () => {
       // "type the initials" answer here sends a provider looking for a box the
       // form no longer leads with.
       'the Initials box fills itself in from the name',
-      '"As the IEP states it:"',
+      // The IEP-minutes calculator is collapsed behind this question, so an
+      // answer that describes it as an always-visible row sends the reader
+      // hunting for fields that are not on screen.
+      '"IEP minutes listed per year?"',
       'Student Goals Report → Generate Report → Download',
       'Current Information, IEP Goals, Assessments, Progress, Attendance',
       'it appears only where the wider AI features are switched on',
