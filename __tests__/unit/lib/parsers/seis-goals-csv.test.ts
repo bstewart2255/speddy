@@ -506,6 +506,35 @@ describe('parseCSVReport — SEIS Student Goals Report (CSV)', () => {
       );
     });
 
+    it('says which columns it had to locate by position rather than by name', async () => {
+      // No allowlist can enumerate every label a district might use, so a
+      // positional resolution is stated rather than made silently — it is
+      // right for a relabelled column and wrong for a removed one, and only
+      // the person looking at the file can tell which.
+      const result = await parseCSVReport(buildSeisGoalsCsvWithHeaders({ 1: 'State Student ID' }), {});
+
+      expect(result.warnings.some((w) => /read from the position/i.test(w.message))).toBe(true);
+      expect(result.warnings.some((w) => /"District ID"/.test(w.message))).toBe(true);
+    });
+
+    it('counts other-school students, not their goal rows', async () => {
+      // Ana has two goal rows; counting rows would report her twice.
+      const result = await parseCSVReport(SEIS_GOALS_CSV(), {
+        userSchools: ['A School That Matches Nobody'],
+      });
+
+      const summary = result.warnings.find((w) => /attend schools other than yours/i.test(w.message));
+      expect(summary).toBeDefined();
+      // The fixture's distinct students, not its goal-row count.
+      const allStudents = await parseCSVReport(SEIS_GOALS_CSV(), {});
+      expect(summary!.message).toMatch(new RegExp(`^${allStudents.students.length} students`));
+      // And nobody is named twice among the individual warnings.
+      const named = result.warnings
+        .filter((w) => /doesn't match your school/i.test(w.message))
+        .map((w) => w.message);
+      expect(new Set(named).size).toBe(named.length);
+    });
+
     it('stays quiet when those columns are present', async () => {
       const result = await parseCSVReport(SEIS_GOALS_CSV(), { providerRole: 'resource' });
       expect(result.warnings.some((w) => /district student id|route each goal/i.test(w.message))).toBe(

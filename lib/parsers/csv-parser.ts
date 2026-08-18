@@ -58,6 +58,8 @@ interface ColumnMapping {
   goalType?: number; // SEIS "Annual Goal #" - used for filtering
   personResponsible?: number; // SEIS "Person Responsible" - used for filtering
   goalColumns: number[];
+  /** SEIS only: fields located by POSITION because their label wasn't recognized. */
+  positionallyResolved?: string[];
 }
 
 export interface ParseOptions {
@@ -264,10 +266,30 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
       });
     }
 
-    // How many rows the school filter dropped, and how many of those were named
-    // individually — see the bounded warning inside the row loop.
+    // A column read from its canonical position rather than found by its label
+    // is a GUESS. It's the right guess for a relabelled column and the reason
+    // this parser tolerates unfamiliar headers at all, but no allowlist can
+    // enumerate every label a district might use ("State Student ID" for SSID,
+    // "Short Term Objective 1" for Objective 1), so the guess is stated rather
+    // than made silently.
+    const guessedColumns = columnMapping.positionallyResolved ?? [];
+    if (isSEISFormat && guessedColumns.length > 0) {
+      warnings.push({
+        row: 0,
+        message:
+          `Could not find ${guessedColumns.map((c) => `"${c}"`).join(', ')} by name, so ${
+            guessedColumns.length === 1 ? 'it was' : 'they were'
+          } read from the position ${
+            guessedColumns.length === 1 ? 'that column' : 'those columns'
+          } normally occupies in this report. Check those values on the students below.`,
+      });
+    }
+
+    // Distinct students the school filter dropped, and how many were named
+    // individually — see the bounded warning inside the row loop. Counted per
+    // STUDENT, not per goal row, or one child with four goals reads as four.
     const OTHER_SCHOOL_WARNING_LIMIT = 5;
-    let otherSchoolSkipped = 0;
+    const otherSchoolStudents = new Set<string>();
 
     // Temporary map to consolidate duplicate students
     const studentMap = new Map<string, ParsedStudent>();
@@ -367,13 +389,17 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
             // survives the filter, the zero-student path returns warnings
             // uncapped. Name the first few, then count the rest (summarized
             // after the loop).
-            if (otherSchoolSkipped < OTHER_SCHOOL_WARNING_LIMIT) {
+            const studentKey = `${firstName.trim().toLowerCase()}|${lastName.trim().toLowerCase()}`;
+            if (
+              !otherSchoolStudents.has(studentKey) &&
+              otherSchoolStudents.size < OTHER_SCHOOL_WARNING_LIMIT
+            ) {
               warnings.push({
                 row: rowIndex + 1,
                 message: `Student "${firstName} ${lastName}" attends "${schoolOfAttendance}" which doesn't match your school(s). Skipping.`
               });
             }
-            otherSchoolSkipped++;
+            otherSchoolStudents.add(studentKey);
             continue;
           }
         }
@@ -498,13 +524,13 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
       }
     }
 
-    if (otherSchoolSkipped > OTHER_SCHOOL_WARNING_LIMIT) {
+    if (otherSchoolStudents.size > OTHER_SCHOOL_WARNING_LIMIT) {
       warnings.push({
         row: 0,
         message:
-          `${otherSchoolSkipped} students in this file attend schools other than yours and were ` +
-          `skipped (${OTHER_SCHOOL_WARNING_LIMIT} of them listed above). That is expected for a ` +
-          'district-wide export.',
+          `${otherSchoolStudents.size} students in this file attend schools other than yours and ` +
+          `were skipped (${OTHER_SCHOOL_WARNING_LIMIT} of them listed above). That is expected ` +
+          'for a district-wide export.',
       });
     }
 
@@ -714,6 +740,20 @@ const SEIS_CANONICAL_INDEX = {
   personResponsible: 17,
 } as const satisfies Record<keyof typeof SEIS_FIELDS, number>;
 
+/** Human-facing column names, for warnings that name what couldn't be read. */
+const SEIS_FIELD_LABELS: Record<keyof typeof SEIS_FIELDS, string> = {
+  districtStudentId: 'District ID',
+  lastName: 'Last Name',
+  firstName: 'First Name',
+  grade: 'Grade',
+  schoolOfAttendance: 'School of Attendance',
+  iepDate: 'IEP Date',
+  areaOfNeed: 'Area Of Need',
+  goalType: 'Annual Goal #',
+  goal: 'Goal',
+  personResponsible: 'Person Responsible',
+};
+
 /** The six fields whose presence identifies the report (5 of 6 required). */
 const SEIS_SIGNATURE_FIELDS = [
   'lastName',
@@ -817,8 +857,14 @@ function findSeisColumn(normalized: string[], field: keyof typeof SEIS_FIELDS): 
   return index === -1 ? undefined : index;
 }
 
-/** Every SEIS field's column index, by label where possible. */
-type SeisColumns = Partial<Record<keyof typeof SEIS_FIELDS, number>>;
+/**
+ * Every SEIS field's column index, plus which of them were resolved by POSITION
+ * rather than by their label — a guess the user is told about, since no
+ * allowlist can enumerate every label a district might use.
+ */
+type SeisColumns = Partial<Record<keyof typeof SEIS_FIELDS, number>> & {
+  positionallyResolved?: Array<keyof typeof SEIS_FIELDS>;
+};
 
 const SEIS_FIELD_NAMES = Object.keys(SEIS_CANONICAL_INDEX) as Array<keyof typeof SEIS_FIELDS>;
 
@@ -836,10 +882,12 @@ const SEIS_FIELD_NAMES = Object.keys(SEIS_CANONICAL_INDEX) as Array<keyof typeof
  */
 function resolveSeisColumns(normalized: string[]): SeisColumns {
   const columns: SeisColumns = {};
+  const guessed: Array<keyof typeof SEIS_FIELDS> = [];
   for (const field of SEIS_FIELD_NAMES) {
     const index = findSeisColumn(normalized, field);
     if (index !== undefined) columns[field] = index;
   }
+  columns.positionallyResolved = guessed;
 
   const identified = SEIS_FIELD_NAMES.filter((field) => columns[field] !== undefined);
   const offsets = new Set(identified.map((field) => columns[field]! - SEIS_CANONICAL_INDEX[field]));
@@ -877,6 +925,7 @@ function resolveSeisColumns(normalized: string[]): SeisColumns {
     if (namesSomethingElse(candidate, field)) continue;
     columns[field] = candidate;
     taken.add(candidate);
+    guessed.push(field);
   }
   return columns;
 }
@@ -945,6 +994,9 @@ function mapSeisColumnsByHeader(headers: string[]): ColumnMapping {
     goalType: columns.goalType,
     personResponsible: columns.personResponsible,
     goalColumns: columns.goal === undefined ? [] : [columns.goal],
+    positionallyResolved: (columns.positionallyResolved ?? []).map(
+      (field) => SEIS_FIELD_LABELS[field],
+    ),
   };
 }
 
