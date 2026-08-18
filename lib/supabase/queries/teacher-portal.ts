@@ -208,6 +208,11 @@ export async function getStudentResourceSchedule(studentId: string) {
     return [];
   }
 
+  // Local calendar date (not UTC) — matches the "today or later" cutoff the
+  // page used to apply client-side after fetching every session.
+  const now = new Date();
+  const todayLocal = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
   const fetchPerf = measurePerformanceWithAlerts('fetch_student_schedule', 'database');
   const fetchResult = await safeQuery(
     async () => {
@@ -217,6 +222,7 @@ export async function getStudentResourceSchedule(studentId: string) {
         .eq('student_id', studentId)
         .eq('status', 'active')
         .not('session_date', 'is', null)
+        .gte('session_date', todayLocal)
         .order('session_date', { ascending: true })
         .order('start_time', { ascending: true });
       if (error) throw error;

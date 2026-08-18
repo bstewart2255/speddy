@@ -160,15 +160,6 @@ export default function StudentDetailPage() {
   const accommodations = student.student_details?.accommodations || [];
   const upcomingIepDate = student.student_details?.upcoming_iep_date;
 
-  // Filter to only show future sessions (today or later)
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const futureSessions = schedule.filter((session) => {
-    if (!session.session_date) return true; // Show sessions without dates (TBD)
-    const sessionDate = new Date(session.session_date + 'T00:00:00');
-    return sessionDate >= today;
-  });
-
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       {/* Back Button */}
@@ -287,11 +278,11 @@ export default function StudentDetailPage() {
           <h2 className="text-lg font-medium text-gray-900">Weekly Resource Schedule</h2>
         </div>
         <div className="px-6 py-4">
-          {futureSessions.length === 0 ? (
+          {schedule.length === 0 ? (
             <p className="text-gray-500 italic">No upcoming sessions.</p>
           ) : (
             <div className="space-y-3">
-              {futureSessions.map((session) => (
+              {schedule.map((session) => (
                 <div
                   key={session.id}
                   className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
