@@ -22,22 +22,17 @@ export const useTeachers = (supabase: SupabaseClient, currentSchool: SchoolInfo 
         return;
       }
 
-      const { data: allTeachers, error: checkError } = await supabase
-        .from('teachers')
-        .select('school_id');
-
-      if (checkError) {
-        if (isMounted) {
-          setTeachers([]);
-        }
-        return;
-      }
-
       let query = supabase
         .from('teachers')
         .select('*');
 
-      if (schoolId && allTeachers?.some(t => t.school_id)) {
+      // Scope to the caller's own school, full stop. This used to be gated on a
+      // separate probe asking whether *any* teacher in the table had a
+      // school_id — a global answer deciding a per-caller question, so a single
+      // un-normalized environment would drop the filter and hand back every
+      // school's teachers (SPE-519). A school with no teachers should return an
+      // empty list, not everyone's.
+      if (schoolId) {
         query = query.eq('school_id', schoolId);
       }
 
