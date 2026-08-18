@@ -6,7 +6,7 @@
 
 import { parse } from 'csv-parse/sync';
 import { normalizeStudentName } from './name-utils';
-import { isServiceCodeForRole, getDeliveryServiceTypeCode, getServiceTypeName } from './service-type-mapping';
+import { isServiceCodeForRole, getDeliveryServiceTypeCodes, getServiceTypeName } from './service-type-mapping';
 import {
   toWeeklyMinutes,
   calculateSessions,
@@ -39,7 +39,8 @@ export interface DeliveriesParseResult {
     totalRows: number;
     filteredServiceRows: number;
     uniqueStudents: number;
-    serviceTypeCode: string | null;
+    /** Codes this parse filtered on; empty means every service was accepted. */
+    serviceTypeCodes: readonly string[];
   };
 }
 
@@ -57,7 +58,14 @@ export interface DeliveriesParseOptions {
 // "minute", "minutes". Match any of them. Compiled once at module load (not per
 // call) since the same three shapes are matched for every row.
 const MIN_UNIT = 'min(?:ute)?s?';
-const PERIOD = '(Weekly|Daily|Yearly|Monthly)';
+// Some sites write the period as "served Weekly" / "Served Yearly" (JSUSD,
+// confirmed 2026-08-18: "typically it is listed as [X] Min served Yearly, [X]
+// Min served monthly or [X] mins served weekly"). The word carries no meaning
+// beyond the period that follows it, so admit it as an optional filler rather
+// than relaxing the end-anchoring below — a cell with any OTHER extra text is
+// still ambiguous and still falls through to "needs review".
+const SERVED = '(?:\\s*served)?';
+const PERIOD = `${SERVED}\\s*(Weekly|Daily|Yearly|Monthly)`;
 // Each pattern is anchored at BOTH ends so it matches only when the whole
 // (trimmed) cell is exactly one recognized shape. A cell with extra leading or
 // trailing text — e.g. "30 min Weekly / monthly" or "60 min x 2 Times = 120 min
@@ -154,7 +162,7 @@ export async function parseDeliveriesCSV(
   // goal-visibility one, so the reported metadata matches the rows kept below
   // (SPE-554).
   const providerRole = options.providerRole || 'resource';
-  const serviceTypeCode = getDeliveryServiceTypeCode(providerRole);
+  const serviceTypeCodes = getDeliveryServiceTypeCodes(providerRole);
 
   let totalRows = 0;
   let filteredServiceRows = 0;
@@ -313,14 +321,18 @@ export async function parseDeliveriesCSV(
   // green tick. Dropping some rows is normal (a SEIS export carries the whole
   // team's services); dropping ALL of them means the role's code is wrong for
   // this district, so say so rather than reporting a silent success (SPE-554).
-  if (totalRows > 0 && filteredServiceRows === 0 && serviceTypeCode) {
-    const serviceName = getServiceTypeName(serviceTypeCode);
+  if (totalRows > 0 && filteredServiceRows === 0 && serviceTypeCodes.length > 0) {
+    const expected = serviceTypeCodes
+      .map(code => {
+        const name = getServiceTypeName(code);
+        return name ? `${name} (${code})` : `service ${code}`;
+      })
+      .join(' or ');
     warnings.push({
       row: 0,
       message:
         `None of the ${totalRows} row${totalRows !== 1 ? 's' : ''} in this file are ` +
-        `${serviceName ? `${serviceName} (${serviceTypeCode})` : `service ${serviceTypeCode}`} — ` +
-        `the service your role delivers — so no schedules were imported. ` +
+        `${expected} — the service your role delivers — so no schedules were imported. ` +
         `Check you exported the right report, or enter service minutes on the Students page.`,
     });
   }
@@ -333,7 +345,7 @@ export async function parseDeliveriesCSV(
       totalRows,
       filteredServiceRows,
       uniqueStudents: deliveries.size,
-      serviceTypeCode
+      serviceTypeCodes
     }
   };
 }

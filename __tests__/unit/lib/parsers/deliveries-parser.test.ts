@@ -49,6 +49,29 @@ function serialize(result: DeliveriesParseResult) {
 }
 
 describe('parseFrequency', () => {
+  it('parses the "Min served <Period>" wording', () => {
+    // JSUSD writes the period this way (confirmed 2026-08-18): "typically it is
+    // listed as [X] Min served Yearly, [X] Min served monthly or [X] mins
+    // served weekly". Every one of these previously parsed to 0 and the row was
+    // dropped as unparseable, so a whole district's export imported nothing.
+    expect(parseFrequency('30 Min served weekly')).toEqual({ weeklyMinutes: 30, rawMinutes: 30, period: 'weekly' });
+    expect(parseFrequency('30 mins served weekly')).toEqual({ weeklyMinutes: 30, rawMinutes: 30, period: 'weekly' });
+    expect(parseFrequency('120 Min served monthly')).toEqual({ weeklyMinutes: 30, rawMinutes: 120, period: 'monthly' });
+    expect(parseFrequency('300 Min Served Yearly')).toEqual({ weeklyMinutes: 9, rawMinutes: 300, period: 'yearly' });
+    // The other two shapes accept it too, rather than diverging by accident.
+    expect(parseFrequency('2 x 30 min served Weekly')).toEqual({ weeklyMinutes: 60, rawMinutes: 60, period: 'weekly' });
+    expect(parseFrequency('30 min x 2 Times = 60 min served Weekly')).toEqual({ weeklyMinutes: 60, rawMinutes: 60, period: 'weekly' });
+  });
+
+  it('still refuses a cell with any OTHER extra text', () => {
+    // "served" is admitted as a known filler; the end-anchoring that sends
+    // genuinely ambiguous cells to "needs review" must survive it.
+    expect(parseFrequency('30 min Weekly (direct)').weeklyMinutes).toBe(0);
+    expect(parseFrequency('30 min Weekly / monthly').weeklyMinutes).toBe(0);
+    expect(parseFrequency('30 min delivered Weekly').weeklyMinutes).toBe(0);
+    expect(parseFrequency('served Weekly').weeklyMinutes).toBe(0);
+  });
+
   it('parses simple weekly/daily/yearly formats', () => {
     expect(parseFrequency('45 min Weekly')).toEqual({ weeklyMinutes: 45, rawMinutes: 45, period: 'weekly' });
     expect(parseFrequency('15 min Weekly')).toEqual({ weeklyMinutes: 15, rawMinutes: 15, period: 'weekly' });
@@ -140,17 +163,18 @@ describe('parseDeliveriesCSV', () => {
     expect(nadia!.sessionsFrequency).toBe('30 min Weekly');
   });
 
-  it('psychologist keeps only counseling (510) rows — not other providers\' minutes', async () => {
+  it('psychologist keeps only counseling rows — not other providers\' minutes', async () => {
     // SPE-554: deliveries become the importing provider's OWN session
     // requirements, so an unfiltered psych import wrote speech/OT/academic
     // minutes into their caseload as counseling. Was: "keeps all service rows".
     const result = await parseDeliveriesCSV(buffer(), { providerRole: 'psychologist' });
 
-    expect(result.deliveries.size).toBeGreaterThan(0);
+    // Both counseling codes survive, and nothing else does.
+    expect(result.deliveries.size).toBe(2);
     for (const delivery of result.deliveries.values()) {
-      expect(delivery.service).toContain('510');
+      expect(delivery.service).toMatch(/^51[05]\b/);
     }
-    expect(result.metadata.serviceTypeCode).toBe('510');
+    expect(result.metadata.serviceTypeCodes).toEqual(['510', '515']);
     expect(serialize(result)).toMatchSnapshot();
   });
 
@@ -179,7 +203,9 @@ describe('parseDeliveriesCSV', () => {
 
     expect(result.warnings).toHaveLength(1);
     expect(result.warnings[0].message).toMatch(/None of the 2 rows/);
+    // Names both codes, so a district on either convention knows what to look for.
     expect(result.warnings[0].message).toMatch(/Individual Counseling \(510\)/);
+    expect(result.warnings[0].message).toMatch(/Counseling and Guidance \(515\)/);
   });
 
   it('stays quiet when a file merely drops SOME rows', async () => {
