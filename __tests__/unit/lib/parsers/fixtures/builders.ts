@@ -235,26 +235,67 @@ export function buildSeisGoalsCsvFrom(rows: Array<Record<number, string>>): Buff
 }
 
 /**
- * A column-shifted SEIS export (every column moved right by one) so the fixed
- * position detector matches fewer than 5 of its 6 key columns and falls back
- * to the generic parser. Pins the 5-of-6 detection boundary at the file level.
+ * Build the SEIS goals CSV with one extra column inserted at `atIndex`, every
+ * column at or after it shifted one to the right. This is the exact transform
+ * that separates SEIS's two real export shapes of the same report, and the one
+ * that used to defeat the fixed-position detector (SPE-558).
+ *
+ * `fill` supplies the inserted column's cell from the ORIGINAL (unshifted) row,
+ * so a fixture can put a realistic value in it rather than a blank.
  */
-function buildSeisGoalsShiftedCsv(): string {
-  const shiftedHeaders = ['Row #', ...SEIS_HEADERS];
+function buildSeisGoalsWithInsertedColumn(
+  atIndex: number,
+  label: string,
+  fill: (row: SparseRow) => string,
+): string {
+  const headers = [...SEIS_HEADERS];
+  headers.splice(atIndex, 0, label);
+
   const shift = (v: SparseRow): SparseRow => {
     const out: SparseRow = {};
-    for (const k of Object.keys(v)) out[Number(k) + 1] = v[Number(k)];
+    for (const key of Object.keys(v)) {
+      const i = Number(key);
+      out[i >= atIndex ? i + 1 : i] = v[i];
+    }
+    const inserted = fill(v);
+    if (inserted) out[atIndex] = inserted;
     return out;
   };
+
   const lines = [
-    shiftedHeaders.map(csvCell).join(','),
-    ...SEIS_GOALS_ROWS.map((r) => seisCsvLine(shift(r), shiftedHeaders)),
+    headers.map(csvCell).join(','),
+    ...SEIS_GOALS_ROWS.map((r) => seisCsvLine(shift(r), headers)),
   ];
   return lines.join('\r\n');
 }
 
+/**
+ * A column-shifted SEIS export (an extra leading column moves everything right
+ * by one). Pins that detection and mapping are position-INDEPENDENT: before
+ * SPE-558 this scored 0 of 6 against the fixed indexes and silently fell back
+ * to the generic parser.
+ */
 export const SEIS_GOALS_SHIFTED_CSV = (): Buffer =>
-  Buffer.from(buildSeisGoalsShiftedCsv(), 'utf-8');
+  Buffer.from(buildSeisGoalsWithInsertedColumn(0, 'Row #', () => ''), 'utf-8');
+
+/**
+ * SEIS's DISTRICT-WIDE export of the Student Goals Report (SPE-558): identical
+ * to the per-provider export except for an `SSID` column — the state student
+ * id — inserted at index 1, which shifts District ID and everything after it
+ * one column right.
+ *
+ * The SSID cell is deliberately populated with a value distinct from both the
+ * SEIS ID (index 0) and the District ID (index 2) so a test can prove WHICH id
+ * the parser captured; reading the wrong column would otherwise still "work".
+ */
+export const SEIS_GOALS_DISTRICT_CSV = (): Buffer =>
+  Buffer.concat([
+    UTF8_BOM,
+    Buffer.from(
+      buildSeisGoalsWithInsertedColumn(1, 'SSID', (row) => (row[1] ? `98${row[1]}` : '')),
+      'utf-8',
+    ),
+  ]);
 
 // ---------------------------------------------------------------------------
 // Windows-1252-encoded generic CSV (accented names -> mojibake under UTF-8)
