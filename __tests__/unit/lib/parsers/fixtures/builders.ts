@@ -255,6 +255,27 @@ export function buildSeisGoalsCsvWithHeaders(
 }
 
 /**
+ * The canonical SEIS goals CSV with columns REMOVED entirely (by index).
+ *
+ * Distinct from relabelling: a removed column slides everything after it left,
+ * so its canonical position now holds a different column. This is the shape a
+ * district's trimmed export takes, and the case the missing-column warnings
+ * exist for (SPE-558).
+ */
+export function buildSeisGoalsCsvWithoutColumns(drop: number[]): Buffer {
+  const dropped = new Set(drop);
+  const keep = SEIS_HEADERS.map((_, i) => i).filter((i) => !dropped.has(i));
+  const headers = keep.map((i) => SEIS_HEADERS[i]);
+  const lines = [
+    headers.map(csvCell).join(','),
+    ...SEIS_GOALS_ROWS.map((row) =>
+      keep.map((i) => csvCell(row[i] ?? '')).join(','),
+    ),
+  ];
+  return Buffer.from(lines.join('\r\n'), 'utf-8');
+}
+
+/**
  * Build the SEIS goals CSV with one extra column inserted at `atIndex`, every
  * column at or after it shifted one to the right. This is the exact transform
  * that separates SEIS's two real export shapes of the same report, and the one

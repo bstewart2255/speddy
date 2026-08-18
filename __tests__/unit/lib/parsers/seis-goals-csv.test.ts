@@ -21,6 +21,7 @@ const toRecords = (csv: Buffer): string[][] =>
 import {
   buildSeisGoalsCsvFrom,
   buildSeisGoalsCsvWithHeaders,
+  buildSeisGoalsCsvWithoutColumns,
   SEIS_GOALS_CSV,
   SEIS_GOALS_CSV_BOM,
   SEIS_GOALS_DISTRICT_CSV,
@@ -347,48 +348,42 @@ describe('parseCSVReport — SEIS Student Goals Report (CSV)', () => {
       expect(result.warnings.some((w) => /doesn't match your school/i.test(w.message))).toBe(true);
     });
 
-    it('hands a file with an unrecognizable goal header to the generic path', async () => {
-      // Unlike grade — where the fixed-index parser was silently WRONG and a
-      // named error is the better trade — the old parser read this file's goals
-      // correctly from column O. Claiming it and then failing on the missing
-      // Goal column would be a regression, so detection requires the goal
-      // column outright and lets the generic path import it.
+    it('reads the goal column from its position when the label is unrecognizable', async () => {
+      // Labels are an unbounded space, so an unrecognizable one falls back to
+      // the canonical position rather than failing the file or handing it to
+      // the generic path (which would lose district id / school / IEP date).
       const csv = buildSeisGoalsCsvWithHeaders({ 14: 'Goal Description' });
-      expect(detectSEISStudentGoalsFormat(toRecords(csv))).toBe(false);
-
-      const result = await parseCSVReport(csv, {});
-
-      expect(result.errors).toHaveLength(0);
-      expect(result.students.length).toBeGreaterThan(0);
-      expect(result.students[0].goals.length).toBeGreaterThan(0);
-    });
-
-    it('refuses rather than reading a grade out of "Grade Level Standard"', async () => {
-      // With no real grade header, a bare /grade/ scan binds to the standards
-      // column (index 47, "Reading Standard 3.2") and every student imports as
-      // grade "3". The file is still SEIS by the 5-of-6 rule, so the honest
-      // outcome is a named error, not a silently wrong grade.
-      const csv = buildSeisGoalsCsvWithHeaders({ 5: 'Year Of Study' });
       expect(detectSEISStudentGoalsFormat(toRecords(csv))).toBe(true);
 
       const result = await parseCSVReport(csv, {});
+      const ana = result.students.find((s) => s.lastName === 'Alvarez')!;
 
-      expect(result.students).toHaveLength(0);
-      expect(result.errors.some((e) => /could not find expected columns/i.test(e.message))).toBe(
-        true,
-      );
+      expect(result.errors).toHaveLength(0);
+      expect(ana.goals[0]).toMatch(/grade-level passage/);
+      expect(ana.districtStudentId).toBe('100001');
+      expect(ana.schoolOfAttendance).toBe('Mt Diablo Elementary School');
+    });
+
+    it('reads grade from its position, never from "Grade Level Standard"', async () => {
+      // A bare /grade/ scan binds to the standards column (index 47, "Reading
+      // Standard 3.2") and imports every student as grade "3".
+      const csv = buildSeisGoalsCsvWithHeaders({ 5: 'Year Of Study' });
+
+      const result = await parseCSVReport(csv, {});
+      const ana = result.students.find((s) => s.lastName === 'Alvarez')!;
+
+      expect(ana.gradeLevel).toBe('1');
     });
   });
 
-  // SPE-558 review round 3. A column this parser can proceed without still
-  // costs the user something invisible — silence is the exact complaint that
-  // opened this ticket.
+  // SPE-558. A column this parser can proceed without still costs the user
+  // something invisible — silence is the exact complaint that opened this
+  // ticket. These use columns REMOVED from the export, not relabelled: a
+  // relabelled column is recovered from its canonical position, so only a
+  // genuinely absent one reaches these warnings.
   describe('says so when an optional-but-costly column is missing', () => {
     it('warns that teachers cannot be matched when there is no District ID column', async () => {
-      const result = await parseCSVReport(
-        buildSeisGoalsCsvWithHeaders({ 1: 'Local Student Number' }),
-        {},
-      );
+      const result = await parseCSVReport(buildSeisGoalsCsvWithoutColumns([1]), {});
 
       expect(result.students.length).toBeGreaterThan(0);
       expect(result.students.every((s) => s.districtStudentId === undefined)).toBe(true);
@@ -396,10 +391,9 @@ describe('parseCSVReport — SEIS Student Goals Report (CSV)', () => {
     });
 
     it('warns when no goal-routing column exists and a keyworded role would import nothing', async () => {
-      const result = await parseCSVReport(
-        buildSeisGoalsCsvWithHeaders({ 11: 'Domain', 12: 'Goal Number', 17: 'Owner Role' }),
-        { providerRole: 'resource' },
-      );
+      const result = await parseCSVReport(buildSeisGoalsCsvWithoutColumns([11, 12, 17]), {
+        providerRole: 'resource',
+      });
 
       expect(result.students).toHaveLength(0);
       expect(result.warnings.some((w) => /route each goal/i.test(w.message))).toBe(true);
@@ -408,7 +402,7 @@ describe('parseCSVReport — SEIS Student Goals Report (CSV)', () => {
     it('warns that scoping and dedup are weakened when there is no school column', async () => {
       // Both guards behind this column fail OPEN, so silence here means a
       // provider imports other schools' students and can merge two children.
-      const csv = buildSeisGoalsCsvWithHeaders({ 6: 'Site' });
+      const csv = buildSeisGoalsCsvWithoutColumns([6]);
       expect(detectSEISStudentGoalsFormat(toRecords(csv))).toBe(true);
 
       const result = await parseCSVReport(csv, { userSchools: ['Mt Diablo Elementary School'] });
@@ -421,10 +415,9 @@ describe('parseCSVReport — SEIS Student Goals Report (CSV)', () => {
       // Every row trivially lacks a routing signal, so the per-row warning would
       // fire for all of them and bury the one message that explains why — and
       // the zero-student path returns warnings uncapped.
-      const result = await parseCSVReport(
-        buildSeisGoalsCsvWithHeaders({ 11: 'Domain', 12: 'Goal Number', 17: 'Owner Role' }),
-        { providerRole: 'resource' },
-      );
+      const result = await parseCSVReport(buildSeisGoalsCsvWithoutColumns([11, 12, 17]), {
+        providerRole: 'resource',
+      });
 
       expect(result.warnings.filter((w) => /route each goal/i.test(w.message))).toHaveLength(1);
       expect(result.warnings.filter((w) => w.row > 0)).toHaveLength(0);

@@ -654,6 +654,33 @@ const SEIS_FIELDS = {
   },
 } as const;
 
+/**
+ * Where each field sits in the per-provider export — the exact fixed indexes
+ * this parser used before SPE-558.
+ *
+ * Labels are an unbounded space: "Grade Level Code", "Last Name of Student",
+ * "School of Attendance Name" are all real-looking and none matches an anchored
+ * pattern, while loosening the patterns to catch them re-admits "Grade Level
+ * Standard". Position is the knowledge the old code had and label matching
+ * threw away, so it comes back as the fallback: once enough columns HAVE been
+ * identified by label, they fix the offset between this file and the canonical
+ * layout, and any column that couldn't be identified is read from where the
+ * layout says it should be. The district-wide export is a uniform +1 shift of
+ * this table; the per-provider export is offset 0.
+ */
+const SEIS_CANONICAL_INDEX = {
+  districtStudentId: 1,
+  lastName: 2,
+  firstName: 3,
+  grade: 5,
+  schoolOfAttendance: 6,
+  iepDate: 9,
+  areaOfNeed: 11,
+  goalType: 12,
+  goal: 14,
+  personResponsible: 17,
+} as const satisfies Record<keyof typeof SEIS_FIELDS, number>;
+
 /** The six fields whose presence identifies the report (5 of 6 required). */
 const SEIS_SIGNATURE_FIELDS = [
   'lastName',
@@ -706,10 +733,68 @@ function findSeisColumn(normalized: string[], field: keyof typeof SEIS_FIELDS): 
   return index === -1 ? undefined : index;
 }
 
+/** Every SEIS field's column index, by label where possible. */
+type SeisColumns = Partial<Record<keyof typeof SEIS_FIELDS, number>>;
+
+const SEIS_FIELD_NAMES = Object.keys(SEIS_CANONICAL_INDEX) as Array<keyof typeof SEIS_FIELDS>;
+
 /**
- * Detect if CSV is a SEIS Student Goals Report, by header NAME rather than
- * position (SPE-558): 5 of the 6 signature fields resolvable, plus at least
- * two SEIS-only marker columns.
+ * Resolve every SEIS field: by label first, then — for whatever the labels
+ * couldn't name — by canonical position, shifted by the offset the identified
+ * columns agree on.
+ *
+ * The offset needs THREE agreeing witnesses and no dissent. Both real shapes
+ * satisfy that easily (offset 0 and +1, every field agreeing), while a file
+ * that merely resembles this report produces disagreement and gets no
+ * positional filling at all. A filled column is never allowed to land on one
+ * another field already holds, so a wrong guess can't quietly steal a column
+ * that was positively identified.
+ */
+function resolveSeisColumns(normalized: string[]): SeisColumns {
+  const columns: SeisColumns = {};
+  for (const field of SEIS_FIELD_NAMES) {
+    const index = findSeisColumn(normalized, field);
+    if (index !== undefined) columns[field] = index;
+  }
+
+  const identified = SEIS_FIELD_NAMES.filter((field) => columns[field] !== undefined);
+  const offsets = new Set(identified.map((field) => columns[field]! - SEIS_CANONICAL_INDEX[field]));
+  if (identified.length < 3 || offsets.size !== 1) return columns;
+
+  const offset = [...offsets][0];
+  const taken = new Set(identified.map((field) => columns[field]!));
+
+  // A column that was DELETED rather than relabelled also produces a uniform
+  // offset — everything after it slides left — and the canonical position then
+  // points at whatever now sits there. So refuse any candidate whose header
+  // already announces itself as something else: another field's label, or one
+  // of the marker columns. Deleting "District ID" would otherwise land this on
+  // "SEIS ID" and import that as the district's student number.
+  const namesSomethingElse = (index: number, field: keyof typeof SEIS_FIELDS): boolean => {
+    const header = normalized[index];
+    if (!header) return false;
+    if ((SEIS_MARKER_HEADERS as readonly string[]).includes(header)) return true;
+    return SEIS_FIELD_NAMES.some((other) => {
+      if (other === field) return false;
+      const { exact, pattern } = SEIS_FIELDS[other];
+      return (exact as readonly string[]).includes(header) || pattern.test(header);
+    });
+  };
+
+  for (const field of SEIS_FIELD_NAMES) {
+    if (columns[field] !== undefined) continue;
+    const candidate = SEIS_CANONICAL_INDEX[field] + offset;
+    if (candidate < 0 || candidate >= normalized.length || taken.has(candidate)) continue;
+    if (namesSomethingElse(candidate, field)) continue;
+    columns[field] = candidate;
+    taken.add(candidate);
+  }
+  return columns;
+}
+
+/**
+ * Detect if CSV is a SEIS Student Goals Report (SPE-558): 5 of the 6 signature
+ * fields resolvable, plus at least two SEIS-only marker columns.
  *
  * Exported for the parser golden-fixture suite (SPE-239).
  */
@@ -719,17 +804,16 @@ export function detectSEISStudentGoalsFormat(records: string[][]): boolean {
   }
 
   const normalized = (records[0] || []).map(normalizeHeaderName);
+  const columns = resolveSeisColumns(normalized);
 
   // The goal column is mandatory rather than one of the five-of-six, because
-  // the mapper cannot proceed without it: claiming a file whose goal header
-  // reads "Goal Description" would dead-end in the no-Goal-column error, while
+  // the mapper cannot proceed without it: claiming a file whose goal column
+  // can't be located at all would dead-end in the no-Goal-column error, while
   // the generic path imports it (fuzzily, but it imports). Refusing the file
   // here hands it to that path instead of failing it outright.
-  if (findSeisColumn(normalized, 'goal') === undefined) return false;
+  if (columns.goal === undefined) return false;
 
-  const signature = SEIS_SIGNATURE_FIELDS.filter(
-    (field) => findSeisColumn(normalized, field) !== undefined,
-  ).length;
+  const signature = SEIS_SIGNATURE_FIELDS.filter((field) => columns[field] !== undefined).length;
   if (signature < SEIS_SIGNATURE_FIELDS.length - 1) return false;
 
   // The markers are required unconditionally, with no full-house waiver.
@@ -752,30 +836,26 @@ export function detectSEISStudentGoalsFormat(records: string[][]): boolean {
  * table the detector resolved them with (SPE-558) — so anything detection
  * counted, mapping finds.
  *
- * The goal column is the anchored `Goal` / `IEP Goal` match and nothing else.
- * There is deliberately NO fuzzy fallback: every fallback wide enough to catch
- * an unusual goal label also catches "Purpose(s) of Goal", "Goal Met" and
+ * The goal column is the anchored `Goal` / `IEP Goal` match, or the canonical
+ * position — never a fuzzy label sweep. Every sweep wide enough to catch an
+ * unusual goal label also catches "Purpose(s) of Goal", "Goal Met" and
  * "Comparison To Goal", which is exactly how progress labels ended up in
- * children's IEP goals. A detected file with no recognizable Goal column gets
- * the explicit error instead.
+ * children's IEP goals.
  */
 function mapSeisColumnsByHeader(headers: string[]): ColumnMapping {
-  const normalized = headers.map(normalizeHeaderName);
-  const at = (field: keyof typeof SEIS_FIELDS) => findSeisColumn(normalized, field);
-
-  const goal = at('goal');
+  const columns = resolveSeisColumns(headers.map(normalizeHeaderName));
 
   return {
-    districtStudentId: at('districtStudentId'),
-    lastName: at('lastName'),
-    firstName: at('firstName'),
-    grade: at('grade'),
-    schoolOfAttendance: at('schoolOfAttendance'),
-    iepDate: at('iepDate'),
-    areaOfNeed: at('areaOfNeed'),
-    goalType: at('goalType'),
-    personResponsible: at('personResponsible'),
-    goalColumns: goal === undefined ? [] : [goal],
+    districtStudentId: columns.districtStudentId,
+    lastName: columns.lastName,
+    firstName: columns.firstName,
+    grade: columns.grade,
+    schoolOfAttendance: columns.schoolOfAttendance,
+    iepDate: columns.iepDate,
+    areaOfNeed: columns.areaOfNeed,
+    goalType: columns.goalType,
+    personResponsible: columns.personResponsible,
+    goalColumns: columns.goal === undefined ? [] : [columns.goal],
   };
 }
 
