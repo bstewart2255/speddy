@@ -2,10 +2,7 @@
 
 import { useState } from 'react';
 import { TeacherAutocomplete } from './teacher-autocomplete';
-import {
-  sortTeachersByPeriod,
-  type EditableTeacherLink,
-} from '@/lib/supabase/queries/student-teachers';
+import type { EditableTeacherLink } from '@/lib/supabase/queries/student-teachers';
 
 interface StudentTeachersFieldProps {
   value: EditableTeacherLink[];
@@ -34,13 +31,14 @@ interface StudentTeachersFieldProps {
  * them: no "primary" badge, no reordering handles, and removing the first row
  * is exactly as easy as removing the last.
  *
- * The rows READ in period order — the school day the student walks through,
- * earliest first — because six secondary classes in link order are six rows
- * the provider has to scan for the one they want. That is presentation only:
- * `value` keeps the order the caller handed over, and every edit below keys
- * off `teacherId` rather than a row index, so nothing downstream that reads
- * meaning into link order sees a reshuffled set. Elementary is untouched:
- * with no periods, every row ties and the sort is stable.
+ * Rows render in `value` order, and the CALLER decides what that is — this is
+ * the one teacher list that does not sort itself. Six secondary classes read
+ * best in period order (`sortTeachersByPeriod`), so the caller applies it
+ * where the set loads; doing it here, per render, would re-sort on every
+ * keystroke in a row's own Period box and move the focused `<li>` out from
+ * under the cursor — a DOM move blurs what is focused inside it. A row a
+ * provider adds by hand therefore lands at the bottom until the next open,
+ * which is also where they are looking.
  *
  * `subject`/`period` are display labels only — Speddy does not schedule at
  * secondary (SPE-149/193), and nothing downstream reads them as times.
@@ -97,7 +95,7 @@ export function StudentTeachersField({
     <div className="space-y-2">
       {value.length > 0 && (
         <ul className="space-y-2">
-          {sortTeachersByPeriod(value).map(link => (
+          {value.map(link => (
             <li
               key={link.teacherId}
               className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2"

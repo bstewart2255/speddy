@@ -132,41 +132,57 @@ export async function getTeachersByChildId(
 // ---------------------------------------------------------------------------
 
 /**
- * A period label's place in the school day, as `[start time, period number]`.
+ * A period label's place in the school day, as `[period number, start time]`.
  *
  * `period` is display-only free text (SPE-334) and arrives in more than one
  * shape: the SIS link sync writes whatever the roster carries
  * ("5 (1:30 PM - 2:25 PM)"), and a provider editing by hand may type "3" or
- * "Period 3". So this reads the label rather than trusting a format.
+ * "Period 3". Both shapes sit in one student's set the moment somebody adds a
+ * teacher to a synced roster, so this reads the label rather than trusting a
+ * format, and the two shapes have to interleave: a hand-typed "2" belongs
+ * between the SIS's first and third periods, not below its sixth.
  *
- * The first clock time in the label leads, because it is the one thing that
- * holds when the names do not — "Advisory (7:30 AM)" belongs above
- * "1 (8:30 AM - 9:25 AM)", and a label carrying a range starts at its first
- * time. The first whole number breaks ties and carries the untimed labels, so
- * a bare "10" still lands after "9" (a string sort puts it after "1").
+ * The period NUMBER leads, because it is the half both shapes carry, and
+ * within a school it already runs in time order. The start time follows as the
+ * tiebreak — and as the only ordering an unnumbered label ("Advisory
+ * (7:30 AM)") has, which is why those sort among themselves at the bottom.
  *
- * `Infinity` for a component the label does not carry, so a row Speddy cannot
- * place sinks below the ones it can, and an unlabeled row sinks below both.
+ * Times are read out of the label BEFORE the number, and taken out of the way:
+ * "Advisory (7:30 AM - 8:20 AM)" must not be read as period 7. Both halves
+ * take their SMALLEST match, so a label the sync joined from two classes
+ * ("1 (8:30 AM…)/5 (1:30 PM…)") is placed by the earlier one whatever order it
+ * was joined in.
+ *
+ * `Infinity` for a half the label does not carry, so a row Speddy cannot place
+ * sinks below the ones it can, and an unlabeled row sinks below both.
  */
 function periodSortKey(period: string | null | undefined): [number, number] {
   const label = period?.trim();
   if (!label) return [Infinity, Infinity];
 
-  let minutes = Infinity;
-  const clock = /(\d{1,2}):(\d{2})(?:\s*([ap])\.?\s*m\.?)?/i.exec(label);
-  if (clock) {
-    let hour = Number(clock[1]);
-    const minute = Number(clock[2]);
-    if (hour <= 23 && minute <= 59) {
-      const meridiem = clock[3]?.toLowerCase();
-      if (meridiem === 'a' && hour === 12) hour = 0;
-      if (meridiem === 'p' && hour < 12) hour += 12;
-      minutes = hour * 60 + minute;
-    }
+  let earliest = Infinity;
+  const withoutTimes = label.replace(
+    /(\d{1,2}):(\d{2})(?:\s*([ap])\.?\s*m\.?)?/gi,
+    (_match, rawHour: string, rawMinute: string, meridiem?: string) => {
+      let hour = Number(rawHour);
+      const minute = Number(rawMinute);
+      // Not a clock time (a room number, say) — still taken out of the label,
+      // since whatever it is, it is not this class's period either.
+      if (hour > 23 || minute > 59) return ' ';
+      const half = meridiem?.toLowerCase();
+      if (half === 'a' && hour === 12) hour = 0;
+      if (half === 'p' && hour < 12) hour += 12;
+      earliest = Math.min(earliest, hour * 60 + minute);
+      return ' ';
+    },
+  );
+
+  let lowest = Infinity;
+  for (const digits of withoutTimes.matchAll(/\d+/g)) {
+    lowest = Math.min(lowest, Number(digits[0]));
   }
 
-  const digits = /\d+/.exec(label);
-  return [minutes, digits ? Number(digits[0]) : Infinity];
+  return [lowest, earliest];
 }
 
 /** Infinity-safe: `Infinity - Infinity` is NaN, which breaks a comparator. */
@@ -188,14 +204,19 @@ function compareKeyPart(a: number, b: number): number {
  * nothing that reads meaning into link order (the legacy `students.teacher_id`
  * mirror's "first listed", the one gen-ed teacher an IEP meeting is assembled
  * around) sees a reshuffled set.
+ *
+ * Read-only lists call this as they render. An EDITABLE one must not: the row
+ * carries the Period input that decides where the row goes, so re-sorting per
+ * keystroke would move the focused `<li>` — and a DOM move blurs whatever is
+ * focused inside it. Those surfaces sort the set once, where it loads.
  */
 export function sortTeachersByPeriod<T extends { period: string | null }>(
   teachers: T[],
 ): T[] {
   return [...teachers].sort((a, b) => {
-    const [aTime, aNumber] = periodSortKey(a.period);
-    const [bTime, bNumber] = periodSortKey(b.period);
-    return compareKeyPart(aTime, bTime) || compareKeyPart(aNumber, bNumber);
+    const [aNumber, aTime] = periodSortKey(a.period);
+    const [bNumber, bTime] = periodSortKey(b.period);
+    return compareKeyPart(aNumber, bNumber) || compareKeyPart(aTime, bTime);
   });
 }
 

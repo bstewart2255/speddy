@@ -18,6 +18,7 @@ import { StudentTeachersField } from '../teachers/student-teachers-field';
 import {
   getTeacherLinksForStudent,
   saveTeacherLinksForStudent,
+  sortTeachersByPeriod,
   type EditableTeacherLink,
 } from '@/lib/supabase/queries/student-teachers';
 import { createClient } from '@/lib/supabase/client';
@@ -147,13 +148,17 @@ export function StudentDetailsModal({
         try {
           // Load student details, matching provider roles and the teacher set
           // in parallel.
-          const [existingDetails, roles, links] = await Promise.all([
+          const [existingDetails, roles, loaded] = await Promise.all([
             getStudentDetails(student.id),
             getMatchingProviderRoles(student.id),
             getTeacherLinksForStudent(supabase, student.id),
           ]);
           // A slower earlier request must not overwrite a newer student's data.
           if (stale) return;
+          // Period order, settled here rather than on every render of the
+          // editor: a secondary student's six classes read as their school
+          // day, and the rows then stay put while their labels are edited.
+          const links = sortTeachersByPeriod(loaded);
           setTeacherLinks(links);
           setLoadedLinks(links);
           setLinksLoaded(true);

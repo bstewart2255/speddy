@@ -13,7 +13,7 @@ const link = (name: string, period: string | null) => ({ name, period });
 const names = (rows: { name: string }[]) => rows.map(r => r.name);
 
 describe('sortTeachersByPeriod', () => {
-  it('orders the SIS labels by their start time', () => {
+  it('reads the SIS labels as the student\'s school day', () => {
     // The set as production hands it over: link order, not day order.
     const sorted = sortTeachersByPeriod([
       link('Boltz', '5 (1:30 PM - 2:25 PM)'),
@@ -31,8 +31,8 @@ describe('sortTeachersByPeriod', () => {
   it('reads PM as the afternoon, not as a bigger morning', () => {
     // 1:30 PM sorts after 11:50 AM. On the raw numbers it would sort first.
     const sorted = sortTeachersByPeriod([
-      link('afternoon', '5 (1:30 PM - 2:25 PM)'),
-      link('late morning', '4 (11:50 AM - 12:45 PM)'),
+      link('afternoon', 'Study hall (1:30 PM - 2:25 PM)'),
+      link('late morning', 'Lunch (11:50 AM - 12:45 PM)'),
     ]);
     expect(names(sorted)).toEqual(['late morning', 'afternoon']);
   });
@@ -48,8 +48,8 @@ describe('sortTeachersByPeriod', () => {
 
   it('reads a label with no meridiem as a 24-hour clock', () => {
     const sorted = sortTeachersByPeriod([
-      link('afternoon', '5 (13:30 - 14:25)'),
-      link('morning', '1 (08:30 - 09:25)'),
+      link('afternoon', 'Study hall (13:30 - 14:25)'),
+      link('morning', 'Advisory (08:30 - 09:25)'),
     ]);
     expect(names(sorted)).toEqual(['morning', 'afternoon']);
   });
@@ -64,12 +64,36 @@ describe('sortTeachersByPeriod', () => {
     expect(names(sorted)).toEqual(['two', 'nine', 'ten']);
   });
 
-  it('sorts an unnumbered class by its time, ahead of first period', () => {
+  it('interleaves a hand-typed period with the SIS labels around it', () => {
+    // The normal state of a synced roster somebody has since edited: the
+    // hand-typed "2" belongs between first and third period, not below sixth.
     const sorted = sortTeachersByPeriod([
       link('first', '1 (8:30 AM - 9:25 AM)'),
-      link('advisory', 'Advisory (7:30 AM - 8:20 AM)'),
+      link('third', '3 (10:45 AM - 11:40 AM)'),
+      link('sixth', '6 (2:35 PM - 3:30 PM)'),
+      link('hand-typed second', '2'),
     ]);
-    expect(names(sorted)).toEqual(['advisory', 'first']);
+    expect(names(sorted)).toEqual(['first', 'hand-typed second', 'third', 'sixth']);
+  });
+
+  it('does not read the hour of an unnumbered class as its period', () => {
+    // "Advisory (7:30 AM…)" is not period 7 — it has no number at all, so it
+    // sorts below the numbered classes rather than between 6 and 8.
+    const sorted = sortTeachersByPeriod([
+      link('advisory', 'Advisory (7:30 AM - 8:20 AM)'),
+      link('eighth', '8 (3:40 PM - 4:35 PM)'),
+      link('sixth', '6 (2:35 PM - 3:30 PM)'),
+    ]);
+    expect(names(sorted)).toEqual(['sixth', 'eighth', 'advisory']);
+  });
+
+  it('orders the unnumbered classes among themselves by time', () => {
+    const sorted = sortTeachersByPeriod([
+      link('lunch', 'Lunch (11:45 AM - 12:20 PM)'),
+      link('advisory', 'Advisory (7:30 AM - 8:20 AM)'),
+      link('first', '1 (8:30 AM - 9:25 AM)'),
+    ]);
+    expect(names(sorted)).toEqual(['first', 'advisory', 'lunch']);
   });
 
   it('sinks the unlabeled rows to the bottom, in the order they arrived', () => {
@@ -109,12 +133,13 @@ describe('sortTeachersByPeriod', () => {
 
   it('orders a multi-period label by its earliest class', () => {
     // The link sync joins a teacher's periods with "/" when a student sits in
-    // more than one of their classes.
+    // more than one of their classes. Written here worst-first, so passing
+    // means the smallest match placed the row, not the leading one.
     const sorted = sortTeachersByPeriod([
       link('third', '3 (10:45 AM - 11:40 AM)'),
-      link('first and fifth', '1 (8:30 AM - 9:25 AM)/5 (1:30 PM - 2:25 PM)'),
+      link('fifth and first', '5 (1:30 PM - 2:25 PM)/1 (8:30 AM - 9:25 AM)'),
     ]);
-    expect(names(sorted)).toEqual(['first and fifth', 'third']);
+    expect(names(sorted)).toEqual(['fifth and first', 'third']);
   });
 
   it('ignores a time that is not one, rather than placing the row by it', () => {
