@@ -35,8 +35,14 @@ export function IepMinutesConverter({ onApply }: IepMinutesConverterProps) {
   const [amount, setAmount] = useState('');
   const [period, setPeriod] = useState<ServicePeriod>('yearly');
 
-  const parsed = parseInt(amount, 10);
-  const weeklyMinutes = Number.isFinite(parsed) && parsed > 0 ? toWeeklyMinutes(parsed, period) : 0;
+  // `Number`, not `parseInt`: parseInt reads left to right and stops at the
+  // first character it cannot use, so "1e3" becomes 1 instead of 1000 and
+  // "30.5" becomes 30 — a compliance number quietly turned into a different
+  // one. Anything that is not a whole number converts to nothing at all, which
+  // simply leaves the result row hidden rather than offering a wrong figure.
+  const parsed = Number(amount);
+  const weeklyMinutes =
+    Number.isInteger(parsed) && parsed > 0 ? toWeeklyMinutes(parsed, period) : 0;
 
   return (
     <div className="space-y-2">

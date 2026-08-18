@@ -329,13 +329,32 @@ export default function StudentsPage() {
     // override can fall outside it; catch that here so the user reads a
     // sentence instead of a constraint violation. `minlength` on the input is
     // not enough on its own — it only fires on a field the user typed in, and
-    // the whole point of this one is that it usually fills itself.
-    if (addInitials.length < 2 || addInitials.length > 4) {
+    // the whole point of this one is that it usually fills itself. Trimmed
+    // again here so the value counted is the value saved, whatever produced it.
+    const addedInitials = addInitials.trim();
+    if (addedInitials.length < 2 || addedInitials.length > 4) {
       setAddFormError('Initials must be 2 to 4 characters — check the name, or type them in.');
       return;
     }
 
-    const addedInitials = addInitials;
+    // A `type="number"` box hands back its raw string, and `parseInt` reads it
+    // left to right: "1e1" becomes 1 rather than 10, and "2.5" becomes 2 —
+    // both silently, and both saved as a service requirement nobody asked for.
+    // The browser's own min/max/step validation does not catch "1e1" because
+    // it parses as a valid, in-range whole number, so this is the only place
+    // it is caught.
+    const sessionsPerWeek = weeklyBucketMode ? 1 : Number(formData.sessions_per_week);
+    const minutesPerSession = weeklyBucketMode
+      ? Number(formData.weekly_minutes)
+      : Number(formData.minutes_per_session);
+    if (!Number.isInteger(sessionsPerWeek) || !Number.isInteger(minutesPerSession)) {
+      setAddFormError(
+        weeklyBucketMode
+          ? 'Minutes per week must be a whole number.'
+          : 'Sessions per week and minutes per session must be whole numbers.'
+      );
+      return;
+    }
     savingStudentRef.current = true;
     setSavingStudent(true);
     try {
@@ -344,10 +363,8 @@ export default function StudentsPage() {
         grade_level: formData.grade_level,
         teacher_id: teacherLinks[0]?.teacherId ?? null,
         teacher_name: teacherLinks[0]?.name || undefined,
-        sessions_per_week: weeklyBucketMode ? 1 : parseInt(formData.sessions_per_week),
-        minutes_per_session: weeklyBucketMode
-          ? parseInt(formData.weekly_minutes)
-          : parseInt(formData.minutes_per_session),
+        sessions_per_week: sessionsPerWeek,
+        minutes_per_session: minutesPerSession,
         school_site: currentSchool?.school_site || '',
         school_district: currentSchool?.school_district || '',
         school_id: currentSchool?.school_id,
@@ -748,7 +765,17 @@ export default function StudentsPage() {
                       value={addInitials}
                       onChange={(e) => {
                         setInitialsEdited(true);
-                        setFormData({...formData, initials: e.target.value.toUpperCase()});
+                        // Whitespace is not an initial. Left in, a box of
+                        // spaces is 2–4 characters long, so it clears this
+                        // form's guard AND the database's
+                        // check_initials_length, and the student's tag renders
+                        // blank on every schedule surface. Stripping at the one
+                        // place the value can be typed also handles a paste of
+                        // " JD ".
+                        setFormData({
+                          ...formData,
+                          initials: e.target.value.replace(/\s/g, '').toUpperCase(),
+                        });
                       }}
                       minLength={2}
                       maxLength={4}
