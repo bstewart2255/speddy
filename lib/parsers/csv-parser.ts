@@ -280,8 +280,10 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
           `Could not find ${guessedColumns.map((c) => `"${c}"`).join(', ')} by name, so ${
             guessedColumns.length === 1 ? 'it was' : 'they were'
           } read from the position ${
-            guessedColumns.length === 1 ? 'that column' : 'those columns'
-          } normally occupies in this report. Check those values on the students below.`,
+            guessedColumns.length === 1
+              ? 'that column normally occupies'
+              : 'those columns normally occupy'
+          } in this report. Check those values on the students below.`,
       });
     }
 
@@ -290,6 +292,13 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
     // STUDENT, not per goal row, or one child with four goals reads as four.
     const OTHER_SCHOOL_WARNING_LIMIT = 5;
     const otherSchoolStudents = new Set<string>();
+
+    // The other two per-row warning kinds need the same ceiling, and for the
+    // same reason: on a district-wide export they scale with the file, and a
+    // zero-student result serializes the whole array into the 400 response.
+    const PER_ROW_WARNING_LIMIT = 25;
+    let blankMetadataWarnings = 0;
+    let idMismatchWarnings = 0;
 
     // Temporary map to consolidate duplicate students
     const studentMap = new Map<string, ParsedStudent>();
@@ -389,7 +398,12 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
             // survives the filter, the zero-student path returns warnings
             // uncapped. Name the first few, then count the rest (summarized
             // after the loop).
-            const studentKey = `${firstName.trim().toLowerCase()}|${lastName.trim().toLowerCase()}`;
+            // Keyed WITH school, like the dedup key below: two different
+            // children sharing a name at two different other-schools are two
+            // skipped students, and the summary should say so (SPE-264).
+            const studentKey = `${firstName.trim().toLowerCase()}|${lastName
+              .trim()
+              .toLowerCase()}|${normalizeSchoolName(schoolOfAttendance)}`;
             if (
               !otherSchoolStudents.has(studentKey) &&
               otherSchoolStudents.size < OTHER_SCHOOL_WARNING_LIMIT
@@ -431,7 +445,7 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
           const hasGoalText = columnMapping.goalColumns.some(
             (i) => (row[i] || '').trim().length > 10
           );
-          if (hasGoalText) {
+          if (hasGoalText && blankMetadataWarnings++ < PER_ROW_WARNING_LIMIT) {
             warnings.push({
               row: rowIndex + 1,
               message: blankMetadataGoalWarning(initials, normalizedGrade),
@@ -497,10 +511,12 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
             // export is inconsistent or two real children are being merged by
             // that key. Keep the first and say so rather than dropping it
             // silently.
-            warnings.push({
-              row: rowIndex + 1,
-              message: `Student ID mismatch for ${firstName} ${lastName}: found "${districtStudentId}" but already recorded "${existing.districtStudentId}". Keeping the first — check this student in your export.`,
-            });
+            if (idMismatchWarnings++ < PER_ROW_WARNING_LIMIT) {
+              warnings.push({
+                row: rowIndex + 1,
+                message: `Student ID mismatch for ${firstName} ${lastName}: found "${districtStudentId}" but already recorded "${existing.districtStudentId}". Keeping the first — check this student in your export.`,
+              });
+            }
           }
         } else {
           // Add new student

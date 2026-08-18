@@ -535,6 +535,26 @@ describe('parseCSVReport — SEIS Student Goals Report (CSV)', () => {
       expect(new Set(named).size).toBe(named.length);
     });
 
+    it('counts same-named students at different other-schools separately', async () => {
+      // Name alone isn't identity — the dedup key includes school for exactly
+      // this reason (SPE-264), and the skip counter has to agree with it.
+      const row = (school: string, goal: string) => ({
+        2: 'Alvarez', 3: 'Ana', 5: '01', 6: school, 9: '05/01/2026',
+        11: 'Reading', 12: 'Academic #1', 14: goal, 17: 'Resource Specialist',
+      });
+      const csv = buildSeisGoalsCsvFrom([
+        row('North Elementary', 'By 5/1/2027, Ana will read 90 words per minute in 3 of 4 trials.'),
+        row('South Elementary', 'By 5/1/2027, Ana will read 60 words per minute in 3 of 4 trials.'),
+      ]);
+
+      const result = await parseCSVReport(csv, { userSchools: ['A School That Matches Nobody'] });
+
+      const named = result.warnings.filter((w) => /doesn't match your school/i.test(w.message));
+      expect(named).toHaveLength(2);
+      expect(named.some((w) => /North Elementary/.test(w.message))).toBe(true);
+      expect(named.some((w) => /South Elementary/.test(w.message))).toBe(true);
+    });
+
     it('stays quiet when those columns are present', async () => {
       const result = await parseCSVReport(SEIS_GOALS_CSV(), { providerRole: 'resource' });
       expect(result.warnings.some((w) => /district student id|route each goal/i.test(w.message))).toBe(
