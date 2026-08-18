@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Button } from '../../ui/button';
 import type { ReviewRow as ReviewRowData } from '@/lib/import/review-model';
 import { ReviewRow } from './review-row';
+import type { SisPreviewState } from './student-import-review';
 import type { ReviewSelection } from './use-review-selection';
 
 const BASE_COLUMN_COUNT = 8;
@@ -21,17 +22,21 @@ export function ReviewTable({
   rows,
   selection,
   defaultExpandedId,
+  sisPreview = { state: 'hidden' },
 }: {
   rows: ReviewRowData[];
   selection: ReviewSelection;
   /** Row whose goals start expanded (target-student mode expands its one row). */
   defaultExpandedId?: string;
+  /** The async SIS-teachers column (SPE-546); hidden unless a lookup ran. */
+  sisPreview?: SisPreviewState;
 }) {
   const [expandedId, setExpandedId] = useState<string | null>(defaultExpandedId ?? null);
   const [showUnchanged, setShowUnchanged] = useState(false);
 
   const showIepDates = rows.some((r) => r.iepDates);
-  const columnCount = BASE_COLUMN_COUNT + (showIepDates ? 1 : 0);
+  const showSisTeachers = sisPreview.state !== 'hidden';
+  const columnCount = BASE_COLUMN_COUNT + (showIepDates ? 1 : 0) + (showSisTeachers ? 1 : 0);
 
   const inserts = rows.filter((r) => r.action === 'insert');
   const updates = rows.filter((r) => r.action === 'update');
@@ -49,6 +54,7 @@ export function ReviewTable({
         onToggleExpand={() => toggleExpand(row.id)}
         columnCount={columnCount}
         showIepDates={showIepDates}
+        sisPreview={showSisTeachers ? sisPreview : undefined}
       />
     ));
 
@@ -72,6 +78,14 @@ export function ReviewTable({
               <th scope="col" className="px-3 py-2">Teacher</th>
               <th scope="col" className="px-3 py-2">Schedule</th>
               {showIepDates && <th scope="col" className="px-3 py-2">IEP / Triennial</th>}
+              {showSisTeachers && (
+                <th scope="col" className="px-3 py-2">
+                  Classroom teachers
+                  <span className="block font-normal normal-case text-gray-400">
+                    from your district&apos;s SIS
+                  </span>
+                </th>
+              )}
               <th scope="col" className="px-3 py-2">Goals</th>
               <th scope="col" className="px-3 py-2">Action</th>
             </tr>

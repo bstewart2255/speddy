@@ -499,6 +499,7 @@ export default function StudentsPage() {
             isOpen={!!bulkModel}
             onClose={() => setBulkImportPreviewData(null)}
             model={bulkModel}
+            schoolId={currentSchool?.school_id || undefined}
             onComplete={() => {
               // Refresh the caseload behind the modal without unmounting it, so a
               // partial-failure modal stays open on its error list. Imported students

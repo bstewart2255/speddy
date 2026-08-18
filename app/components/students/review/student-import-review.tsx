@@ -4,6 +4,9 @@ import { useEffect, useRef, useState } from 'react';
 import { Modal } from '../../ui/modal';
 import { Button } from '../../ui/button';
 import type { ReviewModel, ReviewRow } from '@/lib/import/review-model';
+// Type-only: erased at compile time, no server-only code reaches the bundle
+// (same rule as every sync panel).
+import type { LinkPreviewEntry } from '@/lib/sis/import-link-preview';
 import { useReviewSelection } from './use-review-selection';
 import { ReviewSummaryBar } from './review-summary-bar';
 import { ReviewFileReceipts } from './review-file-receipts';
@@ -50,6 +53,14 @@ export function confirmedChildIdFor(
   return row.childMatch && choice === 'link' ? row.childMatch.childId : undefined;
 }
 
+/** The async SIS-teachers column's lifecycle (SPE-546). */
+export type SisPreviewState =
+  | { state: 'hidden' }
+  | { state: 'loading' }
+  /** The lookup failed or the district has no SIS — links come later. */
+  | { state: 'unavailable' }
+  | { state: 'ready'; entries: Record<string, LinkPreviewEntry> };
+
 interface StudentImportReviewProps {
   isOpen: boolean;
   onClose: () => void;
@@ -57,6 +68,11 @@ interface StudentImportReviewProps {
   onConfirm: (selection: ReviewConfirmSelection) => Promise<ReviewWriteResult>;
   /** Refresh the caseload behind the modal after a (partial or full) success. */
   onComplete?: () => void;
+  /**
+   * The school being imported into — enables the "classroom teachers from
+   * your district's SIS" column (SPE-546). Absent = column never appears.
+   */
+  schoolId?: string | null;
 }
 
 /**
@@ -70,6 +86,7 @@ export function StudentImportReview({
   model,
   onConfirm,
   onComplete,
+  schoolId,
 }: StudentImportReviewProps) {
   const selection = useReviewSelection(model.rows);
   // Per-student IEP import merges goals (adds, never removes); bulk replaces.
@@ -88,6 +105,60 @@ export function StudentImportReview({
   useEffect(() => {
     if (importFinished) doneRef.current?.focus();
   }, [importFinished]);
+
+  // SPE-546: the SIS-teachers column fills in AFTER the review renders — the
+  // screen must never wait on a district's SIS. Fires once per open, only in
+  // bulk mode, only when rows actually carry district IDs; anything that
+  // goes wrong degrades to 'unavailable' ("links will be added after
+  // import"), never an error the importer has to deal with.
+  const [sisPreview, setSisPreview] = useState<SisPreviewState>({ state: 'hidden' });
+  const districtIdsKey = model.rows
+    .map((r) => r.districtStudentId)
+    .filter(Boolean)
+    .join('\u0001');
+  useEffect(() => {
+    if (!isOpen || !schoolId || model.mode === 'target-student' || !districtIdsKey) {
+      setSisPreview({ state: 'hidden' });
+      return;
+    }
+    const districtStudentIds = [...new Set(districtIdsKey.split('\u0001'))];
+    const abort = new AbortController();
+    const timer = setTimeout(() => abort.abort(), 120_000);
+    setSisPreview({ state: 'loading' });
+    (async () => {
+      try {
+        const res = await fetch('/api/students/import-link-preview', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          cache: 'no-store',
+          signal: abort.signal,
+          body: JSON.stringify({ schoolId, districtStudentIds }),
+        });
+        const json: unknown = await res.json().catch(() => null);
+        const body = json as { available?: unknown; reason?: unknown; entries?: unknown } | null;
+        if (res.ok && body?.available === true && typeof body.entries === 'object' && body.entries) {
+          setSisPreview({ state: 'ready', entries: body.entries as Record<string, LinkPreviewEntry> });
+        } else if (res.ok && body?.available === false && body.reason === 'no-sis') {
+          // No sync exists for this district — a column promising links
+          // "after import" would be false, so it never appears.
+          setSisPreview({ state: 'hidden' });
+        } else {
+          // A configured SIS that couldn't be checked right now (or a
+          // transient error): the sync still runs after import, so the
+          // column stays and says so.
+          setSisPreview({ state: 'unavailable' });
+        }
+      } catch {
+        setSisPreview({ state: 'unavailable' });
+      } finally {
+        clearTimeout(timer);
+      }
+    })();
+    return () => {
+      clearTimeout(timer);
+      abort.abort();
+    };
+  }, [isOpen, schoolId, model.mode, districtIdsKey]);
 
   const resolveTeacher = (rowId: string, teacherId: string | null, teacherName: string | null) => {
     setTeacherOverrides((prev) => ({ ...prev, [rowId]: { teacherId, teacherName } }));
@@ -237,6 +308,7 @@ export function StudentImportReview({
             rows={model.rows}
             selection={selection}
             defaultExpandedId={model.mode === 'target-student' ? model.rows[0]?.id : undefined}
+            sisPreview={sisPreview}
           />
         )}
       </div>

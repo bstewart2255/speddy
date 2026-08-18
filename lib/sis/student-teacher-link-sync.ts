@@ -63,6 +63,33 @@ const log = logger.child({ module: 'student-teacher-link-sync' });
 /** The value `student_teachers.source` carries for rows this sync owns. */
 export const LINK_SOURCE = 'oneroster';
 
+/**
+ * Every key form a SIS student identifier can honestly answer to: the
+ * identifier verbatim (trimmed) and — when it carries Aeries' `STU` segment
+ * (`{schoolCode}_STU_{number}`, verified against JSUSD live 2026-08-18;
+ * teachers use the same wrapper as `11_TCH_1174`) — the bare number after
+ * the last underscore, which is what Speddy's district_student_id holds.
+ *
+ * The unwrap is DELIBERATELY anchored to the STU marker rather than any
+ * underscore: a different vendor whose real identifiers merely contain
+ * underscores (`local_123`) must not be indexed under a tail that could
+ * exact-equal an unrelated child's stored ID (PR #894 review, self + Codex).
+ *
+ * ONE definition, shared by the link-sync planner and the import-preview
+ * lookup (SPE-546), so the identifier dialect cannot drift between the two
+ * surfaces that answer "which SIS student is this child".
+ */
+export function studentIdentifierKeys(identifier: string): string[] {
+  const verbatim = identifier.trim();
+  if (!verbatim) return [];
+  const keys = new Set<string>([verbatim]);
+  if (/(^|_)STU_/i.test(verbatim)) {
+    const tail = verbatim.slice(verbatim.lastIndexOf('_') + 1).trim();
+    if (tail) keys.add(tail);
+  }
+  return [...keys];
+}
+
 // ---------------------------------------------------------------------------
 // Planner input shapes — plain data, so the planner is testable without HTTP.
 // ---------------------------------------------------------------------------
@@ -223,8 +250,12 @@ const teacherKey = (schoolId: string, sisId: string): string => `${schoolId}\u00
  * shares with this student. Deterministic (sorted, distinct) so re-running
  * the sync can never flap a label back and forth, and the relabel diff means
  * "the rosters changed", not "the join order changed".
+ *
+ * Exported for the import preview (SPE-546), which must show EXACTLY the
+ * label this sync will write — a preview computing its own sort order would
+ * make the label appear to change right after importing (PR #896 review).
  */
-function linkLabels(titles: Set<string>, periods: Set<string>): {
+export function linkLabels(titles: Set<string>, periods: Set<string>): {
   subject: string | null;
   period: string | null;
 } {
@@ -280,19 +311,9 @@ export function planStudentTeacherLinkSync(input: LinkPlannerInput): LinkSyncPla
 
   // SIS students by district number. Deduped by sourcedId first so a paging
   // echo cannot manufacture a fake "two SIS students share this number".
-  //
-  // Each student is indexed under EVERY key form it can honestly answer to:
-  // the identifier verbatim, and — when the identifier is Aeries' compound
-  // shape, a `STU` segment followed by the number (`{schoolCode}_STU_{number}`,
-  // verified against JSUSD live 2026-08-18; teachers use the same wrapper as
-  // `11_TCH_1174`) — the bare number after the last underscore. Speddy's
-  // district_student_id holds that bare number, so verbatim-only matching
-  // produced 0 of 180. The unwrap is DELIBERATELY anchored to the STU marker
-  // rather than any underscore: a different vendor whose real identifiers
-  // merely contain underscores (`local_123`) must not be indexed under a tail
-  // that could exact-equal an unrelated child's stored ID and write wrong
-  // links (PR #894 review, self + Codex). Records colliding on any key form
-  // land in an unmatched refusal below, never a guess.
+  // Key derivation (verbatim + Aeries STU-tail) lives in
+  // studentIdentifierKeys, shared with the import preview; records colliding
+  // on any key form land in an unmatched refusal below, never a guess.
   const seenSisStudents = new Set<string>();
   const sisStudentsByIdentifier = new Map<string, { sourcedId: string; verbatim: string }[]>();
   let feedStudentCount = 0;
@@ -302,12 +323,7 @@ export function planStudentTeacherLinkSync(input: LinkPlannerInput): LinkSyncPla
     feedStudentCount += 1;
     const verbatim = s.identifier?.trim();
     if (!verbatim) continue;
-    const keys = new Set<string>([verbatim]);
-    if (/(^|_)STU_/i.test(verbatim)) {
-      const tail = verbatim.slice(verbatim.lastIndexOf('_') + 1).trim();
-      if (tail) keys.add(tail);
-    }
-    for (const key of keys) {
+    for (const key of studentIdentifierKeys(verbatim)) {
       const list = sisStudentsByIdentifier.get(key) ?? [];
       list.push({ sourcedId: s.sourcedId, verbatim });
       sisStudentsByIdentifier.set(key, list);
@@ -606,9 +622,28 @@ function chunked<T>(values: T[], size: number): T[][] {
  * Enrollments are fetched UNFILTERED here on purpose: this sync needs both
  * roles, and asking once beats trusting a server's filter support twice.
  */
-export async function loadLinkSyncInput(
-  params: LinkSyncConnectionParams,
-): Promise<LinkPlannerInput> {
+/** The SIS half of a roster read — what both roster consumers share. */
+export interface OneRosterRosterFeed {
+  feedStudents: LinkFeedStudent[];
+  feedEnrollments: LinkFeedEnrollment[];
+  feedClasses: LinkFeedClass[];
+}
+
+/**
+ * Walk the three roster collections to completion and apply the ONE set of
+ * row picks. Shared by the link sync and the import preview (SPE-546) so a
+ * feed-mapping fix — a new status value, the PR #886 role-normalization —
+ * can never land in one and silently not the other.
+ *
+ * The three walks run CONCURRENTLY (token fetched once first): they are
+ * independent reads and this path has a human waiting on it in the preview
+ * case (PR #896 review). Enrollments are fetched unfiltered on purpose:
+ * both roles are needed, and asking once beats trusting a server's filter
+ * support twice.
+ */
+export async function loadOneRosterRosterFeed(
+  params: Omit<LinkSyncConnectionParams, 'districtId'>,
+): Promise<OneRosterRosterFeed> {
   const tokenUrl =
     (params.tokenUrl ?? '').trim() || oneRosterTokenUrlCandidates(params.baseUrl)[0];
   if (!tokenUrl) throw new Error('This connection has no usable token address.');
@@ -623,17 +658,21 @@ export async function loadLinkSyncInput(
     clientSecret: params.clientSecret,
   });
 
-  const rawStudents = await client.getAllPages<RawOneRosterUser>('students', 'users');
+  // One token exchange, then the walks in parallel — without this, three
+  // concurrent first requests would each dial the token endpoint.
+  await client.fetchToken();
+  const [rawStudents, rawEnrollments, rawClasses] = await Promise.all([
+    client.getAllPages<RawOneRosterUser>('students', 'users'),
+    client.getAllPages<RawOneRosterEnrollment>('enrollments', 'enrollments'),
+    client.getAllPages<RawOneRosterClass>('classes', 'classes'),
+  ]);
+
   const feedStudents: LinkFeedStudent[] = rawStudents.flatMap((s) => {
     const sourcedId = trimOrNull(s.sourcedId);
     if (!sourcedId || s.status === 'tobedeleted') return [];
     return [{ sourcedId, identifier: trimOrNull(s.identifier) }];
   });
 
-  const rawEnrollments = await client.getAllPages<RawOneRosterEnrollment>(
-    'enrollments',
-    'enrollments',
-  );
   const feedEnrollments: LinkFeedEnrollment[] = rawEnrollments.flatMap((e) => {
     // Role and status are compared normalized (trim + lowercase): the spec's
     // canon is lowercase, but a vendor's casing must not silently drop a
@@ -648,7 +687,6 @@ export async function loadLinkSyncInput(
     return [{ userSourcedId, classSourcedId, role }];
   });
 
-  const rawClasses = await client.getAllPages<RawOneRosterClass>('classes', 'classes');
   const feedClasses: LinkFeedClass[] = rawClasses.flatMap((c) => {
     const sourcedId = trimOrNull(c.sourcedId);
     if (!sourcedId || c.status === 'tobedeleted') return [];
@@ -665,6 +703,14 @@ export async function loadLinkSyncInput(
       },
     ];
   });
+
+  return { feedStudents, feedEnrollments, feedClasses };
+}
+
+export async function loadLinkSyncInput(
+  params: LinkSyncConnectionParams,
+): Promise<LinkPlannerInput> {
+  const { feedStudents, feedEnrollments, feedClasses } = await loadOneRosterRosterFeed(params);
 
   const supabase = createServiceClient();
   const { data: schoolRows, error: schoolsError } = await supabase
