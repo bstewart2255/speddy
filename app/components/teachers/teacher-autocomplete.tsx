@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useId } from 'react';
 import { searchTeachers, formatTeacherName } from '@/lib/supabase/queries/school-directory';
+import { FIELD_CONTROL_CLASS } from '../ui/form';
 
 type Teacher = Awaited<ReturnType<typeof searchTeachers>>[number];
 
@@ -127,9 +128,11 @@ export function TeacherAutocomplete({
 
   return (
     <div ref={wrapperRef} className={`relative ${className}`}>
-      {/* Selected Teacher Display */}
+      {/* Selected Teacher Display — the same box as the search input it
+          replaces, so picking a teacher does not change the field's height or
+          corner radius mid-form. */}
       {(selectedTeacher || teacherName) && !isOpen ? (
-        <div className="flex items-center justify-between px-3 py-2 border border-gray-300 rounded-lg bg-white">
+        <div className="flex items-center justify-between h-10 px-3 border border-gray-300 rounded-md bg-white">
           <div className="flex items-center space-x-2">
             <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
@@ -180,7 +183,7 @@ export function TeacherAutocomplete({
               aria-expanded={isOpen}
               aria-controls={listboxId}
               aria-autocomplete="list"
-              className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+              className={`${FIELD_CONTROL_CLASS} pl-10`}
             />
             {loading && (
               <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">

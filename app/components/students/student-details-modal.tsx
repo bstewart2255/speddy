@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { Button } from '../ui/button';
-import { Input, Label, FormGroup } from '../ui/form';
+import { Input, Label, FormGroup, SELECT_CONTROL_CLASS, SelectChevron } from '../ui/form';
 import { getStudentDetails, upsertStudentDetails, StudentDetails, getMatchingProviderRoles } from '../../../lib/supabase/queries/student-details';
 import { adaptTargetStudentPreview } from '@/lib/import/review-model';
 import type { TargetPreviewData } from '@/lib/types/student-import';
@@ -63,8 +63,14 @@ interface StudentDetailsModalProps {
   onUpdateStudent?: (studentId: string, updates: {
     initials?: string;
     grade_level: string;
-    sessions_per_week: number;
-    minutes_per_session: number;
+    /**
+     * Optional because a student can have no service minutes configured at
+     * all, and 0 is not a legal stand-in — both columns carry a `> 0` check
+     * constraint. Undefined means "leave whatever is stored alone";
+     * `updateStudent` drops undefined fields from the write.
+     */
+    sessions_per_week?: number;
+    minutes_per_session?: number;
   }) => void;
 }
 
@@ -237,6 +243,21 @@ export function StudentDetailsModal({
       );
       return;
     }
+    // Half of the pair is not a saveable state. The write below omits BOTH
+    // fields while either is unset (they are one requirement, and 0 fails the
+    // check constraints), so picking only Sessions per Week would drop the
+    // choice on the floor and still report success. Ask for the other half —
+    // after the weekly-bucket check above, which owns the same shape on the
+    // secondary-resource surface and names its own field.
+    if (
+      !readOnly &&
+      (studentInfo.sessions_per_week > 0) !== (studentInfo.minutes_per_session > 0)
+    ) {
+      alert(
+        'Set both Sessions per Week and Minutes per Session, or leave both as Not configured.'
+      );
+      return;
+    }
     setLoading(true);
     try {
       // Save student details
@@ -271,6 +292,17 @@ export function StudentDetailsModal({
         }
       }
 
+      // A student can sit with no service minutes at all (goals imported with
+      // no Deliveries file). Their stored pair is 0/0, which both check
+      // constraints reject — so sending it back unchanged fails the WHOLE
+      // update, taking the grade, IEP dates and everything else on this tab
+      // with it, and the students-page caller reports only a generic
+      // "Failed to update". Omit the pair while it is unset: `updateStudent`
+      // skips undefined fields, so the student stays not-configured, which is
+      // exactly what the disabled "Not configured" option above says.
+      const requirementsSet =
+        studentInfo.sessions_per_week > 0 && studentInfo.minutes_per_session > 0;
+
       // Update student info if changed. Passed as a literal on purpose: that
       // is what makes excess-property checking apply, so re-adding a teacher
       // field here is a compile error rather than a silent regression.
@@ -278,8 +310,8 @@ export function StudentDetailsModal({
         await onUpdateStudent(student.id, {
           initials: studentInfo.initials,
           grade_level: studentInfo.grade_level,
-          sessions_per_week: studentInfo.sessions_per_week,
-          minutes_per_session: studentInfo.minutes_per_session,
+          sessions_per_week: requirementsSet ? studentInfo.sessions_per_week : undefined,
+          minutes_per_session: requirementsSet ? studentInfo.minutes_per_session : undefined,
         });
       }
 
@@ -616,41 +648,58 @@ export function StudentDetailsModal({
               <div className="grid grid-cols-2 gap-4">
                 <FormGroup>
                   <Label htmlFor="sessions_per_week">Sessions per Week</Label>
-                  <select
-                    id="sessions_per_week"
-                    value={studentInfo.sessions_per_week}
-                    onChange={(e) => setStudentInfo({...studentInfo, sessions_per_week: parseInt(e.target.value)})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
-                    disabled={readOnly}
-                  >
-                    <option value="1">1</option>
-                    <option value="2">2</option>
-                    <option value="3">3</option>
-                    <option value="4">4</option>
-                    <option value="5">5</option>
-                    <option value="6">6</option>
-                    <option value="7">7</option>
-                    <option value="8">8</option>
-                    <option value="9">9</option>
-                    <option value="10">10</option>
-                  </select>
+                  <div className="relative">
+                    <select
+                      id="sessions_per_week"
+                      value={studentInfo.sessions_per_week}
+                      onChange={(e) => setStudentInfo({...studentInfo, sessions_per_week: parseInt(e.target.value)})}
+                      className={SELECT_CONTROL_CLASS}
+                      disabled={readOnly}
+                    >
+                      {/* A student with nothing configured reads as a real,
+                          chosen "1 × 15" without this: their stored value is 0,
+                          no option carries it, and a <select> shows its first
+                          option in that case. Disabled because "not
+                          configured" is a state a student ARRIVES in — goals
+                          imported with no Deliveries file — never one a
+                          provider picks; and 0 fails the students table's
+                          check constraints. handleSave leaves the pair out of
+                          the write entirely while it holds. */}
+                      <option value="0" disabled>Not configured</option>
+                      <option value="1">1</option>
+                      <option value="2">2</option>
+                      <option value="3">3</option>
+                      <option value="4">4</option>
+                      <option value="5">5</option>
+                      <option value="6">6</option>
+                      <option value="7">7</option>
+                      <option value="8">8</option>
+                      <option value="9">9</option>
+                      <option value="10">10</option>
+                    </select>
+                    <SelectChevron />
+                  </div>
                 </FormGroup>
 
                 <FormGroup>
                   <Label htmlFor="minutes_per_session">Minutes per Session</Label>
-                  <select
-                    id="minutes_per_session"
-                    value={studentInfo.minutes_per_session}
-                    onChange={(e) => setStudentInfo({...studentInfo, minutes_per_session: parseInt(e.target.value)})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
-                    disabled={readOnly}
-                  >
-                    <option value="15">15</option>
-                    <option value="20">20</option>
-                    <option value="30">30</option>
-                    <option value="45">45</option>
-                    <option value="60">60</option>
-                  </select>
+                  <div className="relative">
+                    <select
+                      id="minutes_per_session"
+                      value={studentInfo.minutes_per_session}
+                      onChange={(e) => setStudentInfo({...studentInfo, minutes_per_session: parseInt(e.target.value)})}
+                      className={SELECT_CONTROL_CLASS}
+                      disabled={readOnly}
+                    >
+                      <option value="0" disabled>Not configured</option>
+                      <option value="15">15</option>
+                      <option value="20">20</option>
+                      <option value="30">30</option>
+                      <option value="45">45</option>
+                      <option value="60">60</option>
+                    </select>
+                    <SelectChevron />
+                  </div>
                 </FormGroup>
               </div>
               )}

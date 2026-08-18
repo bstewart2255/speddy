@@ -11,6 +11,8 @@ import { getUnscheduledSessionsCount } from '../../../../lib/supabase/queries/sc
 import { loadStudentsForUser, getUserRole } from '../../../../lib/supabase/queries/sea-students';
 import { useSchool } from '../../../components/providers/school-context';
 import { createClient } from '@/lib/supabase/client';
+import { saveStudentName } from '../../../../lib/supabase/queries/student-details';
+import { FIELD_CONTROL_CLASS, NUMBER_CONTROL_CLASS, SELECT_CONTROL_CLASS, SelectChevron } from '../../../components/ui/form';
 import { StudentDetailsModal } from '../../../components/students/student-details-modal';
 import { TeacherDetailsModal } from '../../../components/teachers/teacher-details-modal';
 import { StudentTeachersField } from '../../../components/teachers/student-teachers-field';
@@ -63,6 +65,20 @@ function studentFullName(student: Student): string | null {
 }
 
 /**
+ * The initials Speddy shows on every schedule surface, derived from the name:
+ * the first letter of each, upper-cased. Deliberately the same rule the SEIS
+ * and CSV importers apply (`lib/parsers/csv-parser.ts`), so one child entered
+ * by hand and later imported lands on the same initials rather than two rows.
+ *
+ * Returns fewer than 2 characters while a name is half-typed — the form's
+ * required fields are what guarantee both halves are there before a save, and
+ * the `check_initials_length` (2–4) constraint is the backstop.
+ */
+function deriveInitials(firstName: string, lastName: string): string {
+  return `${firstName.trim().charAt(0)}${lastName.trim().charAt(0)}`.toUpperCase();
+}
+
+/**
  * Student identity cell for the Students list (SPE-284): the initials tag plus
  * the full name when we have one. Schedule surfaces intentionally show only the
  * initials tag; the full name appears here on the Students page.
@@ -80,11 +96,11 @@ function StudentIdentityCell({ student }: { student: Student }) {
 export default function StudentsPage() {
   const [showAddForm, setShowAddForm] = useState(false);
   // SPE-237: the Add Student form stays open for consecutive entries — inline
-  // feedback (no alert()) and an initials ref so we can refocus after each add.
+  // feedback (no alert()) and a first-name ref so we can refocus after each add.
   const [addFormError, setAddFormError] = useState<string | null>(null);
   const [addFormConfirmation, setAddFormConfirmation] = useState<string | null>(null);
   const [savingStudent, setSavingStudent] = useState(false);
-  const initialsInputRef = useRef<HTMLInputElement>(null);
+  const firstNameInputRef = useRef<HTMLInputElement>(null);
   // Synchronous guard against a double-submit (Enter pressed twice) before state
   // re-renders; the form is built for rapid keyboard entry.
   const savingStudentRef = useRef(false);
@@ -101,6 +117,10 @@ export default function StudentsPage() {
   // elementary, the common case.
   const [teacherLinks, setTeacherLinks] = useState<EditableTeacherLink[]>([]);
   const [formData, setFormData] = useState({
+    first_name: '',
+    last_name: '',
+    // Only read once the user has taken the Initials box over — see
+    // `initialsEdited` below.
     initials: '',
     grade_level: '',
     sessions_per_week: '',
@@ -109,6 +129,18 @@ export default function StudentsPage() {
     // saved as sessions_per_week = 1 × this many minutes.
     weekly_minutes: ''
   });
+  // The Initials box follows the name until the user types in it. A flag, and
+  // not "an empty box means follow the name": with the empty string as the
+  // sentinel, backspacing the box clear instantly refills it from the name
+  // with the caret left at the end, so the next keystroke appends to a value
+  // the user had just deleted — "JD" + "M" = "JDM", which passes both the 2–4
+  // guard and check_initials_length and saves silently wrong.
+  const [initialsEdited, setInitialsEdited] = useState(false);
+
+  // The initials the form will actually save.
+  const addInitials = initialsEdited
+    ? formData.initials
+    : deriveInitials(formData.first_name, formData.last_name);
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editFormData, setEditFormData] = useState({
@@ -265,9 +297,9 @@ export default function StudentsPage() {
     return () => { cancelled = true; };
   }, [students, supabase]);
 
-  // Focus Initials when the form opens so entry starts at the keyboard.
+  // Focus First Name when the form opens so entry starts at the keyboard.
   useEffect(() => {
-    if (showAddForm) initialsInputRef.current?.focus();
+    if (showAddForm) firstNameInputRef.current?.focus();
   }, [showAddForm]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -281,19 +313,58 @@ export default function StudentsPage() {
       return;
     }
 
-    const addedInitials = formData.initials;
+    // The name is the identity anchor (SPE-284), so never store a blank one.
+    // `required` rejects only an EMPTY box, so a name of spaces sails past it,
+    // and the initials guard below does not cover the gap: with the initials
+    // typed in by hand they are perfectly valid, and the student would be
+    // created with no name at all.
+    const addedFirstName = formData.first_name.trim();
+    const addedLastName = formData.last_name.trim();
+    if (!addedFirstName || !addedLastName) {
+      setAddFormError('Enter both a first and last name.');
+      return;
+    }
+
+    // `check_initials_length` (2–4) is the database's rule. A hand-typed
+    // override can fall outside it; catch that here so the user reads a
+    // sentence instead of a constraint violation. `minlength` on the input is
+    // not enough on its own — it only fires on a field the user typed in, and
+    // the whole point of this one is that it usually fills itself. Trimmed
+    // again here so the value counted is the value saved, whatever produced it.
+    const addedInitials = addInitials.trim();
+    if (addedInitials.length < 2 || addedInitials.length > 4) {
+      setAddFormError('Initials must be 2 to 4 characters — check the name, or type them in.');
+      return;
+    }
+
+    // A `type="number"` box hands back its raw string, and `parseInt` reads it
+    // left to right: "1e1" becomes 1 rather than 10, and "2.5" becomes 2 —
+    // both silently, and both saved as a service requirement nobody asked for.
+    // The browser's own min/max/step validation does not catch "1e1" because
+    // it parses as a valid, in-range whole number, so this is the only place
+    // it is caught.
+    const sessionsPerWeek = weeklyBucketMode ? 1 : Number(formData.sessions_per_week);
+    const minutesPerSession = weeklyBucketMode
+      ? Number(formData.weekly_minutes)
+      : Number(formData.minutes_per_session);
+    if (!Number.isInteger(sessionsPerWeek) || !Number.isInteger(minutesPerSession)) {
+      setAddFormError(
+        weeklyBucketMode
+          ? 'Minutes per week must be a whole number.'
+          : 'Sessions per week and minutes per session must be whole numbers.'
+      );
+      return;
+    }
     savingStudentRef.current = true;
     setSavingStudent(true);
     try {
       const created = await createStudent({
-        initials: formData.initials,
+        initials: addedInitials,
         grade_level: formData.grade_level,
         teacher_id: teacherLinks[0]?.teacherId ?? null,
         teacher_name: teacherLinks[0]?.name || undefined,
-        sessions_per_week: weeklyBucketMode ? 1 : parseInt(formData.sessions_per_week),
-        minutes_per_session: weeklyBucketMode
-          ? parseInt(formData.weekly_minutes)
-          : parseInt(formData.minutes_per_session),
+        sessions_per_week: sessionsPerWeek,
+        minutes_per_session: minutesPerSession,
         school_site: currentSchool?.school_site || '',
         school_district: currentSchool?.school_district || '',
         school_id: currentSchool?.school_id,
@@ -322,35 +393,61 @@ export default function StudentsPage() {
         }
       }
 
+      // The name lives on `student_details`, not `students` (SPE-284), so it is
+      // a second write for exactly the reason the teacher links above are: the
+      // student row is already committed. Same handling — the add succeeded, so
+      // say what is missing rather than sending the user to retry initials that
+      // now collide.
+      let nameFailed = false;
+      if (created) {
+        try {
+          await saveStudentName(created.id, addedFirstName, addedLastName);
+        } catch (nameError) {
+          console.error('Error saving student name:', nameError);
+          nameFailed = true;
+        }
+      }
+
       // SPE-237: stay open for the next entry. Reset the per-student fields but
       // keep the grade preselected (caseloads cluster by grade), confirm inline,
-      // and refocus Initials so the next student can be typed without the mouse.
+      // and refocus First Name so the next student can be typed without the mouse.
       setFormData({
+        first_name: '',
+        last_name: '',
         initials: '',
         grade_level: formData.grade_level,
         sessions_per_week: '',
         minutes_per_session: '30',
         weekly_minutes: ''
       });
+      // The next student's initials follow their own name, not the override
+      // the last one may have needed.
+      setInitialsEdited(false);
       setTeacherLinks([]);
       setTeacherFieldKey((k) => k + 1);
-      if (coTeachersFailed) {
+      // Both follow-up writes can fail independently; one message names
+      // whichever did, so the user isn't told about a problem they don't have.
+      const missing = [
+        coTeachersFailed ? 'the teacher details' : null,
+        nameFailed ? 'the name' : null,
+      ].filter(Boolean);
+      if (missing.length > 0) {
         setAddFormError(
-          `${addedInitials} was added, but the teacher details could not be saved. ` +
-          `Open the student to set them again.`,
+          `${addedInitials} was added, but ${missing.join(' and ')} could not be saved. ` +
+          `Open the student to set ${missing.length > 1 ? 'them' : 'it'} again.`,
         );
       } else {
-        setAddFormConfirmation(`${addedInitials} added`);
+        setAddFormConfirmation(`${addedFirstName} ${addedLastName} (${addedInitials}) added`);
       }
       fetchStudents();
       checkUnscheduledSessions();
-      initialsInputRef.current?.focus();
+      firstNameInputRef.current?.focus();
     } catch (error) {
       console.error('Error creating student:', error);
       // Inline error — keep the form open and the other fields intact so the
       // user can correct (e.g. duplicate initials) without re-entering everything.
       setAddFormError(error instanceof Error ? error.message : 'Failed to add student');
-      initialsInputRef.current?.focus();
+      firstNameInputRef.current?.focus();
     } finally {
       savingStudentRef.current = false;
       setSavingStudent(false);
@@ -364,7 +461,10 @@ export default function StudentsPage() {
     setAddFormError(null);
     setAddFormConfirmation(null);
     setTeacherLinks([]);
+    setInitialsEdited(false);
     setFormData({
+      first_name: '',
+      last_name: '',
       initials: '',
       grade_level: '',
       sessions_per_week: '',
@@ -608,54 +708,115 @@ export default function StudentsPage() {
                     {addFormError}
                   </div>
                 )}
-                  <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-6 gap-4">
-                  <div className="md:col-span-1">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Student Initials*
+                  <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-12 gap-4">
+                  <div className="md:col-span-4">
+                    <label htmlFor="add_first_name" className="block text-sm font-medium text-gray-700 mb-1">
+                      First Name*
                     </label>
                     <input
+                      id="add_first_name"
                       type="text"
-                      ref={initialsInputRef}
+                      ref={firstNameInputRef}
                       required
-                      value={formData.initials}
+                      value={formData.first_name}
                       onChange={(e) => {
-                        setFormData({...formData, initials: e.target.value});
+                        setFormData({...formData, first_name: e.target.value});
                         if (addFormConfirmation) setAddFormConfirmation(null);
                       }}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="e.g., JD"
+                      className={FIELD_CONTROL_CLASS}
+                      placeholder="e.g., Jordan"
                     />
                   </div>
 
-                  <div className="md:col-span-1">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Grade Level*
+                  <div className="md:col-span-4">
+                    <label htmlFor="add_last_name" className="block text-sm font-medium text-gray-700 mb-1">
+                      Last Name*
                     </label>
-                    <select
+                    <input
+                      id="add_last_name"
+                      type="text"
                       required
-                      value={formData.grade_level}
-                      onChange={(e) => setFormData({...formData, grade_level: e.target.value})}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    >
-                      <option value="">Select grade</option>
-                      <option value="TK">TK</option>
-                      <option value="K">K</option>
-                      <option value="1">1</option>
-                      <option value="2">2</option>
-                      <option value="3">3</option>
-                      <option value="4">4</option>
-                      <option value="5">5</option>
-                      <option value="6">6</option>
-                      <option value="7">7</option>
-                      <option value="8">8</option>
-                      <option value="9">9</option>
-                      <option value="10">10</option>
-                      <option value="11">11</option>
-                      <option value="12">12</option>
-                    </select>
+                      value={formData.last_name}
+                      onChange={(e) => {
+                        setFormData({...formData, last_name: e.target.value});
+                        if (addFormConfirmation) setAddFormConfirmation(null);
+                      }}
+                      className={FIELD_CONTROL_CLASS}
+                      placeholder="e.g., Diaz"
+                    />
+                  </div>
+
+                  {/* Initials are what the schedule grid and every other surface
+                      show, so they stay visible rather than being computed out
+                      of sight — but they follow the name instead of being the
+                      thing you type first. Editable because two students on one
+                      caseload can share them in the same grade (the
+                      provider/school/grade/initials uniqueness index), and
+                      without an override that second student cannot be added at
+                      all. Emptying the box hands it back to the name. */}
+                  <div className="md:col-span-2">
+                    <label htmlFor="add_initials" className="block text-sm font-medium text-gray-700 mb-1">
+                      Initials <span className="font-normal text-gray-400">(auto)</span>
+                    </label>
+                    <input
+                      id="add_initials"
+                      type="text"
+                      required
+                      value={addInitials}
+                      onChange={(e) => {
+                        setInitialsEdited(true);
+                        // Whitespace is not an initial. Left in, a box of
+                        // spaces is 2–4 characters long, so it clears this
+                        // form's guard AND the database's
+                        // check_initials_length, and the student's tag renders
+                        // blank on every schedule surface. Stripping at the one
+                        // place the value can be typed also handles a paste of
+                        // " JD ".
+                        setFormData({
+                          ...formData,
+                          initials: e.target.value.replace(/\s/g, '').toUpperCase(),
+                        });
+                      }}
+                      minLength={2}
+                      maxLength={4}
+                      className={FIELD_CONTROL_CLASS}
+                      placeholder="JD"
+                    />
                   </div>
 
                   <div className="md:col-span-2">
+                    <label htmlFor="add_grade_level" className="block text-sm font-medium text-gray-700 mb-1">
+                      Grade Level*
+                    </label>
+                    <div className="relative">
+                      <select
+                        id="add_grade_level"
+                        required
+                        value={formData.grade_level}
+                        onChange={(e) => setFormData({...formData, grade_level: e.target.value})}
+                        className={SELECT_CONTROL_CLASS}
+                      >
+                        <option value="">Select grade</option>
+                        <option value="TK">TK</option>
+                        <option value="K">K</option>
+                        <option value="1">1</option>
+                        <option value="2">2</option>
+                        <option value="3">3</option>
+                        <option value="4">4</option>
+                        <option value="5">5</option>
+                        <option value="6">6</option>
+                        <option value="7">7</option>
+                        <option value="8">8</option>
+                        <option value="9">9</option>
+                        <option value="10">10</option>
+                        <option value="11">11</option>
+                        <option value="12">12</option>
+                      </select>
+                      <SelectChevron />
+                    </div>
+                  </div>
+
+                  <div className="md:col-span-6">
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       {isSecondary ? 'Teachers*' : 'Teacher*'}
                     </label>
@@ -670,67 +831,73 @@ export default function StudentsPage() {
                   </div>
 
                   {weeklyBucketMode ? (
-                    <div className="md:col-span-2">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <div className="md:col-span-6">
+                      <label htmlFor="add_weekly_minutes" className="block text-sm font-medium text-gray-700 mb-1">
                         Minutes/Week*
                       </label>
                       <input
+                        id="add_weekly_minutes"
                         type="number"
                         required
                         min="1"
                         max={MAX_MINUTES_PER_SESSION}
                         value={formData.weekly_minutes}
                         onChange={(e) => setFormData({...formData, weekly_minutes: e.target.value})}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        className={NUMBER_CONTROL_CLASS}
                         placeholder="e.g. 570"
                       />
                     </div>
                   ) : (
                     <>
-                      <div className="md:col-span-1">
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <div className="md:col-span-3">
+                        <label htmlFor="add_sessions_per_week" className="block text-sm font-medium text-gray-700 mb-1">
                           Sessions/Week*
                         </label>
                         <input
+                          id="add_sessions_per_week"
                           type="number"
                           required
                           min="1"
                           max="20"
                           value={formData.sessions_per_week}
                           onChange={(e) => setFormData({...formData, sessions_per_week: e.target.value})}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          className={NUMBER_CONTROL_CLASS}
                           placeholder="2"
                         />
                       </div>
 
-                      <div className="md:col-span-1">
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <div className="md:col-span-3">
+                        <label htmlFor="add_minutes_per_session" className="block text-sm font-medium text-gray-700 mb-1">
                           Min/Session*
                         </label>
-                        <select
-                          required
-                          value={formData.minutes_per_session}
-                          onChange={(e) => setFormData({...formData, minutes_per_session: e.target.value})}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        >
-                          {/* The IEP converter can suggest a non-standard length
-                              (e.g. a 23-min/week mandate); keep the exact value
-                              selectable rather than forcing a rounding. */}
-                          {formData.minutes_per_session &&
-                            !['30', '45', '60'].includes(formData.minutes_per_session) && (
-                              <option value={formData.minutes_per_session}>
-                                {formData.minutes_per_session}
-                              </option>
-                            )}
-                          <option value="30">30</option>
-                          <option value="45">45</option>
-                          <option value="60">60</option>
-                        </select>
+                        <div className="relative">
+                          <select
+                            id="add_minutes_per_session"
+                            required
+                            value={formData.minutes_per_session}
+                            onChange={(e) => setFormData({...formData, minutes_per_session: e.target.value})}
+                            className={SELECT_CONTROL_CLASS}
+                          >
+                            {/* The IEP converter can suggest a non-standard length
+                                (e.g. a 23-min/week mandate); keep the exact value
+                                selectable rather than forcing a rounding. */}
+                            {formData.minutes_per_session &&
+                              !['30', '45', '60'].includes(formData.minutes_per_session) && (
+                                <option value={formData.minutes_per_session}>
+                                  {formData.minutes_per_session}
+                                </option>
+                              )}
+                            <option value="30">30</option>
+                            <option value="45">45</option>
+                            <option value="60">60</option>
+                          </select>
+                          <SelectChevron />
+                        </div>
                       </div>
                     </>
                   )}
 
-                  <div className="md:col-span-6">
+                  <div className="md:col-span-12">
                     <IepMinutesConverter
                       onApply={(weekly) => {
                         if (weeklyBucketMode) {
@@ -749,7 +916,7 @@ export default function StudentsPage() {
                     />
                   </div>
 
-                  <div className="md:col-span-6 flex items-center justify-end gap-3 pt-4">
+                  <div className="md:col-span-12 flex items-center justify-end gap-3 pt-4">
                     {addFormConfirmation && (
                       <span className="mr-auto text-sm font-medium text-green-700">
                         {addFormConfirmation}
