@@ -1314,24 +1314,33 @@ tracing behavior back to it rather than by reading anything written down.
   `rotation_week_assignments`), so an insert that omits `school_year` now gets
   *this instant's* year rather than a stale literal — including on Aug 1
   itself.
-- **The rule of thumb these bugs share: a year-scoped write with an unscoped
-  read strands data invisibly, and an unscoped read is indistinguishable from
-  a correct one until a school has two years of data live at once.** Before
-  that point every read answers the same whether or not it filters, so a
-  missing filter is invisible in testing and in production right up to the
-  moment a school crosses that line.
-  - **SPE-459** — 819 rows were stranded in the previous year when the Aug 1
-    flip happened, because the write side hadn't stamped the year explicitly.
-  - **SPE-460** — new bell schedules/special activities were born under the
-    hardcoded `'2025-2026'` default while every read filtered on
-    `getCurrentSchoolYear()`, so a row born under the stale default vanished
-    the moment it was saved. Fixed by wiring the default to
-    `current_school_year()`.
-  - **SPE-458** — the scheduler's `SchedulingDataManager` read every year of
-    `bell_schedules`/`special_activities` at once, unioning last year's rows
-    into this year's conflict checks. Fixed for the data manager only.
+- **Two distinct failure shapes, both from this one column.**
+  - **A write stamped the wrong (stale) year while a read filters to the
+    current one → the row goes invisible.** This is the more dangerous shape
+    because nothing errors — the row exists, just not where anything looks.
+    - **SPE-460** — new bell schedules/special activities were born under a
+      hardcoded `'2025-2026'` default while every read filtered on
+      `getCurrentSchoolYear()`. Once the calendar passed 2025-2026, a row
+      born under the stale default vanished the moment it was saved. Fixed
+      by wiring the default to `current_school_year()`.
+    - **SPE-459** — real-school rows were correctly tagged `'2025-2026'`
+      when written; the bug was that **nothing carried them forward** when
+      `getCurrentSchoolYear()` flipped to `'2026-2027'` on Aug 1. No school
+      had activated the next year yet, so there was no copy/retag
+      transition, and every read pins to the current label with no in-app
+      path back to a prior one. 819 rows across 9 tables went silently
+      unreachable until a one-off migration re-tagged them forward.
+  - **A read is unscoped (no year filter at all) → it unions every year at
+    once,** which is indistinguishable from correct right up until a school
+    has two years of data live simultaneously, because before that point an
+    unscoped read and a correctly-scoped one return the same rows.
+    - **SPE-458** — the scheduler's `SchedulingDataManager` read every year
+      of `bell_schedules`/`special_activities` at once, unioning last year's
+      rows into this year's conflict checks. Fixed for the data manager
+      only.
   - **SPE-461** (open) — `school_year_config` isn't year-aware and still
-    holds last year's dates.
+    holds last year's dates; a third shape (no `school_year` column at all
+    to scope by), not yet fixed.
 - **Who filters on it and who doesn't, today — and it's uneven even within one
   file.** The provider Settings pages, the scheduler's
   `SchedulingDataManager` (post-SPE-458), and `session-update-service`'s
@@ -1351,16 +1360,20 @@ tracing behavior back to it rather than by reading anything written down.
   so none of this is firing — the first real year-activation copy trips it.
 - **The year-activation copy flow is what puts a school into two years.** An
   admin on the Master Schedule page (`SchoolYearToggle` /
-  `YearActivationDialog`) activates the next year for a school. If that year
-  has no data yet, `copyScheduleToNextYear()` calls the
-  `copy_schedule_to_year(school_id, from_year, to_year)` RPC, which copies
+  `YearActivationDialog`) activates the next year for a school by picking one
+  of two options the dialog offers: **copy forward** or **start blank**.
+  Blank only calls `activateSchoolYear()` — one year stays live, nothing
+  duplicates. Copy calls `copyScheduleToNextYear()`, which invokes the
+  `copy_schedule_to_year(school_id, from_year, to_year)` RPC and then
+  `activateSchoolYear()`; the RPC copies
   `bell_schedules`, `special_activities`, `activity_type_availability`,
   `rotation_activity_pairs`, `rotation_groups`, `rotation_group_members`,
   `yard_duty_assignments`, and `instruction_schedules` forward under the new
-  year label — the source rows are left untouched, so the school now has both
-  years live at once. Either way, `activateSchoolYear()` then upserts a row
-  into `activated_school_years`, which `checkYearActivated()` (and the
-  toggle) treats as the source of truth for "has this year started,"
+  year label — the source rows are left untouched, so choosing copy is what
+  puts the school in two live years at once; choosing blank never does.
+  Either path finishes by upserting a row into `activated_school_years`,
+  which `checkYearActivated()` (and the toggle) treats as the source of
+  truth for "has this year started,"
   falling back to a plain data check for schools activated before that table
   existed. `mainstreaming_blocks`, `student_blocked_times`, and
   `teacher_availability_prefs` are not copied forward by this RPC.
