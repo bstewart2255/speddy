@@ -140,4 +140,11 @@ describe.each(routes)('GET /api/$name/results status filter (SPE-76)', ({ handle
     const body = await res.json();
     expect(body[resultsKey].map((r: { id: string }) => r.id)).toEqual(['T1', 'T2', 'T3', 'T4', 'T5']);
   });
+
+  it('returns every row, unfiltered, when status is explicitly "all"', async () => {
+    const res = await call(handler, path, 'status=all&limit=10&offset=0');
+
+    const body = await res.json();
+    expect(body[resultsKey].map((r: { id: string }) => r.id)).toEqual(['T1', 'T2', 'T3', 'T4', 'T5']);
+  });
 });
