@@ -482,6 +482,30 @@ describe('parseCSVReport — SEIS Student Goals Report (CSV)', () => {
       expect(speech.students.some((s) => s.lastName === 'Foster')).toBe(false);
     });
 
+    it('warns that annual-review dates are lost when there is no IEP Date column', async () => {
+      const result = await parseCSVReport(buildSeisGoalsCsvWithoutColumns([9]), {});
+
+      expect(result.students.length).toBeGreaterThan(0);
+      expect(result.students.every((s) => s.iepDate === undefined)).toBe(true);
+      expect(result.warnings.some((w) => /iep meeting date/i.test(w.message))).toBe(true);
+    });
+
+    it('bounds the other-school warnings instead of one per row', async () => {
+      // A district-wide export is mostly other schools' students. One warning
+      // per row is thousands of them, and the zero-student path returns
+      // warnings uncapped.
+      const result = await parseCSVReport(SEIS_GOALS_CSV(), {
+        userSchools: ['A School That Matches Nobody'],
+      });
+
+      expect(result.students).toHaveLength(0);
+      const perRow = result.warnings.filter((w) => /doesn't match your school/i.test(w.message));
+      expect(perRow.length).toBeLessThanOrEqual(5);
+      expect(result.warnings.some((w) => /attend schools other than yours and were skipped/i.test(w.message))).toBe(
+        true,
+      );
+    });
+
     it('stays quiet when those columns are present', async () => {
       const result = await parseCSVReport(SEIS_GOALS_CSV(), { providerRole: 'resource' });
       expect(result.warnings.some((w) => /district student id|route each goal/i.test(w.message))).toBe(

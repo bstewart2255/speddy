@@ -254,6 +254,21 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
       });
     }
 
+    if (isSEISFormat && columnMapping.iepDate === undefined) {
+      warnings.push({
+        row: 0,
+        message:
+          'No "IEP Date" column found, so these students will import without their IEP meeting date. ' +
+          'Speddy uses it to flag annual reviews coming due — re-export this report with the IEP Date ' +
+          'column included.',
+      });
+    }
+
+    // How many rows the school filter dropped, and how many of those were named
+    // individually — see the bounded warning inside the row loop.
+    const OTHER_SCHOOL_WARNING_LIMIT = 5;
+    let otherSchoolSkipped = 0;
+
     // Temporary map to consolidate duplicate students
     const studentMap = new Map<string, ParsedStudent>();
 
@@ -347,10 +362,18 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
           );
 
           if (!schoolMatches) {
-            warnings.push({
-              row: rowIndex + 1,
-              message: `Student "${firstName} ${lastName}" attends "${schoolOfAttendance}" which doesn't match your school(s). Skipping.`
-            });
+            // Bounded: a district-wide export is mostly other schools' students,
+            // so one warning per row is thousands of them — and when nothing
+            // survives the filter, the zero-student path returns warnings
+            // uncapped. Name the first few, then count the rest (summarized
+            // after the loop).
+            if (otherSchoolSkipped < OTHER_SCHOOL_WARNING_LIMIT) {
+              warnings.push({
+                row: rowIndex + 1,
+                message: `Student "${firstName} ${lastName}" attends "${schoolOfAttendance}" which doesn't match your school(s). Skipping.`
+              });
+            }
+            otherSchoolSkipped++;
             continue;
           }
         }
@@ -473,6 +496,16 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
           message: `Error parsing row: ${error.message}`
         });
       }
+    }
+
+    if (otherSchoolSkipped > OTHER_SCHOOL_WARNING_LIMIT) {
+      warnings.push({
+        row: 0,
+        message:
+          `${otherSchoolSkipped} students in this file attend schools other than yours and were ` +
+          `skipped (${OTHER_SCHOOL_WARNING_LIMIT} of them listed above). That is expected for a ` +
+          'district-wide export.',
+      });
     }
 
     // Convert map to array
