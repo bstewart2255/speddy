@@ -366,6 +366,9 @@ export default function TeacherSyncCard({ connectionId }: { connectionId: string
 
             <p className="text-xs text-slate-500">
               Feed: {plan?.feedTeacherRows} teacher row(s) of {plan?.feedTotalRows} staff row(s).
+              {plan?.teachingEvidence === 'unavailable' && (
+                <> Roster evidence unavailable — sentinel rows judged on staff IDs alone.</>
+              )}
               {plan && plan.unmappedSisSchools.length > 0 && (
                 <>
                   {' '}

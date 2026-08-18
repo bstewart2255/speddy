@@ -1,10 +1,8 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { withRoute } from '@/lib/api/with-route';
-import { resolveDistrictSisCaller } from '@/lib/api/district-sis-caller';
-import { createServiceClient } from '@/lib/supabase/server';
+import { requireDistrictAdminOneRoster } from '@/lib/api/district-oneroster-gate';
 import { logger } from '@/lib/logger';
-import { getDecryptedCredential, listConnections } from '@/lib/sis/connections';
 import {
   applyTeacherSyncPlan,
   loadTeacherSyncInput,
@@ -38,11 +36,10 @@ const bodySchema = z
  *
  * Same engine as the internal route, different authorization: the caller's
  * OWN district only, resolved from their grants — a request can never name a
- * district or a connection. DISTRICT ADMINS ONLY: the shared seam admits
- * `district_tech` too, which is right for connection management and wrong
- * here twice over — this surface serves teacher PII and, on apply, PROVISIONS
- * SIGN-IN ACCOUNTS. Same one-more-look grant re-check as the sis-directory
- * route (SPE-436).
+ * district or a connection. DISTRICT ADMINS ONLY: this surface serves teacher
+ * PII and, on apply, PROVISIONS SIGN-IN ACCOUNTS, both beyond the tech role's
+ * integrations-only line. The whole admission ladder lives in
+ * `requireDistrictAdminOneRoster` (SPE-540), shared with the link-sync route.
  *
  * Apply recomputes the plan server-side and is count-bound to the reviewed
  * preview (409 on drift). Logs stay counts-only; row detail exists only in
@@ -56,81 +53,14 @@ export const POST = withRoute<Record<string, string>, z.infer<typeof bodySchema>
     rateLimit: { requests: 4, windowSeconds: 60, name: 'district-teacher-sync' },
   },
   async ({ userId, body }) => {
-    const caller = await resolveDistrictSisCaller(userId);
-    if (!caller.ok) {
-      log.warn('Non-district-admin tried the teacher sync', { userId, denied: caller.denied });
-      return NextResponse.json(
-        { error: 'Forbidden: district admin access required' },
-        { status: 403 },
-      );
-    }
-    if (caller.role !== 'district_admin') {
-      const { data: adminGrant, error: grantError } = await createServiceClient()
-        .from('admin_permissions')
-        .select('id')
-        .eq('admin_id', userId)
-        .eq('role', 'district_admin')
-        .eq('district_id', caller.districtId)
-        .limit(1)
-        .maybeSingle();
-      if (grantError) {
-        // Fail-closed either way, but a database fault must not read as a
-        // missing grant in the logs.
-        log.error('The district_admin grant re-check failed; refusing', grantError, {
-          userId,
-          districtId: caller.districtId,
-        });
-      }
-      if (!adminGrant) {
-        log.warn('district_tech tried the teacher sync', {
-          userId,
-          districtId: caller.districtId,
-        });
-        return NextResponse.json(
-          { error: 'Forbidden: the teacher sync is for district admins.' },
-          { status: 403 },
-        );
-      }
-    }
-
-    // Wrapped: withRoute's catch echoes error.message to the client in
-    // development, and a Supabase error names tables and constraints.
-    let connections;
-    try {
-      connections = await listConnections(caller.districtId);
-    } catch (err) {
-      log.error('Failed to load SIS connections for the teacher sync', err, {
-        districtId: caller.districtId,
-      });
-      return NextResponse.json({ error: 'Could not load your connection.' }, { status: 500 });
-    }
-
-    const connection = connections.find((c) => c.sis_type === 'oneroster');
-    if (!connection || !connection.base_url) {
-      return NextResponse.json(
-        { error: 'Teacher sync needs a OneRoster connection. Set one up in the tech portal first.' },
-        { status: 409 },
-      );
-    }
-
-    let credential: Awaited<ReturnType<typeof getDecryptedCredential>> = null;
-    try {
-      credential = await getDecryptedCredential(connection.id);
-    } catch (err) {
-      log.error('Could not decrypt the stored SIS credential', err, {
-        connectionId: connection.id,
-      });
-      return NextResponse.json(
-        { error: 'Your stored OneRoster credential could not be read. Re-save it in the tech portal.' },
-        { status: 500 },
-      );
-    }
-    if (!credential || credential.sisType !== 'oneroster') {
-      return NextResponse.json(
-        { error: 'No OneRoster credentials are stored yet, so there is nothing to sync.' },
-        { status: 409 },
-      );
-    }
+    const gate = await requireDistrictAdminOneRoster(userId, {
+      logLabel: 'teacher sync',
+      adminOnlyMessage: 'Forbidden: the teacher sync is for district admins.',
+      noConnectionMessage:
+        'Teacher sync needs a OneRoster connection. Set one up in the tech portal first.',
+    });
+    if (!gate.ok) return gate.response;
+    const { connection, credential } = gate;
 
     // Wrapped like the other outbound calls: withRoute's dev-mode catch
     // echoes error.message, and a SIS failure's text can carry the base URL

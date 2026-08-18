@@ -354,6 +354,13 @@ export default function DistrictTeacherSyncPanel() {
             <p className="text-xs text-slate-400">
               From your SIS: {plan?.feedTeacherRows} teacher record(s) of {plan?.feedTotalRows}{' '}
               staff record(s).
+              {plan?.teachingEvidence === 'unavailable' && (
+                <>
+                  {' '}
+                  Class rosters couldn&apos;t be read this run, so staff without staff IDs were
+                  judged on IDs alone.
+                </>
+              )}
               {plan && plan.unmappedSisSchools.length > 0 && (
                 <>
                   {' '}

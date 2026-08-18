@@ -14,6 +14,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Card } from '@/app/components/ui/card';
+import DistrictLinkSyncPanel from '@/app/components/admin/district-link-sync-panel';
 import DistrictTeacherSyncPanel from '@/app/components/admin/district-teacher-sync-panel';
 import type {
   DirectoryArea,
@@ -160,6 +161,11 @@ export default function DirectoriesPage() {
           admin's own Preview → Apply, moved here from /internal per the
           owner's direction. */}
       <DistrictTeacherSyncPanel />
+
+      {/* SPE-540: step two — once the teacher list is filled, the class
+          rosters connect each caseload student to their teachers. District
+          portal only; no staff surface renders student-level detail. */}
+      <DistrictLinkSyncPanel />
 
       <div className="flex gap-2" role="tablist" aria-label="Directory areas">
         {AREAS.map((a) => (

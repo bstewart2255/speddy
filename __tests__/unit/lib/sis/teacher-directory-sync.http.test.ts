@@ -114,6 +114,8 @@ function fillerTeachers(n: number): unknown[] {
 let server: Server;
 let origin: string;
 let requests: string[] = [];
+/** SPE-540: flip off to simulate a district whose roster scope is disabled. */
+let serveEnrollments = true;
 
 beforeAll(async () => {
   server = createServer((req, res) => {
@@ -125,6 +127,27 @@ beforeAll(async () => {
     };
 
     if (url.includes('/token')) return respond({ access_token: 'sync-bearer' });
+    if (url.includes('/enrollments')) {
+      if (!serveEnrollments) {
+        res.writeHead(403, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({}));
+      }
+      // The teaches-a-class evidence (SPE-540): rescue-1 teaches; a student
+      // edge and a tobedeleted teacher edge must both contribute nothing.
+      return respond({
+        enrollments: [
+          { sourcedId: 'e1', role: 'teacher', user: { sourcedId: 'rescue-1' }, class: { sourcedId: 'c1' } },
+          { sourcedId: 'e2', role: 'student', user: { sourcedId: 'aide-1' }, class: { sourcedId: 'c1' } },
+          {
+            sourcedId: 'e3',
+            role: 'teacher',
+            user: { sourcedId: 'aide-1' },
+            class: { sourcedId: 'c2' },
+            status: 'tobedeleted',
+          },
+        ],
+      });
+    }
     if (url.includes('/schools')) {
       return respond({
         orgs: [
@@ -169,6 +192,17 @@ beforeAll(async () => {
             status: 'tobedeleted',
             orgs: [{ sourcedId: 'org-high' }],
           },
+          {
+            // The Carquinez shape (SPE-540): sentinel identifier, but the
+            // rosters above show this sourcedId teaching class c1.
+            sourcedId: 'rescue-1',
+            givenName: 'CASEY',
+            familyName: 'ROOMLEAD',
+            email: 'croomlead@example.org',
+            identifier: 'non-teaching staff',
+            grades: ['KG'],
+            orgs: [{ sourcedId: 'org-elem' }],
+          },
         ],
       });
     }
@@ -186,6 +220,7 @@ afterAll(async () => {
 beforeEach(() => {
   requests = [];
   logCalls.length = 0;
+  serveEnrollments = true;
   mockAssertSafe.mockClear().mockResolvedValue(undefined);
 });
 
@@ -202,8 +237,8 @@ describe('loadTeacherSyncInput', () => {
   it('walks /teachers to completion — a full page plus the tail, minus the dropped', async () => {
     const input = await load();
 
-    // One full page of filler + real + sentinel; the tobedeleted row is dropped.
-    expect(input.feedTeachers).toHaveLength(ONEROSTER_DEFAULT_PAGE_SIZE + 2);
+    // One full page of filler + real + sentinel + rescued; tobedeleted dropped.
+    expect(input.feedTeachers).toHaveLength(ONEROSTER_DEFAULT_PAGE_SIZE + 3);
     const teacherPages = requests.filter((u) => u.includes('/teachers'));
     expect(teacherPages.length).toBe(2);
 
@@ -216,14 +251,33 @@ describe('loadTeacherSyncInput', () => {
       isTeacher: true,
       orgIds: ['org-high'],
     });
+    // The aide has enrollment ROWS in the fixture — a student edge and a
+    // tobedeleted teacher edge — and neither may count as teaching.
     const aide = input.feedTeachers.find((t) => t.sourcedId === 'aide-1');
     expect(aide?.isTeacher).toBe(false);
+
+    // The SPE-540 rescue, end to end over real HTTP: sentinel identifier,
+    // teaches per the rosters, admitted.
+    const rescued = input.feedTeachers.find((t) => t.sourcedId === 'rescue-1');
+    expect(rescued?.isTeacher).toBe(true);
+    expect(input.teachingEvidence).toBe('checked');
 
     // …schools dropped the tobedeleted org…
     expect(input.feedSchools.map((s) => s.sourcedId).sort()).toEqual(['org-elem', 'org-high']);
 
     // …and the database half arrived keyed by school id.
     expect(input.studentCounts).toEqual({ 'sch-elem': 3, 'sch-high': 2 });
+  });
+
+  it('degrades to staff IDs alone when the roster read is refused — and says so', async () => {
+    serveEnrollments = false;
+    const input = await load();
+    expect(input.teachingEvidence).toBe('unavailable');
+    // Same row, no readable evidence: back to the pre-SPE-540 rule.
+    const rescued = input.feedTeachers.find((t) => t.sourcedId === 'rescue-1');
+    expect(rescued?.isTeacher).toBe(false);
+    // The rest of the sync is untouched by the missing scope.
+    expect(input.feedTeachers).toHaveLength(ONEROSTER_DEFAULT_PAGE_SIZE + 3);
   });
 
   it('drops planted vendor/demographic fields — and the whole pipeline stays clean of them', async () => {
@@ -272,10 +326,22 @@ describe('loadTeacherSyncInput', () => {
     for (const value of [
       'WHITFIELD',
       'OFFICESTAFF',
+      'ROOMLEAD',
       'dwhitfield@example.org',
+      'croomlead@example.org',
       CLIENT_SECRET,
       ...Object.values(PLANTED),
     ]) {
+      expect(logged).not.toContain(value);
+    }
+  });
+
+  it('logs the roster degradation as fixed words — nothing a fixture row carries', async () => {
+    serveEnrollments = false;
+    await load();
+    const logged = JSON.stringify(logCalls);
+    expect(logged).toContain('Class-roster evidence unavailable');
+    for (const value of ['ROOMLEAD', 'croomlead@example.org', CLIENT_SECRET]) {
       expect(logged).not.toContain(value);
     }
   });
