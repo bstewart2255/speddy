@@ -9,7 +9,8 @@ import { createServiceClient } from '@/lib/supabase/server';
  * action being audited. (SPE-169 owns the full audit-logging story.)
  */
 export async function logServerAuditEvent(params: {
-  user_id: string;
+  /** Nullable for SYSTEM actions only (e.g. cron-triggered syncs, SPE-545). */
+  user_id: string | null;
   action: string;
   resource_type?: string;
   resource_id?: string;

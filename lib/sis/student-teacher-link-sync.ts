@@ -812,12 +812,21 @@ export interface LinkSchoolWriteResult {
  */
 export async function applyLinkSyncPlan(params: {
   plan: LinkSyncPlan;
-  actorId: string;
+  /**
+   * Who set this run in motion. Null ONLY for scheduled runs (SPE-545) —
+   * `audit_logs.user_id` is nullable and the trigger field below says why.
+   * An import-triggered run carries the importing provider's id: that person
+   * really did cause the write, and a null there would erase attribution.
+   */
+  actorId: string | null;
   connectionId: string;
   districtId: string;
+  /** How the run started; lands in the audit metadata (SPE-545). */
+  trigger?: 'manual' | 'import' | 'cron';
 }): Promise<LinkSchoolWriteResult[]> {
   const supabase = createServiceClient();
   const results: LinkSchoolWriteResult[] = [];
+  const trigger = params.trigger ?? 'manual';
 
   const recordOutcome = async (partial: boolean) => {
     const written = results.map(({ schoolId, added, removed, relabeled }) => ({
@@ -831,12 +840,13 @@ export async function applyLinkSyncPlan(params: {
       action: 'sis_link_sync_applied',
       resource_type: 'district_sis_connection',
       resource_id: params.connectionId,
-      metadata: { districtId: params.districtId, partial, written },
+      metadata: { districtId: params.districtId, partial, trigger, written },
     });
     log.info('Student–teacher link sync applied', {
       connectionId: params.connectionId,
       districtId: params.districtId,
       partial,
+      trigger,
       written,
     });
   };

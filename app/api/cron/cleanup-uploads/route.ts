@@ -4,7 +4,12 @@ import {
   runSessionInstanceTopup,
   SESSION_TOPUP_WEEKS_AHEAD
 } from '@/lib/services/session-instance-topup';
+import { listAutoSyncDistrictIds, runAutoLinkSync } from '@/lib/sis/auto-link-sync';
 import { cronTokenMatches } from '@/lib/api/cron-auth';
+
+// SPE-545: the nightly link sync below walks each connected district's SIS
+// to completion — well past the platform's default function window.
+export const maxDuration = 300;
 
 export async function GET(request: NextRequest) {
   const startTime = Date.now();
@@ -73,6 +78,23 @@ export async function GET(request: NextRequest) {
       `Session top-up completed: ${topupResult.instancesCreated} instances created from ${topupResult.templatesProcessed} templates (${SESSION_TOPUP_WEEKS_AHEAD}w horizon)`
     );
 
+    // SPE-545: nightly class-roster link sync rides along (both Vercel cron
+    // slots are used — same precedent as the SPE-291 top-up above). Isolated:
+    // runAutoLinkSync never throws, and a worklist failure is reported in the
+    // response without failing the jobs that already ran. Outcomes are
+    // counts-by-word only.
+    const linkSync: Record<string, number> & { error?: string } = {};
+    try {
+      const districtIds = await listAutoSyncDistrictIds();
+      for (const districtId of districtIds) {
+        const outcome = await runAutoLinkSync({ districtId, trigger: 'cron', actorId: null });
+        linkSync[outcome] = (linkSync[outcome] ?? 0) + 1;
+      }
+    } catch (linkErr: any) {
+      console.error('Nightly link sync worklist failed:', linkErr);
+      linkSync.error = 'Could not list SIS connections';
+    }
+
     // Return success response
     return NextResponse.json({
       success: true,
@@ -81,6 +103,7 @@ export async function GET(request: NextRequest) {
         instancesCreated: topupResult.instancesCreated,
         weeksAhead: SESSION_TOPUP_WEEKS_AHEAD
       },
+      linkSync,
       processingTimeMs: Date.now() - startTime,
       timestamp: new Date().toISOString()
     }, { status: 200 });

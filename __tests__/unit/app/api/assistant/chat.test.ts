@@ -243,6 +243,8 @@ describe('POST /api/assistant/chat', () => {
       'cancelled but not deleted',
       '"Add Referral"',
       'Not possible in Speddy:',
+      // Automatic teacher links from the district SIS (SPE-545)
+      'filled in automatically from the district\'s class rosters',
     ]) {
       expect(systemText).toContain(anchor);
     }

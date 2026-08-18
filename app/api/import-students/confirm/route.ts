@@ -3,8 +3,9 @@
  * Creates student records from bulk import after user review
  */
 
-import { NextResponse } from 'next/server';
+import { NextResponse, after } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { runAutoLinkSync } from '@/lib/sis/auto-link-sync';
 import { withRoute } from '@/lib/api/with-route';
 import { log } from '@/lib/monitoring/logger';
 import { track } from '@/lib/monitoring/analytics';
@@ -428,6 +429,10 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
       }
     }
 
+    // Districts whose students actually landed — the SPE-545 auto link sync
+    // runs once per district after the response goes out.
+    const districtsToAutoLink = new Set<string>();
+
     // Phase 3 + 4: one batched write, then map the per-element results back to
     // per-student outcomes and sync sessions for the updated students.
     if (batchPending.length > 0) {
@@ -468,6 +473,12 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
             errorCount++;
             continue;
           }
+
+          // A written student's district is a candidate for auto-linking —
+          // updates included, since a re-import can be what ADDS the district
+          // student ID the matcher needs (SPE-545).
+          const writtenDistrictId = p.student.districtId || userProfile?.district_id || null;
+          if (writtenDistrictId) districtsToAutoLink.add(writtenDistrictId);
 
           if (outcome === 'updated') {
             updatedCount++;
@@ -531,6 +542,19 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
       skipped: skippedCount,
       errors: errorCount
     });
+
+    // SPE-545: connect the just-imported students to their classroom teachers
+    // from the district's SIS class rosters. Post-response via after() — the
+    // provider's import must never wait on, or fail because of, the district
+    // SIS. runAutoLinkSync never throws, debounces itself (a burst of imports
+    // costs the SIS one walk), and no-ops in districts without a connection.
+    if (districtsToAutoLink.size > 0) {
+      after(async () => {
+        for (const districtId of districtsToAutoLink) {
+          await runAutoLinkSync({ districtId, trigger: 'import', actorId: userId });
+        }
+      });
+    }
 
     perf.end({ success: errorCount === 0 });
 
