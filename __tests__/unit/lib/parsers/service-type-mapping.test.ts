@@ -10,6 +10,9 @@ import {
   doesTextMatchProvider,
   isGoalForProviderByKeywords,
   hasNoProviderRoutingSignal,
+  getServiceTypeCode,
+  getDeliveryServiceTypeCode,
+  isServiceCodeForRole,
 } from '@/lib/parsers/service-type-mapping';
 
 describe('doesTextMatchProvider — word-boundary matching', () => {
@@ -81,6 +84,45 @@ describe('isGoalForProviderByKeywords', () => {
 
   it('imports everything for roles without a service code', () => {
     expect(isGoalForProviderByKeywords('', '', '', 'psychologist')).toBe(true);
+  });
+});
+
+describe('goal visibility vs. delivered service (SPE-554)', () => {
+  it('keeps the psychologist goals import unfiltered', () => {
+    // A school psych sits on every IEP team, so they see everyone's goals.
+    expect(getServiceTypeCode('psychologist')).toBeNull();
+    expect(isGoalForProviderByKeywords('Handwriting', 'OT (1 of 1)', 'OT', 'psychologist')).toBe(true);
+  });
+
+  it('filters the psychologist deliveries import to counseling (510)', () => {
+    // But the service they DELIVER is counseling, and deliveries become their
+    // own session requirements — so another provider's minutes must not land
+    // in their caseload.
+    expect(getDeliveryServiceTypeCode('psychologist')).toBe('510');
+    expect(isServiceCodeForRole('510 - Individual Counseling', 'psychologist')).toBe(true);
+    expect(isServiceCodeForRole('330 - Specialized Academic Instruction', 'psychologist')).toBe(false);
+    expect(isServiceCodeForRole('415 - Language and Speech', 'psychologist')).toBe(false);
+    expect(isServiceCodeForRole('450 - Occupational Therapy', 'psychologist')).toBe(false);
+  });
+
+  it('leaves every other role identical across both questions', () => {
+    for (const role of ['resource', 'speech', 'ot', 'counseling', 'specialist', 'sea']) {
+      expect(getDeliveryServiceTypeCode(role)).toBe(getServiceTypeCode(role));
+    }
+  });
+
+  it('still accepts every service for a role with no code at all', () => {
+    expect(getDeliveryServiceTypeCode('specialist')).toBeNull();
+    expect(isServiceCodeForRole('330 - Specialized Academic Instruction', 'specialist')).toBe(true);
+  });
+
+  it('normalizes case and whitespace like its sibling lookup', () => {
+    expect(getDeliveryServiceTypeCode(' Psychologist ')).toBe('510');
+    expect(isServiceCodeForRole('510 - Individual Counseling', ' PSYCHOLOGIST ')).toBe(true);
+  });
+
+  it('returns null for an unknown role rather than throwing', () => {
+    expect(getDeliveryServiceTypeCode('principal')).toBeNull();
   });
 });
 
