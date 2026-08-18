@@ -11,8 +11,9 @@ import {
   isGoalForProviderByKeywords,
   hasNoProviderRoutingSignal,
   getServiceTypeCode,
-  getDeliveryServiceTypeCode,
+  getDeliveryServiceTypeCodes,
   isServiceCodeForRole,
+  SERVICE_TYPE_CODES,
 } from '@/lib/parsers/service-type-mapping';
 
 describe('doesTextMatchProvider — word-boundary matching', () => {
@@ -94,35 +95,63 @@ describe('goal visibility vs. delivered service (SPE-554)', () => {
     expect(isGoalForProviderByKeywords('Handwriting', 'OT (1 of 1)', 'OT', 'psychologist')).toBe(true);
   });
 
-  it('filters the psychologist deliveries import to counseling (510)', () => {
+  it('filters the psychologist deliveries import to counseling', () => {
     // But the service they DELIVER is counseling, and deliveries become their
     // own session requirements — so another provider's minutes must not land
     // in their caseload.
-    expect(getDeliveryServiceTypeCode('psychologist')).toBe('510');
     expect(isServiceCodeForRole('510 - Individual Counseling', 'psychologist')).toBe(true);
     expect(isServiceCodeForRole('330 - Specialized Academic Instruction', 'psychologist')).toBe(false);
     expect(isServiceCodeForRole('415 - Language and Speech', 'psychologist')).toBe(false);
     expect(isServiceCodeForRole('450 - Occupational Therapy', 'psychologist')).toBe(false);
   });
 
-  it('leaves every other role identical across both questions', () => {
-    for (const role of ['resource', 'speech', 'ot', 'counseling', 'specialist', 'sea']) {
-      expect(getDeliveryServiceTypeCode(role)).toBe(getServiceTypeCode(role));
+  it('accepts BOTH counseling codes — 510 and 515 — for psych and counselors', () => {
+    // Which code a district uses is local convention, not a rule (JSUSD,
+    // 2026-08-18). Matching only one imports nothing for districts on the other.
+    for (const role of ['psychologist', 'counseling']) {
+      expect(getDeliveryServiceTypeCodes(role)).toEqual(['510', '515']);
+      expect(isServiceCodeForRole('510 - Individual Counseling', role)).toBe(true);
+      expect(isServiceCodeForRole('515 - Counseling and Guidance', role)).toBe(true);
     }
   });
 
-  it('still accepts every service for a role with no code at all', () => {
-    expect(getDeliveryServiceTypeCode('specialist')).toBeNull();
-    expect(isServiceCodeForRole('330 - Specialized Academic Instruction', 'specialist')).toBe(true);
+  it('keeps the single-service roles unchanged', () => {
+    expect(getDeliveryServiceTypeCodes('resource')).toEqual(['330']);
+    expect(getDeliveryServiceTypeCodes('speech')).toEqual(['415']);
+    expect(getDeliveryServiceTypeCodes('ot')).toEqual(['450']);
+    // A counseling row must not leak into an unrelated role's import.
+    expect(isServiceCodeForRole('515 - Counseling and Guidance', 'resource')).toBe(false);
+    expect(isServiceCodeForRole('510 - Individual Counseling', 'speech')).toBe(false);
   });
 
-  it('normalizes case and whitespace like its sibling lookup', () => {
-    expect(getDeliveryServiceTypeCode(' Psychologist ')).toBe('510');
-    expect(isServiceCodeForRole('510 - Individual Counseling', ' PSYCHOLOGIST ')).toBe(true);
+  it('still accepts every service for a role with no codes at all', () => {
+    for (const role of ['specialist', 'sea', 'intervention']) {
+      expect(getDeliveryServiceTypeCodes(role)).toEqual([]);
+      expect(isServiceCodeForRole('330 - Specialized Academic Instruction', role)).toBe(true);
+    }
   });
 
-  it('returns null for an unknown role rather than throwing', () => {
-    expect(getDeliveryServiceTypeCode('principal')).toBeNull();
+  it('normalizes case and whitespace', () => {
+    expect(getDeliveryServiceTypeCodes(' Psychologist ')).toEqual(['510', '515']);
+    expect(isServiceCodeForRole('515 - Counseling and Guidance', ' PSYCHOLOGIST ')).toBe(true);
+  });
+
+  it('returns no codes for an unknown role rather than throwing', () => {
+    expect(getDeliveryServiceTypeCodes('principal')).toEqual([]);
+  });
+
+  it('gives every goal-coded role a delivery filter too — the map fails CLOSED', () => {
+    // The two maps are maintained separately on purpose, which means a role
+    // added to SERVICE_TYPE_CODES alone would accept EVERY service on the
+    // delivery side — silently re-introducing SPE-554 for that role. If this
+    // fails, add the new role to DELIVERY_SERVICE_TYPE_CODES as well.
+    for (const [role, goalCode] of Object.entries(SERVICE_TYPE_CODES)) {
+      if (goalCode === null) continue; // no goal code by design; covered above
+      const deliveryCodes = getDeliveryServiceTypeCodes(role);
+      expect(deliveryCodes.length).toBeGreaterThan(0);
+      // A role's own service must stay importable on the delivery side.
+      expect(deliveryCodes).toContain(goalCode);
+    }
   });
 });
 

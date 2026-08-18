@@ -16,7 +16,16 @@ export const SERVICE_TYPE_CODES = {
 } as const;
 
 /**
- * Service codes for the DELIVERIES import (SPE-554).
+ * Counseling is delivered under either of two SEIS codes, and which one a
+ * district uses is a local convention rather than a rule (JSUSD, confirmed by
+ * their school psychologist 2026-08-18: "counseling services are either listed
+ * as 510 Individual Counseling or 515 Counseling and Guidance"). Matching only
+ * one of them imports nothing for half the districts that use the other.
+ */
+const COUNSELING_DELIVERY_CODES = ['510', '515'] as const;
+
+/**
+ * Service codes for the DELIVERIES import, per role (SPE-554).
  *
  * The goals import and the deliveries import ask different questions of a
  * role, and only the goals answer is `SERVICE_TYPE_CODES`:
@@ -24,21 +33,27 @@ export const SERVICE_TYPE_CODES = {
  *   goals      — "whose goals may this provider SEE?"
  *   deliveries — "which service minutes does this provider DELIVER?"
  *
- * The distinction only bites for `psychologist`. A school psych sits on every
- * IEP team and runs triennials, so importing every student's goals is correct
- * and stays as-is. But the service they deliver is counseling, and deliveries
- * become the provider's OWN `sessions_per_week`/`minutes_per_session`. Left
- * unfiltered, a psych's import wrote other providers' speech/OT/academic
+ * The distinction bites hardest for `psychologist`. A school psych sits on
+ * every IEP team and runs triennials, so importing every student's goals is
+ * correct and stays as-is. But the service they deliver is counseling, and
+ * deliveries become the provider's OWN `sessions_per_week`/`minutes_per_session`.
+ * Left unfiltered, a psych's import wrote other providers' speech/OT/academic
  * minutes into their caseload as counseling sessions — and because the parser
  * keeps one row per student (most recent start date), each student silently
  * landed on whichever service happened to win. Observed at JSUSD 2026-08-18:
  * a 300 min/week academic mandate would have become ten 30-minute counseling
  * sessions.
  *
- * Only roles that differ from SERVICE_TYPE_CODES are listed.
+ * A role absent from this map accepts every service, which is the right
+ * default for roles with no single service of their own (specialist,
+ * intervention) and for SEAs, who don't import deliveries.
  */
-const DELIVERY_SERVICE_TYPE_CODE_OVERRIDES: Record<string, string> = {
-  psychologist: '510',  // Individual Counseling — what a school psych delivers
+const DELIVERY_SERVICE_TYPE_CODES: Record<string, readonly string[]> = {
+  resource: ['330'],                        // Specialized Academic Instruction
+  speech: ['415'],                          // Language and Speech
+  ot: ['450'],                              // Occupational Therapy
+  counseling: COUNSELING_DELIVERY_CODES,
+  psychologist: COUNSELING_DELIVERY_CODES,  // what a school psych delivers
 };
 
 export const SERVICE_TYPE_NAMES: Record<string, string> = {
@@ -46,6 +61,7 @@ export const SERVICE_TYPE_NAMES: Record<string, string> = {
   '415': 'Language and Speech',
   '450': 'Occupational Therapy',
   '510': 'Individual Counseling',
+  '515': 'Counseling and Guidance',
 };
 
 export type ProviderRoleWithServiceType = keyof typeof SERVICE_TYPE_CODES;
@@ -61,18 +77,14 @@ export function getServiceTypeCode(role: string): string | null {
 }
 
 /**
- * Get the SEIS service type code that filters a provider's DELIVERIES import —
+ * Get the SEIS service type codes that filter a provider's DELIVERIES import —
  * the services whose minutes belong to this provider (SPE-554).
  *
- * Same as `getServiceTypeCode` except where a role's delivered service differs
- * from its goal visibility; see DELIVERY_SERVICE_TYPE_CODE_OVERRIDES.
- *
  * @param role - The provider's role
- * @returns The service type code (e.g., '510') or null to accept every service
+ * @returns The codes this role delivers; EMPTY means accept every service
  */
-export function getDeliveryServiceTypeCode(role: string): string | null {
-  const normalizedRole = role.toLowerCase().trim();
-  return DELIVERY_SERVICE_TYPE_CODE_OVERRIDES[normalizedRole] ?? getServiceTypeCode(normalizedRole);
+export function getDeliveryServiceTypeCodes(role: string): readonly string[] {
+  return DELIVERY_SERVICE_TYPE_CODES[role.toLowerCase().trim()] ?? [];
 }
 
 /**
@@ -94,10 +106,10 @@ export function getServiceTypeName(code: string): string | null {
 export function isServiceCodeForRole(serviceCode: string, role: string): boolean {
   // Deliveries define the provider's own service minutes, so this asks the
   // delivery question, not the goal-visibility one (SPE-554).
-  const expectedCode = getDeliveryServiceTypeCode(role);
-  // If no expected code (e.g., specialist), include all services
-  if (!expectedCode) return true;
-  return serviceCode.includes(expectedCode);
+  const expectedCodes = getDeliveryServiceTypeCodes(role);
+  // No expected codes (e.g., specialist, intervention): include all services
+  if (expectedCodes.length === 0) return true;
+  return expectedCodes.some(code => serviceCode.includes(code));
 }
 
 /**

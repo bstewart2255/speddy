@@ -103,8 +103,10 @@ exports[`parseDeliveriesCSV matches the golden snapshot for the resource role (3
   "errors": [],
   "metadata": {
     "filteredServiceRows": 9,
-    "serviceTypeCode": "330",
-    "totalRows": 13,
+    "serviceTypeCodes": [
+      "330",
+    ],
+    "totalRows": 14,
     "uniqueStudents": 8,
   },
   "warnings": [
@@ -116,7 +118,7 @@ exports[`parseDeliveriesCSV matches the golden snapshot for the resource role (3
 }
 `;
 
-exports[`parseDeliveriesCSV psychologist keeps only counseling (510) rows — not other providers' minutes 1`] = `
+exports[`parseDeliveriesCSV psychologist keeps only counseling rows — not other providers' minutes 1`] = `
 {
   "deliveries": [
     {
@@ -131,13 +133,28 @@ exports[`parseDeliveriesCSV psychologist keeps only counseling (510) rows — no
       "startDate": "2025-08-15",
       "weeklyMinutes": 30,
     },
+    {
+      "endDate": "2026-06-10",
+      "key": "wells_wes",
+      "minutesPerSession": 30,
+      "name": "Wells, Wes",
+      "seisId": "2000012",
+      "service": "515 - Counseling and Guidance",
+      "sessionsFrequency": "30 mins served Weekly",
+      "sessionsPerWeek": 1,
+      "startDate": "2025-08-15",
+      "weeklyMinutes": 30,
+    },
   ],
   "errors": [],
   "metadata": {
-    "filteredServiceRows": 1,
-    "serviceTypeCode": "510",
-    "totalRows": 13,
-    "uniqueStudents": 1,
+    "filteredServiceRows": 2,
+    "serviceTypeCodes": [
+      "510",
+      "515",
+    ],
+    "totalRows": 14,
+    "uniqueStudents": 2,
   },
   "warnings": [],
 }
