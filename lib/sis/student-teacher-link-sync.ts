@@ -9,9 +9,12 @@
  *
  * The matching spine (owner-approved 2026-08-18):
  *
- *   SIS student ──(identifier)──> children.district_student_id, trim-exact,
- *                                 falling back to a CONFLICT-FREE value from
- *                                 the child's caseload copies when the child
+ *   SIS student ──(identifier)──> children.district_student_id, trim-exact —
+ *                                 compound identifiers (Aeries sends
+ *                                 `33_STU_965791922`) also match by the bare
+ *                                 number after the last underscore — falling
+ *                                 back to a CONFLICT-FREE value from the
+ *                                 child's caseload copies when the child
  *                                 record's own field is blank
  *   SIS student ──(enrollments, role=student)──> their live classes
  *   live class  ──(enrollments, role=teacher)──> SIS teacher sourcedIds
@@ -275,6 +278,17 @@ export function planStudentTeacherLinkSync(input: LinkPlannerInput): LinkSyncPla
 
   // SIS students by district number. Deduped by sourcedId first so a paging
   // echo cannot manufacture a fake "two SIS students share this number".
+  //
+  // Each student is indexed under EVERY key form it can honestly answer to:
+  // the identifier verbatim, and — when the identifier is a compound like
+  // Aeries' `33_STU_965791922` — the bare number after the last underscore.
+  // Verified against JSUSD live (2026-08-18): Aeries wraps every user
+  // identifier in `{schoolCode}_{type}_{number}` (teachers: `11_TCH_1174`),
+  // while Speddy's district_student_id holds the bare number, so verbatim-only
+  // matching produced 0 of 180. The tail is generic (any underscore), not
+  // `_STU_`-specific: it must still trim-EXACT-equal a stored Speddy ID to
+  // mean anything, and two students colliding on any key form still lands in
+  // the duplicate-in-sis refusal rather than a guess.
   const seenSisStudents = new Set<string>();
   const sisStudentsByIdentifier = new Map<string, string[]>();
   let feedStudentCount = 0;
@@ -282,11 +296,19 @@ export function planStudentTeacherLinkSync(input: LinkPlannerInput): LinkSyncPla
     if (!s.sourcedId || seenSisStudents.has(s.sourcedId)) continue;
     seenSisStudents.add(s.sourcedId);
     feedStudentCount += 1;
-    const key = s.identifier?.trim();
-    if (!key) continue;
-    const list = sisStudentsByIdentifier.get(key) ?? [];
-    list.push(s.sourcedId);
-    sisStudentsByIdentifier.set(key, list);
+    const verbatim = s.identifier?.trim();
+    if (!verbatim) continue;
+    const keys = new Set<string>([verbatim]);
+    const underscoreAt = verbatim.lastIndexOf('_');
+    if (underscoreAt !== -1) {
+      const tail = verbatim.slice(underscoreAt + 1).trim();
+      if (tail) keys.add(tail);
+    }
+    for (const key of keys) {
+      const list = sisStudentsByIdentifier.get(key) ?? [];
+      list.push(s.sourcedId);
+      sisStudentsByIdentifier.set(key, list);
+    }
   }
 
   const emptyPlan = (refusal: string): LinkSyncPlan => ({

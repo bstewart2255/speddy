@@ -511,3 +511,69 @@ describe('removal suppression while the directory cannot resolve every teacher',
     expect(s.adds).toHaveLength(1);
   });
 });
+
+describe('Aeries compound identifiers (JSUSD live, 2026-08-18)', () => {
+  it('matches `33_STU_965791922` to Speddy’s bare `965791922`', () => {
+    const plan = planStudentTeacherLinkSync(
+      input({
+        feedStudents: [{ sourcedId: 'sis-stu-1', identifier: '33_STU_965791922' }],
+        caseloadRows: [{ childId: 'child-1', districtStudentId: '965791922' }],
+        childRecords: [
+          {
+            id: 'child-1',
+            schoolId: SCHOOL.id,
+            initials: 'AB',
+            gradeLevel: '3',
+            districtStudentId: '965791922',
+          },
+        ],
+      }),
+    );
+    expect(school(plan).matchedChildren).toBe(1);
+    expect(school(plan).adds).toHaveLength(1);
+  });
+
+  it('still matches a bare-number identifier verbatim (non-Aeries vendors)', () => {
+    // The default fixture is exactly this case; pin it here so the compound
+    // support can never regress the plain form.
+    const plan = planStudentTeacherLinkSync(input());
+    expect(school(plan).matchedChildren).toBe(1);
+  });
+
+  it('two DIFFERENT SIS students sharing a tail is a refusal, not a guess', () => {
+    const plan = planStudentTeacherLinkSync(
+      input({
+        feedStudents: [
+          { sourcedId: 'sis-stu-1', identifier: '33_STU_DS-100' },
+          { sourcedId: 'sis-stu-2', identifier: '11_STU_DS-100' },
+        ],
+      }),
+    );
+    expect(school(plan).unmatched).toEqual([
+      { initials: 'AB', grade: '3', reason: 'duplicate-in-sis' },
+    ]);
+  });
+
+  it('one student indexed under both key forms is NOT its own duplicate', () => {
+    // `33_STU_DS-100` answers to the compound AND the tail; a Speddy ID equal
+    // to the tail must resolve to ONE student, one add.
+    const plan = planStudentTeacherLinkSync(
+      input({
+        feedStudents: [{ sourcedId: 'sis-stu-1', identifier: '33_STU_DS-100' }],
+      }),
+    );
+    expect(school(plan).matchedChildren).toBe(1);
+    expect(school(plan).adds).toHaveLength(1);
+  });
+
+  it('a trailing underscore yields no tail key and no crash', () => {
+    const plan = planStudentTeacherLinkSync(
+      input({
+        feedStudents: [{ sourcedId: 'sis-stu-1', identifier: '33_STU_' }],
+      }),
+    );
+    expect(school(plan).unmatched).toEqual([
+      { initials: 'AB', grade: '3', reason: 'not-in-sis' },
+    ]);
+  });
+});
