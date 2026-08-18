@@ -277,6 +277,24 @@ describe('parseCSVReport — SEIS Student Goals Report (CSV)', () => {
       expect(result.students[0].goals).toHaveLength(1);
     });
 
+    it('leaves a hand-built goals sheet generic even with Case Manager and IEP Date', async () => {
+      // The near-miss: ordinary special-ed vocabulary is not evidence of a SEIS
+      // export. Routing this to the SEIS path role-filters it to zero students,
+      // which reaches the user as a 400 naming a report they never uploaded.
+      const csv = Buffer.from(
+        [
+          'Last Name,First Name,Grade,School of Attendance,Case Manager,IEP Date,District ID,Area Of Need,Baseline,Goal',
+          'Alvarez,Ana,1,Mt Diablo Elementary School,R. Diaz,05/01/2026,100001,Reading,Reads 40 wpm,' +
+            '"By 5/1/2027, Ana will read 90 words per minute with 95% accuracy in 3 of 4 trials."',
+        ].join('\r\n'),
+        'utf-8',
+      );
+      expect(detectSEISStudentGoalsFormat(toRecords(csv))).toBe(false);
+
+      const result = await parseCSVReport(csv, { providerRole: 'resource' });
+      expect(result.students).toHaveLength(1);
+    });
+
     it('refuses rather than reading a grade out of "Grade Level Standard"', async () => {
       // With no real grade header, a bare /grade/ scan binds to the standards
       // column (index 47, "Reading Standard 3.2") and every student imports as

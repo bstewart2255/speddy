@@ -516,8 +516,8 @@ function detectColumnMapping(records: string[][]): ColumnMapping {
 export { normalizeGradeLevel };
 
 /**
- * The header names that identify a SEIS Student Goals Report, and the same
- * names the column mapping below looks each field up by.
+ * How each SEIS field is located in a header row: the exact normalized names
+ * first, then an ANCHORED pattern for the label variants.
  *
  * SPE-558: these used to be checked at FIXED INDEXES (2/3/5/6/12/14), which is
  * only true of the per-provider export. SEIS's district-wide export of the same
@@ -526,10 +526,6 @@ export { normalizeGradeLevel };
  * no district ID, no school, no IEP date and progress labels mixed into the
  * goals, all without raising a single error. Matching on the header NAME
  * absorbs both shapes and any future column reorder.
- */
-/**
- * How each SEIS field is located in a header row: the exact normalized names
- * first, then an ANCHORED pattern for the label variants.
  *
  * Anchored is the whole point. This report has ten headers containing the word
  * "goal" ("Annual Goal #", "Purpose(s) of Goal", "Goal Met", "Comparison To
@@ -576,23 +572,24 @@ const SEIS_SIGNATURE_FIELDS = [
 ] as const;
 
 /**
- * Columns that only a SEIS export carries. The signature above is deliberately
- * made of common labels, so on its own it also describes an ordinary
+ * Columns that ONLY this SEIS report carries. The signature above is made of
+ * common labels, so on its own it also describes an ordinary
  * Last/First/Grade/School/Goal spreadsheet — which would then be handed the
- * SEIS path's per-role goal filtering and import as zero students. Requiring
- * two of these keeps that file on the generic path where it belongs.
+ * SEIS path's per-role goal filtering and import as zero students, surfacing to
+ * the user as a 400 naming a SEIS report they never uploaded. Requiring two of
+ * these keeps such a file on the generic path.
+ *
+ * Kept deliberately narrow to SEIS's own vocabulary. Ordinary special-ed
+ * spreadsheets legitimately carry "Case Manager", "IEP Date", "District ID",
+ * "Area Of Need" and "Baseline", so none of those can be a marker — two of them
+ * together are an unremarkable hand-built goals sheet, not evidence of a SEIS
+ * export.
  */
 const SEIS_MARKER_HEADERS = [
   'seis id',
-  'district id',
   'district of service',
-  'case manager',
-  'iep date',
   'eligibility status',
-  'area of need',
-  'baseline',
   'purpose(s) of goal',
-  'person responsible',
   'goal met',
 ] as const;
 
