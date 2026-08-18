@@ -16,6 +16,15 @@
  * teacher pickers is the inaccuracy this feature exists to avoid, and a
  * school where NO row qualifies refuses loudly rather than syncing nobody.
  *
+ * SECOND DOOR (SPE-540, owner-approved 2026-08-18): a row whose identifier
+ * fails that test still qualifies when the district's class rosters show the
+ * SAME sourcedId TEACHING at least one class — teacher-role enrollment
+ * evidence, the strongest signal a SIS has. This is what rescues Carquinez's
+ * real teachers (staff IDs absent district-side) without admitting the office
+ * staff the sentinel exists to keep out: counselors don't teach classes.
+ * When roster evidence cannot be read (scope not enabled, endpoint down) the
+ * rule degrades to the identifier door alone — never the other way.
+ *
  * The reconcile ladder (v1 posture, per SPE-412's whose-data-wins decision):
  *   keyed row (sis_source+sis_id)  -> SIS-owned: update changed fields
  *   email match on an unkeyed row  -> ADOPT: stamp the SIS key, touch nothing
@@ -39,7 +48,11 @@ import { logger } from '@/lib/logger';
 import { createServiceClient } from '@/lib/supabase/server';
 import { logServerAuditEvent } from '@/lib/supabase/audit-log-server';
 import { generateTemporaryPassword } from '@/lib/utils/password-generator';
-import { OneRosterClient, type RawOneRosterUser } from '@/lib/integrations/oneroster';
+import {
+  OneRosterClient,
+  type RawOneRosterEnrollment,
+  type RawOneRosterUser,
+} from '@/lib/integrations/oneroster';
 import { ONEROSTER_URL_LABELS, assertSafeSisUrl } from './ssrf-guard';
 import { oneRosterTokenUrlCandidates } from './oneroster-setup';
 
@@ -100,6 +113,13 @@ export interface PlannerInput {
   existingTeachers: ExistingTeacher[];
   /** Caseload rows per Speddy school id — the "school has students" gate. */
   studentCounts: Record<string, number>;
+  /**
+   * Whether class-roster (teaches-a-class) evidence was actually READ this
+   * run. 'unavailable' — the default, and what a failed/forbidden enrollments
+   * read degrades to — means rows were judged on staff IDs alone, and the
+   * refusal message must not claim rosters were checked when they weren't.
+   */
+  teachingEvidence?: 'checked' | 'unavailable';
 }
 
 // ---------------------------------------------------------------------------
@@ -185,6 +205,8 @@ export interface TeacherSyncPlan {
   duplicateEmailAnomalies: number;
   feedTeacherRows: number;
   feedTotalRows: number;
+  /** Echoed from the input so both panels can say whether rosters were read. */
+  teachingEvidence: 'checked' | 'unavailable';
 }
 
 // ---------------------------------------------------------------------------
@@ -370,6 +392,7 @@ function mapSchools(
 
 export function planTeacherDirectorySync(input: PlannerInput): TeacherSyncPlan {
   const { bySchoolId, claimedFeedIds } = mapSchools(input.speddySchools, input.feedSchools);
+  const teachingEvidence = input.teachingEvidence ?? 'unavailable';
 
   const teacherRows = input.feedTeachers.filter((t) => t.isTeacher);
 
@@ -552,7 +575,10 @@ export function planTeacherDirectorySync(input: PlannerInput): TeacherSyncPlan {
         firstName: t.firstName,
         lastName: t.lastName,
         email: t.email,
-        staffId: t.identifier,
+        // A roster-rescued row carries the sentinel (or nothing) here — the
+        // literal "non-teaching staff" is not this teacher's staff ID and
+        // must not be displayed as one.
+        staffId: isNonTeachingSentinel(t.identifier) ? null : t.identifier,
         gradeLevel,
       });
     }
@@ -571,12 +597,18 @@ export function planTeacherDirectorySync(input: PlannerInput): TeacherSyncPlan {
     // the feed. Gated on candidates, not on writable buckets — a school
     // whose rows all await human review has qualifying rows and must render
     // them, not a refusal claiming it has none (Codex P2 / CodeRabbit,
-    // PR #831). Say exactly what the feed had, so the district-side fix is
-    // nameable.
+    // PR #831). Say exactly what the feed had — and only what was actually
+    // CHECKED: with roster evidence read, "no staff ID and teaches nothing"
+    // is the finding; without it, the message must not imply rosters were
+    // consulted (SPE-540).
     const refusal =
       studentCount > 0 && candidates.length === 0
         ? `“${feedSchool.name}” has ${excludedNonTeaching} staff row(s) in the feed, ` +
-          'none with a real staff ID — nothing here can be created accurately. ' +
+          (teachingEvidence === 'checked'
+            ? 'none with a real staff ID or a teaching assignment in your class rosters — ' +
+              'nothing here can be created accurately. '
+            : 'none with a real staff ID — nothing here can be created accurately. ' +
+              '(Class-roster evidence was not available to double-check.) ') +
           'This is district-side data (teacher records missing their staff linkage), not a Speddy failure.'
         : null;
 
@@ -610,6 +642,7 @@ export function planTeacherDirectorySync(input: PlannerInput): TeacherSyncPlan {
     duplicateEmailAnomalies,
     feedTeacherRows: teacherRows.length,
     feedTotalRows: input.feedTeachers.length,
+    teachingEvidence,
   };
 }
 
@@ -625,8 +658,18 @@ export interface TeacherSyncConnectionParams {
   clientSecret: string;
 }
 
-/** Exported for tests: the feed-row pick, sentinel rule included. */
-export function toFeedTeacher(raw: RawOneRosterUser): FeedTeacher | null {
+/**
+ * Exported for tests: the feed-row pick, sentinel rule included.
+ *
+ * `teachingUserIds` is the SPE-540 second door — sourcedIds seen TEACHING at
+ * least one class in the district's rosters. A row failing the identifier
+ * test still qualifies when the rosters say this person teaches; pass an
+ * empty set (or nothing) when that evidence was not readable.
+ */
+export function toFeedTeacher(
+  raw: RawOneRosterUser,
+  teachingUserIds?: ReadonlySet<string>,
+): FeedTeacher | null {
   if (raw.status === 'tobedeleted') return null;
   // A blank sourcedId cannot key anything — writing it to `teachers.sis_id`
   // would collide every such row into one "identity".
@@ -656,8 +699,51 @@ export function toFeedTeacher(raw: RawOneRosterUser): FeedTeacher | null {
           return id ? [id] : [];
         })
       : [],
-    isTeacher: identifier !== null && !isNonTeachingSentinel(identifier),
+    isTeacher:
+      (identifier !== null && !isNonTeachingSentinel(identifier)) ||
+      (teachingUserIds?.has(sourcedId) ?? false),
   };
+}
+
+/**
+ * The sourcedIds the district's class rosters show TEACHING (SPE-540).
+ *
+ * Asks with the spec's role filter — Aeries honors it (proved on JSUSD's
+ * live server, SPE-538) — and re-checks the role client-side, so a server
+ * that ignores filters and returns every enrollment yields the same set
+ * instead of quietly counting students as teaching staff.
+ *
+ * Returns null when the rosters cannot be read AT ALL (scope not enabled,
+ * endpoint absent, mid-walk failure): the caller degrades to the identifier
+ * door alone and the plan says so. Degradation is safe in exactly one
+ * direction — fewer rescued teachers — because this evidence only ever ADDS
+ * qualifiers; a missing set can re-refuse a school, never create a wrong row,
+ * and apply is count-bound to the preview the human saw.
+ */
+async function fetchTeachingUserIds(client: OneRosterClient): Promise<Set<string> | null> {
+  try {
+    const enrollments = await client.getAllPages<RawOneRosterEnrollment>(
+      'enrollments',
+      'enrollments',
+      { query: { filter: "role='teacher'" } },
+    );
+    const ids = new Set<string>();
+    for (const e of enrollments) {
+      const userId = trimOrNull(e.user?.sourcedId);
+      // Normalized compare (trim + lowercase), same posture as the sentinel:
+      // a vendor's casing must not silently empty the evidence set while the
+      // plan still claims rosters were checked (CodeRabbit, PR #886).
+      const role = typeof e.role === 'string' ? e.role.trim().toLowerCase() : '';
+      const status = typeof e.status === 'string' ? e.status.trim().toLowerCase() : '';
+      if (role === 'teacher' && status !== 'tobedeleted' && userId) ids.add(userId);
+    }
+    return ids;
+  } catch (err) {
+    log.warn('Class-roster evidence unavailable; teacher sync degrades to staff IDs alone', {
+      reason: err instanceof Error ? err.message : 'unknown',
+    });
+    return null;
+  }
 }
 
 /**
@@ -694,9 +780,13 @@ export async function loadTeacherSyncInput(
     return sourcedId && name && s.status !== 'tobedeleted' ? [{ sourcedId, name }] : [];
   });
 
+  // The SPE-540 second door, read BEFORE the rows are classified. Best-effort
+  // by design: districts without the roster scope keep the sync they had.
+  const teachingUserIds = await fetchTeachingUserIds(client);
+
   const rawTeachers = await client.getAllPages<RawOneRosterUser>('teachers', 'users');
   const feedTeachers = rawTeachers
-    .map(toFeedTeacher)
+    .map((raw) => toFeedTeacher(raw, teachingUserIds ?? undefined))
     .filter((t): t is FeedTeacher => t !== null);
 
   const supabase = createServiceClient();
@@ -750,7 +840,14 @@ export async function loadTeacherSyncInput(
     );
   }
 
-  return { feedSchools, feedTeachers, speddySchools, existingTeachers, studentCounts };
+  return {
+    feedSchools,
+    feedTeachers,
+    speddySchools,
+    existingTeachers,
+    studentCounts,
+    teachingEvidence: teachingUserIds === null ? 'unavailable' : 'checked',
+  };
 }
 
 /**
@@ -785,6 +882,7 @@ export function planCounts(plan: TeacherSyncPlan) {
     duplicateEmailAnomalies: plan.duplicateEmailAnomalies,
     feedTeacherRows: plan.feedTeacherRows,
     feedTotalRows: plan.feedTotalRows,
+    teachingEvidence: plan.teachingEvidence,
   };
 }
 

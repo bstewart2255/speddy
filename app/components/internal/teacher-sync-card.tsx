@@ -243,7 +243,8 @@ export default function TeacherSyncCard({ connectionId }: { connectionId: string
     // district SIS), for the same reason the connection test is: a shorter
     // deadline reports "nothing happened" about a run the server completes.
     const abort = new AbortController();
-    const timer = setTimeout(() => abort.abort(), 180_000);
+    // 310s: above the route's maxDuration = 300s ceiling (PR #886 review).
+    const timer = setTimeout(() => abort.abort(), 310_000);
     try {
       const res = await fetch(`/api/internal/sis-connections/${connectionId}/teacher-sync`, {
         method: 'POST',
@@ -366,6 +367,9 @@ export default function TeacherSyncCard({ connectionId }: { connectionId: string
 
             <p className="text-xs text-slate-500">
               Feed: {plan?.feedTeacherRows} teacher row(s) of {plan?.feedTotalRows} staff row(s).
+              {plan?.teachingEvidence === 'unavailable' && (
+                <> Roster evidence unavailable — sentinel rows judged on staff IDs alone.</>
+              )}
               {plan && plan.unmappedSisSchools.length > 0 && (
                 <>
                   {' '}

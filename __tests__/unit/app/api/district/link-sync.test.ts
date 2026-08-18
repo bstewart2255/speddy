@@ -1,14 +1,16 @@
 /**
- * SPE-438 · POST /api/district/teacher-sync — the district admin's own
- * Preview → Apply, and what a refused caller does NOT set in motion.
+ * SPE-540 · POST /api/district/link-sync — the district admin's Preview →
+ * Apply for student↔teacher links, and what a refused caller does NOT set in
+ * motion.
  *
- * Same posture as the sis-directory suite (SPE-436) plus the internal
- * teacher-sync suite (SPE-437): the load-bearing assertions are that nothing
- * dials the district's SIS and nothing writes — accounts included — unless a
- * district admin, in their own district, with a stored credential, asked.
- * `district_tech` is refused here on purpose: this surface serves teacher
- * PII and provisions sign-in accounts, both outside that role's
- * integrations-only line (SPE-393).
+ * Same posture as the teacher-sync suite (SPE-438): the load-bearing
+ * assertions are that nothing dials the district's SIS and nothing writes
+ * child records unless a district admin, in their own district, with a
+ * stored credential, asked. `district_tech` is refused on purpose — this
+ * surface serves student initials and writes child records, both outside
+ * that role's integrations-only line (SPE-393). The shared gate is exercised
+ * THROUGH this route, which also covers the SPE-540 extraction not having
+ * changed the teacher-sync route's behavior (its own suite pins that side).
  */
 import { NextRequest } from 'next/server';
 
@@ -73,17 +75,17 @@ jest.mock('@/lib/sis/connections', () => ({
 }));
 
 // The two functions that reach beyond this process: one dials the SIS, one
-// writes the database and provisions accounts.
+// writes child records.
 const mockLoad = jest.fn();
 const mockApply = jest.fn();
-jest.mock('@/lib/sis/teacher-directory-sync', () => ({
-  ...jest.requireActual('@/lib/sis/teacher-directory-sync'),
-  loadTeacherSyncInput: (...a: unknown[]) => mockLoad(...a),
-  applyTeacherSyncPlan: (...a: unknown[]) => mockApply(...a),
+jest.mock('@/lib/sis/student-teacher-link-sync', () => ({
+  ...jest.requireActual('@/lib/sis/student-teacher-link-sync'),
+  loadLinkSyncInput: (...a: unknown[]) => mockLoad(...a),
+  applyLinkSyncPlan: (...a: unknown[]) => mockApply(...a),
 }));
 
-import { POST } from '@/app/api/district/teacher-sync/route';
-import type { PlannerInput } from '@/lib/sis/teacher-directory-sync';
+import { POST } from '@/app/api/district/link-sync/route';
+import type { LinkPlannerInput } from '@/lib/sis/student-teacher-link-sync';
 
 const CONNECTION = {
   id: 'conn-1',
@@ -93,29 +95,35 @@ const CONNECTION = {
   token_url: 'https://district.example.org/admin/token',
 };
 
-/** A one-school input whose plan creates exactly one teacher (with email). */
-const INPUT: PlannerInput = {
-  feedSchools: [{ sourcedId: 'org-1', name: 'Rodeo Vista Elementary School' }],
-  feedTeachers: [
+/** One school, one matched child, exactly one link to add. */
+const INPUT: LinkPlannerInput = {
+  feedStudents: [{ sourcedId: 'sis-stu-1', identifier: 'DS-100' }],
+  feedEnrollments: [
+    { userSourcedId: 'sis-stu-1', classSourcedId: 'cls-1', role: 'student' },
+    { userSourcedId: 'sis-tch-1', classSourcedId: 'cls-1', role: 'teacher' },
+  ],
+  feedClasses: [{ sourcedId: 'cls-1', title: 'Room 12', periods: ['1'] }],
+  speddySchools: [{ id: 'sch-1', name: 'Rodeo Vista Elementary' }],
+  caseloadRows: [{ childId: 'child-1', districtStudentId: 'DS-100' }],
+  childRecords: [
     {
-      sourcedId: 't-1',
-      firstName: 'DANA',
-      lastName: 'WHITFIELD',
-      email: 'dwhitfield@example.org',
-      identifier: '11_TCH_1',
-      grades: ['KG'],
-      orgIds: ['org-1'],
-      isTeacher: true,
+      id: 'child-1',
+      schoolId: 'sch-1',
+      initials: 'QZ',
+      gradeLevel: '3',
+      districtStudentId: 'DS-100',
     },
   ],
-  speddySchools: [{ id: 'sch-1', name: 'Rodeo Vista Elementary' }],
-  existingTeachers: [],
-  studentCounts: { 'sch-1': 4 },
+  sisTeachers: [{ id: 'tch-row-1', schoolId: 'sch-1', sisId: 'sis-tch-1' }],
+  existingLinks: [],
 };
+
+/** The same district with the roster option off — the planner refuses it. */
+const REFUSED_INPUT: LinkPlannerInput = { ...INPUT, feedEnrollments: [] };
 
 const call = (body: unknown) =>
   POST(
-    new NextRequest('http://localhost/api/district/teacher-sync', {
+    new NextRequest('http://localhost/api/district/link-sync', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -145,12 +153,9 @@ beforeEach(() => {
     {
       schoolId: 'sch-1',
       schoolName: 'Rodeo Vista Elementary',
-      created: 1,
-      adopted: 0,
-      updated: 0,
-      accountsCreated: 1,
-      directoryOnly: 0,
-      accountConflicts: [],
+      added: 1,
+      removed: 0,
+      relabeled: 0,
     },
   ]);
 });
@@ -170,7 +175,7 @@ describe('the gate', () => {
     nothingHappened();
   });
 
-  it('refuses district_tech — accounts and teacher PII are beyond its line', async () => {
+  it('refuses district_tech — child records are beyond its line', async () => {
     mockResolveCaller.mockResolvedValue({
       ok: true,
       role: 'district_tech',
@@ -179,6 +184,8 @@ describe('the gate', () => {
     holdsAdminGrant = false;
     const res = await call({ mode: 'apply', expectedChanges: 1 });
     expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error).toMatch(/class roster sync is for district admins/);
     nothingHappened();
   });
 
@@ -234,7 +241,7 @@ describe('dry-run vs apply', () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.mode).toBe('dry-run');
-    expect(body.plan.schools[0].creates).toHaveLength(1);
+    expect(body.plan.schools[0].adds).toHaveLength(1);
     expect(mockApply).not.toHaveBeenCalled();
   });
 
@@ -250,12 +257,21 @@ describe('dry-run vs apply', () => {
     expect(mockApply).not.toHaveBeenCalled();
   });
 
-  it('apply passes the fresh plan to the writer and reports accounts created', async () => {
+  it('apply refuses a REFUSED plan outright — even at a matching count of zero', async () => {
+    mockLoad.mockResolvedValue(REFUSED_INPUT);
+    const res = await call({ mode: 'apply', expectedChanges: 0 });
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.error).toMatch(/Nothing can be applied/);
+    expect(mockApply).not.toHaveBeenCalled();
+  });
+
+  it('apply passes the fresh plan to the writer and reports what landed', async () => {
     const res = await call({ mode: 'apply', expectedChanges: 1 });
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.written).toEqual([
-      expect.objectContaining({ schoolId: 'sch-1', created: 1, accountsCreated: 1 }),
+      expect.objectContaining({ schoolId: 'sch-1', added: 1 }),
     ]);
     expect(mockApply).toHaveBeenCalledTimes(1);
     // The connection came from the CALLER's grants, never from the request.
@@ -266,23 +282,33 @@ describe('dry-run vs apply', () => {
     });
   });
 
+  it('502s a SIS that will not answer, writing nothing', async () => {
+    mockLoad.mockRejectedValue(new Error('boom: https://district.example.org'));
+    const res = await call({ mode: 'apply', expectedChanges: 1 });
+    expect(res.status).toBe(502);
+    const body = await res.json();
+    expect(body.error).not.toContain('district.example.org');
+    expect(mockApply).not.toHaveBeenCalled();
+  });
+
   it('a mid-apply failure answers 500, sanitized, and admits changes may be saved', async () => {
     mockApply.mockRejectedValue(
-      new Error('Creating teachers for Rodeo Vista Elementary failed: relation "teachers" denied'),
+      new Error('Removing stale links at Rodeo Vista Elementary failed: relation "student_teachers" denied'),
     );
     const res = await call({ mode: 'apply', expectedChanges: 1 });
     expect(res.status).toBe(500);
     const body = await res.json();
-    expect(body.error).toMatch(/may already be added/);
-    expect(body.error).not.toContain('relation');
+    // Honest about partial state, silent about database internals.
+    expect(body.error).toMatch(/may already be saved/);
+    expect(body.error).not.toContain('student_teachers');
     expect(body.error).not.toContain('Rodeo Vista');
   });
 
-  it('logs counts only — feed names and emails never reach a log line', async () => {
+  it('logs counts only — initials and district numbers never reach a log line', async () => {
     await call({ mode: 'dry-run' });
     const logged = JSON.stringify(logCalls);
-    expect(logged).toContain('Teacher directory sync planned by district admin');
-    for (const value of ['DANA', 'WHITFIELD', 'dwhitfield@example.org']) {
+    expect(logged).toContain('Link sync planned by district admin');
+    for (const value of ['QZ', 'DS-100', 'child-1']) {
       expect(logged).not.toContain(value);
     }
   });

@@ -690,3 +690,102 @@ describe('the zero-teachers guard', () => {
     expect(schoolPlan(plan, SCHOOL_ELEM.id).refusal).toBeNull();
   });
 });
+
+// ---------------------------------------------------------------------------
+// The second door: teaches-a-class evidence (SPE-540, the Carquinez rescue)
+// ---------------------------------------------------------------------------
+
+describe('the teaches-a-class second door', () => {
+  it('rescues a sentinel row the rosters show teaching — and only that row', () => {
+    const rescued = toFeedTeacher(
+      {
+        sourcedId: 'cq-1',
+        givenName: 'MORGAN',
+        familyName: 'ROOMTEACHER',
+        identifier: 'non-teaching staff',
+        orgs: [{ sourcedId: FEED_ELEM.sourcedId }],
+      },
+      new Set(['cq-1']),
+    );
+    expect(rescued?.isTeacher).toBe(true);
+
+    // Same row, no evidence for it: the sentinel still excludes.
+    const counselor = toFeedTeacher(
+      {
+        sourcedId: 'cq-2',
+        givenName: 'ALEX',
+        familyName: 'COUNSELOR',
+        identifier: 'non-teaching staff',
+        orgs: [{ sourcedId: FEED_ELEM.sourcedId }],
+      },
+      new Set(['cq-1']),
+    );
+    expect(counselor?.isTeacher).toBe(false);
+
+    // No evidence set at all — exactly the pre-SPE-540 rule.
+    const withoutSet = toFeedTeacher({
+      sourcedId: 'cq-1',
+      givenName: 'MORGAN',
+      familyName: 'ROOMTEACHER',
+      identifier: 'non-teaching staff',
+    });
+    expect(withoutSet?.isTeacher).toBe(false);
+  });
+
+  it('rescues a row with NO identifier at all when the rosters show it teaching', () => {
+    const row = toFeedTeacher(
+      { sourcedId: 'cq-3', givenName: 'JO', familyName: 'NOIDENT' },
+      new Set(['cq-3']),
+    );
+    expect(row?.isTeacher).toBe(true);
+  });
+
+  it('a rescued create never displays the sentinel as a staff ID', () => {
+    const plan = planTeacherDirectorySync(
+      input({
+        feedTeachers: [
+          teacher({ identifier: 'non-teaching staff', isTeacher: true }),
+          teacher(),
+        ],
+        teachingEvidence: 'checked',
+      }),
+    );
+    const creates = schoolPlan(plan, SCHOOL_ELEM.id).creates;
+    expect(creates).toHaveLength(2);
+    const staffIds = creates.map((c) => c.staffId);
+    expect(staffIds).toContain(null);
+    expect(staffIds).not.toContain('non-teaching staff');
+  });
+
+  it('echoes the evidence posture on the plan, defaulting to unavailable', () => {
+    expect(planTeacherDirectorySync(input({})).teachingEvidence).toBe('unavailable');
+    expect(
+      planTeacherDirectorySync(input({ teachingEvidence: 'checked' })).teachingEvidence,
+    ).toBe('checked');
+  });
+
+  it('the refusal claims only what was checked: rosters read', () => {
+    const plan = planTeacherDirectorySync(
+      input({
+        feedTeachers: [teacher({ isTeacher: false, identifier: 'non-teaching staff' })],
+        teachingEvidence: 'checked',
+      }),
+    );
+    const refusal = schoolPlan(plan, SCHOOL_ELEM.id).refusal;
+    expect(refusal).toMatch(/staff ID or a teaching assignment/);
+    expect(refusal).not.toMatch(/was not available/);
+  });
+
+  it('the refusal claims only what was checked: rosters unreadable', () => {
+    const plan = planTeacherDirectorySync(
+      input({
+        feedTeachers: [teacher({ isTeacher: false, identifier: 'non-teaching staff' })],
+        teachingEvidence: 'unavailable',
+      }),
+    );
+    const refusal = schoolPlan(plan, SCHOOL_ELEM.id).refusal;
+    expect(refusal).toMatch(/none with a real staff ID/);
+    expect(refusal).toMatch(/Class-roster evidence was not available/);
+    expect(refusal).not.toMatch(/teaching assignment/);
+  });
+});

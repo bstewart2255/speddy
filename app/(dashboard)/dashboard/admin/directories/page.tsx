@@ -14,6 +14,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Card } from '@/app/components/ui/card';
+import DistrictLinkSyncPanel from '@/app/components/admin/district-link-sync-panel';
 import DistrictTeacherSyncPanel from '@/app/components/admin/district-teacher-sync-panel';
 import type {
   DirectoryArea,
@@ -152,7 +153,7 @@ export default function DirectoriesPage() {
         <h1 className="text-2xl font-semibold text-slate-900">Directories</h1>
         <p className="text-sm text-slate-500 mt-1">
           What your district&apos;s SIS shares with Speddy, read live. The tabs below save
-          nothing; the teacher sync writes only when you apply a preview.
+          nothing; the syncs write only when you apply a preview.
         </p>
       </div>
 
@@ -160,6 +161,11 @@ export default function DirectoriesPage() {
           admin's own Preview → Apply, moved here from /internal per the
           owner's direction. */}
       <DistrictTeacherSyncPanel />
+
+      {/* SPE-540: step two — once the teacher list is filled, the class
+          rosters connect each caseload student to their teachers. District
+          portal only; no staff surface renders student-level detail. */}
+      <DistrictLinkSyncPanel />
 
       <div className="flex gap-2" role="tablist" aria-label="Directory areas">
         {AREAS.map((a) => (

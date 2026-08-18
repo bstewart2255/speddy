@@ -212,9 +212,11 @@ export default function DistrictTeacherSyncPanel() {
     setError(null);
     if (mode === 'dry-run') setResult(null);
 
-    // Above the server's worst case (full SIS pagination + account creation).
+    // Above the ROUTE'S own ceiling (maxDuration = 300s), so the browser
+    // never gives up on a run the server can still finish (PR #886 review
+    // — the old 180s sat below the ceiling while claiming to be above it).
     const abort = new AbortController();
-    const timer = setTimeout(() => abort.abort(), 180_000);
+    const timer = setTimeout(() => abort.abort(), 310_000);
     try {
       const res = await fetch('/api/district/teacher-sync', {
         method: 'POST',
@@ -354,6 +356,13 @@ export default function DistrictTeacherSyncPanel() {
             <p className="text-xs text-slate-400">
               From your SIS: {plan?.feedTeacherRows} teacher record(s) of {plan?.feedTotalRows}{' '}
               staff record(s).
+              {plan?.teachingEvidence === 'unavailable' && (
+                <>
+                  {' '}
+                  Class rosters couldn&apos;t be read this run, so staff without staff IDs were
+                  judged on IDs alone.
+                </>
+              )}
               {plan && plan.unmappedSisSchools.length > 0 && (
                 <>
                   {' '}

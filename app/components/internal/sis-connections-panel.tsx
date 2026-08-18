@@ -235,7 +235,8 @@ export default function SisConnectionsPanel({ districtId }: { districtId: string
     // and would invite a re-click that fans out more traffic at a school
     // district's production server.
     const abort = new AbortController();
-    const timer = setTimeout(() => abort.abort(), 180_000);
+    // 310s: above the route's maxDuration = 300s ceiling (PR #886 review).
+    const timer = setTimeout(() => abort.abort(), 310_000);
     try {
       const res = await fetch(`/api/internal/sis-connections/${connection.id}/test`, {
         method: 'POST',
