@@ -1,13 +1,19 @@
 /**
  * SPE-116: the drift checker's comparison logic.
  *
- * The failure mode worth guarding is over-matching. If the migration scanner
- * counts prose in a comment ("create a function to ...") as a definition, the
- * MISSING list silently shrinks and the checker reports clean while the repo
- * still cannot rebuild the database — the exact silence this script exists to
- * end. All data is fictional.
+ * Two failure modes are worth guarding, both of which make the checker report
+ * clean while the repo still cannot rebuild the database — the exact silence it
+ * exists to end:
+ *
+ *   - over-matching the migration scan, so prose in a comment counts as a
+ *     definition and MISSING shrinks;
+ *   - comparing names only, so a body edited in place (the SPE-305 shape) is
+ *     invisible.
+ *
+ * All data is fictional.
  */
 
+import { createHash } from 'crypto';
 import { mkdtempSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -15,6 +21,7 @@ import {
   buildReport,
   formatReport,
   functionsDefinedInMigrations,
+  normalizeBody,
   type DbFunction,
 } from '@/scripts/db-drift/check';
 
@@ -24,24 +31,29 @@ function migrationsDir(files: Record<string, string>): string {
   return dir;
 }
 
+const bodyHash = (body: string): string =>
+  createHash('md5').update(normalizeBody(body)).digest('hex');
+
 const fn = (over: Partial<DbFunction> & { name: string }): DbFunction => ({
   signature: `${over.name}()`,
   security_definer: false,
-  body_md5: 'd41d8cd98f00b204e9800998ecf8427e',
+  body_md5: 'unset',
   trigger_uses: 0,
   ...over,
 });
+
+const define = (name: string, body: string): string =>
+  `CREATE OR REPLACE FUNCTION public.${name}() RETURNS void AS $function$${body}$function$;`;
 
 describe('functionsDefinedInMigrations (SPE-116)', () => {
   it('finds CREATE and CREATE OR REPLACE, schema-qualified or not', () => {
     const dir = migrationsDir({
       '20260101_a.sql': 'CREATE FUNCTION handle_signup() RETURNS trigger AS $$ BEGIN END $$;',
-      '20260102_b.sql': 'create or replace function public.sync_rows(uuid) returns void as $$ $$;',
-      '20260103_c.sql': 'CREATE OR REPLACE FUNCTION "quoted_name"() RETURNS void AS $$ $$;',
+      '20260102_b.sql': 'create or replace function public.sync_rows(uuid) returns void as $$ x $$;',
+      '20260103_c.sql': 'CREATE OR REPLACE FUNCTION "quoted_name"() RETURNS void AS $$ y $$;',
     });
-    expect(functionsDefinedInMigrations(dir)).toEqual(
-      new Set(['handle_signup', 'sync_rows', 'quoted_name']),
-    );
+    expect([...functionsDefinedInMigrations(dir).keys()].sort())
+      .toEqual(['handle_signup', 'quoted_name', 'sync_rows']);
   });
 
   it('does not mistake prose in a comment for a definition', () => {
@@ -49,68 +61,144 @@ describe('functionsDefinedInMigrations (SPE-116)', () => {
       '20260101_a.sql': [
         '-- We create a function to keep the mirror in sync, and another',
         '-- CREATE FUNCTION with no parens mentioned in passing.',
-        'CREATE FUNCTION real_one() RETURNS void AS $$ $$;',
+        define('real_one', ' BEGIN END; '),
       ].join('\n'),
     });
     // "to" and "with" would both be captured without the required paren.
-    expect(functionsDefinedInMigrations(dir)).toEqual(new Set(['real_one']));
+    expect([...functionsDefinedInMigrations(dir).keys()]).toEqual(['real_one']);
+  });
+
+  it('takes the LAST definition, because that is where a rebuild lands', () => {
+    const dir = migrationsDir({
+      '20260101_a.sql': define('evolving', ' first '),
+      '20260103_c.sql': define('evolving', ' third '),
+      '20260102_b.sql': define('evolving', ' second '),
+    });
+    const found = functionsDefinedInMigrations(dir).get('evolving');
+    expect(found).toEqual({ bodyMd5: bodyHash(' third '), definitions: 3 });
+  });
+
+  it('records a body it cannot parse as null rather than guessing', () => {
+    const dir = migrationsDir({
+      '20260101_a.sql': "CREATE FUNCTION odd_one() RETURNS void AS 'select 1' LANGUAGE sql;",
+    });
+    expect(functionsDefinedInMigrations(dir).get('odd_one')?.bodyMd5).toBeNull();
   });
 
   it('ignores non-sql files', () => {
     const dir = migrationsDir({
-      'notes.md': 'CREATE FUNCTION should_be_ignored() RETURNS void AS $$ $$;',
-      '20260101_a.sql': 'CREATE FUNCTION counted() RETURNS void AS $$ $$;',
+      'notes.md': define('should_be_ignored', ' x '),
+      '20260101_a.sql': define('counted', ' x '),
     });
-    expect(functionsDefinedInMigrations(dir)).toEqual(new Set(['counted']));
+    expect([...functionsDefinedInMigrations(dir).keys()]).toEqual(['counted']);
   });
 });
 
-describe('buildReport (SPE-116)', () => {
-  it('flags a database function with no CREATE anywhere as MISSING', () => {
+describe('buildReport — MISSING (SPE-116)', () => {
+  it('flags a database function with no CREATE anywhere', () => {
     const report = buildReport(
-      [fn({ name: 'handle_new_user', trigger_uses: 1, security_definer: true }), fn({ name: 'covered' })],
-      new Set(['covered']),
+      [fn({ name: 'handle_new_user', trigger_uses: 1, security_definer: true }), fn({ name: 'covered', body_md5: 'h' })],
+      new Map([['covered', { bodyMd5: 'h', definitions: 1 }]]),
     );
     expect(report.missing.map(f => f.name)).toEqual(['handle_new_user']);
     expect(report.orphaned).toEqual([]);
   });
 
-  it('reports every overload of a missing function, since each needs its own CREATE', () => {
-    const report = buildReport(
-      [
-        fn({ name: 'upsert_bell_schedule', signature: 'upsert_bell_schedule(uuid,uuid)' }),
-        fn({ name: 'upsert_bell_schedule', signature: 'upsert_bell_schedule(uuid,text)' }),
-      ],
-      new Set(),
-    );
-    expect(report.missing.map(f => f.signature)).toEqual([
-      'upsert_bell_schedule(uuid,uuid)',
-      'upsert_bell_schedule(uuid,text)',
-    ]);
-  });
-
   it('flags a migration-only function as ORPHANED, not MISSING', () => {
-    const report = buildReport([fn({ name: 'still_here' })], new Set(['still_here', 'dropped_later']));
+    const report = buildReport(
+      [fn({ name: 'still_here', body_md5: 'h' })],
+      new Map([
+        ['still_here', { bodyMd5: 'h', definitions: 1 }],
+        ['dropped_later', { bodyMd5: 'z', definitions: 1 }],
+      ]),
+    );
     expect(report.missing).toEqual([]);
     expect(report.orphaned).toEqual(['dropped_later']);
   });
+});
 
-  it('reports nothing when the repo and database agree', () => {
-    const report = buildReport([fn({ name: 'a' }), fn({ name: 'b' })], new Set(['a', 'b']));
-    expect(report).toEqual({ missing: [], orphaned: [] });
+describe('buildReport — DRIFTED, the SPE-305 shape (SPE-116)', () => {
+  it('catches a body edited in place even though the name is present', () => {
+    const report = buildReport(
+      [fn({ name: 'batch_rpc', body_md5: bodyHash(' uss.site_id = p_school_site ') })],
+      new Map([['batch_rpc', { bodyMd5: bodyHash(' ps.school_site = p_school_site '), definitions: 1 }]]),
+    );
+    expect(report.missing).toEqual([]);
+    expect(report.drifted.map(d => d.db.name)).toEqual(['batch_rpc']);
+  });
+
+  it('does not call reformatting drift', () => {
+    const report = buildReport(
+      [fn({ name: 'tidy', body_md5: bodyHash('BEGIN   RETURN 1;   END') })],
+      new Map([['tidy', { bodyMd5: bodyHash('BEGIN\n  RETURN 1;\nEND'), definitions: 1 }]]),
+    );
+    expect(report.drifted).toEqual([]);
+  });
+
+  it('reports an unparseable body as not-compared instead of drifted', () => {
+    const report = buildReport(
+      [fn({ name: 'odd_one', body_md5: 'whatever' })],
+      new Map([['odd_one', { bodyMd5: null, definitions: 1 }]]),
+    );
+    expect(report.drifted).toEqual([]);
+    expect(report.notCompared[0].reason).toMatch(/dollar-quoted/);
+  });
+});
+
+describe('buildReport — overloads (SPE-116)', () => {
+  it('says so when a name has more overloads than CREATEs, rather than reporting it covered', () => {
+    const report = buildReport(
+      [
+        fn({ name: 'upsert_bell_schedule', signature: 'upsert_bell_schedule(uuid,uuid)', body_md5: 'a' }),
+        fn({ name: 'upsert_bell_schedule', signature: 'upsert_bell_schedule(uuid,text)', body_md5: 'b' }),
+      ],
+      new Map([['upsert_bell_schedule', { bodyMd5: 'a', definitions: 1 }]]),
+    );
+    expect(report.missing).toEqual([]);
+    expect(report.notCompared).toHaveLength(2);
+    expect(report.notCompared[0].reason).toMatch(/only 1 CREATE\(s\).*not reproducible/);
+  });
+
+  it('does not claim per-signature body matching when overloads share a name', () => {
+    const report = buildReport(
+      [
+        fn({ name: 'both', signature: 'both(uuid)', body_md5: 'a' }),
+        fn({ name: 'both', signature: 'both(text)', body_md5: 'b' }),
+      ],
+      new Map([['both', { bodyMd5: 'a', definitions: 2 }]]),
+    );
+    expect(report.drifted).toEqual([]);
+    expect(report.notCompared.every(n => /overloads share this name/.test(n.reason))).toBe(true);
   });
 });
 
 describe('formatReport (SPE-116)', () => {
   it('marks a live trigger function so it cannot be skimmed past', () => {
     const out = formatReport(
-      buildReport([fn({ name: 'handle_new_user', trigger_uses: 1, security_definer: true })], new Set()),
+      buildReport([fn({ name: 'handle_new_user', trigger_uses: 1, security_definer: true })], new Map()),
     );
     expect(out).toContain('SECURITY DEFINER');
     expect(out).toContain('1 trigger(s) — LIVE');
   });
 
-  it('says "none" rather than printing an empty list', () => {
-    expect(formatReport({ missing: [], orphaned: [] })).toContain('none');
+  it('shows both hashes for a drifted function', () => {
+    const out = formatReport(
+      buildReport(
+        [fn({ name: 'batch_rpc', body_md5: 'aaaa' })],
+        new Map([['batch_rpc', { bodyMd5: 'bbbb', definitions: 1 }]]),
+      ),
+    );
+    expect(out).toContain('database: aaaa');
+    expect(out).toContain('migrations: bbbb');
+  });
+
+  it('says "none" under each empty section rather than printing a bare heading', () => {
+    const out = formatReport({ missing: [], drifted: [], orphaned: [], notCompared: [] });
+    // Match the list entry exactly — the ORPHANED heading itself ends in
+    // "the database has none", which a substring count would pick up too.
+    const emptyLists = out.split('\n').filter(line => line === '  none');
+    expect(emptyLists).toHaveLength(3);
+    // And nothing is reported when the two sides agree.
+    expect(out).not.toContain('NOT COMPARED');
   });
 });

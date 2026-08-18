@@ -11,7 +11,8 @@
  * uncaptured point, and the rewrite introduced a `uuid = text` comparison that
  * made it throw on every call. Nobody noticed for months, because the only copy
  * of the broken body lived in the database — the committed migration still
- * showed the working version.
+ * showed the working version. Detecting *that* is why bodies are compared here
+ * and not just names.
  *
  * ## Running it
  *
@@ -26,14 +27,19 @@
  *
  * ## What it reports
  *
- *   MISSING   in the database, no CREATE in any migration — the repo cannot
+ *   MISSING   the database has it, no migration creates it — the repo cannot
  *             rebuild it. Worst case, and the SPE-116 backlog.
+ *   DRIFTED   both have it, but the body a fresh rebuild would produce differs
+ *             from the body the database is actually running. Someone edited it
+ *             in place. This is the SPE-305 shape.
  *   ORPHANED  a migration creates it but the database has none — usually a
  *             later DROP, listed so it is a decision rather than a surprise.
  *
- * Exits 1 if anything is MISSING, so this can gate CI once the backlog is clear.
+ * Exits 1 if anything is MISSING or DRIFTED, so this can gate CI once the
+ * backlog is clear.
  */
 
+import { createHash } from 'crypto';
 import { readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
 
@@ -42,7 +48,8 @@ const MIGRATIONS_DIR = join(__dirname, '..', '..', 'supabase', 'migrations');
 /**
  * Run this against the database to produce the snapshot. `body_md5` collapses
  * runs of whitespace before hashing, so reformatting a body is not drift while
- * a changed identifier, literal or statement is.
+ * a changed identifier, literal or statement is. `normalizeBody` below applies
+ * the identical rule to the repo side.
  */
 export const SNAPSHOT_SQL = `
 select p.proname as name,
@@ -65,59 +72,170 @@ export interface DbFunction {
   trigger_uses: number;
 }
 
+/** What the migrations would produce for one function name. */
+export interface MigrationFunction {
+  /** Body of the LAST definition across sorted files — what a rebuild ends at. */
+  bodyMd5: string | null;
+  /** How many CREATE statements define this name, across all files. */
+  definitions: number;
+}
+
+export interface DriftedFunction {
+  db: DbFunction;
+  migrationBodyMd5: string;
+}
+
 export interface DriftReport {
   missing: DbFunction[];
+  drifted: DriftedFunction[];
   orphaned: string[];
+  /** Names whose body could not be compared, with why — never silently skipped. */
+  notCompared: Array<{ name: string; reason: string }>;
+}
+
+/** The whitespace rule the SQL side uses, so the two hashes are comparable. */
+export function normalizeBody(body: string): string {
+  return body.replace(/\s+/g, ' ').trim();
+}
+
+const md5 = (s: string): string => createHash('md5').update(s).digest('hex');
+
+/**
+ * Body of a dollar-quoted function definition starting at `from`.
+ *
+ * Returns null when the definition is not a plain `AS $tag$ ... $tag$` — a DO
+ * block, a string-literal body, or anything else this does not model. Callers
+ * report those as not-compared rather than guessing, because a wrong DRIFTED is
+ * worse than an absent one: it trains people to ignore the report.
+ */
+function dollarQuotedBody(sql: string, from: number): string | null {
+  const open = /\bas\s+(\$[A-Za-z0-9_]*\$)/gi;
+  open.lastIndex = from;
+  const m = open.exec(sql);
+  if (!m) return null;
+  const tag = m[1];
+  const start = m.index + m[0].length;
+  const end = sql.indexOf(tag, start);
+  return end === -1 ? null : sql.slice(start, end);
 }
 
 /**
- * Every function name a migration file creates.
+ * Every function name the migrations create, with the body a rebuild lands on.
  *
- * The opening paren is required so prose in a comment ("create a function to
- * ...") is not mistaken for a definition — without it this over-reports and the
- * MISSING list silently shrinks, which is the one failure mode that matters
- * here.
+ * Files are read in sorted order and later definitions overwrite earlier ones,
+ * which is how migrations actually apply — so a function created once and
+ * `CREATE OR REPLACE`d twice is compared against the third body, not the first.
+ *
+ * The opening paren in the pattern is required so prose in a comment ("create a
+ * function to ...") is not mistaken for a definition. Without it this
+ * over-reports and the MISSING list silently shrinks, which is the one failure
+ * mode that matters here.
  */
-export function functionsDefinedInMigrations(dir = MIGRATIONS_DIR): Set<string> {
-  const found = new Set<string>();
-  for (const file of readdirSync(dir).filter(f => f.endsWith('.sql'))) {
+export function functionsDefinedInMigrations(dir = MIGRATIONS_DIR): Map<string, MigrationFunction> {
+  const found = new Map<string, MigrationFunction>();
+
+  for (const file of readdirSync(dir).filter(f => f.endsWith('.sql')).sort()) {
     const sql = readFileSync(join(dir, file), 'utf8');
     // No dotAll flag: the pattern spans newlines via \s, never a bare dot.
     const re = /create\s+(?:or\s+replace\s+)?function\s+(?:public\.)?"?([a-z0-9_]+)"?\s*\(/gi;
     let m: RegExpExecArray | null;
-    while ((m = re.exec(sql)) !== null) found.add(m[1].toLowerCase());
+    while ((m = re.exec(sql)) !== null) {
+      const name = m[1].toLowerCase();
+      const body = dollarQuotedBody(sql, m.index);
+      const prev = found.get(name);
+      found.set(name, {
+        bodyMd5: body === null ? null : md5(normalizeBody(body)),
+        definitions: (prev?.definitions ?? 0) + 1,
+      });
+    }
   }
   return found;
 }
 
-export function buildReport(db: DbFunction[], inMigrations: Set<string>): DriftReport {
+export function buildReport(
+  db: DbFunction[],
+  inMigrations: Map<string, MigrationFunction>,
+): DriftReport {
   const dbNames = new Set(db.map(f => f.name));
-  // One entry per overload would repeat a name; MISSING is per signature
-  // because each overload needs its own CREATE.
+  const overloads = new Map<string, number>();
+  for (const f of db) overloads.set(f.name, (overloads.get(f.name) ?? 0) + 1);
+
+  const missing: DbFunction[] = [];
+  const drifted: DriftedFunction[] = [];
+  const notCompared: Array<{ name: string; reason: string }> = [];
+
+  for (const f of db) {
+    const mig = inMigrations.get(f.name);
+    if (!mig) {
+      missing.push(f);
+      continue;
+    }
+
+    // Overloads share a name, so "the migration body" is ambiguous — and a name
+    // whose overloads outnumber its CREATEs is partly un-rebuildable, which
+    // name-level matching alone would hide.
+    const n = overloads.get(f.name) ?? 1;
+    if (n > 1) {
+      if (mig.definitions < n) {
+        notCompared.push({
+          name: f.signature,
+          reason: `${n} overloads in the database but only ${mig.definitions} CREATE(s) in migrations — at least one overload is not reproducible`,
+        });
+      } else {
+        notCompared.push({ name: f.signature, reason: `${n} overloads share this name; body not matched per signature` });
+      }
+      continue;
+    }
+
+    if (mig.bodyMd5 === null) {
+      notCompared.push({ name: f.signature, reason: 'definition is not a plain dollar-quoted body' });
+      continue;
+    }
+    if (mig.bodyMd5 !== f.body_md5) drifted.push({ db: f, migrationBodyMd5: mig.bodyMd5 });
+  }
+
   return {
-    missing: db.filter(f => !inMigrations.has(f.name)),
-    orphaned: [...inMigrations].filter(n => !dbNames.has(n)).sort(),
+    missing,
+    drifted,
+    orphaned: [...inMigrations.keys()].filter(n => !dbNames.has(n)).sort(),
+    notCompared,
   };
 }
 
 export function formatReport(report: DriftReport): string {
-  const { missing, orphaned } = report;
+  const { missing, drifted, orphaned, notCompared } = report;
   const lines: string[] = [];
 
-  lines.push(`MISSING from migrations — the database has it, the repo cannot rebuild it (${missing.length})`);
-  if (!missing.length) lines.push('  none');
-  for (const f of missing) {
+  const tagsFor = (f: DbFunction): string => {
     const tags = [
       f.security_definer ? 'SECURITY DEFINER' : null,
       f.trigger_uses > 0 ? `${f.trigger_uses} trigger(s) — LIVE` : null,
     ].filter(Boolean);
-    lines.push(`  ${f.signature}${tags.length ? `  [${tags.join(', ')}]` : ''}`);
+    return tags.length ? `  [${tags.join(', ')}]` : '';
+  };
+
+  lines.push(`MISSING — the database has it, no migration creates it (${missing.length})`);
+  if (!missing.length) lines.push('  none');
+  for (const f of missing) lines.push(`  ${f.signature}${tagsFor(f)}`);
+
+  lines.push('');
+  lines.push(`DRIFTED — edited in place; a rebuild would produce a different body (${drifted.length})`);
+  if (!drifted.length) lines.push('  none');
+  for (const d of drifted) {
+    lines.push(`  ${d.db.signature}${tagsFor(d.db)}`);
+    lines.push(`      database: ${d.db.body_md5}   migrations: ${d.migrationBodyMd5}`);
   }
 
   lines.push('');
   lines.push(`ORPHANED — a migration creates it, the database has none (${orphaned.length})`);
   if (!orphaned.length) lines.push('  none');
   for (const name of orphaned) lines.push(`  ${name}`);
+
+  if (notCompared.length) {
+    lines.push('');
+    lines.push(`NOT COMPARED — present in both, body not checked (${notCompared.length})`);
+    for (const n of notCompared) lines.push(`  ${n.name}\n      ${n.reason}`);
+  }
 
   return lines.join('\n');
 }
@@ -155,15 +273,19 @@ function main(): void {
     console.warn(
       `\nNOTE: the snapshot lists ${db.length} functions but the migrations define ${inMigrations.size}. ` +
       `This looks like a partial snapshot — ORPHANED is inflated and should be ignored. ` +
-      `MISSING is still accurate for the functions the snapshot does cover.`,
+      `MISSING and DRIFTED are still accurate for the functions the snapshot covers.`,
     );
   }
 
-  if (report.missing.length) {
-    console.error(`\nFAIL: ${report.missing.length} function(s) exist only in the database (SPE-116).`);
+  const broken = report.missing.length + report.drifted.length;
+  if (broken) {
+    console.error(
+      `\nFAIL: ${report.missing.length} function(s) exist only in the database, ` +
+      `${report.drifted.length} differ from what a rebuild would produce (SPE-116).`,
+    );
     process.exit(1);
   }
-  console.log('\nOK: every database function has a CREATE in the migrations.');
+  console.log('\nOK: every database function is reproducible from the migrations.');
 }
 
 if (require.main === module) main();
