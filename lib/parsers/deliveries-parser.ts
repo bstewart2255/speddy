@@ -6,7 +6,7 @@
 
 import { parse } from 'csv-parse/sync';
 import { normalizeStudentName } from './name-utils';
-import { isServiceCodeForRole, getServiceTypeCode } from './service-type-mapping';
+import { isServiceCodeForRole, getDeliveryServiceTypeCode } from './service-type-mapping';
 import {
   toWeeklyMinutes,
   calculateSessions,
@@ -150,9 +150,11 @@ export async function parseDeliveriesCSV(
   const errors: Array<{ row: number; message: string }> = [];
   const warnings: Array<{ row: number; message: string }> = [];
 
-  // Get the service type code for the provider's role
+  // The code this parse actually filters on — the delivery question, not the
+  // goal-visibility one, so the reported metadata matches the rows kept below
+  // (SPE-554).
   const providerRole = options.providerRole || 'resource';
-  const serviceTypeCode = getServiceTypeCode(providerRole);
+  const serviceTypeCode = getDeliveryServiceTypeCode(providerRole);
 
   let totalRows = 0;
   let filteredServiceRows = 0;

@@ -317,6 +317,21 @@ export const DELIVERIES_EMBEDDED_NEWLINE_CSV = (): Buffer => {
   return Buffer.from(text, 'utf-8');
 };
 
+/**
+ * A deliveries export carrying no counseling (510) rows at all — the shape a
+ * school psych would get from a district that codes psych service differently
+ * (SPE-554). Pins that such an import yields nothing rather than quietly
+ * adopting another provider's service minutes.
+ */
+export const DELIVERIES_NO_COUNSELING_CSV = (): Buffer => {
+  const text = [
+    'Name,SEIS ID,Service,Delivery,Start Date,End Date,Sessions / Frequency,Location,Total Minutes (min/year),Total Delivered,Medi-Cal Billing Consent',
+    '"Young, Yara",2000020,330 - Specialized Academic Instruction,Direct,08/15/2025,06/10/2026,300 min Weekly,Room 1,10800,0,Yes',
+    '"Zhao, Zoe",2000021,415 - Language and Speech,Direct,08/15/2025,06/10/2026,60 min Weekly,Room 2,2160,0,No',
+  ].join('\r\n');
+  return Buffer.from(text, 'utf-8');
+};
+
 // ---------------------------------------------------------------------------
 // SEIS Student Goals Report — XLSX variants
 // ---------------------------------------------------------------------------
