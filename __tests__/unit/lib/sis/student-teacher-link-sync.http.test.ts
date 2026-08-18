@@ -183,7 +183,8 @@ beforeAll(async () => {
         users: [
           {
             sourcedId: 'sis-stu-real',
-            identifier: ' DS-100 ',
+            // The live JSUSD shape: Aeries wraps the number, Speddy stores it bare.
+            identifier: ' 33_STU_DS-100 ',
             givenName: 'JAMIE',
             familyName: 'CASELOAD',
           },
@@ -268,8 +269,10 @@ describe('loadLinkSyncInput', () => {
       // ' Teacher ' arrived normalized, not dropped.
       { userSourcedId: 'sis-tch-cased', classSourcedId: 'cls-1', role: 'teacher' },
     ]);
+    // The pick trims but does NOT unwrap — the compound arrives verbatim and
+    // the PLANNER derives the bare-number key (matched end-to-end below).
     expect(input.feedStudents.find((s) => s.sourcedId === 'sis-stu-real')?.identifier).toBe(
-      'DS-100',
+      '33_STU_DS-100',
     );
 
     // Classes: the dead section is dropped, labels arrive trimmed.

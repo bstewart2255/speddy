@@ -9,9 +9,12 @@
  *
  * The matching spine (owner-approved 2026-08-18):
  *
- *   SIS student ──(identifier)──> children.district_student_id, trim-exact,
- *                                 falling back to a CONFLICT-FREE value from
- *                                 the child's caseload copies when the child
+ *   SIS student ──(identifier)──> children.district_student_id, trim-exact —
+ *                                 compound identifiers (Aeries sends
+ *                                 `33_STU_900012345`) also match by the bare
+ *                                 number after the last underscore — falling
+ *                                 back to a CONFLICT-FREE value from the
+ *                                 child's caseload copies when the child
  *                                 record's own field is blank
  *   SIS student ──(enrollments, role=student)──> their live classes
  *   live class  ──(enrollments, role=teacher)──> SIS teacher sourcedIds
@@ -149,7 +152,9 @@ export type UnmatchedReason =
   | 'no-district-id'
   | 'conflicting-district-ids'
   | 'not-in-sis'
-  | 'duplicate-in-sis';
+  | 'duplicate-in-sis'
+  /** Same bare number under different SIS wrappers — a dual-site student. */
+  | 'multiple-sis-records';
 
 /** A child a human can go fix — initials and grade, never a name. */
 export interface UnmatchedChild {
@@ -275,18 +280,38 @@ export function planStudentTeacherLinkSync(input: LinkPlannerInput): LinkSyncPla
 
   // SIS students by district number. Deduped by sourcedId first so a paging
   // echo cannot manufacture a fake "two SIS students share this number".
+  //
+  // Each student is indexed under EVERY key form it can honestly answer to:
+  // the identifier verbatim, and — when the identifier is Aeries' compound
+  // shape, a `STU` segment followed by the number (`{schoolCode}_STU_{number}`,
+  // verified against JSUSD live 2026-08-18; teachers use the same wrapper as
+  // `11_TCH_1174`) — the bare number after the last underscore. Speddy's
+  // district_student_id holds that bare number, so verbatim-only matching
+  // produced 0 of 180. The unwrap is DELIBERATELY anchored to the STU marker
+  // rather than any underscore: a different vendor whose real identifiers
+  // merely contain underscores (`local_123`) must not be indexed under a tail
+  // that could exact-equal an unrelated child's stored ID and write wrong
+  // links (PR #894 review, self + Codex). Records colliding on any key form
+  // land in an unmatched refusal below, never a guess.
   const seenSisStudents = new Set<string>();
-  const sisStudentsByIdentifier = new Map<string, string[]>();
+  const sisStudentsByIdentifier = new Map<string, { sourcedId: string; verbatim: string }[]>();
   let feedStudentCount = 0;
   for (const s of input.feedStudents) {
     if (!s.sourcedId || seenSisStudents.has(s.sourcedId)) continue;
     seenSisStudents.add(s.sourcedId);
     feedStudentCount += 1;
-    const key = s.identifier?.trim();
-    if (!key) continue;
-    const list = sisStudentsByIdentifier.get(key) ?? [];
-    list.push(s.sourcedId);
-    sisStudentsByIdentifier.set(key, list);
+    const verbatim = s.identifier?.trim();
+    if (!verbatim) continue;
+    const keys = new Set<string>([verbatim]);
+    if (/(^|_)STU_/i.test(verbatim)) {
+      const tail = verbatim.slice(verbatim.lastIndexOf('_') + 1).trim();
+      if (tail) keys.add(tail);
+    }
+    for (const key of keys) {
+      const list = sisStudentsByIdentifier.get(key) ?? [];
+      list.push({ sourcedId: s.sourcedId, verbatim });
+      sisStudentsByIdentifier.set(key, list);
+    }
   }
 
   const emptyPlan = (refusal: string): LinkSyncPlan => ({
@@ -427,12 +452,18 @@ export function planStudentTeacherLinkSync(input: LinkPlannerInput): LinkSyncPla
       continue;
     }
     if (sisMatches.length > 1) {
-      // Two SIS students share this number — linking either's teachers
-      // would be a guess about a child. A human untangles it district-side.
+      // More than one SIS record answers to this number — linking any one
+      // record's teachers would be a guess about a child, so both shapes
+      // refuse. They still need DIFFERENT advice: identical full identifiers
+      // are a district-side data error, while different wrappers around the
+      // same bare number is Aeries' own export for a student enrolled at two
+      // sites — nothing to "fix" district-side, link by hand for now
+      // (PR #894 review; union-of-records is the follow-up if it recurs).
+      const verbatims = new Set(sisMatches.map((m) => m.verbatim));
       school.unmatched.push({
         initials: record.initials,
         grade: record.gradeLevel,
-        reason: 'duplicate-in-sis',
+        reason: verbatims.size > 1 ? 'multiple-sis-records' : 'duplicate-in-sis',
       });
       continue;
     }
@@ -443,7 +474,7 @@ export function planStudentTeacherLinkSync(input: LinkPlannerInput): LinkSyncPla
     // school the database's link trigger enforces).
     const desired = new Map<string, { titles: Set<string>; periods: Set<string> }>();
     const missingFromDirectory = new Set<string>();
-    for (const classId of classesByStudent.get(sisMatches[0]) ?? []) {
+    for (const classId of classesByStudent.get(sisMatches[0].sourcedId) ?? []) {
       const cls = classById.get(classId);
       if (!cls) continue;
       for (const teacherSisId of teachersByClass.get(classId) ?? []) {

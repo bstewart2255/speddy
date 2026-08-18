@@ -46,6 +46,8 @@ const UNMATCHED_WORDING: Record<UnmatchedChild['reason'], string> = {
   'conflicting-district-ids': 'caseload copies disagree on the district student ID',
   'not-in-sis': 'their district student ID is not in your SIS',
   'duplicate-in-sis': 'two SIS students share their district student ID',
+  'multiple-sis-records':
+    'your SIS has more than one record for this student (enrolled at two schools?) — add their teachers by hand for now',
 };
 
 function Chip({ label, n, tone }: { label: string; n: number; tone: string }) {
