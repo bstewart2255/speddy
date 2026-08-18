@@ -148,10 +148,13 @@ export async function getTeachersByChildId(
  * (7:30 AM)") has, which is why those sort among themselves at the bottom.
  *
  * Times are read out of the label BEFORE the number, and taken out of the way:
- * "Advisory (7:30 AM - 8:20 AM)" must not be read as period 7. Both halves
- * take their SMALLEST match, so a label the sync joined from two classes
- * ("1 (8:30 AM…)/5 (1:30 PM…)") is placed by the earlier one whatever order it
- * was joined in.
+ * "Advisory (7:30 AM - 8:20 AM)" must not be read as period 7.
+ *
+ * A teacher a student sits with twice carries both classes in one label, "/"
+ * joined (`linkLabels`), and belongs at the earlier of them — so the label is
+ * read a segment at a time, each segment offering its LEADING number, and the
+ * earliest wins. Leading, not smallest, so a trailing room number in a
+ * hand-typed "5 - Rm 2" does not pull the row up to second period.
  *
  * `Infinity` for a half the label does not carry, so a row Speddy cannot place
  * sinks below the ones it can, and an unlabeled row sinks below both.
@@ -178,8 +181,9 @@ function periodSortKey(period: string | null | undefined): [number, number] {
   );
 
   let lowest = Infinity;
-  for (const digits of withoutTimes.matchAll(/\d+/g)) {
-    lowest = Math.min(lowest, Number(digits[0]));
+  for (const segment of withoutTimes.split('/')) {
+    const leading = /\d+/.exec(segment);
+    if (leading) lowest = Math.min(lowest, Number(leading[0]));
   }
 
   return [lowest, earliest];

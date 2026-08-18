@@ -249,6 +249,11 @@ export async function getPlanningData(schoolId: string): Promise<PlanningData> {
     }
     // Elementary invites the whole set; secondary takes the first only until
     // SPE-322's picker lets a human choose (see CaseloadStudent.teachers).
+    //
+    // First LINKED, deliberately — not the first row the students page shows,
+    // which reads in period order (`sortTeachersByPeriod`). Sorting here would
+    // change who is invited to a live IEP meeting, which is a product call,
+    // not a display one. Either pick is arbitrary until the picker lands.
     const linked = s.child_id ? (teachersByChild.get(s.child_id) ?? []) : [];
     const teachers = secondary ? linked.slice(0, 1) : linked;
     return {

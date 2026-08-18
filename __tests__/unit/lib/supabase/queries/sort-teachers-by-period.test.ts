@@ -142,6 +142,14 @@ describe('sortTeachersByPeriod', () => {
     expect(names(sorted)).toEqual(['fifth and first', 'third']);
   });
 
+  it('places a hand-typed label by its period, not by a room after it', () => {
+    const sorted = sortTeachersByPeriod([
+      link('fifth in room 2', '5 - Rm 2'),
+      link('third', '3'),
+    ]);
+    expect(names(sorted)).toEqual(['third', 'fifth in room 2']);
+  });
+
   it('ignores a time that is not one, rather than placing the row by it', () => {
     // Room "99:99" is not 99 past 99 o'clock; the period number still places
     // the row, and a label with neither goes to the bottom.
