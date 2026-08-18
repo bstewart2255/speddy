@@ -6,6 +6,7 @@
 import * as ExcelJS from 'exceljs';
 import { getServiceTypeCode, isGoalForProviderByKeywords, hasNoProviderRoutingSignal, blankMetadataGoalWarning } from './service-type-mapping';
 import { normalizeGradeLevel } from '../utils/grade-parser';
+import { parseDate } from '../utils/iep-date-utils';
 
 // ExcelJS cell value types for rich text and formula results
 interface ExcelRichTextValue {
@@ -477,64 +478,17 @@ function getCellValue(row: ExcelJS.Row, colNumber: number): string {
 // the SPE-239 fixture suite keep resolving it from this module.
 export { normalizeGradeLevel };
 
-/**
- * Parse a date string into ISO format (YYYY-MM-DD)
- * Handles various date formats from Excel/SEIS exports including Excel serial dates
- */
-function parseDate(dateStr: string): string | undefined {
-  if (!dateStr || !dateStr.trim()) {
-    return undefined;
-  }
-
-  const trimmed = dateStr.trim();
-
-  // Try parsing as ISO format first (YYYY-MM-DD)
-  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
-    return trimmed;
-  }
-
-  // Try parsing MM/DD/YYYY format
-  const usMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (usMatch) {
-    const [, month, day, year] = usMatch;
-    return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-  }
-
-  // Try parsing MM-DD-YYYY format
-  const usDashMatch = trimmed.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
-  if (usDashMatch) {
-    const [, month, day, year] = usDashMatch;
-    return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-  }
-
-  // Check if it's a numeric-only string (Excel serial date)
-  if (/^\d+(\.\d+)?$/.test(trimmed)) {
-    const serial = Number(trimmed);
-    if (Number.isFinite(serial) && serial > 0) {
-      return excelSerialToDate(serial);
-    }
-  }
-
-  // Try parsing full ISO datetime format (YYYY-MM-DDTHH:MM:SS)
-  if (/^\d{4}-\d{2}-\d{2}T/.test(trimmed)) {
-    try {
-      const date = new Date(trimmed);
-      if (!isNaN(date.getTime())) {
-        return date.toISOString().split('T')[0];
-      }
-    } catch {
-      // Ignore parsing errors
-    }
-  }
-
-  return undefined;
-}
+// Local parseDate(dateStr: string) removed (SPE-14) — this file now imports
+// the shared implementation from lib/utils/iep-date-utils.ts. It handles the
+// same string formats (plus Date/number) identically.
 
 /**
  * Convert Excel serial date to ISO date string
  * Excel's epoch is 1899-12-30 (day 0 = Dec 30, 1899)
  *
- * Exported for the parser golden-fixture suite (SPE-239).
+ * Exported for the parser golden-fixture suite (SPE-239) and for the
+ * cross-parser identity check in normalization.test.ts, which compares this
+ * copy against csv-parser.ts's.
  */
 export function excelSerialToDate(serial: number): string | undefined {
   if (!Number.isFinite(serial) || serial < 1) {
