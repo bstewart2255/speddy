@@ -29,8 +29,16 @@ interface StudentTeachersFieldProps {
  *
  * Co-teachers are EQUALS (product decision 2026-07-26). Nothing here ranks
  * them: no "primary" badge, no reordering handles, and removing the first row
- * is exactly as easy as removing the last. The order the rows appear in is
- * insertion order and carries no meaning.
+ * is exactly as easy as removing the last.
+ *
+ * Rows render in `value` order, and the CALLER decides what that is — this is
+ * the one teacher list that does not sort itself. Six secondary classes read
+ * best in period order (`sortTeachersByPeriod`), so the caller applies it
+ * where the set loads; doing it here, per render, would re-sort on every
+ * keystroke in a row's own Period box and move the focused `<li>` out from
+ * under the cursor — a DOM move blurs what is focused inside it. A row a
+ * provider adds by hand therefore lands at the bottom until the next open,
+ * which is also where they are looking.
  *
  * `subject`/`period` are display labels only — Speddy does not schedule at
  * secondary (SPE-149/193), and nothing downstream reads them as times.

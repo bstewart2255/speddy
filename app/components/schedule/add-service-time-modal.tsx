@@ -11,6 +11,7 @@ import {
 } from '@/lib/supabase/queries/student-service-times';
 import {
   getTeacherLinksForStudent,
+  sortTeachersByPeriod,
   type EditableTeacherLink,
 } from '@/lib/supabase/queries/student-teachers';
 import { SECONDARY_BELL_SCHEDULE_ACTIVITIES } from '@/lib/constants/activity-types';
@@ -374,7 +375,9 @@ export function AddServiceTimeModal({
                 <option value="">
                   {classLinks.length > 0 ? "Select the student's class" : 'Select a class'}
                 </option>
-                {classLinks.map(link => (
+                {/* Period order — the day the student walks through, which is
+                    how they name the class they want ("third period"). */}
+                {sortTeachersByPeriod(classLinks).map(link => (
                   <option key={link.teacherId} value={link.teacherId}>
                     {[link.subject, link.name, link.period].filter(Boolean).join(' — ') || 'Unnamed class'}
                   </option>
