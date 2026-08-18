@@ -200,6 +200,40 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
       };
     }
 
+    // Columns we can parse without, but whose absence costs the user something
+    // they'd never see otherwise (SPE-558). The whole complaint about this file
+    // shape was that it failed SILENTLY, so an unresolved column says so rather
+    // than quietly producing students with the field missing.
+    if (isSEISFormat && columnMapping.districtStudentId === undefined) {
+      warnings.push({
+        row: 0,
+        message:
+          'No "District ID" column found, so these students will import without their district student ID. ' +
+          'Their classroom teachers cannot be matched from your student information system without it — ' +
+          're-export this report with the District ID column included.',
+      });
+    }
+
+    if (
+      isSEISFormat &&
+      options.providerRole &&
+      getServiceTypeCode(options.providerRole) !== null &&
+      columnMapping.areaOfNeed === undefined &&
+      columnMapping.goalType === undefined &&
+      columnMapping.personResponsible === undefined
+    ) {
+      // Every goal is filtered by these three columns; with none of them present
+      // the file imports as zero students, which without this reads as "the
+      // import did nothing".
+      warnings.push({
+        row: 0,
+        message:
+          'None of the "Area Of Need", "Annual Goal #" or "Person Responsible" columns were found. ' +
+          'Those are what route each goal to the right provider, so no goals can be matched to your ' +
+          'caseload — re-export this report with those columns included.',
+      });
+    }
+
     // Temporary map to consolidate duplicate students
     const studentMap = new Map<string, ParsedStudent>();
 
@@ -553,7 +587,9 @@ const SEIS_FIELDS = {
     exact: ['district id', 'district student id'],
     pattern: /^district\s*(student\s*)?id$/,
   },
-  iepDate: { exact: ['iep date'], pattern: /^iep\s*date$|^meeting\s*date$/ },
+  // "Date of IEP (Meeting Date on Current IEP Forms)" is how SEIS labels this
+  // on some exports, so match that prefix too rather than only the short form.
+  iepDate: { exact: ['iep date'], pattern: /^iep\s*date$|^meeting\s*date$|^date\s*of\s*iep\b/ },
   areaOfNeed: { exact: ['area of need'], pattern: /^area\s*(of\s*)?need$|^need\s*area$/ },
   personResponsible: {
     exact: ['person responsible'],
@@ -620,7 +656,13 @@ export function detectSEISStudentGoalsFormat(records: string[][]): boolean {
   const signature = SEIS_SIGNATURE_FIELDS.filter(
     (field) => findSeisColumn(normalized, field) !== undefined,
   ).length;
-  if (signature < 5) return false;
+  if (signature < SEIS_SIGNATURE_FIELDS.length - 1) return false;
+
+  // A full house — including "Annual Goal #", which an ordinary spreadsheet
+  // does not carry — is evidence enough on its own. Demanding markers here
+  // would reject a district's trimmed-column export of this very report and
+  // hand it to the generic path, which is the failure this ticket is about.
+  if (signature === SEIS_SIGNATURE_FIELDS.length) return true;
 
   const headers = new Set(normalized);
   const markers = SEIS_MARKER_HEADERS.filter((name) => headers.has(name)).length;

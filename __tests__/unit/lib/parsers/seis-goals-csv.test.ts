@@ -312,6 +312,63 @@ describe('parseCSVReport — SEIS Student Goals Report (CSV)', () => {
     });
   });
 
+  // SPE-558 review round 3. A column this parser can proceed without still
+  // costs the user something invisible — silence is the exact complaint that
+  // opened this ticket.
+  describe('says so when an optional-but-costly column is missing', () => {
+    it('warns that teachers cannot be matched when there is no District ID column', async () => {
+      const result = await parseCSVReport(
+        buildSeisGoalsCsvWithHeaders({ 1: 'Local Student Number' }),
+        {},
+      );
+
+      expect(result.students.length).toBeGreaterThan(0);
+      expect(result.students.every((s) => s.districtStudentId === undefined)).toBe(true);
+      expect(result.warnings.some((w) => /district student id/i.test(w.message))).toBe(true);
+    });
+
+    it('warns when no goal-routing column exists and a keyworded role would import nothing', async () => {
+      const result = await parseCSVReport(
+        buildSeisGoalsCsvWithHeaders({ 11: 'Domain', 12: 'Goal Number', 17: 'Owner Role' }),
+        { providerRole: 'resource' },
+      );
+
+      expect(result.students).toHaveLength(0);
+      expect(result.warnings.some((w) => /route each goal/i.test(w.message))).toBe(true);
+    });
+
+    it('stays quiet when those columns are present', async () => {
+      const result = await parseCSVReport(SEIS_GOALS_CSV(), { providerRole: 'resource' });
+      expect(result.warnings.some((w) => /district student id|route each goal/i.test(w.message))).toBe(
+        false,
+      );
+    });
+  });
+
+  // A genuine SEIS export with columns trimmed away still matches all six
+  // signature fields; requiring marker columns on top would push it to the
+  // generic path, which is the failure this whole ticket is about.
+  it('accepts a trimmed export that matches all six signature columns without markers', async () => {
+    const csv = Buffer.from(
+      [
+        'District ID,Last Name,First Name,Grade,School of Attendance,IEP Date,Area Of Need,Annual Goal #,Goal,Person Responsible',
+        '100001,Alvarez,Ana,01,Mt Diablo Elementary School,05/01/2026,Reading,Academic #1,' +
+          '"By 5/1/2027, Ana will read 90 words per minute with 95% accuracy in 3 of 4 trials.",' +
+          'Resource Specialist',
+      ].join('\r\n'),
+      'utf-8',
+    );
+    expect(detectSEISStudentGoalsFormat(toRecords(csv))).toBe(true);
+
+    const result = await parseCSVReport(csv, {});
+    const ana = result.students[0];
+
+    expect(ana.districtStudentId).toBe('100001');
+    expect(ana.schoolOfAttendance).toBe('Mt Diablo Elementary School');
+    expect(ana.iepDate).toBe('2026-05-01');
+    expect(ana.goals).toHaveLength(1);
+  });
+
   describe('per-role goal filtering', () => {
     // Real-file reference counts (kept/total goals): resource 119/184, speech
     // 58, OT 12, counseling 9. This fictional fixture is far smaller; the
