@@ -313,6 +313,22 @@ describe('parseCSVReport — SEIS Student Goals Report (CSV)', () => {
       expect(result.students).toHaveLength(1);
     });
 
+    it('hands a file with an unrecognizable goal header to the generic path', async () => {
+      // Unlike grade — where the fixed-index parser was silently WRONG and a
+      // named error is the better trade — the old parser read this file's goals
+      // correctly from column O. Claiming it and then failing on the missing
+      // Goal column would be a regression, so detection requires the goal
+      // column outright and lets the generic path import it.
+      const csv = buildSeisGoalsCsvWithHeaders({ 14: 'Goal Description' });
+      expect(detectSEISStudentGoalsFormat(toRecords(csv))).toBe(false);
+
+      const result = await parseCSVReport(csv, {});
+
+      expect(result.errors).toHaveLength(0);
+      expect(result.students.length).toBeGreaterThan(0);
+      expect(result.students[0].goals.length).toBeGreaterThan(0);
+    });
+
     it('refuses rather than reading a grade out of "Grade Level Standard"', async () => {
       // With no real grade header, a bare /grade/ scan binds to the standards
       // column (index 47, "Reading Standard 3.2") and every student imports as

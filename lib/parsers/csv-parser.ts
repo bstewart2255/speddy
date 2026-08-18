@@ -591,9 +591,11 @@ export { normalizeGradeLevel };
  * "Limited Progress" into a child's IEP goals in the first place, so every
  * pattern here matches a WHOLE header or not at all.
  *
- * One table, used by both the detector and the mapper below, so a file can
- * never be recognized as this report on a column the mapper then fails to
- * resolve.
+ * One table, used by both the detector and the mapper below. Detection tolerates
+ * one missing signature column, so the mapper can still return undefined for a
+ * field — every such field either has a file-level warning below or, for
+ * `grade`, a named error. The one exception is `goal`, which detection requires
+ * outright, since a file claimed without it can only dead-end.
  */
 const SEIS_FIELDS = {
   lastName: { exact: ['last name'], pattern: /^(student\s*)?last\s*name$|^lastname$|^surname$/ },
@@ -687,6 +689,14 @@ export function detectSEISStudentGoalsFormat(records: string[][]): boolean {
   }
 
   const normalized = (records[0] || []).map(normalizeHeaderName);
+
+  // The goal column is mandatory rather than one of the five-of-six, because
+  // the mapper cannot proceed without it: claiming a file whose goal header
+  // reads "Goal Description" would dead-end in the no-Goal-column error, while
+  // the generic path imports it (fuzzily, but it imports). Refusing the file
+  // here hands it to that path instead of failing it outright.
+  if (findSeisColumn(normalized, 'goal') === undefined) return false;
+
   const signature = SEIS_SIGNATURE_FIELDS.filter(
     (field) => findSeisColumn(normalized, field) !== undefined,
   ).length;

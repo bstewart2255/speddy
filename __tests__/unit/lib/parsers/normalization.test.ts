@@ -199,15 +199,24 @@ describe('detectSEISStudentGoalsFormat — 5-of-6 threshold', () => {
 
   it('still detects with exactly 5 of 6 key columns present', () => {
     const fiveOfSix = [...SEIS_HEADERS];
-    fiveOfSix[14] = 'Notes'; // break the Goal @ 14 match
+    fiveOfSix[6] = 'Site'; // break the School of Attendance match
     expect(detectSEISStudentGoalsFormat([fiveOfSix])).toBe(true);
   });
 
   it('falls back (returns false) at 4 of 6 key columns', () => {
     const fourOfSix = [...SEIS_HEADERS];
-    fourOfSix[14] = 'Notes'; // break Goal @ 14
-    fourOfSix[12] = 'Sequence'; // break Annual Goal # @ 12
+    fourOfSix[6] = 'Site'; // break School of Attendance
+    fourOfSix[12] = 'Sequence'; // break Annual Goal #
     expect(detectSEISStudentGoalsFormat([fourOfSix])).toBe(false);
+  });
+
+  // The Goal column is the one exception to the 5-of-6 tolerance (SPE-558):
+  // the mapper cannot proceed without it, so a file missing it is refused here
+  // and imported by the generic path rather than claimed and failed.
+  it('returns false when only the Goal column is unrecognizable', () => {
+    const noGoal = [...SEIS_HEADERS];
+    noGoal[14] = 'Notes';
+    expect(detectSEISStudentGoalsFormat([noGoal])).toBe(false);
   });
 
   it('returns false for empty and generic header rows', () => {
