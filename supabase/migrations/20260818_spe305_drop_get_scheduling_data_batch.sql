@@ -43,9 +43,14 @@
 --
 -- Carrying all four in SQL alongside the TypeScript that already implements
 -- them means two copies that must never drift — and those four bugs are what
--- drift already cost. The payoff would be lower database load, not latency the
--- user feels: the parallel reads are issued together (cost = slowest, not sum)
--- and four further round trips run sequentially after either path regardless.
+-- drift already cost.
+--
+-- The payoff would have been lower database load rather than latency the user
+-- feels. The replacement is ~9 queries, but they are issued as five branches
+-- through Promise.all (a few of which make two sequential reads internally), so
+-- the critical path is about two round trips, and four further round trips run
+-- sequentially after the load regardless. Collapsing two into one is a real but
+-- small win, and not one worth four duplicated filters to hold.
 --
 -- Safe in any deploy order: the client fell back to parallel queries on ANY
 -- RPC error, so between this migration landing and the app deploy that removes

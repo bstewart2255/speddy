@@ -241,9 +241,14 @@ export class SchedulingDataManager implements SchedulingDataManagerInterface {
   /**
    * Load the scheduling data set for the current provider and school.
    *
-   * Five independent reads issued together, so the cost is the slowest one
-   * rather than their sum (SPE-305: this was the fallback behind a batch RPC
-   * that never ran; it is now the only path).
+   * Five branches issued together, so they cost the slowest rather than their
+   * sum — but several make two sequential reads internally (the school_id /
+   * legacy school_site dual match, and the provider_schools lookup that
+   * availability needs before it can filter by site), so this is roughly nine
+   * queries across a two-round-trip critical path, not five across one.
+   *
+   * SPE-305: this was the fallback behind a batch RPC that never ran. It is
+   * now the only path.
    */
   private async loadDataParallel(): Promise<void> {
     const [

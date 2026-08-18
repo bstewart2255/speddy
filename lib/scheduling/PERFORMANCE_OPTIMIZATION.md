@@ -22,11 +22,23 @@ Created performance indexes in `/supabase/migrations/20250815_scheduling_perform
 
 ### 2. Batch Data Fetching
 
-Implemented `preloadAllSchedulingData()` method that:
+`SchedulingDataManager.loadAllData()` replaces the per-constraint queries with
+one grouped load: five reads issued together via `Promise.all`, instead of the
+100+ the scheduler used to make.
 
-- Fetches ALL scheduling data in a single batch operation
-- Uses parallel queries as fallback (5 queries instead of 100+)
-- Created database RPC function `get_scheduling_data_batch` for single-query fetching
+**The `get_scheduling_data_batch` RPC described here is gone (SPE-305).** It was
+meant to collapse that load into a single statement, but its `work_schedule` CTE
+compared `uss.site_id` (uuid) to `p_school_site` (text), so Postgres rejected it
+at plan time on every call — it never once returned data, and the app always
+took the parallel path. It was dropped rather than repaired.
+
+Do not "restore the optimization" without reading
+`supabase/migrations/20260818_spe305_drop_get_scheduling_data_batch.sql` first.
+A single-statement version must carry the school_id/legacy-school_site dual key
+(SPE-463), the school_year scope (SPE-458), the `deleted_at` filter
+(SPE-468/SPE-484) and the caller's expected key names (SPE-56), or it silently
+under-reads and the auto-scheduler books over protected time. Those four are
+production bugs already paid for once.
 
 ### 3. Enhanced Caching Structure
 
@@ -63,8 +75,10 @@ Added comprehensive performance tracking:
 
 ### After Optimization
 
-- **Queries per scheduling operation**: 1-3
-  - 1 batch fetch (or 5 parallel queries as fallback)
+- **Queries per scheduling operation**: a small constant, not per-student
+  - one grouped load — five branches issued together, a few of which make two
+    sequential reads internally (the dual-key school match, the availability
+    site lookup), so the critical path is about two round trips
   - 1 insert for saving sessions
 - **Time per operation**: <500ms
 - **Scalability**: Constant time regardless of student count
