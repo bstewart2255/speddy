@@ -714,6 +714,57 @@ const SEIS_MARKER_HEADERS = [
 ] as const;
 
 /**
+ * The report's OTHER columns — everything it ships that isn't one of the mapped
+ * fields above.
+ *
+ * This is what makes the positional fallback safe. A column that was RELABELLED
+ * leaves an unfamiliar header at its position, which is exactly what the
+ * fallback is for. A column that was REMOVED slides a different column of this
+ * same report into that position — and filling there imports the wrong data
+ * silently: "SSID" read as the district student id (poisoning the key the SIS
+ * link sync matches on), or "Objective 1" read as Person Responsible (routing a
+ * goal to the wrong provider's caseload). Recognizing the report's own columns
+ * tells those two cases apart.
+ */
+const SEIS_OTHER_COLUMNS: readonly (string | RegExp)[] = [
+  'ssid',
+  'birthdate',
+  'case manager',
+  'case manager email',
+  'baseline',
+  'standard',
+  'grade level standard',
+  'annual review',
+  'added on',
+  'added by',
+  'updated by',
+  'updated on',
+  'last affirmed pr',
+  'created by',
+  'created date',
+  'last modified by',
+  'last modified date',
+  'reporting progress',
+  'comparison to goal',
+  'progress percentage',
+  'curriculum',
+  'frequency',
+  'assessment method',
+  'owner',
+  'owner email',
+  'record locked',
+  'record status',
+  'source system',
+  'export batch',
+  'export timestamp',
+  /^objective\s*\d/,
+  /^progress\s*report/,
+  /^summary$/,
+  /^comments$/,
+  /^goal\s*progress$/,
+];
+
+/**
  * Resolve one SEIS field to a column index: the LEFTMOST column carrying any of
  * the field's exact names, else the leftmost matching its pattern.
  *
@@ -764,16 +815,21 @@ function resolveSeisColumns(normalized: string[]): SeisColumns {
   const offset = [...offsets][0];
   const taken = new Set(identified.map((field) => columns[field]!));
 
-  // A column that was DELETED rather than relabelled also produces a uniform
-  // offset — everything after it slides left — and the canonical position then
-  // points at whatever now sits there. So refuse any candidate whose header
-  // already announces itself as something else: another field's label, or one
-  // of the marker columns. Deleting "District ID" would otherwise land this on
-  // "SEIS ID" and import that as the district's student number.
+  // Fill only onto a header this report doesn't otherwise account for. A
+  // relabelled column leaves an unfamiliar header behind; a REMOVED one slides
+  // another of the report's own columns into its place, and filling there
+  // imports the wrong data with no error at all.
   const namesSomethingElse = (index: number, field: keyof typeof SEIS_FIELDS): boolean => {
     const header = normalized[index];
     if (!header) return false;
     if ((SEIS_MARKER_HEADERS as readonly string[]).includes(header)) return true;
+    if (
+      SEIS_OTHER_COLUMNS.some((known) =>
+        typeof known === 'string' ? known === header : known.test(header),
+      )
+    ) {
+      return true;
+    }
     return SEIS_FIELD_NAMES.some((other) => {
       if (other === field) return false;
       const { exact, pattern } = SEIS_FIELDS[other];

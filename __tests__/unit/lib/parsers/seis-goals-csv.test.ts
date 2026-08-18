@@ -25,6 +25,7 @@ import {
   SEIS_GOALS_CSV,
   SEIS_GOALS_CSV_BOM,
   SEIS_GOALS_DISTRICT_CSV,
+  SEIS_GOALS_DISTRICT_NO_DISTRICT_ID_CSV,
   SEIS_GOALS_SHIFTED_CSV,
 } from './fixtures/builders';
 
@@ -437,6 +438,48 @@ describe('parseCSVReport — SEIS Student Goals Report (CSV)', () => {
 
       expect(ana).toBeDefined();
       expect(ana!.gradeLevel).toBe('1');
+    });
+
+    // The trap cases for positional fallback: a REMOVED column leaves another
+    // of this report's own columns sitting at its canonical position, and the
+    // surviving columns still agree on one offset, so the layout looks intact.
+    it('never reads the SSID column as the district student id', async () => {
+      const result = await parseCSVReport(SEIS_GOALS_DISTRICT_NO_DISTRICT_ID_CSV(), {});
+      const ana = result.students.find((s) => s.lastName === 'Alvarez')!;
+
+      expect(ana.districtStudentId).toBeUndefined();
+      expect(ana.districtStudentId).not.toBe('99100001'); // the SSID
+      expect(result.warnings.some((w) => /district student id/i.test(w.message))).toBe(true);
+      // The rest of the file still parses — this refuses one column, not the import.
+      expect(ana.schoolOfAttendance).toBe('Mt Diablo Elementary School');
+      expect(ana.gradeLevel).toBe('1');
+    });
+
+    it('never reads the Objective column as Person Responsible', async () => {
+      // Person Responsible is the last mapped field, so every offset witness is
+      // to its left and the offset stays uniform when it's removed — index 17
+      // then holds "Objective 1". The objective text here deliberately names a
+      // different discipline than the goal belongs to, which is how a mis-bound
+      // routing column puts a child on the wrong provider's caseload.
+      const csv = buildSeisGoalsCsvWithoutColumns(
+        [17],
+        [
+          {
+            0: '2000009', 1: '100009', 2: 'Foster', 3: 'Finn', 5: '03',
+            6: 'Mt Diablo Elementary School', 9: '05/01/2026',
+            11: 'Handwriting', 12: 'OT #1',
+            14: 'By 5/1/2027, Finn will form lower-case letters legibly in 4 of 5 writing samples.',
+            17: 'Occupational Therapist',
+            18: 'Objective 1: Finn will use his speech and language supports during writing.',
+          },
+        ],
+      );
+
+      const ot = await parseCSVReport(csv, { providerRole: 'ot' });
+      const speech = await parseCSVReport(csv, { providerRole: 'speech' });
+
+      expect(ot.students.some((s) => s.lastName === 'Foster')).toBe(true);
+      expect(speech.students.some((s) => s.lastName === 'Foster')).toBe(false);
     });
 
     it('stays quiet when those columns are present', async () => {

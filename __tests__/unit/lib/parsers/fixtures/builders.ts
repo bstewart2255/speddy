@@ -262,18 +262,41 @@ export function buildSeisGoalsCsvWithHeaders(
  * district's trimmed export takes, and the case the missing-column warnings
  * exist for (SPE-558).
  */
-export function buildSeisGoalsCsvWithoutColumns(drop: number[]): Buffer {
+export function buildSeisGoalsCsvWithoutColumns(
+  drop: number[],
+  rows: Array<SparseRow> = SEIS_GOALS_ROWS,
+): Buffer {
   const dropped = new Set(drop);
   const keep = SEIS_HEADERS.map((_, i) => i).filter((i) => !dropped.has(i));
   const headers = keep.map((i) => SEIS_HEADERS[i]);
   const lines = [
     headers.map(csvCell).join(','),
-    ...SEIS_GOALS_ROWS.map((row) =>
-      keep.map((i) => csvCell(row[i] ?? '')).join(','),
-    ),
+    ...rows.map((row) => keep.map((i) => csvCell(row[i] ?? '')).join(',')),
   ];
   return Buffer.from(lines.join('\r\n'), 'utf-8');
 }
+
+/**
+ * The district-wide shape with its `District ID` column REMOVED, so the
+ * canonical District ID position (index 1) is occupied by `SSID` instead.
+ *
+ * The trap case for positional fallback (SPE-558): the surviving columns still
+ * agree on one offset, so the layout looks intact, and filling District ID from
+ * its canonical position would import the state SSID as the district's student
+ * number — poisoning the very key the SIS teacher link sync matches on.
+ */
+export const SEIS_GOALS_DISTRICT_NO_DISTRICT_ID_CSV = (): Buffer => {
+  const headers = ['SEIS ID', 'SSID', ...SEIS_HEADERS.slice(2)];
+  const lines = [
+    headers.map(csvCell).join(','),
+    ...SEIS_GOALS_ROWS.map((row) => {
+      const values: SparseRow = { ...row };
+      values[1] = row[1] ? `99${row[1]}` : '';
+      return headers.map((_, i) => csvCell(values[i] ?? '')).join(',');
+    }),
+  ];
+  return Buffer.from(lines.join('\r\n'), 'utf-8');
+};
 
 /**
  * Build the SEIS goals CSV with one extra column inserted at `atIndex`, every
