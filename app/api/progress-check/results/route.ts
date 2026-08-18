@@ -198,6 +198,17 @@ export const GET = withRoute({ query: getResultsQuerySchema }, async ({ query: q
         return NextResponse.json({ success: true, checks: [] });
       }
 
+      // Filter by status before pagination so a filtered page reflects the
+      // matching rows, not the raw page of unfiltered rows.
+      if (status === 'graded') {
+        query = query.not('completed_at', 'is', null).is('discarded_at', null);
+      } else if (status === 'needs_grading') {
+        query = query.is('completed_at', null).is('discarded_at', null);
+      } else if (status === 'discarded') {
+        query = query.not('discarded_at', 'is', null);
+      }
+      // If status is 'all' or not provided, return all checks including discarded
+
       // Apply pagination
       query = query.range(offset, offset + limit - 1);
 
@@ -236,23 +247,9 @@ export const GET = withRoute({ query: getResultsQuerySchema }, async ({ query: q
         };
       });
 
-      // Filter by status if provided
-      let filteredChecks = transformedChecks;
-      if (status === 'graded') {
-        // Only show graded checks that are not discarded
-        filteredChecks = transformedChecks.filter(c => c.is_graded && !c.discarded_at);
-      } else if (status === 'needs_grading') {
-        // Only show ungraded checks that are not discarded
-        filteredChecks = transformedChecks.filter(c => !c.is_graded && !c.discarded_at);
-      } else if (status === 'discarded') {
-        // Only show discarded checks
-        filteredChecks = transformedChecks.filter(c => !!c.discarded_at);
-      }
-      // If status is 'all' or not provided, return all checks including discarded
-
       return NextResponse.json({
         success: true,
-        checks: filteredChecks,
+        checks: transformedChecks,
       });
 
     } catch (error: any) {

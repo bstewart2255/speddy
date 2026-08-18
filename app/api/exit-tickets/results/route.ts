@@ -196,6 +196,17 @@ export const GET = withRoute({ query: getResultsQuerySchema }, async ({ query: q
         return NextResponse.json({ success: true, tickets: [] });
       }
 
+      // Filter by status before pagination so a filtered page reflects the
+      // matching rows, not the raw page of unfiltered rows.
+      if (status === 'graded') {
+        query = query.not('completed_at', 'is', null).is('discarded_at', null);
+      } else if (status === 'needs_grading') {
+        query = query.is('completed_at', null).is('discarded_at', null);
+      } else if (status === 'discarded') {
+        query = query.not('discarded_at', 'is', null);
+      }
+      // If status is 'all' or not provided, return all tickets including discarded
+
       // Apply pagination
       query = query.range(offset, offset + limit - 1);
 
@@ -236,23 +247,9 @@ export const GET = withRoute({ query: getResultsQuerySchema }, async ({ query: q
         };
       });
 
-      // Filter by status if provided
-      let filteredTickets = transformedTickets;
-      if (status === 'graded') {
-        // Only show graded tickets that are not discarded
-        filteredTickets = transformedTickets.filter(t => t.is_graded && !t.discarded_at);
-      } else if (status === 'needs_grading') {
-        // Only show ungraded tickets that are not discarded
-        filteredTickets = transformedTickets.filter(t => !t.is_graded && !t.discarded_at);
-      } else if (status === 'discarded') {
-        // Only show discarded tickets
-        filteredTickets = transformedTickets.filter(t => !!t.discarded_at);
-      }
-      // If status is 'all' or not provided, return all tickets including discarded
-
       return NextResponse.json({
         success: true,
-        tickets: filteredTickets,
+        tickets: transformedTickets,
       });
 
     } catch (error: any) {
