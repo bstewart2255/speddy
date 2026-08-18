@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import {
+  sortTeachersByPeriod,
   summarizeTeacherSet,
   type LinkedTeacher,
 } from '@/lib/supabase/queries/student-teachers';
@@ -30,14 +31,19 @@ interface TeacherSetCellProps {
  * Names are buttons keyed by teacher **id**. The old cell opened the teacher
  * modal on the free-text name, so a typo opened the wrong record — or created
  * a duplicate teacher.
+ *
+ * Expanded, the names read in period order — the same order the student's own
+ * teacher list uses in the details modal, so the two views of one set cannot
+ * disagree. Elementary carries no periods, so its rows are untouched.
  */
 export function TeacherSetCell({
-  teachers,
+  teachers: unordered,
   fallbackName,
   isSecondary = false,
   onOpenTeacher,
 }: TeacherSetCellProps) {
   const [expanded, setExpanded] = useState(false);
+  const teachers = sortTeachersByPeriod(unordered);
 
   if (teachers.length === 0) {
     return fallbackName ? (

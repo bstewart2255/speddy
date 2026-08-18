@@ -1008,6 +1008,20 @@ students-page teacher modal is keyed by `teachers.id` — it used to open on the
 free-text name, so a typo opened the wrong record or minted a duplicate; the
 name-matching helper that made that possible is deleted.
 
+**Rows read in period order.** `sortTeachersByPeriod` puts a set on screen in
+the order its classes run — first period at the top — everywhere a student's
+teachers are listed: the details-modal editor, the students-page cell, and the
+service-time modal's class picker. The set is still unordered; this ranks
+nothing, it just spares a secondary provider scanning six link-ordered rows for
+the one they want. Because `period` is display-only free text written by two
+hands (SIS labels like `5 (1:30 PM - 2:25 PM)`, hand-typed `3` or `Period 3`),
+the helper reads the label: first clock time, then first whole number, then
+unlabeled rows last in arrival order. It sorts a **copy** and no query returns
+it, so the two places that read meaning into link order are untouched — the
+legacy-column mirror's "first listed", and the single gen-ed teacher secondary
+IEP planning takes off the front of the set (`iep-meetings.ts`, until SPE-322's
+picker). Elementary carries no periods, so every row ties and nothing moves.
+
 **IEP attendees differ by level, deliberately.** Elementary invites *every*
 linked teacher and constrains the schedule on all of them: a single-teacher
 class behaves exactly as before, a co-taught class invites both, since they

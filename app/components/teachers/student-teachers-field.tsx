@@ -2,7 +2,10 @@
 
 import { useState } from 'react';
 import { TeacherAutocomplete } from './teacher-autocomplete';
-import type { EditableTeacherLink } from '@/lib/supabase/queries/student-teachers';
+import {
+  sortTeachersByPeriod,
+  type EditableTeacherLink,
+} from '@/lib/supabase/queries/student-teachers';
 
 interface StudentTeachersFieldProps {
   value: EditableTeacherLink[];
@@ -29,8 +32,15 @@ interface StudentTeachersFieldProps {
  *
  * Co-teachers are EQUALS (product decision 2026-07-26). Nothing here ranks
  * them: no "primary" badge, no reordering handles, and removing the first row
- * is exactly as easy as removing the last. The order the rows appear in is
- * insertion order and carries no meaning.
+ * is exactly as easy as removing the last.
+ *
+ * The rows READ in period order — the school day the student walks through,
+ * earliest first — because six secondary classes in link order are six rows
+ * the provider has to scan for the one they want. That is presentation only:
+ * `value` keeps the order the caller handed over, and every edit below keys
+ * off `teacherId` rather than a row index, so nothing downstream that reads
+ * meaning into link order sees a reshuffled set. Elementary is untouched:
+ * with no periods, every row ties and the sort is stable.
  *
  * `subject`/`period` are display labels only — Speddy does not schedule at
  * secondary (SPE-149/193), and nothing downstream reads them as times.
@@ -87,7 +97,7 @@ export function StudentTeachersField({
     <div className="space-y-2">
       {value.length > 0 && (
         <ul className="space-y-2">
-          {value.map(link => (
+          {sortTeachersByPeriod(value).map(link => (
             <li
               key={link.teacherId}
               className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2"

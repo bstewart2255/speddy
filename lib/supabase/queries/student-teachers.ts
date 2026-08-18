@@ -127,6 +127,78 @@ export async function getTeachersByChildId(
   return byChild;
 }
 
+// ---------------------------------------------------------------------------
+// Reading a teacher set on screen
+// ---------------------------------------------------------------------------
+
+/**
+ * A period label's place in the school day, as `[start time, period number]`.
+ *
+ * `period` is display-only free text (SPE-334) and arrives in more than one
+ * shape: the SIS link sync writes whatever the roster carries
+ * ("5 (1:30 PM - 2:25 PM)"), and a provider editing by hand may type "3" or
+ * "Period 3". So this reads the label rather than trusting a format.
+ *
+ * The first clock time in the label leads, because it is the one thing that
+ * holds when the names do not — "Advisory (7:30 AM)" belongs above
+ * "1 (8:30 AM - 9:25 AM)", and a label carrying a range starts at its first
+ * time. The first whole number breaks ties and carries the untimed labels, so
+ * a bare "10" still lands after "9" (a string sort puts it after "1").
+ *
+ * `Infinity` for a component the label does not carry, so a row Speddy cannot
+ * place sinks below the ones it can, and an unlabeled row sinks below both.
+ */
+function periodSortKey(period: string | null | undefined): [number, number] {
+  const label = period?.trim();
+  if (!label) return [Infinity, Infinity];
+
+  let minutes = Infinity;
+  const clock = /(\d{1,2}):(\d{2})(?:\s*([ap])\.?\s*m\.?)?/i.exec(label);
+  if (clock) {
+    let hour = Number(clock[1]);
+    const minute = Number(clock[2]);
+    if (hour <= 23 && minute <= 59) {
+      const meridiem = clock[3]?.toLowerCase();
+      if (meridiem === 'a' && hour === 12) hour = 0;
+      if (meridiem === 'p' && hour < 12) hour += 12;
+      minutes = hour * 60 + minute;
+    }
+  }
+
+  const digits = /\d+/.exec(label);
+  return [minutes, digits ? Number(digits[0]) : Infinity];
+}
+
+/** Infinity-safe: `Infinity - Infinity` is NaN, which breaks a comparator. */
+function compareKeyPart(a: number, b: number): number {
+  return a === b ? 0 : a < b ? -1 : 1;
+}
+
+/**
+ * A student's teachers in the order their classes run, earliest first.
+ *
+ * The set itself is unordered — co-teachers are equals, and nothing here ranks
+ * them (product decision 2026-07-26). This is a reading aid for the secondary
+ * case, where six rows arriving in the order the links happened to be created
+ * are six rows the provider has to scan; a school day the student actually
+ * walks through reads down the page. Unlabeled rows keep their relative order
+ * at the bottom, so elementary — where no link carries a period — is untouched.
+ *
+ * Display only. Callers hold their own array order; this returns a copy, so
+ * nothing that reads meaning into link order (the legacy `students.teacher_id`
+ * mirror's "first listed", the one gen-ed teacher an IEP meeting is assembled
+ * around) sees a reshuffled set.
+ */
+export function sortTeachersByPeriod<T extends { period: string | null }>(
+  teachers: T[],
+): T[] {
+  return [...teachers].sort((a, b) => {
+    const [aTime, aNumber] = periodSortKey(a.period);
+    const [bTime, bNumber] = periodSortKey(b.period);
+    return compareKeyPart(aTime, bTime) || compareKeyPart(aNumber, bNumber);
+  });
+}
+
 /**
  * How a set of teachers reads on screen.
  *
