@@ -156,6 +156,47 @@ bots (CodeRabbit/Codex) as the review layer: they rate-limit and can post
 staleness races the gates missed). Bot findings remain a complementary layer —
 still read and address them when they arrive.
 
+## Standing rule: a user-facing change updates the assistant's product guide
+
+The Speddy Assistant's knowledge of the product is one hand-written string —
+`SPEDDY_GUIDE` in `lib/assistant/chat.ts`. **Nothing about it is derived at
+runtime.** The assistant cannot read the code, see the app, or notice a deploy.
+It knows exactly what that string says and nothing else.
+
+So: **any PR that adds, removes, or changes a user-facing flow updates
+`SPEDDY_GUIDE` in the same PR.** Treat the guide as part of the feature, the way
+a schema change carries its migration — not as documentation to catch up on
+later. "Later" is what produced SPE-539.
+
+What counts as user-facing: a new page, tab, widget, button or modal; a renamed
+or moved control; a changed sequence of steps; a rule about who sees what (role
+or school-level gating); something that becomes possible or stops being possible.
+Backend-only work needs no entry.
+
+Two failure modes, and only one of them is loud:
+
+- **A missing entry** makes the assistant unhelpful — it says it doesn't know and
+  points to support. Bad, recoverable.
+- **A stale entry** makes it confidently wrong, describing a screen that no longer
+  matches what the provider is looking at. This is the one that costs trust, and
+  it happens precisely when a flow changes rather than when one is added.
+
+Verify against the JSX, never from memory or from a ticket description — quote
+the label the component actually renders. SPE-539 got this wrong even while
+writing this rule: SPE-501's commit message says the form "offers an 'Other...'
+free-text box", so the guide claimed any activity name can be typed. True of the
+*admin* form; the provider's own Special Activities page is a fixed picklist, and
+no assistant user can reach the admin one. A ticket describes the change, not the
+screen the reader is looking at.
+
+Check the gating too: a button behind `isSecondary` or a role check needs that
+condition stated, or the guide sends the wrong provider hunting for it. If a
+component exists but nothing mounts it, it does not go in the guide.
+
+Each topic in the guide is pinned by an anchor string in
+`__tests__/unit/app/api/assistant/chat.test.ts`. Deleting a topic fails a test;
+rewriting a flow does not, so the discipline above is what actually holds.
+
 ## Standing rule: verify database-touching work with a real session
 
 Unit tests mock the Supabase client, so they **cannot see RLS at all** — they

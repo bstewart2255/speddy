@@ -200,6 +200,52 @@ describe('POST /api/assistant/chat', () => {
     ]) {
       expect(systemText).toContain(anchor);
     }
+    // SPE-539: the product guide is the assistant's ONLY knowledge of the UI,
+    // so pin one distinctive anchor per topic. Scope of this check: it fails
+    // when a topic is DELETED or trimmed away. It cannot notice a flow changing
+    // underneath an anchor that still matches — that is what the standing rule
+    // in .claude/CLAUDE.md is for, and no test substitutes for it. The
+    // role/level qualifiers below are pinned because they are the corrections
+    // this ticket made, and a re-trim would silently reintroduce the exact
+    // wrong answers it removed.
+    for (const anchor of [
+      // Layout and where things live
+      'the nav bar has Dashboard, Students, Schedule',
+      '"Ask AI" button beside it opens this assistant',
+      'Chat (in the nav) is messaging with colleagues',
+      'The setup checklist shows only the steps that apply to that person',
+      // Secondary sites split by role (SPE-490, SPE-491, SPE-513)
+      'Middle and high school (secondary) sites work differently, by role',
+      'periods-by-days week view instead of the drag-and-drop grid',
+      'Speech, OT, counseling and school psychologists keep everything except Special Activities',
+      'Resource specialists keep Schedule and Bell Schedules but lose Special Activities and Plan',
+      'Check this entry before giving anyone at a middle or high school step-by-step instructions',
+      'for resource specialists it asks for Minutes/Week',
+      'secondary resource specialists have no session grid',
+      'Push-in asks for the Class as well',
+      // Students and the student record
+      '"+ Add Student"',
+      '"As the IEP states it:"',
+      'Student Goals Report → Generate Report → Download',
+      'Current Information, IEP Goals, Assessments, Progress, Attendance',
+      'it appears only where the wider AI features are switched on',
+      // Scheduling
+      'Balanced, Group by grade, Group by teacher, or Prefer mornings',
+      'there is no "create group" button',
+      '"Add Protected Time"',
+      '"Add Mainstreaming Block"',
+      '"Add Service Time"',
+      'Where I see this student',
+      // Everything else
+      '"All Present"',
+      "At a secondary site the page captures the school's period grid instead",
+      'The activity name is picked from a fixed list',
+      'cancelled but not deleted',
+      '"Add Referral"',
+      'Not possible in Speddy:',
+    ]) {
+      expect(systemText).toContain(anchor);
+    }
     expect(call.tools.map((t: { name: string }) => t.name)).toEqual([
       'get_caseload',
       'get_schedule',
