@@ -181,11 +181,13 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
     }
 
     if (columnMapping.goalColumns.length === 0) {
+      // Only reachable on the generic path: SEIS detection now requires the goal
+      // column through the same lookup the mapper uses, so an isSEISFormat file
+      // always has one.
       errors.push({
         row: 0,
-        message: isSEISFormat
-          ? 'SEIS Student Goals Report detected but could not find its "Goal" column'
-          : 'Could not detect IEP goal columns. Looking for columns containing: Goal, IEP, Objective, Target.'
+        message:
+          'Could not detect IEP goal columns. Looking for columns containing: Goal, IEP, Objective, Target.'
       });
 
       return {
@@ -591,6 +593,14 @@ export { normalizeGradeLevel };
  * "Limited Progress" into a child's IEP goals in the first place, so every
  * pattern here matches a WHOLE header or not at all.
  *
+ * Each pattern does allow a trailing parenthetical, because SEIS decorates
+ * labels that way — "Date of IEP (Meeting Date on Current IEP Forms)", and in
+ * the wild "Grade (as of 10/01)" or "Last Name (Legal)". The positional code
+ * this replaces tolerated any such suffix for free by never reading the label;
+ * without this, a decorated header on a REQUIRED column would turn a file that
+ * used to import into a hard failure. "Grade Level Standard" stays excluded:
+ * a bare word suffix is not a parenthetical.
+ *
  * One table, used by both the detector and the mapper below. Detection tolerates
  * one missing signature column, so the mapper can still return undefined for a
  * field — every such field either has a file-level warning below or, for
@@ -598,29 +608,49 @@ export { normalizeGradeLevel };
  * outright, since a file claimed without it can only dead-end.
  */
 const SEIS_FIELDS = {
-  lastName: { exact: ['last name'], pattern: /^(student\s*)?last\s*name$|^lastname$|^surname$/ },
-  firstName: { exact: ['first name'], pattern: /^(student\s*)?first\s*name$|^firstname$/ },
+  lastName: {
+    exact: ['last name'],
+    pattern: /^(student\s*)?last\s*name(\s*\(.*\))?$|^lastname$|^surname$/,
+  },
+  firstName: {
+    exact: ['first name'],
+    pattern: /^(student\s*)?first\s*name(\s*\(.*\))?$|^firstname$/,
+  },
   // Order within `exact` carries no meaning — findSeisColumn takes the leftmost
   // column matching any of them.
-  grade: { exact: ['grade', 'grade level'], pattern: /^(current\s*|student\s*)?grade(\s*level)?$/ },
+  grade: {
+    exact: ['grade', 'grade level'],
+    pattern: /^(current\s*|student\s*)?grade(\s*level)?(\s*\(.*\))?$/,
+  },
   schoolOfAttendance: {
     exact: ['school of attendance'],
-    pattern: /^(attending\s*)?school(\s*(of\s*attendance|name))?$/,
+    pattern: /^(current\s*|attending\s*)?school(\s*(of\s*attendance|name))?(\s*\(.*\))?$/,
   },
-  goalType: { exact: ['annual goal #', 'annual goal'], pattern: /^annual\s*goal(\s*#)?$|^goal\s*type$/ },
-  goal: { exact: ['goal'], pattern: /^(iep\s*)?goal(\s*(text|statement))?$/ },
+  goalType: {
+    exact: ['annual goal #', 'annual goal'],
+    pattern: /^annual\s*goal(\s*#)?(\s*\(.*\))?$|^goal\s*type$|^service\s*(type|area)$/,
+  },
+  goal: { exact: ['goal'], pattern: /^(iep\s*)?goal(\s*(text|statement))?(\s*\(.*\))?$/ },
   // Anchored so it cannot match "District of Service" (SPE-339).
   districtStudentId: {
     exact: ['district id', 'district student id'],
-    pattern: /^district\s*(student\s*)?id$/,
+    pattern: /^district\s*(student\s*)?id(\s*\(.*\))?$/,
   },
-  // "Date of IEP (Meeting Date on Current IEP Forms)" is how SEIS labels this
-  // on some exports, so match that prefix too rather than only the short form.
-  iepDate: { exact: ['iep date'], pattern: /^iep\s*date$|^meeting\s*date$|^date\s*of\s*iep\b/ },
-  areaOfNeed: { exact: ['area of need'], pattern: /^area\s*(of\s*)?need$|^need\s*area$/ },
+  // "Date of IEP (Meeting Date on Current IEP Forms)" is how SEIS labels this on
+  // some exports, so match that prefix too. Deliberately NOT `annual review`,
+  // which seis-parser.ts accepts: in THIS report that is a progress-reporting
+  // column, so borrowing it for parity would bind the IEP date to the wrong one.
+  iepDate: {
+    exact: ['iep date'],
+    pattern: /^iep\s*date(\s*\(.*\))?$|^meeting\s*date$|^date\s*of\s*iep\b/,
+  },
+  areaOfNeed: {
+    exact: ['area of need'],
+    pattern: /^area\s*(of\s*)?need(\s*\(.*\))?$|^need\s*area$/,
+  },
   personResponsible: {
     exact: ['person responsible'],
-    pattern: /^person\s*responsible$|^responsible\s*(person|party)$/,
+    pattern: /^person\s*responsible(\s*\(.*\))?$|^responsible\s*(person|party)$/,
   },
 } as const;
 

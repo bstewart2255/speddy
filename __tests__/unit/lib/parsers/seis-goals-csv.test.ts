@@ -313,6 +313,40 @@ describe('parseCSVReport — SEIS Student Goals Report (CSV)', () => {
       expect(result.students).toHaveLength(1);
     });
 
+    // SEIS decorates labels with parentheticals; the positional code tolerated
+    // any suffix for free by never reading the label. Without this a decorated
+    // REQUIRED column turns a file that used to import into a hard failure.
+    it.each([
+      ['grade', 5, 'Grade (as of 10/01)'],
+      ['last name', 2, 'Last Name (Legal)'],
+      ['first name', 3, 'First Name (Legal)'],
+      ['school', 6, 'School of Attendance (Current)'],
+      ['goal', 14, 'Goal (2026-2027)'],
+    ])('accepts a parenthetical suffix on the %s column', async (_field, index, header) => {
+      const csv = buildSeisGoalsCsvWithHeaders({ [index]: header });
+      expect(detectSEISStudentGoalsFormat(toRecords(csv))).toBe(true);
+
+      const result = await parseCSVReport(csv, {});
+      const ana = result.students.find((s) => s.lastName === 'Alvarez');
+
+      expect(result.errors).toHaveLength(0);
+      expect(ana).toBeDefined();
+      expect(ana!.gradeLevel).toBe('1');
+      expect(ana!.schoolOfAttendance).toBe('Mt Diablo Elementary School');
+      expect(ana!.goals.length).toBeGreaterThan(0);
+    });
+
+    it('finds the school column when it is labelled "Current School Name"', async () => {
+      // seis-parser.ts (XLSX) accepts this label; the two paths read the same
+      // report and shouldn't disagree about which column is the school.
+      const csv = buildSeisGoalsCsvWithHeaders({ 6: 'Current School Name' });
+
+      const result = await parseCSVReport(csv, { userSchools: ['Some Other School'] });
+
+      expect(result.students).toHaveLength(0);
+      expect(result.warnings.some((w) => /doesn't match your school/i.test(w.message))).toBe(true);
+    });
+
     it('hands a file with an unrecognizable goal header to the generic path', async () => {
       // Unlike grade — where the fixed-index parser was silently WRONG and a
       // named error is the better trade — the old parser read this file's goals
