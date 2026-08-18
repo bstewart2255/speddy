@@ -1,6 +1,13 @@
 import { createClient } from '@/lib/supabase/client';
 import { type SchoolIdentifier } from '@/lib/school-helpers';
 
+// These are "when did you last save?" probes for the LastSaved badge, and having
+// saved nothing yet is the normal starting state. `.single()` asks PostgREST for
+// a single-object response, which answers 406 on zero rows, so every provider
+// with no rows at a school tripped an error instead of reading "nothing saved"
+// (SPE-542). `.maybeSingle()` returns null for zero rows; `.limit(1)` already
+// rules out the many-rows case.
+
 export async function getLastSavedBellSchedule(school: SchoolIdentifier | undefined) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -22,7 +29,7 @@ export async function getLastSavedBellSchedule(school: SchoolIdentifier | undefi
   const { data, error } = await query
     .order('updated_at', { ascending: false })
     .limit(1)
-    .single();
+    .maybeSingle();
 
   if (error || !data) return null;
   return data.updated_at;
@@ -49,7 +56,7 @@ export async function getLastSavedSpecialActivity(school: SchoolIdentifier | und
   const { data, error } = await query
     .order('updated_at', { ascending: false })
     .limit(1)
-    .single();
+    .maybeSingle();
 
   if (error || !data) return null;
   return data.updated_at;
@@ -74,7 +81,7 @@ export async function getLastSavedSchoolHours(school: SchoolIdentifier | undefin
   const { data, error } = await query
     .order('updated_at', { ascending: false })
     .limit(1)
-    .single();
+    .maybeSingle();
 
   if (error || !data) return null;
   return data.updated_at;
