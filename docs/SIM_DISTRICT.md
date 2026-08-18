@@ -75,6 +75,16 @@ every future addition to the sim district must preserve all seven.
 5. **Sim identities are fake by construction.** No sim user is ever
    `is_speddy_admin`. No real person's name or email. No real student data is
    ever copied in — all student content is fictional (see naming conventions).
+   One consequence worth naming: every `/internal` route gated on
+   `is_speddy_admin` — whether through the shared `speddyAdminDenialReason`
+   helper or (like `create-admin-account`/`create-district`/`create-school`/
+   `sign-in-logs`) an inline copy of the same check — can never be walked
+   past the **deny** path through the sim district, by design: there is no
+   persona that could ever be staff. The **allow** path's only coverage is a
+   mocked route-handler test (see `__tests__/unit/app/api/internal/`), not a
+   sim-district walk or a real session — don't mistake one for the other.
+   Don't try to add a staff persona to reach it either; that would violate
+   this invariant.
 6. **Credentials are never committed.** The sim password secret lives in
    `.env.local` (`SIM_DISTRICT_PASSWORD`); docs reference the env var only.
 7. **Teardown is verified, not assumed.** After teardown, a verify pass counts
