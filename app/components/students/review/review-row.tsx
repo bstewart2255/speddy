@@ -3,6 +3,7 @@
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import type { ReviewRow as ReviewRowData } from '@/lib/import/review-model';
 import type { BulkIepDateChange } from '@/lib/types/student-import';
+import type { SisPreviewState } from './student-import-review';
 import { ReviewGoalList } from './review-goal-list';
 import { ReviewSignalIcon } from './review-signal';
 import type { ReviewSelection } from './use-review-selection';
@@ -39,6 +40,69 @@ function IepDateLine({ label, change }: { label: string; change?: BulkIepDateCha
   );
 }
 
+/**
+ * The SPE-546 cell: which classroom teachers this student will be connected
+ * to once the import commits (the SPE-545 sync writes the links). Each state
+ * says only what is true — a pending lookup, a listed teacher set, a number
+ * with no match (fixable right here, before importing), or an honest "links
+ * will be added after import" when the SIS could not be checked.
+ */
+function SisTeachersCell({
+  districtStudentId,
+  sisPreview,
+}: {
+  districtStudentId?: string;
+  sisPreview: SisPreviewState;
+}) {
+  if (!districtStudentId) return <span className="text-gray-400">—</span>;
+  if (sisPreview.state === 'loading') {
+    return <span className="italic text-gray-400">Checking rosters…</span>;
+  }
+  if (sisPreview.state !== 'ready') {
+    return <span className="text-gray-400">Will link after import</span>;
+  }
+  const entry = sisPreview.entries[districtStudentId.trim()];
+  if (!entry) return <span className="text-gray-400">—</span>;
+  if (entry.status === 'not-found') {
+    return (
+      <span className="text-amber-700">
+        No match in your district&apos;s SIS — check the district ID.
+      </span>
+    );
+  }
+  if (entry.status === 'multiple-records') {
+    return (
+      <span className="text-amber-700">
+        More than one SIS record has this ID — teachers will need adding by hand.
+      </span>
+    );
+  }
+  if (entry.status === 'teachers-not-in-directory') {
+    return (
+      <span className="text-amber-700">
+        Their teachers aren&apos;t in this school&apos;s teacher list yet.
+      </span>
+    );
+  }
+  if (entry.teachers.length === 0) {
+    return <span className="text-gray-500">No teachers listed in the rosters.</span>;
+  }
+  const shown = entry.teachers.slice(0, 3);
+  const more = entry.teachers.length - shown.length;
+  return (
+    <ul className="space-y-0.5 text-gray-900">
+      {shown.map((t) => (
+        <li key={t.name} className="whitespace-nowrap">
+          {t.name}
+          {t.subject && <span className="text-gray-400"> · {t.subject}</span>}
+          {t.period && <span className="text-gray-400"> · P{t.period}</span>}
+        </li>
+      ))}
+      {more > 0 && <li className="text-gray-500">+{more} more</li>}
+    </ul>
+  );
+}
+
 interface ReviewRowProps {
   row: ReviewRowData;
   selection: ReviewSelection;
@@ -48,9 +112,11 @@ interface ReviewRowProps {
   columnCount: number;
   /** Render the IEP dates column (only when an IEP Dates file is in play). */
   showIepDates: boolean;
+  /** The SIS-teachers column's data (SPE-546); absent = column not shown. */
+  sisPreview?: SisPreviewState;
 }
 
-export function ReviewRow({ row, selection, isExpanded, onToggleExpand, columnCount, showIepDates }: ReviewRowProps) {
+export function ReviewRow({ row, selection, isExpanded, onToggleExpand, columnCount, showIepDates, sisPreview }: ReviewRowProps) {
   const isSkip = row.action === 'skip';
   const selected = selection.isRowSelected(row.id);
   const goalsSelected = selection.goalsSelectedFor(row.id);
@@ -121,6 +187,11 @@ export function ReviewRow({ row, selection, isExpanded, onToggleExpand, columnCo
             ) : (
               <span className="text-gray-400 italic">Not set</span>
             )}
+          </td>
+        )}
+        {sisPreview && (
+          <td className="px-3 py-2 align-top text-xs">
+            <SisTeachersCell districtStudentId={row.districtStudentId} sisPreview={sisPreview} />
           </td>
         )}
         <td className="px-3 py-2 align-top text-sm">

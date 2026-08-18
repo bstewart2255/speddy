@@ -63,6 +63,33 @@ const log = logger.child({ module: 'student-teacher-link-sync' });
 /** The value `student_teachers.source` carries for rows this sync owns. */
 export const LINK_SOURCE = 'oneroster';
 
+/**
+ * Every key form a SIS student identifier can honestly answer to: the
+ * identifier verbatim (trimmed) and — when it carries Aeries' `STU` segment
+ * (`{schoolCode}_STU_{number}`, verified against JSUSD live 2026-08-18;
+ * teachers use the same wrapper as `11_TCH_1174`) — the bare number after
+ * the last underscore, which is what Speddy's district_student_id holds.
+ *
+ * The unwrap is DELIBERATELY anchored to the STU marker rather than any
+ * underscore: a different vendor whose real identifiers merely contain
+ * underscores (`local_123`) must not be indexed under a tail that could
+ * exact-equal an unrelated child's stored ID (PR #894 review, self + Codex).
+ *
+ * ONE definition, shared by the link-sync planner and the import-preview
+ * lookup (SPE-546), so the identifier dialect cannot drift between the two
+ * surfaces that answer "which SIS student is this child".
+ */
+export function studentIdentifierKeys(identifier: string): string[] {
+  const verbatim = identifier.trim();
+  if (!verbatim) return [];
+  const keys = new Set<string>([verbatim]);
+  if (/(^|_)STU_/i.test(verbatim)) {
+    const tail = verbatim.slice(verbatim.lastIndexOf('_') + 1).trim();
+    if (tail) keys.add(tail);
+  }
+  return [...keys];
+}
+
 // ---------------------------------------------------------------------------
 // Planner input shapes — plain data, so the planner is testable without HTTP.
 // ---------------------------------------------------------------------------
@@ -280,19 +307,9 @@ export function planStudentTeacherLinkSync(input: LinkPlannerInput): LinkSyncPla
 
   // SIS students by district number. Deduped by sourcedId first so a paging
   // echo cannot manufacture a fake "two SIS students share this number".
-  //
-  // Each student is indexed under EVERY key form it can honestly answer to:
-  // the identifier verbatim, and — when the identifier is Aeries' compound
-  // shape, a `STU` segment followed by the number (`{schoolCode}_STU_{number}`,
-  // verified against JSUSD live 2026-08-18; teachers use the same wrapper as
-  // `11_TCH_1174`) — the bare number after the last underscore. Speddy's
-  // district_student_id holds that bare number, so verbatim-only matching
-  // produced 0 of 180. The unwrap is DELIBERATELY anchored to the STU marker
-  // rather than any underscore: a different vendor whose real identifiers
-  // merely contain underscores (`local_123`) must not be indexed under a tail
-  // that could exact-equal an unrelated child's stored ID and write wrong
-  // links (PR #894 review, self + Codex). Records colliding on any key form
-  // land in an unmatched refusal below, never a guess.
+  // Key derivation (verbatim + Aeries STU-tail) lives in
+  // studentIdentifierKeys, shared with the import preview; records colliding
+  // on any key form land in an unmatched refusal below, never a guess.
   const seenSisStudents = new Set<string>();
   const sisStudentsByIdentifier = new Map<string, { sourcedId: string; verbatim: string }[]>();
   let feedStudentCount = 0;
@@ -302,12 +319,7 @@ export function planStudentTeacherLinkSync(input: LinkPlannerInput): LinkSyncPla
     feedStudentCount += 1;
     const verbatim = s.identifier?.trim();
     if (!verbatim) continue;
-    const keys = new Set<string>([verbatim]);
-    if (/(^|_)STU_/i.test(verbatim)) {
-      const tail = verbatim.slice(verbatim.lastIndexOf('_') + 1).trim();
-      if (tail) keys.add(tail);
-    }
-    for (const key of keys) {
+    for (const key of studentIdentifierKeys(verbatim)) {
       const list = sisStudentsByIdentifier.get(key) ?? [];
       list.push({ sourcedId: s.sourcedId, verbatim });
       sisStudentsByIdentifier.set(key, list);
