@@ -185,12 +185,12 @@ export default function SpecialActivitiesPage() {
 
         {/* Page Header */}
         <div className="mb-8">
-          <div className="flex justify-between items-center">
-            <div>
+          <div className="flex justify-between items-center gap-6">
+            <div className="min-w-0">
               <h1 className="text-3xl font-bold text-gray-900 mb-2">Special Activities</h1>
               <p className="text-gray-600">Manage teacher-specific activities (Music, Library, STEM, etc)</p>
             </div>
-            <div className="flex flex-col items-end gap-2">
+            <div className="flex flex-col items-end gap-2 shrink-0">
               <div className="flex items-center gap-3">
                 <Button
                   variant="secondary"

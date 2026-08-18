@@ -21,20 +21,9 @@ function SchoolOption({
         isSelected ? 'bg-blue-50 text-blue-700' : 'text-gray-700'
       }`}
     >
-      <div className="flex items-center justify-between">
-        <div className="flex-1">
-          <div className="flex items-center gap-2">
-            <span className="font-medium">
-              {school.display_name || school.school_site}
-            </span>
-            {school.is_primary && (
-              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700">
-                Primary
-              </span>
-            )}
-          </div>
-        </div>
-      </div>
+      <span className="font-medium">
+        {school.display_name || school.school_site}
+      </span>
     </button>
   );
 }
@@ -70,7 +59,7 @@ export function SchoolSwitcher() {
 
   return (
     <div className="relative" ref={dropdownRef}>
-      <LongHoverTooltip content="Switch between schools if you work at multiple locations. Your primary school is marked with a badge.">
+      <LongHoverTooltip content="Switch between schools if you work at multiple locations.">
         <button
           onClick={() => setIsOpen(!isOpen)}
           className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
