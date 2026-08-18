@@ -5,12 +5,52 @@ import { createClient } from '@/lib/supabase/client';
 import { User } from '@supabase/supabase-js';
 import { useRouter } from 'next/navigation';
 import { LongHoverTooltip } from '../ui/long-hover-tooltip';
+
+/** What the dropdown actually renders, with org names already resolved. */
 interface Profile {
   full_name: string;
   role: string;
-  school_district: string;
-  school_site: string;
-  email: string;
+  districtName: string;
+  schoolSite: string;
+}
+
+/** An embedded row arrives as an object or (per the types) an array — see `embedded`. */
+type Embed<T> = T | T[] | null | undefined;
+
+interface NamedRef {
+  name?: string | null;
+}
+
+interface SchoolRef extends NamedRef {
+  district?: Embed<NamedRef>;
+}
+
+/**
+ * Read a single row out of a many-to-one embed.
+ *
+ * PostgREST sends these as a single object (verified against the live API), but
+ * supabase-js infers an array when the client is untyped. The two disagree, so
+ * accept either. Trusting the types here and indexing `[0]` on the object that
+ * actually arrives is what silently broke the district name in
+ * `school-context.tsx` — its enriched `display_name` never sets.
+ */
+function embedded<T>(rel: Embed<T>): T | null {
+  if (!rel) return null;
+  return Array.isArray(rel) ? rel[0] ?? null : rel;
+}
+
+/**
+ * First non-blank name wins. Accounts created through the admin routes carry
+ * correct `district_id`/`school_id` but write '' to the legacy `school_district`
+ * / `school_site` text columns, so reading the text alone renders a labelled
+ * blank — which is the bug this resolves.
+ */
+function orgName(...candidates: (string | null | undefined)[]): string {
+  for (const candidate of candidates) {
+    const trimmed = candidate?.trim();
+    if (trimmed) return trimmed;
+  }
+  return '';
 }
 
 export default function UserProfileDropdown({ user }: { user: User }) {
@@ -25,12 +65,32 @@ export default function UserProfileDropdown({ user }: { user: User }) {
     const fetchProfile = async () => {
       const { data, error } = await supabase
         .from('profiles')
-        .select('*')
+        .select(`
+          full_name,
+          role,
+          school_district,
+          school_site,
+          district:district_id ( name ),
+          school:school_id ( name, district:district_id ( name ) )
+        `)
         .eq('id', user.id)
         .single();
 
       if (data && !error) {
-        setProfile(data);
+        // Prefer the structured hierarchy over the legacy text columns. A
+        // provider's district hangs off their own profile; a teacher's is
+        // reachable only through their school, hence the extra hop.
+        const school = embedded<SchoolRef>(data.school);
+        setProfile({
+          full_name: data.full_name,
+          role: data.role,
+          districtName: orgName(
+            embedded<NamedRef>(data.district)?.name,
+            embedded<NamedRef>(school?.district)?.name,
+            data.school_district,
+          ),
+          schoolSite: orgName(school?.name, data.school_site),
+        });
       }
     };
 
@@ -124,18 +184,23 @@ export default function UserProfileDropdown({ user }: { user: User }) {
                 <p className="mt-1 text-sm text-gray-900">{getRoleDisplay(profile.role)}</p>
               </div>
 
-              <div>
-                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">School District</p>
-                <p className="mt-1 text-sm text-gray-900">{profile.school_district}</p>
-              </div>
+              {/* A user with no district at all (some teacher accounts) gets no
+                  row rather than a labelled blank — same treatment as the site
+                  row below. */}
+              {profile.districtName && (
+                <div>
+                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">School District</p>
+                  <p className="mt-1 text-sm text-gray-900">{profile.districtName}</p>
+                </div>
+              )}
 
               {/* District-wide roles have no site, and school_site is NOT NULL
                   so it arrives as an empty string — omit the row rather than
                   render a labelled blank. */}
-              {profile.school_site && (
+              {profile.schoolSite && (
                 <div>
                   <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">School Site</p>
-                  <p className="mt-1 text-sm text-gray-900">{profile.school_site}</p>
+                  <p className="mt-1 text-sm text-gray-900">{profile.schoolSite}</p>
                 </div>
               )}
             </div>
