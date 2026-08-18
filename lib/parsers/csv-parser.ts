@@ -229,13 +229,16 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
       });
     }
 
-    if (
-      isSEISFormat &&
-      options.providerRole &&
-      getServiceTypeCode(options.providerRole) !== null &&
+    const routingColumnsAbsent =
       columnMapping.areaOfNeed === undefined &&
       columnMapping.goalType === undefined &&
-      columnMapping.personResponsible === undefined
+      columnMapping.personResponsible === undefined;
+
+    if (
+      isSEISFormat &&
+      routingColumnsAbsent &&
+      options.providerRole &&
+      getServiceTypeCode(options.providerRole) !== null
     ) {
       // Every goal is filtered by these three columns; with none of them present
       // the file imports as zero students, which without this reads as "the
@@ -363,8 +366,13 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
         // filtering it would silently vanish for every keyworded role; surface
         // it for manual review instead (SPE-247). Psychologist/specialist roles
         // have no service code and import everything, so they're unaffected.
+        // When the routing COLUMNS are absent outright, every row trivially has
+        // no routing signal, and the file-level warning above already says so
+        // once. Repeating it per row would bury that message under thousands of
+        // duplicates — and the zero-student error path returns warnings uncapped.
         if (
           isSEISFormat &&
+          !routingColumnsAbsent &&
           options.providerRole &&
           getServiceTypeCode(options.providerRole) !== null &&
           hasNoProviderRoutingSignal(areaOfNeed, goalType, personResponsible)
@@ -590,7 +598,10 @@ export { normalizeGradeLevel };
 const SEIS_FIELDS = {
   lastName: { exact: ['last name'], pattern: /^(student\s*)?last\s*name$|^lastname$|^surname$/ },
   firstName: { exact: ['first name'], pattern: /^(student\s*)?first\s*name$|^firstname$/ },
-  grade: { exact: ['grade', 'grade level'], pattern: /^(current\s*|student\s*)?grade(\s*level)?$/ },
+  // Most specific first: each exact name is scanned across the WHOLE row before
+  // the next is tried, so listing bare 'grade' first would bind a file whose
+  // student grade sits under "Grade Level" to some unrelated "Grade" column.
+  grade: { exact: ['grade level', 'grade'], pattern: /^(current\s*|student\s*)?grade(\s*level)?$/ },
   schoolOfAttendance: {
     exact: ['school of attendance'],
     pattern: /^(attending\s*)?school(\s*(of\s*attendance|name))?$/,

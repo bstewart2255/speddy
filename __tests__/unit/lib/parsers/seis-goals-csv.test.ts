@@ -367,6 +367,30 @@ describe('parseCSVReport — SEIS Student Goals Report (CSV)', () => {
       expect(result.warnings.some((w) => /school of attendance/i.test(w.message))).toBe(true);
     });
 
+    it('says it once, not once per row, when the routing columns are absent', async () => {
+      // Every row trivially lacks a routing signal, so the per-row warning would
+      // fire for all of them and bury the one message that explains why — and
+      // the zero-student path returns warnings uncapped.
+      const result = await parseCSVReport(
+        buildSeisGoalsCsvWithHeaders({ 11: 'Domain', 12: 'Goal Number', 17: 'Owner Role' }),
+        { providerRole: 'resource' },
+      );
+
+      expect(result.warnings.filter((w) => /route each goal/i.test(w.message))).toHaveLength(1);
+      expect(result.warnings.filter((w) => w.row > 0)).toHaveLength(0);
+    });
+
+    it('binds grade to "Grade Level" rather than an unrelated "Grade" column', async () => {
+      // Exact names are scanned across the whole row in order, so a bare 'grade'
+      // listed first would win from anywhere — here, from the standards column.
+      const csv = buildSeisGoalsCsvWithHeaders({ 5: 'Grade Level', 47: 'Grade' });
+
+      const result = await parseCSVReport(csv, {});
+      const ana = result.students.find((s) => s.lastName === 'Alvarez')!;
+
+      expect(ana.gradeLevel).toBe('1');
+    });
+
     it('stays quiet when those columns are present', async () => {
       const result = await parseCSVReport(SEIS_GOALS_CSV(), { providerRole: 'resource' });
       expect(result.warnings.some((w) => /district student id|route each goal/i.test(w.message))).toBe(
