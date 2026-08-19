@@ -611,9 +611,16 @@ flowchart TD
   district lookup is gated on a non-empty state **and** district name. Every
   admin/SIS route passes `state: ''` and `school_district: ''`, so the matcher
   returns NULL for all three and the caller's follow-up `UPDATE` is the *only*
-  thing that sets them. Four routes pinned `school_id` alone, which left **116
-  production profiles** with a school but no district and no state — invisible
-  to any count filtering on district, and silent, because the accounts worked.
+  thing that sets them. Four routes pinned `school_id` alone, which left **114
+  production profiles** carrying a school but no district and no state (110
+  `teacher`, 4 `site_admin`, across John Swett, Mt. Diablo and Hayward) —
+  invisible to any count filtering on district, and silent, because the accounts
+  worked. Those 114 are what the SPE-570 backfill repaired, along with **1**
+  further profile that had a correct district but no state; 115 rows in
+  `backup_spe570_profile_scope_backfill`. Two more accounts carried neither a
+  district *nor* a school, so nothing was derivable for them and they were left
+  alone — which is why the raw "profiles with no district" count was 116, not
+  114.
   All routes now go through `pinProfileScopeFromSchool`
   (`lib/supabase/account-provisioning.ts`), which derives district and state
   from the **school** via the reference tables — not from the caller's grant,
