@@ -199,15 +199,34 @@ describe('detectSEISStudentGoalsFormat — 5-of-6 threshold', () => {
 
   it('still detects with exactly 5 of 6 key columns present', () => {
     const fiveOfSix = [...SEIS_HEADERS];
-    fiveOfSix[14] = 'Notes'; // break the Goal @ 14 match
+    fiveOfSix[6] = 'Site'; // break the School of Attendance match
     expect(detectSEISStudentGoalsFormat([fiveOfSix])).toBe(true);
   });
 
+  // Columns REMOVED, not relabelled. A relabelled column is still recoverable
+  // from its canonical position (SPE-558), but removing one slides everything
+  // after it left, the surviving columns stop agreeing on a single offset, and
+  // positional recovery correctly declines to guess.
+  // School of Attendance and Annual Goal # dropped: the Goal column is still
+  // present, so this pins the signature threshold itself rather than the
+  // separate goal-column requirement below.
   it('falls back (returns false) at 4 of 6 key columns', () => {
-    const fourOfSix = [...SEIS_HEADERS];
-    fourOfSix[14] = 'Notes'; // break Goal @ 14
-    fourOfSix[12] = 'Sequence'; // break Annual Goal # @ 12
+    const fourOfSix = SEIS_HEADERS.filter((_, i) => i !== 6 && i !== 12);
     expect(detectSEISStudentGoalsFormat([fourOfSix])).toBe(false);
+  });
+
+  // The Goal column is the one exception to the 5-of-6 tolerance (SPE-558):
+  // the mapper cannot proceed without it, so a file missing it is refused here
+  // and imported by the generic path rather than claimed and failed.
+  it('returns false when the Goal column is absent entirely', () => {
+    const noGoal = SEIS_HEADERS.filter((_, i) => i !== 14);
+    expect(detectSEISStudentGoalsFormat([noGoal])).toBe(false);
+  });
+
+  it('still detects when the Goal column is merely relabelled', () => {
+    const relabelled = [...SEIS_HEADERS];
+    relabelled[14] = 'Notes';
+    expect(detectSEISStudentGoalsFormat([relabelled])).toBe(true);
   });
 
   it('returns false for empty and generic header rows', () => {

@@ -15,9 +15,9 @@ export interface ParsedStudent {
   lastName: string;
   initials: string;
   gradeLevel: string;
-  schoolOfAttendance?: string; // School of Attendance (SEIS Column G)
-  iepDate?: string; // IEP Date (SEIS Column J) - for validation warnings
-  // The district's own student id (SPE-339). SEIS Column B; the roster
+  schoolOfAttendance?: string; // SEIS "School of Attendance"
+  iepDate?: string; // SEIS "IEP Date" - for validation warnings
+  // The district's own student id (SPE-339). SEIS "District ID"; the roster
   // template's optional "Student ID" column. Undefined when the file omits it.
   districtStudentId?: string;
   goals: string[];
@@ -42,17 +42,24 @@ export interface ParseResult {
   };
 }
 
+/**
+ * Column INDEXES for one file. For SEIS files these are resolved from the
+ * header names (SPE-558), so they differ between the per-provider and
+ * district-wide exports of the same report.
+ */
 interface ColumnMapping {
   firstName?: number;
   lastName?: number;
   grade?: number;
-  districtStudentId?: number; // District ID (SEIS Column B) - SPE-339
-  schoolOfAttendance?: number; // School of Attendance (SEIS Column G)
-  iepDate?: number; // IEP Date (SEIS Column J) - for validation warnings
-  areaOfNeed?: number; // Area of Need (SEIS Column L) - used for filtering
-  goalType?: number; // Annual Goal # (SEIS Column M) - used for filtering
-  personResponsible?: number; // Person Responsible (SEIS Column R) - used for filtering
+  districtStudentId?: number; // SEIS "District ID" - SPE-339
+  schoolOfAttendance?: number; // SEIS "School of Attendance"
+  iepDate?: number; // SEIS "IEP Date" - for validation warnings
+  areaOfNeed?: number; // SEIS "Area Of Need" - used for filtering
+  goalType?: number; // SEIS "Annual Goal #" - used for filtering
+  personResponsible?: number; // SEIS "Person Responsible" - used for filtering
   goalColumns: number[];
+  /** SEIS only: fields located by POSITION because their label wasn't recognized. */
+  positionallyResolved?: string[];
 }
 
 export interface ParseOptions {
@@ -176,11 +183,13 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
     }
 
     if (columnMapping.goalColumns.length === 0) {
+      // Only reachable on the generic path: SEIS detection now requires the goal
+      // column through the same lookup the mapper uses, so an isSEISFormat file
+      // always has one.
       errors.push({
         row: 0,
-        message: isSEISFormat
-          ? 'SEIS Student Goals Report detected but could not find Goal column (Column O)'
-          : 'Could not detect IEP goal columns. Looking for columns containing: Goal, IEP, Objective, Target.'
+        message:
+          'Could not detect IEP goal columns. Looking for columns containing: Goal, IEP, Objective, Target.'
       });
 
       return {
@@ -194,6 +203,102 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
         }
       };
     }
+
+    // Columns we can parse without, but whose absence costs the user something
+    // they'd never see otherwise (SPE-558). The whole complaint about this file
+    // shape was that it failed SILENTLY, so an unresolved column says so rather
+    // than quietly producing students with the field missing.
+    if (isSEISFormat && columnMapping.districtStudentId === undefined) {
+      warnings.push({
+        row: 0,
+        message:
+          'No "District ID" column found, so these students will import without their district student ID. ' +
+          'Their classroom teachers cannot be matched from your student information system without it — ' +
+          're-export this report with the District ID column included.',
+      });
+    }
+
+    if (isSEISFormat && columnMapping.schoolOfAttendance === undefined) {
+      // Two guards downstream read this column and both fail OPEN without it:
+      // the `userSchools` check below skips entirely (importing students from
+      // schools this provider doesn't serve), and the dedup key loses its
+      // school part, so two same-name same-grade children at different schools
+      // merge into one record carrying both their goals (the SPE-264 case).
+      warnings.push({
+        row: 0,
+        message:
+          'No "School of Attendance" column found. These students cannot be limited to your school, ' +
+          'and two students with the same name and grade at different schools would be merged into one. ' +
+          'Check the students below carefully, or re-export this report with the School of Attendance column.',
+      });
+    }
+
+    const routingColumnsAbsent =
+      columnMapping.areaOfNeed === undefined &&
+      columnMapping.goalType === undefined &&
+      columnMapping.personResponsible === undefined;
+
+    if (
+      isSEISFormat &&
+      routingColumnsAbsent &&
+      options.providerRole &&
+      getServiceTypeCode(options.providerRole) !== null
+    ) {
+      // Every goal is filtered by these three columns; with none of them present
+      // the file imports as zero students, which without this reads as "the
+      // import did nothing".
+      warnings.push({
+        row: 0,
+        message:
+          'None of the "Area Of Need", "Annual Goal #" or "Person Responsible" columns were found. ' +
+          'Those are what route each goal to the right provider, so no goals can be matched to your ' +
+          'caseload — re-export this report with those columns included.',
+      });
+    }
+
+    if (isSEISFormat && columnMapping.iepDate === undefined) {
+      warnings.push({
+        row: 0,
+        message:
+          'No "IEP Date" column found, so these students will import without their IEP meeting date. ' +
+          'Speddy uses it to flag annual reviews coming due — re-export this report with the IEP Date ' +
+          'column included.',
+      });
+    }
+
+    // A column read from its canonical position rather than found by its label
+    // is a GUESS. It's the right guess for a relabelled column and the reason
+    // this parser tolerates unfamiliar headers at all, but no allowlist can
+    // enumerate every label a district might use ("State Student ID" for SSID,
+    // "Short Term Objective 1" for Objective 1), so the guess is stated rather
+    // than made silently.
+    const guessedColumns = columnMapping.positionallyResolved ?? [];
+    if (isSEISFormat && guessedColumns.length > 0) {
+      warnings.push({
+        row: 0,
+        message:
+          `Could not find ${guessedColumns.map((c) => `"${c}"`).join(', ')} by name, so ${
+            guessedColumns.length === 1 ? 'it was' : 'they were'
+          } read from the position ${
+            guessedColumns.length === 1
+              ? 'that column normally occupies'
+              : 'those columns normally occupy'
+          } in this report. Check those values on the students below.`,
+      });
+    }
+
+    // Distinct students the school filter dropped, and how many were named
+    // individually — see the bounded warning inside the row loop. Counted per
+    // STUDENT, not per goal row, or one child with four goals reads as four.
+    const OTHER_SCHOOL_WARNING_LIMIT = 5;
+    const otherSchoolStudents = new Set<string>();
+
+    // The other two per-row warning kinds need the same ceiling, and for the
+    // same reason: on a district-wide export they scale with the file, and a
+    // zero-student result serializes the whole array into the 400 response.
+    const PER_ROW_WARNING_LIMIT = 25;
+    let blankMetadataWarnings = 0;
+    let idMismatchWarnings = 0;
 
     // Temporary map to consolidate duplicate students
     const studentMap = new Map<string, ParsedStudent>();
@@ -288,10 +393,28 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
           );
 
           if (!schoolMatches) {
-            warnings.push({
-              row: rowIndex + 1,
-              message: `Student "${firstName} ${lastName}" attends "${schoolOfAttendance}" which doesn't match your school(s). Skipping.`
-            });
+            // Bounded: a district-wide export is mostly other schools' students,
+            // so one warning per row is thousands of them — and when nothing
+            // survives the filter, the zero-student path returns warnings
+            // uncapped. Name the first few, then count the rest (summarized
+            // after the loop).
+            // Same identity the dedup key below uses — name + grade + school
+            // (SPE-264). Anything less collapses distinct children into one
+            // skipped student, so the summary undercounts and one of them is
+            // never named.
+            const studentKey = `${firstName.trim().toLowerCase()}_${lastName
+              .trim()
+              .toLowerCase()}_${normalizedGrade}_${normalizeSchoolName(schoolOfAttendance.trim())}`;
+            if (
+              !otherSchoolStudents.has(studentKey) &&
+              otherSchoolStudents.size < OTHER_SCHOOL_WARNING_LIMIT
+            ) {
+              warnings.push({
+                row: rowIndex + 1,
+                message: `Student "${firstName} ${lastName}" attends "${schoolOfAttendance}" which doesn't match your school(s). Skipping.`
+              });
+            }
+            otherSchoolStudents.add(studentKey);
             continue;
           }
         }
@@ -309,8 +432,13 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
         // filtering it would silently vanish for every keyworded role; surface
         // it for manual review instead (SPE-247). Psychologist/specialist roles
         // have no service code and import everything, so they're unaffected.
+        // When the routing COLUMNS are absent outright, every row trivially has
+        // no routing signal, and the file-level warning above already says so
+        // once. Repeating it per row would bury that message under thousands of
+        // duplicates — and the zero-student error path returns warnings uncapped.
         if (
           isSEISFormat &&
+          !routingColumnsAbsent &&
           options.providerRole &&
           getServiceTypeCode(options.providerRole) !== null &&
           hasNoProviderRoutingSignal(areaOfNeed, goalType, personResponsible)
@@ -318,7 +446,7 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
           const hasGoalText = columnMapping.goalColumns.some(
             (i) => (row[i] || '').trim().length > 10
           );
-          if (hasGoalText) {
+          if (hasGoalText && blankMetadataWarnings++ < PER_ROW_WARNING_LIMIT) {
             warnings.push({
               row: rowIndex + 1,
               message: blankMetadataGoalWarning(initials, normalizedGrade),
@@ -384,10 +512,12 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
             // export is inconsistent or two real children are being merged by
             // that key. Keep the first and say so rather than dropping it
             // silently.
-            warnings.push({
-              row: rowIndex + 1,
-              message: `Student ID mismatch for ${firstName} ${lastName}: found "${districtStudentId}" but already recorded "${existing.districtStudentId}". Keeping the first — check this student in your export.`,
-            });
+            if (idMismatchWarnings++ < PER_ROW_WARNING_LIMIT) {
+              warnings.push({
+                row: rowIndex + 1,
+                message: `Student ID mismatch for ${firstName} ${lastName}: found "${districtStudentId}" but already recorded "${existing.districtStudentId}". Keeping the first — check this student in your export.`,
+              });
+            }
           }
         } else {
           // Add new student
@@ -409,6 +539,38 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
           message: `Error parsing row: ${error.message}`
         });
       }
+    }
+
+    if (otherSchoolStudents.size > OTHER_SCHOOL_WARNING_LIMIT) {
+      warnings.push({
+        row: 0,
+        message:
+          `${otherSchoolStudents.size} students in this file attend schools other than yours and ` +
+          `were skipped (${OTHER_SCHOOL_WARNING_LIMIT} of them listed above). That is expected ` +
+          'for a district-wide export.',
+      });
+    }
+
+    // The other two capped kinds get the same treatment. Truncating without
+    // saying so is the silent-failure shape this whole change is about.
+    if (blankMetadataWarnings > PER_ROW_WARNING_LIMIT) {
+      warnings.push({
+        row: 0,
+        message:
+          `${blankMetadataWarnings} goal rows have no "Area Of Need", "Annual Goal #" or ` +
+          `"Person Responsible" value (${PER_ROW_WARNING_LIMIT} of them listed above), so they ` +
+          'cannot be matched to a caseload. Review those rows in your export.',
+      });
+    }
+
+    if (idMismatchWarnings > PER_ROW_WARNING_LIMIT) {
+      warnings.push({
+        row: 0,
+        message:
+          `${idMismatchWarnings} rows carry a district student ID that conflicts with an earlier ` +
+          `row for the same student (${PER_ROW_WARNING_LIMIT} of them listed above). The first ID ` +
+          'was kept in each case.',
+      });
     }
 
     // Convert map to array
@@ -457,28 +619,10 @@ function detectColumnMapping(records: string[][]): ColumnMapping {
   const isSEIS = detectSEISStudentGoalsFormat(records);
 
   if (isSEIS) {
-    // SEIS Student Goals Report uses fixed columns:
-    // Column B (index 1): District ID
-    // Column C (index 2): Last Name
-    // Column D (index 3): First Name
-    // Column F (index 5): Grade
-    // Column G (index 6): School of Attendance
-    // Column J (index 9): IEP Date
-    // Column L (index 11): Area of Need (for filtering)
-    // Column M (index 12): Annual Goal # (for filtering)
-    // Column O (index 14): Goal
-    // Column R (index 17): Person Responsible (for filtering)
-    mapping.districtStudentId = 1;
-    mapping.lastName = 2;
-    mapping.firstName = 3;
-    mapping.grade = 5;
-    mapping.schoolOfAttendance = 6;
-    mapping.iepDate = 9;
-    mapping.areaOfNeed = 11;
-    mapping.goalType = 12;
-    mapping.personResponsible = 17;
-    mapping.goalColumns = [14];
-    return mapping;
+    // Located by header name, not position — see mapSeisColumnsByHeader
+    // (SPE-558). The per-provider and district-wide exports of this report
+    // carry the same labels at different indexes.
+    return mapSeisColumnsByHeader(headers);
   }
 
   // Generic pattern-based detection for non-SEIS files
@@ -529,8 +673,308 @@ function detectColumnMapping(records: string[][]): ColumnMapping {
 export { normalizeGradeLevel };
 
 /**
- * Detect if CSV is a SEIS Student Goals Report
- * Checks for specific SEIS column headers in expected positions
+ * How each SEIS field is located in a header row: the exact normalized names
+ * first, then an ANCHORED pattern for the label variants.
+ *
+ * SPE-558: these used to be checked at FIXED INDEXES (2/3/5/6/12/14), which is
+ * only true of the per-provider export. SEIS's district-wide export of the same
+ * report inserts an `SSID` column at index 1, shifting every field after it by
+ * one — that scored 0 of 6, fell through to the generic path, and imported with
+ * no district ID, no school, no IEP date and progress labels mixed into the
+ * goals, all without raising a single error. Matching on the header NAME
+ * absorbs both shapes and any future column reorder.
+ *
+ * Anchored is the whole point. This report has ten headers containing the word
+ * "goal" ("Annual Goal #", "Purpose(s) of Goal", "Goal Met", "Comparison To
+ * Goal", "Goal Progress"...) and a "Grade Level Standard" that a bare /grade/
+ * scan binds to in preference to nothing. An unanchored sweep is what put
+ * "Limited Progress" into a child's IEP goals in the first place, so every
+ * pattern here matches a WHOLE header or not at all.
+ *
+ * Each pattern does allow a trailing parenthetical, because SEIS decorates
+ * labels that way — "Date of IEP (Meeting Date on Current IEP Forms)", and in
+ * the wild "Grade (as of 10/01)" or "Last Name (Legal)". The positional code
+ * this replaces tolerated any such suffix for free by never reading the label;
+ * without this, a decorated header on a REQUIRED column would turn a file that
+ * used to import into a hard failure. "Grade Level Standard" stays excluded:
+ * a bare word suffix is not a parenthetical.
+ *
+ * One table, used by both the detector and the mapper below. Detection tolerates
+ * one missing signature column, so the mapper can still return undefined for a
+ * field — every such field either has a file-level warning below or, for
+ * `grade`, a named error. The one exception is `goal`, which detection requires
+ * outright, since a file claimed without it can only dead-end.
+ */
+const SEIS_FIELDS = {
+  lastName: {
+    exact: ['last name'],
+    pattern: /^(student\s*)?last\s*name(\s*\(.*\))?$|^lastname$|^surname$/,
+  },
+  firstName: {
+    exact: ['first name'],
+    pattern: /^(student\s*)?first\s*name(\s*\(.*\))?$|^firstname$/,
+  },
+  // Order within `exact` carries no meaning — findSeisColumn takes the leftmost
+  // column matching any of them.
+  grade: {
+    exact: ['grade', 'grade level'],
+    pattern: /^(current\s*|student\s*)?grade(\s*level)?(\s*\(.*\))?$/,
+  },
+  schoolOfAttendance: {
+    exact: ['school of attendance'],
+    pattern: /^(current\s*|attending\s*)?school(\s*(of\s*attendance|name))?(\s*\(.*\))?$/,
+  },
+  goalType: {
+    exact: ['annual goal #', 'annual goal'],
+    pattern: /^annual\s*goal(\s*#)?(\s*\(.*\))?$|^goal\s*type$|^service\s*(type|area)$/,
+  },
+  goal: { exact: ['goal'], pattern: /^(iep\s*)?goal(\s*(text|statement))?(\s*\(.*\))?$/ },
+  // Anchored so it cannot match "District of Service" (SPE-339).
+  districtStudentId: {
+    exact: ['district id', 'district student id'],
+    pattern: /^district\s*(student\s*)?id(\s*\(.*\))?$/,
+  },
+  // "Date of IEP (Meeting Date on Current IEP Forms)" is how SEIS labels this on
+  // some exports, so match that prefix too. Deliberately NOT `annual review`,
+  // which seis-parser.ts accepts: in THIS report that is a progress-reporting
+  // column, so borrowing it for parity would bind the IEP date to the wrong one.
+  iepDate: {
+    exact: ['iep date'],
+    pattern: /^iep\s*date(\s*\(.*\))?$|^meeting\s*date$|^date\s*of\s*iep\b/,
+  },
+  areaOfNeed: {
+    exact: ['area of need'],
+    pattern: /^area\s*(of\s*)?need(\s*\(.*\))?$|^need\s*area$/,
+  },
+  personResponsible: {
+    exact: ['person responsible'],
+    pattern: /^person\s*responsible(\s*\(.*\))?$|^responsible\s*(person|party)$/,
+  },
+} as const;
+
+/**
+ * Where each field sits in the per-provider export — the exact fixed indexes
+ * this parser used before SPE-558.
+ *
+ * Labels are an unbounded space: "Grade Level Code", "Last Name of Student",
+ * "School of Attendance Name" are all real-looking and none matches an anchored
+ * pattern, while loosening the patterns to catch them re-admits "Grade Level
+ * Standard". Position is the knowledge the old code had and label matching
+ * threw away, so it comes back as the fallback: once enough columns HAVE been
+ * identified by label, they fix the offset between this file and the canonical
+ * layout, and any column that couldn't be identified is read from where the
+ * layout says it should be. The district-wide export is a uniform +1 shift of
+ * this table; the per-provider export is offset 0.
+ */
+const SEIS_CANONICAL_INDEX = {
+  districtStudentId: 1,
+  lastName: 2,
+  firstName: 3,
+  grade: 5,
+  schoolOfAttendance: 6,
+  iepDate: 9,
+  areaOfNeed: 11,
+  goalType: 12,
+  goal: 14,
+  personResponsible: 17,
+} as const satisfies Record<keyof typeof SEIS_FIELDS, number>;
+
+/** Human-facing column names, for warnings that name what couldn't be read. */
+const SEIS_FIELD_LABELS: Record<keyof typeof SEIS_FIELDS, string> = {
+  districtStudentId: 'District ID',
+  lastName: 'Last Name',
+  firstName: 'First Name',
+  grade: 'Grade',
+  schoolOfAttendance: 'School of Attendance',
+  iepDate: 'IEP Date',
+  areaOfNeed: 'Area Of Need',
+  goalType: 'Annual Goal #',
+  goal: 'Goal',
+  personResponsible: 'Person Responsible',
+};
+
+/** The six fields whose presence identifies the report (5 of 6 required). */
+const SEIS_SIGNATURE_FIELDS = [
+  'lastName',
+  'firstName',
+  'grade',
+  'schoolOfAttendance',
+  'goalType',
+  'goal',
+] as const;
+
+/**
+ * Columns that ONLY this SEIS report carries. The signature above is made of
+ * common labels, so on its own it also describes an ordinary
+ * Last/First/Grade/School/Goal spreadsheet — which would then be handed the
+ * SEIS path's per-role goal filtering and import as zero students, surfacing to
+ * the user as a 400 naming a SEIS report they never uploaded. Requiring two of
+ * these keeps such a file on the generic path.
+ *
+ * Kept deliberately narrow to SEIS's own vocabulary. Ordinary special-ed
+ * spreadsheets legitimately carry "Case Manager", "IEP Date", "District ID",
+ * "Area Of Need" and "Baseline", so none of those can be a marker — two of them
+ * together are an unremarkable hand-built goals sheet, not evidence of a SEIS
+ * export.
+ */
+const SEIS_MARKER_HEADERS = [
+  'seis id',
+  'district of service',
+  'eligibility status',
+  'purpose(s) of goal',
+  'goal met',
+] as const;
+
+/**
+ * The report's OTHER columns — everything it ships that isn't one of the mapped
+ * fields above.
+ *
+ * This is what makes the positional fallback safe. A column that was RELABELLED
+ * leaves an unfamiliar header at its position, which is exactly what the
+ * fallback is for. A column that was REMOVED slides a different column of this
+ * same report into that position — and filling there imports the wrong data
+ * silently: "SSID" read as the district student id (poisoning the key the SIS
+ * link sync matches on), or "Objective 1" read as Person Responsible (routing a
+ * goal to the wrong provider's caseload). Recognizing the report's own columns
+ * tells those two cases apart.
+ */
+const SEIS_OTHER_COLUMNS: readonly (string | RegExp)[] = [
+  'ssid',
+  'birthdate',
+  'case manager',
+  'case manager email',
+  'baseline',
+  'standard',
+  'grade level standard',
+  'annual review',
+  'added on',
+  'added by',
+  'updated by',
+  'updated on',
+  'last affirmed pr',
+  'created by',
+  'created date',
+  'last modified by',
+  'last modified date',
+  'reporting progress',
+  'comparison to goal',
+  'progress percentage',
+  'curriculum',
+  'frequency',
+  'assessment method',
+  'owner',
+  'owner email',
+  'record locked',
+  'record status',
+  'source system',
+  'export batch',
+  'export timestamp',
+  /^objective\s*\d/,
+  /^progress\s*report/,
+  /^summary$/,
+  /^comments$/,
+  /^goal\s*progress$/,
+];
+
+/**
+ * Resolve one SEIS field to a column index: the LEFTMOST column carrying any of
+ * the field's exact names, else the leftmost matching its pattern.
+ *
+ * Leftmost-across-all-names rather than name-by-name across the row, because
+ * name priority has a failure mode in both directions: with 'grade' tried
+ * first, a file whose grade sits under "Grade Level" binds to a stray "Grade"
+ * column; with 'grade level' first, a stray "Grade Level" beats the real
+ * "Grade". Position is the tie-breaker that is actually true of this report —
+ * identity and demographic columns come before the trailing metadata ones.
+ */
+function findSeisColumn(normalized: string[], field: keyof typeof SEIS_FIELDS): number | undefined {
+  const { exact, pattern } = SEIS_FIELDS[field];
+  const names = new Set<string>(exact);
+  const exactIndex = normalized.findIndex((header) => names.has(header));
+  if (exactIndex !== -1) return exactIndex;
+  const index = normalized.findIndex((header) => pattern.test(header));
+  return index === -1 ? undefined : index;
+}
+
+/**
+ * Every SEIS field's column index, plus which of them were resolved by POSITION
+ * rather than by their label — a guess the user is told about, since no
+ * allowlist can enumerate every label a district might use.
+ */
+type SeisColumns = Partial<Record<keyof typeof SEIS_FIELDS, number>> & {
+  positionallyResolved?: Array<keyof typeof SEIS_FIELDS>;
+};
+
+const SEIS_FIELD_NAMES = Object.keys(SEIS_CANONICAL_INDEX) as Array<keyof typeof SEIS_FIELDS>;
+
+/**
+ * Resolve every SEIS field: by label first, then — for whatever the labels
+ * couldn't name — by canonical position, shifted by the offset the identified
+ * columns agree on.
+ *
+ * The offset needs THREE agreeing witnesses and no dissent. Both real shapes
+ * satisfy that easily (offset 0 and +1, every field agreeing), while a file
+ * that merely resembles this report produces disagreement and gets no
+ * positional filling at all. A filled column is never allowed to land on one
+ * another field already holds, so a wrong guess can't quietly steal a column
+ * that was positively identified.
+ */
+function resolveSeisColumns(normalized: string[]): SeisColumns {
+  const columns: SeisColumns = {};
+  const guessed: Array<keyof typeof SEIS_FIELDS> = [];
+  for (const field of SEIS_FIELD_NAMES) {
+    const index = findSeisColumn(normalized, field);
+    if (index !== undefined) columns[field] = index;
+  }
+
+  const identified = SEIS_FIELD_NAMES.filter((field) => columns[field] !== undefined);
+  const offsets = new Set(identified.map((field) => columns[field]! - SEIS_CANONICAL_INDEX[field]));
+  if (identified.length < 3 || offsets.size !== 1) {
+    columns.positionallyResolved = guessed;
+    return columns;
+  }
+
+  const offset = [...offsets][0];
+  const taken = new Set(identified.map((field) => columns[field]!));
+
+  // Fill only onto a header this report doesn't otherwise account for. A
+  // relabelled column leaves an unfamiliar header behind; a REMOVED one slides
+  // another of the report's own columns into its place, and filling there
+  // imports the wrong data with no error at all.
+  const namesSomethingElse = (index: number, field: keyof typeof SEIS_FIELDS): boolean => {
+    const header = normalized[index];
+    if (!header) return false;
+    if ((SEIS_MARKER_HEADERS as readonly string[]).includes(header)) return true;
+    if (
+      SEIS_OTHER_COLUMNS.some((known) =>
+        typeof known === 'string' ? known === header : known.test(header),
+      )
+    ) {
+      return true;
+    }
+    return SEIS_FIELD_NAMES.some((other) => {
+      if (other === field) return false;
+      const { exact, pattern } = SEIS_FIELDS[other];
+      return (exact as readonly string[]).includes(header) || pattern.test(header);
+    });
+  };
+
+  for (const field of SEIS_FIELD_NAMES) {
+    if (columns[field] !== undefined) continue;
+    const candidate = SEIS_CANONICAL_INDEX[field] + offset;
+    if (candidate < 0 || candidate >= normalized.length || taken.has(candidate)) continue;
+    if (namesSomethingElse(candidate, field)) continue;
+    columns[field] = candidate;
+    taken.add(candidate);
+    guessed.push(field);
+  }
+  columns.positionallyResolved = guessed;
+  return columns;
+}
+
+/**
+ * Detect if CSV is a SEIS Student Goals Report (SPE-558): 5 of the 6 signature
+ * fields resolvable, plus at least two SEIS-only marker columns.
  *
  * Exported for the parser golden-fixture suite (SPE-239).
  */
@@ -539,31 +983,72 @@ export function detectSEISStudentGoalsFormat(records: string[][]): boolean {
     return false;
   }
 
-  const headers = records[0];
+  const normalized = (records[0] || []).map(normalizeHeaderName);
+  const columns = resolveSeisColumns(normalized);
 
-  // SEIS Student Goals Report has these specific columns:
-  // Column C (index 2): "Last Name"
-  // Column D (index 3): "First Name"
-  // Column F (index 5): "Grade"
-  // Column G (index 6): "School of Attendance"
-  // Column M (index 12): "Annual Goal #"
-  // Column O (index 14): "Goal"
+  // The goal column is mandatory rather than one of the five-of-six, because
+  // the mapper cannot proceed without it: claiming a file whose goal column
+  // can't be located at all would dead-end in the no-Goal-column error, while
+  // the generic path imports it (fuzzily, but it imports). Refusing the file
+  // here hands it to that path instead of failing it outright.
+  if (columns.goal === undefined) return false;
 
-  const lastNameMatch = headers[2]?.toLowerCase().includes('last name');
-  const firstNameMatch = headers[3]?.toLowerCase().includes('first name');
-  const gradeMatch = headers[5]?.toLowerCase().includes('grade');
-  const schoolMatch = headers[6]?.toLowerCase().includes('school');
-  const goalTypeMatch = headers[12]?.toLowerCase().includes('annual goal');
-  const goalMatch = headers[14]?.toLowerCase().includes('goal');
+  const signature = SEIS_SIGNATURE_FIELDS.filter((field) => columns[field] !== undefined).length;
+  if (signature < SEIS_SIGNATURE_FIELDS.length - 1) return false;
 
-  // Require at least 5 out of 6 key columns to match
-  const matches = [lastNameMatch, firstNameMatch, gradeMatch, schoolMatch, goalTypeMatch, goalMatch].filter(Boolean).length;
+  // The markers are required unconditionally, with no full-house waiver.
+  // Header labels alone cannot separate a column-trimmed SEIS export from an
+  // ordinary goals spreadsheet — the two can be character-for-character
+  // identical — so any waiver just moves which one gets misread. Two earlier
+  // attempts at one ("Annual Goal #", then "Goal Type") each let a plain sheet
+  // through to per-role filtering, which imports zero students and reports a
+  // SEIS report the user never uploaded. A marker-less file goes to the generic
+  // path, which is where the fixed-index detector sent it too, so this is the
+  // status quo rather than a new restriction.
+  const headers = new Set(normalized);
+  const markers = SEIS_MARKER_HEADERS.filter((name) => headers.has(name)).length;
 
-  return matches >= 5;
+  return markers >= 2;
 }
 
-/** Normalize a header cell for template detection: trim, lowercase, collapse whitespace. */
-function normalizeTemplateHeader(header: string | undefined): string {
+/**
+ * Map the SEIS Student Goals Report's columns, using the same SEIS_FIELDS
+ * table the detector resolved them with (SPE-558) — so anything detection
+ * counted, mapping finds.
+ *
+ * The goal column is the anchored `Goal` / `IEP Goal` match, or the canonical
+ * position — never a fuzzy label sweep. Every sweep wide enough to catch an
+ * unusual goal label also catches "Purpose(s) of Goal", "Goal Met" and
+ * "Comparison To Goal", which is exactly how progress labels ended up in
+ * children's IEP goals.
+ */
+function mapSeisColumnsByHeader(headers: string[]): ColumnMapping {
+  const columns = resolveSeisColumns(headers.map(normalizeHeaderName));
+
+  return {
+    districtStudentId: columns.districtStudentId,
+    lastName: columns.lastName,
+    firstName: columns.firstName,
+    grade: columns.grade,
+    schoolOfAttendance: columns.schoolOfAttendance,
+    iepDate: columns.iepDate,
+    areaOfNeed: columns.areaOfNeed,
+    goalType: columns.goalType,
+    personResponsible: columns.personResponsible,
+    goalColumns: columns.goal === undefined ? [] : [columns.goal],
+    positionallyResolved: (columns.positionallyResolved ?? []).map(
+      (field) => SEIS_FIELD_LABELS[field],
+    ),
+  };
+}
+
+/**
+ * Normalize a header cell for name-based lookup: trim, lowercase, collapse
+ * whitespace. Shared by the roster-template detectors and the SEIS column
+ * mapping (SPE-558) — the real SEIS export ships headers with trailing spaces
+ * ("Summary "), so collapsing is load-bearing, not cosmetic.
+ */
+function normalizeHeaderName(header: string | undefined): string {
   return (header || '').trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
@@ -577,7 +1062,7 @@ function normalizeTemplateHeader(header: string | undefined): string {
  */
 export function detectSpeddyTemplateFormat(records: string[][]): boolean {
   if (records.length === 0) return false;
-  const headers = (records[0] || []).map(normalizeTemplateHeader);
+  const headers = (records[0] || []).map(normalizeHeaderName);
   const hasRosterColumns =
     headers.includes('initials') && headers.includes('grade') && headers.includes('teacher');
   if (!hasRosterColumns) return false;
@@ -599,7 +1084,7 @@ export function detectSpeddyTemplateFormat(records: string[][]): boolean {
  * already carry all three required columns.
  */
 function describeIncompleteRosterTemplate(records: string[][]): string | null {
-  const headers = (records[0] || []).map(normalizeTemplateHeader);
+  const headers = (records[0] || []).map(normalizeHeaderName);
   // `Initials` is the roster template's signature — SEIS/generic student files
   // use First/Last Name, never Initials — so its presence marks a roster attempt.
   if (!headers.includes('initials')) return null;
@@ -623,7 +1108,7 @@ function parseSpeddyTemplateRows(records: string[][]): ParseResult {
   const students: ParsedStudent[] = [];
   const warnings: Array<{ row: number; message: string }> = [];
 
-  const headers = (records[0] || []).map(normalizeTemplateHeader);
+  const headers = (records[0] || []).map(normalizeHeaderName);
   const col = (name: string) => headers.indexOf(name);
   const initialsCol = col('initials');
   const gradeCol = col('grade');

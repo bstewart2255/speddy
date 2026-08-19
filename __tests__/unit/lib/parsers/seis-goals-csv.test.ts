@@ -3,19 +3,29 @@
  * i.e. parseCSVReport with the fixed-column SEIS layout.
  *
  * Pins: BOM handling (SPE-241, already landed), the full parsed result over a
- * 59-column fictional fixture, duplicate-student goal merging, the 5-of-6
- * detection boundary at the file level (column-shifted -> generic fallback),
- * and per-role goal filtering including word-boundary routing
+ * 59-column fictional fixture, duplicate-student goal merging, header-name
+ * (not fixed-position) column resolution across both real export shapes —
+ * per-provider and district-wide, which differ by an inserted SSID column
+ * (SPE-558) — and per-role goal filtering including word-boundary routing
  * ("Handwriting" -> OT not resource, "Social/Emotional" -> counseling not OT),
  * blank-metadata rows surfaced for review, and typo losses
  * ("Receptive Languge" -> not speech). See SPE-247.
  */
 
-import { parseCSVReport } from '@/lib/parsers/csv-parser';
+import { parse } from 'csv-parse/sync';
+import { detectSEISStudentGoalsFormat, parseCSVReport } from '@/lib/parsers/csv-parser';
+
+/** Header+rows view of a fixture, for asserting which detection path it takes. */
+const toRecords = (csv: Buffer): string[][] =>
+  parse(csv, { bom: true, relax_column_count: true, skip_empty_lines: true, trim: true });
 import {
   buildSeisGoalsCsvFrom,
+  buildSeisGoalsCsvWithHeaders,
+  buildSeisGoalsCsvWithoutColumns,
   SEIS_GOALS_CSV,
   SEIS_GOALS_CSV_BOM,
+  SEIS_GOALS_DISTRICT_CSV,
+  SEIS_GOALS_DISTRICT_NO_DISTRICT_ID_CSV,
   SEIS_GOALS_SHIFTED_CSV,
 } from './fixtures/builders';
 
@@ -40,10 +50,16 @@ describe('parseCSVReport — SEIS Student Goals Report (CSV)', () => {
     expect(ana[0].goals).toHaveLength(2); // reading goal + merged written-narrative goal
   });
 
-  it('falls back to the generic parser when columns are shifted (5-of-6 miss)', async () => {
-    const result = await parseCSVReport(SEIS_GOALS_SHIFTED_CSV(), {});
-    expect(result.metadata.formatDetected).toBe('generic');
-    expect(result).toMatchSnapshot();
+  // SPE-558: detection and mapping are by header NAME, so moving every column
+  // one to the right changes nothing. Before the fix this scored 0 of 6 against
+  // the fixed indexes and silently fell through to the generic parser.
+  it('parses a column-shifted export identically to the canonical one', async () => {
+    const shifted = await parseCSVReport(SEIS_GOALS_SHIFTED_CSV(), {});
+    const canonical = await parseCSVReport(SEIS_GOALS_CSV(), {});
+
+    expect(shifted.metadata.formatDetected).toBe('seis-student-goals');
+    expect(shifted.errors).toHaveLength(0);
+    expect(shifted.students).toEqual(canonical.students);
   });
 
   // SPE-339: column B is the district's own Student ID. Column A is the SEIS ID,
@@ -85,6 +101,547 @@ describe('parseCSVReport — SEIS Student Goals Report (CSV)', () => {
     // First id wins, and the clash is reported.
     expect(result.students[0].districtStudentId).toBe('100001');
     expect(result.warnings.some((w) => /Student ID mismatch/.test(w.message))).toBe(true);
+  });
+
+  // SPE-558. SEIS's district-wide export of this same report inserts an `SSID`
+  // column at index 1, shifting District ID and everything after it one right.
+  // That shape imported silently wrong: no district id (the only key the
+  // OneRoster link sync matches on), no school, no IEP date, and progress
+  // labels mixed into the goals — with zero errors raised.
+  describe('district-wide export shape (extra SSID column)', () => {
+    it('is still recognized as the SEIS Student Goals Report', async () => {
+      const result = await parseCSVReport(SEIS_GOALS_DISTRICT_CSV(), {});
+      expect(result.metadata.formatDetected).toBe('seis-student-goals');
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it('yields the same students as the per-provider export', async () => {
+      const district = await parseCSVReport(SEIS_GOALS_DISTRICT_CSV(), {});
+      const provider = await parseCSVReport(SEIS_GOALS_CSV(), {});
+      expect(district.students).toEqual(provider.students);
+    });
+
+    it('captures the District ID — not the SSID beside it, nor the SEIS ID', async () => {
+      const result = await parseCSVReport(SEIS_GOALS_DISTRICT_CSV(), {});
+      const ana = result.students.find((s) => s.lastName === 'Alvarez')!;
+
+      expect(ana.districtStudentId).toBe('100001');
+      expect(ana.districtStudentId).not.toBe('98100001'); // the SSID
+      expect(ana.districtStudentId).not.toBe('2000001'); // the SEIS ID
+    });
+
+    it('still fills school of attendance and IEP date', async () => {
+      const result = await parseCSVReport(SEIS_GOALS_DISTRICT_CSV(), {});
+      const ana = result.students.find((s) => s.lastName === 'Alvarez')!;
+
+      expect(ana.schoolOfAttendance).toBe('Mt Diablo Elementary School');
+      expect(ana.iepDate).toBe('2026-05-01');
+    });
+  });
+
+  // The other half of SPE-558: the generic fallback's fuzzy /goal|objective/
+  // sweep pulled every header containing "goal" into the goal list. On the real
+  // export that meant "Limited Progress", "ST #1 2026-2027" and prior-year
+  // objectives landing in a child's IEP goals. Only the exact `Goal` column is
+  // goal text — the same rule seis-parser.ts (XLSX) already applies.
+  it('takes goal text only from the exact "Goal" column, never its lookalikes', async () => {
+    const goalText =
+      'By 5/1/2027, Ana will read 90 words per minute with 95% accuracy in 3 of 4 trials.';
+    const result = await parseCSVReport(
+      buildSeisGoalsCsvFrom([
+        {
+          0: '2000001', 1: '100001', 2: 'Alvarez', 3: 'Ana', 5: '01',
+          6: 'Mt Diablo Elementary School', 9: '05/01/2026', 11: 'Reading',
+          12: 'Academic #1', 13: 'Ana currently reads 40 words per minute.', // Baseline
+          14: goalText, // Goal — the only real one
+          15: 'Addresses other educational needs', // Purpose(s) of Goal
+          17: 'Resource Specialist',
+          18: 'Objective 1: Ana will read 60 words per minute by December.', // Objective 1
+          39: 'Limited Progress', // Goal Met
+          45: 'Progressing toward goal', // Comparison To Goal
+          47: 'Reading Standard 3.2', // Grade Level Standard
+        },
+      ]),
+      {},
+    );
+
+    expect(result.students).toHaveLength(1);
+    expect(result.students[0].goals).toEqual([goalText]);
+    // And the decoy in a "Grade"-containing header didn't become the grade.
+    expect(result.students[0].gradeLevel).toBe('1');
+  });
+
+  // SPE-558 review. Detection tolerates one missing signature header (5 of 6),
+  // so the mapping has to tolerate the same variance — an exact-only lookup
+  // turns "recognized but labelled slightly differently" into a silent dropped
+  // field or a hard failure, both worse than the fixed-index code they replaced.
+  describe('variant header labels (5-of-6 detection still applies)', () => {
+    it('finds the school column when it is labelled just "School"', async () => {
+      const csv = buildSeisGoalsCsvWithHeaders({ 6: 'School' });
+
+      // Behavioral proof: school scoping still refuses an out-of-district
+      // student. An unresolved school column short-circuits that guard and
+      // imports them with no warning at all.
+      const result = await parseCSVReport(csv, { userSchools: ['Some Other School'] });
+
+      expect(result.students).toHaveLength(0);
+      expect(result.warnings.some((w) => /doesn't match your school/i.test(w.message))).toBe(true);
+    });
+
+    it('keeps the school on the parsed student when labelled just "School"', async () => {
+      const result = await parseCSVReport(buildSeisGoalsCsvWithHeaders({ 6: 'School' }), {});
+      const ana = result.students.find((s) => s.lastName === 'Alvarez')!;
+      expect(ana.schoolOfAttendance).toBe('Mt Diablo Elementary School');
+    });
+
+    // The lookalike columns are POPULATED here on purpose. An earlier round of
+    // this fix passed the same test with them blank, which proved nothing: the
+    // fuzzy fallback it was guarding only misfires when they carry text.
+    it('finds the goal column when it is labelled "IEP Goal", without dragging in its lookalikes', async () => {
+      const goalText =
+        'By 5/1/2027, Ana will read 90 words per minute with 95% accuracy in 3 of 4 trials.';
+      const csv = buildSeisGoalsCsvWithHeaders({ 14: 'IEP Goal' }, [
+        {
+          0: '2000001', 1: '100001', 2: 'Alvarez', 3: 'Ana', 5: '01',
+          6: 'Mt Diablo Elementary School', 9: '05/01/2026', 11: 'Reading',
+          12: 'Academic #1', 13: 'Ana currently reads 40 words per minute.',
+          14: goalText,
+          15: 'Addresses other educational needs', // Purpose(s) of Goal
+          17: 'Resource Specialist',
+          18: 'Objective 1: Ana will read 60 words per minute by December.',
+          39: 'Limited Progress toward goal', // Goal Met
+          45: 'Progressing toward goal', // Comparison To Goal
+        },
+      ]);
+      expect(detectSEISStudentGoalsFormat(toRecords(csv))).toBe(true);
+
+      const result = await parseCSVReport(csv, {});
+
+      expect(result.errors).toHaveLength(0);
+      expect(result.students).toHaveLength(1);
+      expect(result.students[0].goals).toEqual([goalText]);
+    });
+
+    // One relabel at a time, deliberately: renaming two signature headers drops
+    // detection to 4 of 6, and the file would reach the generic path — which
+    // handles these variants anyway, so such a test would pass without ever
+    // exercising the SEIS mapper it is meant to guard.
+    it('finds the first-name column when labelled "Student First Name"', async () => {
+      const csv = buildSeisGoalsCsvWithHeaders({ 3: 'Student First Name' });
+      expect(detectSEISStudentGoalsFormat(toRecords(csv))).toBe(true); // still the SEIS path
+
+      const result = await parseCSVReport(csv, {});
+
+      expect(result.errors).toHaveLength(0);
+      expect(result.students.find((s) => s.lastName === 'Alvarez')!.firstName).toBe('Ana');
+    });
+
+    it('finds the grade column when labelled "Current Grade"', async () => {
+      const csv = buildSeisGoalsCsvWithHeaders({ 5: 'Current Grade' });
+      expect(detectSEISStudentGoalsFormat(toRecords(csv))).toBe(true); // still the SEIS path
+
+      const result = await parseCSVReport(csv, {});
+
+      expect(result.errors).toHaveLength(0);
+      expect(result.students.find((s) => s.lastName === 'Alvarez')!.gradeLevel).toBe('1');
+    });
+  });
+
+  // SPE-558 review round 2. The six signature fields are all common labels, so
+  // name-anywhere matching alone also describes an ordinary spreadsheet. Handing
+  // one of those to the SEIS path would subject it to per-role goal filtering
+  // and import zero students — worse than the fixed-index code, which such a
+  // file could never satisfy. SEIS-only marker columns are what keep them apart.
+  describe('does not claim ordinary spreadsheets', () => {
+    const GENERIC_CSV = Buffer.from(
+      [
+        'Last Name,First Name,Grade,School of Attendance,Goal',
+        'Alvarez,Ana,1,Mt Diablo Elementary School,' +
+          '"By 5/1/2027, Ana will read 90 words per minute with 95% accuracy in 3 of 4 trials."',
+      ].join('\r\n'),
+      'utf-8',
+    );
+
+    it('leaves a plain Last/First/Grade/School/Goal file on the generic path', async () => {
+      expect(detectSEISStudentGoalsFormat(toRecords(GENERIC_CSV))).toBe(false);
+
+      const result = await parseCSVReport(GENERIC_CSV, {});
+      expect(result.metadata.formatDetected).toBe('generic');
+    });
+
+    it('still imports that file for a keyworded role, rather than filtering it to nothing', async () => {
+      // The real damage of a false SEIS positive: role filtering needs Area of
+      // Need / Annual Goal # / Person Responsible, and a generic file has none,
+      // so every goal would be dropped.
+      const result = await parseCSVReport(GENERIC_CSV, { providerRole: 'resource' });
+
+      expect(result.students).toHaveLength(1);
+      expect(result.students[0].goals).toHaveLength(1);
+    });
+
+    it('leaves a hand-built goals sheet generic even with Case Manager and IEP Date', async () => {
+      // The near-miss: ordinary special-ed vocabulary is not evidence of a SEIS
+      // export. Routing this to the SEIS path role-filters it to zero students,
+      // which reaches the user as a 400 naming a report they never uploaded.
+      const csv = Buffer.from(
+        [
+          'Last Name,First Name,Grade,School of Attendance,Case Manager,IEP Date,District ID,Area Of Need,Baseline,Goal',
+          'Alvarez,Ana,1,Mt Diablo Elementary School,R. Diaz,05/01/2026,100001,Reading,Reads 40 wpm,' +
+            '"By 5/1/2027, Ana will read 90 words per minute with 95% accuracy in 3 of 4 trials."',
+        ].join('\r\n'),
+        'utf-8',
+      );
+      expect(detectSEISStudentGoalsFormat(toRecords(csv))).toBe(false);
+
+      const result = await parseCSVReport(csv, { providerRole: 'resource' });
+      expect(result.students).toHaveLength(1);
+    });
+
+    it('does not let a bare "Goal Type" column stand in for SEIS\'s "Annual Goal #"', async () => {
+      // The 6-of-6 waiver skips the marker requirement, so it must rest on the
+      // label that is actually SEIS's. "Goal Type" satisfies the same field but
+      // is ordinary spreadsheet vocabulary.
+      const csv = Buffer.from(
+        [
+          'Last Name,First Name,Grade,School of Attendance,Goal,Goal Type',
+          'Alvarez,Ana,1,Mt Diablo Elementary School,' +
+            '"By 5/1/2027, Ana will read 90 words per minute with 95% accuracy in 3 of 4 trials.",Academic',
+        ].join('\r\n'),
+        'utf-8',
+      );
+      expect(detectSEISStudentGoalsFormat(toRecords(csv))).toBe(false);
+
+      const result = await parseCSVReport(csv, { providerRole: 'resource' });
+      expect(result.students).toHaveLength(1);
+    });
+
+    // SEIS decorates labels with parentheticals; the positional code tolerated
+    // any suffix for free by never reading the label. Without this a decorated
+    // REQUIRED column turns a file that used to import into a hard failure.
+    it.each([
+      ['grade', 5, 'Grade (as of 10/01)'],
+      ['last name', 2, 'Last Name (Legal)'],
+      ['first name', 3, 'First Name (Legal)'],
+      ['school', 6, 'School of Attendance (Current)'],
+      ['goal', 14, 'Goal (2026-2027)'],
+    ])('accepts a parenthetical suffix on the %s column', async (_field, index, header) => {
+      const csv = buildSeisGoalsCsvWithHeaders({ [index]: header });
+      expect(detectSEISStudentGoalsFormat(toRecords(csv))).toBe(true);
+
+      const result = await parseCSVReport(csv, {});
+      const ana = result.students.find((s) => s.lastName === 'Alvarez');
+
+      expect(result.errors).toHaveLength(0);
+      expect(ana).toBeDefined();
+      expect(ana!.gradeLevel).toBe('1');
+      expect(ana!.schoolOfAttendance).toBe('Mt Diablo Elementary School');
+      expect(ana!.goals.length).toBeGreaterThan(0);
+    });
+
+    it('finds the school column when it is labelled "Current School Name"', async () => {
+      // seis-parser.ts (XLSX) accepts this label; the two paths read the same
+      // report and shouldn't disagree about which column is the school.
+      const csv = buildSeisGoalsCsvWithHeaders({ 6: 'Current School Name' });
+
+      const result = await parseCSVReport(csv, { userSchools: ['Some Other School'] });
+
+      expect(result.students).toHaveLength(0);
+      expect(result.warnings.some((w) => /doesn't match your school/i.test(w.message))).toBe(true);
+    });
+
+    it('reads the goal column from its position when the label is unrecognizable', async () => {
+      // Labels are an unbounded space, so an unrecognizable one falls back to
+      // the canonical position rather than failing the file or handing it to
+      // the generic path (which would lose district id / school / IEP date).
+      const csv = buildSeisGoalsCsvWithHeaders({ 14: 'Goal Description' });
+      expect(detectSEISStudentGoalsFormat(toRecords(csv))).toBe(true);
+
+      const result = await parseCSVReport(csv, {});
+      const ana = result.students.find((s) => s.lastName === 'Alvarez')!;
+
+      expect(result.errors).toHaveLength(0);
+      expect(ana.goals[0]).toMatch(/grade-level passage/);
+      expect(ana.districtStudentId).toBe('100001');
+      expect(ana.schoolOfAttendance).toBe('Mt Diablo Elementary School');
+    });
+
+    it('reads grade from its position, never from "Grade Level Standard"', async () => {
+      // A bare /grade/ scan binds to the standards column (index 47, "Reading
+      // Standard 3.2") and imports every student as grade "3".
+      const csv = buildSeisGoalsCsvWithHeaders({ 5: 'Year Of Study' });
+
+      const result = await parseCSVReport(csv, {});
+      const ana = result.students.find((s) => s.lastName === 'Alvarez')!;
+
+      expect(ana.gradeLevel).toBe('1');
+    });
+  });
+
+  // SPE-558. A column this parser can proceed without still costs the user
+  // something invisible — silence is the exact complaint that opened this
+  // ticket. These use columns REMOVED from the export, not relabelled: a
+  // relabelled column is recovered from its canonical position, so only a
+  // genuinely absent one reaches these warnings.
+  describe('says so when an optional-but-costly column is missing', () => {
+    it('warns that teachers cannot be matched when there is no District ID column', async () => {
+      const result = await parseCSVReport(buildSeisGoalsCsvWithoutColumns([1]), {});
+
+      expect(result.students.length).toBeGreaterThan(0);
+      expect(result.students.every((s) => s.districtStudentId === undefined)).toBe(true);
+      expect(result.warnings.some((w) => /district student id/i.test(w.message))).toBe(true);
+    });
+
+    it('warns when no goal-routing column exists and a keyworded role would import nothing', async () => {
+      const result = await parseCSVReport(buildSeisGoalsCsvWithoutColumns([11, 12, 17]), {
+        providerRole: 'resource',
+      });
+
+      expect(result.students).toHaveLength(0);
+      expect(result.warnings.some((w) => /route each goal/i.test(w.message))).toBe(true);
+    });
+
+    it('warns that scoping and dedup are weakened when there is no school column', async () => {
+      // Both guards behind this column fail OPEN, so silence here means a
+      // provider imports other schools' students and can merge two children.
+      const csv = buildSeisGoalsCsvWithoutColumns([6]);
+      expect(detectSEISStudentGoalsFormat(toRecords(csv))).toBe(true);
+
+      const result = await parseCSVReport(csv, { userSchools: ['Mt Diablo Elementary School'] });
+
+      expect(result.students.every((s) => s.schoolOfAttendance === undefined)).toBe(true);
+      expect(result.warnings.some((w) => /school of attendance/i.test(w.message))).toBe(true);
+    });
+
+    it('says it once, not once per row, when the routing columns are absent', async () => {
+      // Every row trivially lacks a routing signal, so the per-row warning would
+      // fire for all of them and bury the one message that explains why — and
+      // the zero-student path returns warnings uncapped.
+      const result = await parseCSVReport(buildSeisGoalsCsvWithoutColumns([11, 12, 17]), {
+        providerRole: 'resource',
+      });
+
+      expect(result.warnings.filter((w) => /route each goal/i.test(w.message))).toHaveLength(1);
+      expect(result.warnings.filter((w) => w.row > 0)).toHaveLength(0);
+    });
+
+    // Grade resolves to the leftmost accepted label, so neither spelling can be
+    // beaten by a stray copy of the other further right. Name priority failed
+    // one of these two directions whichever order it was listed in.
+    it.each([
+      ['student grade under "Grade Level", stray "Grade" at the far right', 'Grade Level', 'Grade'],
+      ['student grade under "Grade", stray "Grade Level" at the far right', 'Grade', 'Grade Level'],
+    ])('binds grade to the real column — %s', async (_label, realHeader, strayHeader) => {
+      const csv = buildSeisGoalsCsvWithHeaders({ 5: realHeader, 47: strayHeader });
+
+      const result = await parseCSVReport(csv, {});
+      const ana = result.students.find((s) => s.lastName === 'Alvarez');
+
+      expect(ana).toBeDefined();
+      expect(ana!.gradeLevel).toBe('1');
+    });
+
+    // The trap cases for positional fallback: a REMOVED column leaves another
+    // of this report's own columns sitting at its canonical position, and the
+    // surviving columns still agree on one offset, so the layout looks intact.
+    it('never reads the SSID column as the district student id', async () => {
+      const result = await parseCSVReport(SEIS_GOALS_DISTRICT_NO_DISTRICT_ID_CSV(), {});
+      const ana = result.students.find((s) => s.lastName === 'Alvarez')!;
+
+      expect(ana.districtStudentId).toBeUndefined();
+      expect(ana.districtStudentId).not.toBe('99100001'); // the SSID
+      expect(result.warnings.some((w) => /district student id/i.test(w.message))).toBe(true);
+      // The rest of the file still parses — this refuses one column, not the import.
+      expect(ana.schoolOfAttendance).toBe('Mt Diablo Elementary School');
+      expect(ana.gradeLevel).toBe('1');
+    });
+
+    it('never reads the Objective column as Person Responsible', async () => {
+      // Person Responsible is the last mapped field, so every offset witness is
+      // to its left and the offset stays uniform when it's removed — index 17
+      // then holds "Objective 1". The objective text here deliberately names a
+      // different discipline than the goal belongs to, which is how a mis-bound
+      // routing column puts a child on the wrong provider's caseload.
+      const csv = buildSeisGoalsCsvWithoutColumns(
+        [17],
+        [
+          {
+            0: '2000009', 1: '100009', 2: 'Foster', 3: 'Finn', 5: '03',
+            6: 'Mt Diablo Elementary School', 9: '05/01/2026',
+            11: 'Handwriting', 12: 'OT #1',
+            14: 'By 5/1/2027, Finn will form lower-case letters legibly in 4 of 5 writing samples.',
+            17: 'Occupational Therapist',
+            18: 'Objective 1: Finn will use his speech and language supports during writing.',
+          },
+        ],
+      );
+
+      const ot = await parseCSVReport(csv, { providerRole: 'ot' });
+      const speech = await parseCSVReport(csv, { providerRole: 'speech' });
+
+      expect(ot.students.some((s) => s.lastName === 'Foster')).toBe(true);
+      expect(speech.students.some((s) => s.lastName === 'Foster')).toBe(false);
+    });
+
+    it('warns that annual-review dates are lost when there is no IEP Date column', async () => {
+      const result = await parseCSVReport(buildSeisGoalsCsvWithoutColumns([9]), {});
+
+      expect(result.students.length).toBeGreaterThan(0);
+      expect(result.students.every((s) => s.iepDate === undefined)).toBe(true);
+      expect(result.warnings.some((w) => /iep meeting date/i.test(w.message))).toBe(true);
+    });
+
+    it('bounds the other-school warnings instead of one per row', async () => {
+      // A district-wide export is mostly other schools' students. One warning
+      // per row is thousands of them, and the zero-student path returns
+      // warnings uncapped.
+      const result = await parseCSVReport(SEIS_GOALS_CSV(), {
+        userSchools: ['A School That Matches Nobody'],
+      });
+
+      expect(result.students).toHaveLength(0);
+      const perRow = result.warnings.filter((w) => /doesn't match your school/i.test(w.message));
+      expect(perRow.length).toBeLessThanOrEqual(5);
+      expect(result.warnings.some((w) => /attend schools other than yours and were skipped/i.test(w.message))).toBe(
+        true,
+      );
+    });
+
+    it('says which columns it had to locate by position rather than by name', async () => {
+      // No allowlist can enumerate every label a district might use, so a
+      // positional resolution is stated rather than made silently — it is
+      // right for a relabelled column and wrong for a removed one, and only
+      // the person looking at the file can tell which.
+      const result = await parseCSVReport(buildSeisGoalsCsvWithHeaders({ 1: 'State Student ID' }), {});
+
+      expect(result.warnings.some((w) => /read from the position/i.test(w.message))).toBe(true);
+      expect(result.warnings.some((w) => /"District ID"/.test(w.message))).toBe(true);
+    });
+
+    it('counts other-school students, not their goal rows', async () => {
+      // Ana has two goal rows; counting rows would report her twice.
+      const result = await parseCSVReport(SEIS_GOALS_CSV(), {
+        userSchools: ['A School That Matches Nobody'],
+      });
+
+      const summary = result.warnings.find((w) => /attend schools other than yours/i.test(w.message));
+      expect(summary).toBeDefined();
+      // The fixture's distinct students, not its goal-row count.
+      const allStudents = await parseCSVReport(SEIS_GOALS_CSV(), {});
+      expect(summary!.message.startsWith(`${allStudents.students.length} students`)).toBe(true);
+      // And nobody is named twice among the individual warnings.
+      const named = result.warnings
+        .filter((w) => /doesn't match your school/i.test(w.message))
+        .map((w) => w.message);
+      expect(new Set(named).size).toBe(named.length);
+    });
+
+    // Name alone isn't identity. The dedup key is name + grade + school
+    // (SPE-264), and the skip counter has to agree with it or distinct children
+    // collapse into one skipped student — undercounting the summary and leaving
+    // one of them unnamed even when the five-warning limit isn't reached.
+    it.each([
+      ['different schools', { 6: 'North Elementary' }, { 6: 'South Elementary' }],
+      ['different grades', { 5: '01' }, { 5: '03' }],
+    ])('counts same-named students at %s separately', async (_label, a, b) => {
+      const row = (overrides: Record<number, string>, goal: string) => ({
+        2: 'Alvarez', 3: 'Ana', 5: '01', 6: 'North Elementary', 9: '05/01/2026',
+        11: 'Reading', 12: 'Academic #1', 14: goal, 17: 'Resource Specialist',
+        ...overrides,
+      });
+      const csv = buildSeisGoalsCsvFrom([
+        row(a, 'By 5/1/2027, Ana will read 90 words per minute in 3 of 4 trials.'),
+        row(b, 'By 5/1/2027, Ana will read 60 words per minute in 3 of 4 trials.'),
+      ]);
+
+      const result = await parseCSVReport(csv, { userSchools: ['A School That Matches Nobody'] });
+
+      const named = result.warnings.filter((w) => /doesn't match your school/i.test(w.message));
+      expect(named).toHaveLength(2);
+    });
+
+    // Capping without saying so is the same silent truncation this change is
+    // about, so every capped warning kind reports its remainder.
+    it('reports the remainder when blank-metadata warnings are capped', async () => {
+      const rows = Array.from({ length: 30 }, (_, i) => ({
+        1: `2000${i}`, 2: `Student${i}`, 3: 'Sam', 5: '03',
+        6: 'Mt Diablo Elementary School', 9: '05/01/2026',
+        // 11 / 12 / 17 deliberately blank: no routing signal on any row.
+        14: `By 5/1/2027, Sam will complete task ${i} with 80% accuracy in 4 of 5 trials.`,
+      }));
+
+      const result = await parseCSVReport(buildSeisGoalsCsvFrom(rows), { providerRole: 'resource' });
+
+      const perRow = result.warnings.filter((w) => w.row > 0);
+      expect(perRow.length).toBeLessThanOrEqual(25);
+      expect(result.warnings.some((w) => /30 goal rows have no/.test(w.message))).toBe(true);
+    });
+
+    it('reports the remainder when ID-mismatch warnings are capped', async () => {
+      // Each student gets two goal rows carrying different district IDs.
+      const rows = Array.from({ length: 26 }, (_, i) => [
+        {
+          1: `100${i}`, 2: `Student${i}`, 3: 'Sam', 5: '03',
+          6: 'Mt Diablo Elementary School', 9: '05/01/2026', 11: 'Reading',
+          12: 'Academic #1',
+          14: `By 5/1/2027, Sam will read passage ${i} at 90 words per minute in 3 of 4 trials.`,
+          17: 'Resource Specialist',
+        },
+        {
+          1: `999${i}`, 2: `Student${i}`, 3: 'Sam', 5: '03',
+          6: 'Mt Diablo Elementary School', 9: '05/01/2026', 11: 'Reading',
+          12: 'Academic #2',
+          14: `By 5/1/2027, Sam will summarize passage ${i} with 80% accuracy in 3 of 4 trials.`,
+          17: 'Resource Specialist',
+        },
+      ]).flat();
+
+      const result = await parseCSVReport(buildSeisGoalsCsvFrom(rows), {});
+
+      const perRow = result.warnings.filter((w) => /Student ID mismatch/.test(w.message));
+      expect(perRow.length).toBeLessThanOrEqual(25);
+      expect(result.warnings.some((w) => /26 rows carry a district student ID/.test(w.message))).toBe(
+        true,
+      );
+    });
+
+    it('stays quiet when those columns are present', async () => {
+      const result = await parseCSVReport(SEIS_GOALS_CSV(), { providerRole: 'resource' });
+      expect(result.warnings.some((w) => /district student id|route each goal/i.test(w.message))).toBe(
+        false,
+      );
+    });
+  });
+
+  // Header labels alone cannot separate a column-trimmed SEIS export from an
+  // ordinary goals spreadsheet — they can be identical — so the marker columns
+  // are required with no full-house waiver. This file goes to the generic path,
+  // which is exactly where the old fixed-index detector sent it.
+  it('leaves a marker-less SEIS-shaped file on the generic path, as before', async () => {
+    const csv = Buffer.from(
+      [
+        'District ID,Last Name,First Name,Grade,School of Attendance,IEP Date,Area Of Need,Annual Goal #,Goal,Person Responsible',
+        '100001,Alvarez,Ana,01,Mt Diablo Elementary School,05/01/2026,Reading,Academic #1,' +
+          '"By 5/1/2027, Ana will read 90 words per minute with 95% accuracy in 3 of 4 trials.",' +
+          'Resource Specialist',
+      ].join('\r\n'),
+      'utf-8',
+    );
+
+    expect(detectSEISStudentGoalsFormat(toRecords(csv))).toBe(false);
+
+    const result = await parseCSVReport(csv, { providerRole: 'resource' });
+    expect(result.students).toHaveLength(1);
+
+    // Pinning the KNOWN COST of that path, not endorsing it (SPE-564): the
+    // generic mapper has no district id / school / IEP date, and its unanchored
+    // goal sweep takes "Annual Goal #" as goal text. Identical on main — a
+    // marker-less file has always landed here — so this documents the gap
+    // rather than a regression. Change these expectations when SPE-564 lands.
+    const ana = result.students[0];
+    expect(ana.districtStudentId).toBeUndefined();
+    expect(ana.schoolOfAttendance).toBeUndefined();
+    expect(ana.iepDate).toBeUndefined();
+    expect(ana.goals).toContain('Academic #1');
   });
 
   describe('per-role goal filtering', () => {
