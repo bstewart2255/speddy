@@ -56,9 +56,11 @@
 -- caller can tell the provider "3 added, 1 was picked up by someone else while
 -- you were reviewing" instead of silently dropping it. Outcomes:
 --
---   'claimed'       -- a caseload row now exists, linked to that child
---   'already-served'-- someone (possibly the caller) already serves them
---   'out-of-scope'  -- not a child at a school this caller works at
+--   'claimed'            -- a caseload row now exists, linked to that child
+--   'already-served'     -- someone (possibly the caller) already serves them
+--   'out-of-scope'       -- not a child at a school this caller works at
+--   'duplicate-initials' -- the caller already has someone with those initials
+--                           in that grade at that school
 --
 CREATE OR REPLACE FUNCTION public.claim_roster_children(p_child_ids uuid[])
 RETURNS TABLE(child_id uuid, student_id uuid, outcome text)
@@ -73,6 +75,7 @@ DECLARE
   v_id     uuid;
   v_child  record;
   v_new_student uuid;
+  v_collided boolean;
 BEGIN
   -- SECURITY DEFINER runs as the table owner, which bypasses RLS on `children`.
   -- Every guard below is therefore the ONLY thing standing between a caller and
@@ -143,20 +146,39 @@ BEGIN
     -- set from a client, so this is the only statement it can wave through.
     PERFORM set_config('app.spe348_confirmed_child_id', v_id::text, true);
 
-    INSERT INTO public.students (
-      provider_id, initials, grade_level, school_site, school_id,
-      district_id, state_id, district_student_id, child_id
-    )
-    SELECT
-      v_caller, v_child.initials, v_child.grade_level, s.name, v_child.school_id,
-      v_child.district_id, v_child.state_id, v_child.district_student_id, v_id
-    FROM public.schools s
-    WHERE s.id = v_child.school_id
-    RETURNING id INTO v_new_student;
+    -- `ux_students_provider_school_grade_initials` is unique on
+    -- (provider, school, grade, initials) NULLS NOT DISTINCT, so a provider who
+    -- already has a "JS" in grade 3 at this school cannot take a second one.
+    -- Caught per child rather than allowed to propagate: an unhandled 23505
+    -- aborts the whole transaction, so one pair of shared initials in a
+    -- twenty-student claim would add NOTHING and say nothing about which
+    -- student caused it. Reporting it keeps the per-child contract true.
+    v_collided := false;
+    BEGIN
+      INSERT INTO public.students (
+        provider_id, initials, grade_level, school_site, school_id,
+        district_id, state_id, district_student_id, child_id
+      )
+      SELECT
+        v_caller, v_child.initials, v_child.grade_level, s.name, v_child.school_id,
+        v_child.district_id, v_child.state_id, v_child.district_student_id, v_id
+      FROM public.schools s
+      WHERE s.id = v_child.school_id
+      RETURNING id INTO v_new_student;
+    EXCEPTION WHEN unique_violation THEN
+      v_collided := true;
+    END;
 
     -- Close the door behind us: nothing later in this transaction, including
-    -- the next element of this batch, may reuse it.
+    -- the next element of this batch, may reuse it. Runs on both paths — the
+    -- exception block above rolls back the INSERT, not this handshake.
     PERFORM set_config('app.spe348_confirmed_child_id', '', true);
+
+    IF v_collided THEN
+      child_id := v_id; student_id := NULL; outcome := 'duplicate-initials';
+      RETURN NEXT;
+      CONTINUE;
+    END IF;
 
     -- The roster knows the student's NAME and review dates; `students` does
     -- not carry them. Without this the provider claims a student and gets a

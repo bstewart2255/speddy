@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { withRoute } from '@/lib/api/with-route';
+import { requireProvider } from '@/lib/api/provider-gate';
 import { logger } from '@/lib/logger';
 import { hasRosterOffers, planRosterClaims } from '@/lib/district-roster/claim-plan';
 import {
@@ -50,6 +51,14 @@ const bodySchema = z
  * function.
  */
 export const GET = withRoute({}, async ({ userId }) => {
+  // Authentication alone is NOT enough here: the roster is read with the
+  // service client, and `user_accessible_school_ids()` answers for teachers,
+  // SEAs and admins too — so without this, any signed-in teacher at the school
+  // would receive names, district student ids and IEP dates for every unserved
+  // student on the district's roster.
+  const gate = await requireProvider(userId);
+  if (!gate.ok) return gate.response;
+
   let context;
   try {
     context = await loadProviderRosterContext(userId);
@@ -88,6 +97,9 @@ export const POST = withRoute<Record<string, string>, z.infer<typeof bodySchema>
     rateLimit: { requests: 20, windowSeconds: 60, name: 'provider-roster-claim' },
   },
   async ({ userId, body }) => {
+    const gate = await requireProvider(userId);
+    if (!gate.ok) return gate.response;
+
     let context;
     try {
       context = await loadProviderRosterContext(userId);

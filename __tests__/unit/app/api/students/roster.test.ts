@@ -17,6 +17,8 @@ const CHILD_B = '22222222-2222-4222-8222-222222222222';
 const STUDENT_1 = '33333333-3333-4333-8333-333333333333';
 
 let currentUserId: string | null = PROVIDER;
+/** The caller's profile role — what the provider gate reads. */
+let currentRole: string | null = 'resource';
 
 jest.mock('@/lib/supabase/server', () => ({
   createClient: async () => ({
@@ -26,6 +28,14 @@ jest.mock('@/lib/supabase/server', () => ({
           ? { data: { user: { id: currentUserId } }, error: null }
           : { data: { user: null }, error: { message: 'no session' } },
     },
+    from: () => ({
+      select: () => ({
+        eq: () => ({
+          maybeSingle: async () =>
+            currentRole ? { data: { role: currentRole }, error: null } : { data: null, error: null },
+        }),
+      }),
+    }),
   }),
   createServiceClient: () => ({ from: () => ({ select: () => ({ in: () => ({ data: [], error: null }) }) }) }),
 }));
@@ -109,6 +119,7 @@ const call = (method: 'GET' | 'POST', body?: unknown) => {
 beforeEach(() => {
   jest.clearAllMocks();
   currentUserId = PROVIDER;
+  currentRole = 'resource';
   mockLoad.mockResolvedValue(CONTEXT);
   mockClaim.mockResolvedValue([{ childId: CHILD_A, studentId: 'new-stu', outcome: 'claimed' }]);
   mockAccept.mockResolvedValue({ applied: 1, skipped: 0 });
@@ -121,6 +132,27 @@ describe('GET — what am I offered', () => {
     expect(res.status).toBe(401);
     expect(mockLoad).not.toHaveBeenCalled();
   });
+
+  it('refuses a teacher — the roster is read with the service client', async () => {
+    // `user_accessible_school_ids()` answers for teachers too, so without a
+    // role gate this would hand them names, district student ids and IEP dates
+    // for every unserved student on their school's roster.
+    currentRole = 'teacher';
+    const res = await call('GET');
+
+    expect(res.status).toBe(403);
+    expect(mockLoad).not.toHaveBeenCalled();
+  });
+
+  it.each(['sea', 'site_admin', 'district_admin', null])(
+    'refuses role %s as well',
+    async (role) => {
+      currentRole = role as string | null;
+      const res = await call('GET');
+      expect(res.status).toBe(403);
+      expect(mockLoad).not.toHaveBeenCalled();
+    },
+  );
 
   it('returns the claimable students and the out-of-date ones', async () => {
     const res = await call('GET');
@@ -176,6 +208,15 @@ describe('POST — taking them', () => {
     expect(args.requests).toEqual([{ studentId: STUDENT_1, fields: ['upcomingIepDate'] }]);
     expect((args.plan as { counts: unknown }).counts).toMatchObject({ fills: 1 });
     expect(await res.json()).toMatchObject({ updatedFields: 1 });
+  });
+
+  it('refuses a non-provider before touching anything', async () => {
+    currentRole = 'teacher';
+    const res = await call('POST', { claimChildIds: [CHILD_A] });
+
+    expect(res.status).toBe(403);
+    expect(mockLoad).not.toHaveBeenCalled();
+    expect(mockClaim).not.toHaveBeenCalled();
   });
 
   it('rejects a request that selects nothing', async () => {

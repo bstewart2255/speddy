@@ -22,6 +22,9 @@ import type { ClaimPlan, ProviderStudent, RosterChild, RosterFieldKey } from './
 /** Chunk `.in()` filters so ids cannot overflow the request URL. */
 const IN_CHUNK = 100;
 
+/** PostgREST caps a select at max_rows, so every roster read pages to the end. */
+const DB_PAGE = 1000;
+
 function chunked<T>(values: T[], size: number): T[][] {
   const out: T[][] = [];
   for (let i = 0; i < values.length; i += size) out.push(values.slice(i, i + size));
@@ -97,15 +100,29 @@ export async function loadProviderRosterContext(
   const service = createServiceClient();
   const rosterRows: Record<string, unknown>[] = [];
   for (const chunk of chunked(schoolIds, IN_CHUNK)) {
-    const { data, error } = await service
-      .from('children')
-      .select(
-        'id, initials, first_name, last_name, grade_level, school_id, ' +
-          'district_student_id, upcoming_iep_date, upcoming_triennial_date',
-      )
-      .in('school_id', chunk);
-    if (error) throw new Error(`Could not read the district roster: ${error.message}`);
-    rosterRows.push(...((data ?? []) as unknown as Record<string, unknown>[]));
+    // Keyset paged, for the same reason slice 1's loader is: PostgREST caps a
+    // select at max_rows, and a short read here is SILENT — the missing
+    // students simply never appear on the claim list, which looks exactly like
+    // a district that has not published them. The first page carries no filter
+    // at all because `children.id` is a uuid and PostgREST casts the comparand,
+    // so an empty-string sentinel is rejected outright.
+    for (let afterId: string | null = null; ; ) {
+      const query = service
+        .from('children')
+        .select(
+          'id, initials, first_name, last_name, grade_level, school_id, ' +
+            'district_student_id, upcoming_iep_date, upcoming_triennial_date',
+        )
+        .in('school_id', chunk);
+      const { data, error } = await (afterId === null ? query : query.gt('id', afterId))
+        .order('id')
+        .limit(DB_PAGE);
+      if (error) throw new Error(`Could not read the district roster: ${error.message}`);
+      const rows = (data ?? []) as unknown as Record<string, unknown>[];
+      rosterRows.push(...rows);
+      if (rows.length < DB_PAGE) break;
+      afterId = String(rows[rows.length - 1].id);
+    }
   }
 
   // Who serves each of them. "Claimable" means NOBODY does — not merely "not
@@ -113,14 +130,19 @@ export async function loadProviderRosterContext(
   const served = new Map<string, number>();
   const childIds = rosterRows.map((r) => String(r.id));
   for (const chunk of chunked(childIds, IN_CHUNK)) {
-    const { data, error } = await service
-      .from('students')
-      .select('child_id')
-      .in('child_id', chunk);
-    if (error) throw new Error(`Could not read caseloads: ${error.message}`);
-    for (const row of (data ?? []) as { child_id: string | null }[]) {
-      const id = String(row.child_id);
-      served.set(id, (served.get(id) ?? 0) + 1);
+    for (let afterId: string | null = null; ; ) {
+      const query = service.from('students').select('id, child_id').in('child_id', chunk);
+      const { data, error } = await (afterId === null ? query : query.gt('id', afterId))
+        .order('id')
+        .limit(DB_PAGE);
+      if (error) throw new Error(`Could not read caseloads: ${error.message}`);
+      const rows = (data ?? []) as { id: string; child_id: string | null }[];
+      for (const row of rows) {
+        const id = String(row.child_id);
+        served.set(id, (served.get(id) ?? 0) + 1);
+      }
+      if (rows.length < DB_PAGE) break;
+      afterId = String(rows[rows.length - 1].id);
     }
   }
 
@@ -205,8 +227,17 @@ export async function applyRosterAcceptances(params: {
         .from('students')
         .update(studentPatch)
         .eq('id', request.studentId);
-      if (error) throw new Error(`Could not update your student: ${error.message}`);
-      result.applied += Object.keys(studentPatch).length;
+      if (error) {
+        // A district student id the provider already has on another student
+        // trips `ux_students_provider_district_student_id`. That is one
+        // student's problem, not the batch's: counting it keeps the reported
+        // totals true instead of throwing away acceptances that already
+        // committed earlier in this loop.
+        if (error.code === '23505') result.skipped += Object.keys(studentPatch).length;
+        else throw new Error(`Could not update your student: ${error.message}`);
+      } else {
+        result.applied += Object.keys(studentPatch).length;
+      }
     }
 
     if (Object.keys(detailsPatch).length > 0) {

@@ -175,8 +175,10 @@ export default function RosterClaimBanner() {
       setOpen(false);
       setClaimIds(new Set());
       setPlan(null);
-      // The page's own student list is now stale.
-      window.location.reload();
+      // Deliberately NOT reloading here. The page's student list IS now stale,
+      // but reloading would destroy this message before anyone read it — and
+      // "N were already picked up by someone else" is the one outcome they
+      // cannot find out any other way. The button below reloads on their say-so.
     } catch {
       setError('Could not reach Speddy. Reload the page — it shows what actually changed.');
     } finally {
@@ -186,8 +188,15 @@ export default function RosterClaimBanner() {
 
   if (done) {
     return (
-      <div className="mb-6 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-        {done}
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+        <span>{done}</span>
+        <button
+          type="button"
+          onClick={() => window.location.reload()}
+          className="rounded-md border border-emerald-300 bg-white px-3 py-1.5 text-xs font-medium text-emerald-800 transition-colors hover:bg-emerald-100"
+        >
+          Refresh your list
+        </button>
       </div>
     );
   }
