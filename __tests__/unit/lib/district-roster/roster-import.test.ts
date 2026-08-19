@@ -59,17 +59,17 @@ jest.mock('@/lib/supabase/server', () => ({
         q.eq = filter('eq');
         q.is = filter('is');
         q.in = filter('in');
-        q.not = (col: string, op: string, val: unknown) => {
-          read.filters.push([`not.${op}`, col, val]);
+        // Keyset paging: the first page carries no `.gt()` at all, later pages
+        // filter on the last id seen. The loader stops on a short page.
+        let paged = false;
+        q.gt = (col: string, val: unknown) => {
+          read.filters.push(['gt', col, val]);
+          paged = true;
           return q;
         };
         q.order = () => q;
-        // The loader pages until a short page comes back, so answer once.
-        q.range = (from: number) =>
-          Promise.resolve({ data: from === 0 ? (rowsByTable[table] ?? []) : [], error: null });
-        // The unpaged reads (schools) await the builder itself.
-        q.then = (resolve: (v: unknown) => unknown) =>
-          Promise.resolve({ data: rowsByTable[table] ?? [], error: null }).then(resolve);
+        q.limit = () =>
+          Promise.resolve({ data: paged ? [] : (rowsByTable[table] ?? []), error: null });
         return q;
       },
       insert: (rows: Record<string, unknown>[]) => {

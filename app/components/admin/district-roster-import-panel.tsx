@@ -12,6 +12,8 @@ import type { RosterException, RosterPlan } from '@/lib/district-roster/plan';
 interface RosterResponse {
   mode: 'preview' | 'publish';
   plan: RosterPlan;
+  /** Fingerprint of this exact plan; publishing sends it straight back. */
+  planDigest?: string;
   written?: { created: number; updated: number };
   fileWarnings?: string[];
 }
@@ -29,8 +31,8 @@ function isRosterResponse(value: unknown): value is RosterResponse {
 /**
  * Local copy of the server's `writableRosterChangeCount` (that module pulls in
  * server-only helpers and cannot enter this bundle). Drift fails loudly rather
- * than quietly: publishing is count-bound, so a mismatched copy 409s instead of
- * writing a set the admin never saw.
+ * than quietly: publishing is bound to both this count and the plan's digest,
+ * so a mismatched copy 409s instead of writing a set the admin never saw.
  */
 const writableCount = (plan: RosterPlan): number =>
   plan.refusal ? 0 : plan.counts.creates + plan.counts.updates;
@@ -109,7 +111,7 @@ export default function DistrictRosterImportPanel() {
 
     if (mode === 'publish') {
       const plan = result?.plan;
-      if (!plan) return;
+      if (!plan || !result?.planDigest) return;
       const changes = writableCount(plan);
       const confirmed = window.confirm(
         `Publish this roster?\n\nSpeddy will add ${plan.counts.creates} student(s) and update ` +
@@ -118,16 +120,18 @@ export default function DistrictRosterImportPanel() {
       );
       if (!confirmed) return;
       form.append('expectedChanges', String(changes));
+      form.append('planDigest', result.planDigest);
     }
 
     setRunning(mode);
     setError(null);
     if (mode === 'preview') setResult(null);
 
-    // Above the route's own ceiling (maxDuration = 60s), so the browser never
-    // gives up on a run the server can still finish.
+    // Above the ROUTE'S own ceiling (maxDuration = 300s), so the browser never
+    // gives up on a run the server can still finish — a publish abandoned here
+    // would leave the admin unable to say whether anything was written.
     const abort = new AbortController();
-    const timer = setTimeout(() => abort.abort(), 70_000);
+    const timer = setTimeout(() => abort.abort(), 310_000);
     try {
       const res = await fetch('/api/district/roster-import', {
         method: 'POST',
@@ -169,7 +173,24 @@ export default function DistrictRosterImportPanel() {
 
   const plan = result?.plan ?? null;
   const canPreview = (goalsFile !== null || datesFile !== null) && running === null;
-  const canPublish = plan !== null && result?.mode === 'preview' && writableCount(plan) > 0;
+  const canPublish =
+    plan !== null &&
+    result?.mode === 'preview' &&
+    result.planDigest !== undefined &&
+    writableCount(plan) > 0;
+
+  /**
+   * Choosing a different file throws the preview away. Otherwise Publish would
+   * still be armed against a plan the admin never saw — and if the new file
+   * happened to produce the same number of changes, a different set of students
+   * would be written. (The server binds publish to the plan's digest as well,
+   * so this is the honest UI on top of a real guarantee, not the guarantee.)
+   */
+  const pickFile = (set: (file: File | null) => void) => (file: File | null) => {
+    set(file);
+    setResult(null);
+    setError(null);
+  };
 
   const exceptionsByKind = new Map<RosterException['kind'], RosterException[]>();
   for (const e of plan?.exceptions ?? []) {
@@ -192,7 +213,7 @@ export default function DistrictRosterImportPanel() {
             label="Student Goals report"
             hint="District ID, grade, school of attendance"
             file={goalsFile}
-            onPick={setGoalsFile}
+            onPick={pickFile(setGoalsFile)}
             disabled={running !== null}
           />
           <FilePicker
@@ -200,7 +221,7 @@ export default function DistrictRosterImportPanel() {
             label="IEP Dates report"
             hint="Next annual review and reevaluation dates"
             file={datesFile}
-            onPick={setDatesFile}
+            onPick={pickFile(setDatesFile)}
             disabled={running !== null}
           />
         </div>
@@ -304,7 +325,7 @@ export default function DistrictRosterImportPanel() {
                     <Stat n={plan.compliance.overdueTriennials} label="triennials overdue" />
                     <Stat
                       n={plan.compliance.missingAnnualReviewDate}
-                      label="no review date on file"
+                      label="no annual review date on file"
                     />
                     <Stat n={plan.compliance.servedByNobody} label="on nobody's caseload" />
                     <Stat

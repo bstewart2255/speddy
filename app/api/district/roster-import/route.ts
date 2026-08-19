@@ -12,14 +12,16 @@ import {
   applyDistrictRosterPlan,
   loadDistrictRosterContext,
   rosterPlanCounts,
+  rosterPlanDigest,
 } from '@/lib/district-roster/roster-import';
 
 export const runtime = 'nodejs';
 
 // A whole district's roster: parse two files, read every child in the
-// district, then write. Well inside a minute at real sizes, but not the
-// default 10s.
-export const maxDuration = 60;
+// district, then write. Creates go in chunks, but updates are one round trip
+// each, so a large district refreshing thousands of students needs the same
+// ceiling the other long-running district routes use rather than a minute.
+export const maxDuration = 300;
 
 const log = logger.child({ module: 'district-roster-import' });
 
@@ -119,9 +121,14 @@ export const POST = withRoute({
   const expectedRaw = form.get('expectedChanges');
   const expectedChanges =
     typeof expectedRaw === 'string' && /^\d+$/.test(expectedRaw) ? Number(expectedRaw) : null;
-  if (mode === 'publish' && expectedChanges === null) {
+  const expectedDigestRaw = form.get('planDigest');
+  const expectedDigest =
+    typeof expectedDigestRaw === 'string' && /^[0-9a-f]{32}$/.test(expectedDigestRaw)
+      ? expectedDigestRaw
+      : null;
+  if (mode === 'publish' && (expectedChanges === null || expectedDigest === null)) {
     return NextResponse.json(
-      { error: 'Publishing needs the change count from the preview you reviewed.' },
+      { error: 'Publishing needs the preview you reviewed. Run the preview again.' },
       { status: 400 },
     );
   }
@@ -165,26 +172,41 @@ export const POST = withRoute({
     plan: rosterPlanCounts(plan),
   });
 
+  const planDigest = rosterPlanDigest(plan);
+
   if (mode === 'preview') {
-    return NextResponse.json({ mode: 'preview', plan, fileWarnings: files.warnings });
+    return NextResponse.json({
+      mode: 'preview',
+      plan,
+      planDigest,
+      fileWarnings: files.warnings,
+    });
   }
 
   if (plan.refusal) {
     return NextResponse.json({ error: `Nothing can be published: ${plan.refusal}` }, { status: 409 });
   }
 
+  // Bound to the reviewed plan two ways. The count carries the message a human
+  // can act on; the digest is the actual binding, because a count alone cannot
+  // tell two different plans apart — a different file with the same total, or a
+  // create and an update trading places in the database, would both slip past it.
   const writable = writableRosterChangeCount(plan);
-  if (writable !== expectedChanges) {
+  if (writable !== expectedChanges || planDigest !== expectedDigest) {
     log.info('District roster publish refused: the plan moved since the preview', {
       districtId,
       expected: expectedChanges,
       recomputed: writable,
+      digestMatched: planDigest === expectedDigest,
     });
     return NextResponse.json(
       {
         error:
-          `Your district's records changed since the preview (${expectedChanges} change(s) ` +
-          `approved, ${writable} now planned). Nothing was written — run the preview again.`,
+          writable !== expectedChanges
+            ? `Your district's records changed since the preview (${expectedChanges} change(s) ` +
+              `approved, ${writable} now planned). Nothing was written — run the preview again.`
+            : 'This is not the roster you previewed — the files or your district records have ' +
+              'changed. Nothing was written; run the preview again.',
       },
       { status: 409 },
     );

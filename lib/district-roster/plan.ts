@@ -275,12 +275,17 @@ export function planDistrictRoster(input: RosterPlanInput): RosterPlan {
   // initials index holds ONLY the children with no stored name: a child who
   // has one and does not match it is a different student, and falling back to
   // initials for them would merge two real children.
-  const byDistrictId = new Map<string, ExistingChild>();
+  // Candidates, not a single child: `ux_children_district_student_id` is keyed
+  // on (district_id, id), and Postgres treats NULL district_ids as distinct, so
+  // a district-less legacy row and a district row CAN carry the same student id
+  // — and both are loaded here. Keeping only the last would quietly update one
+  // and leave the other looking absent from the roster.
+  const byDistrictId = new Map<string, ExistingChild[]>();
   const byNameSchool = new Map<string, ExistingChild[]>();
   const nameLessByInitials = new Map<string, ExistingChild[]>();
   for (const child of input.existingChildren) {
     const idKey = districtIdKey(child.districtStudentId);
-    if (idKey) byDistrictId.set(idKey, child);
+    if (idKey) byDistrictId.set(idKey, [...(byDistrictId.get(idKey) ?? []), child]);
     if (clean(child.firstName) || clean(child.lastName)) {
       const nameKey = nameSchoolKey(child.firstName, child.lastName, child.schoolId);
       byNameSchool.set(nameKey, [...(byNameSchool.get(nameKey) ?? []), child]);
@@ -290,100 +295,82 @@ export function planDistrictRoster(input: RosterPlanInput): RosterPlan {
     }
   }
 
-  // Dates, indexed by name + school name so they can enrich a goals row. The
-  // IEP Dates report is the authority for compliance dates (the Goals report's
-  // IEP Date is goal vintage, and the two disagree on real exports).
-  //
-  // A name-only index rides alongside as a fallback. The two reports are
-  // separate SEIS exports, and if one spells a school differently from the
-  // other the school-keyed lookup misses — the student would be written with
-  // no review dates at all, which looks exactly like a district with no dates
-  // on file. The fallback is used ONLY when exactly one student in the whole
-  // dates report bears that name, so it can never pick between two.
-  const datesByName = new Map<string, RosterDatesRecord>();
-  const datesByNameOnly = new Map<string, RosterDatesRecord[]>();
-  for (const record of input.datesRecords) {
-    const key = nameSchoolKey(
-      record.firstName,
-      record.lastName,
-      normalizeSchoolName(record.schoolOfAttendance),
-    );
-    if (!datesByName.has(key)) datesByName.set(key, record);
-    const nameOnly = nameSchoolKey(record.firstName, record.lastName, null);
-    datesByNameOnly.set(nameOnly, [...(datesByNameOnly.get(nameOnly) ?? []), record]);
-  }
-  const datesFor = (firstName: string, lastName: string, schoolName: string) => {
-    const exact = datesByName.get(
-      nameSchoolKey(firstName, lastName, normalizeSchoolName(schoolName)),
-    );
-    if (exact) return exact;
-    const sameName = datesByNameOnly.get(nameSchoolKey(firstName, lastName, null)) ?? [];
-    return sameName.length === 1 ? sameName[0] : undefined;
-  };
-
-  // Merge the two files into one roster of students. The goals report is the
-  // spine (it carries the district id and grade); the dates report contributes
-  // its own students too — 6 of JSUSD's 223 appear ONLY there, brand-new
-  // referrals with no goals written yet, and they belong on the roster.
+  // Merge the two files into one roster of students. The Goals report is the
+  // spine (it carries the district id and grade); the IEP Dates report enriches
+  // those students with their compliance dates — it is the authority for them,
+  // because the Goals report's IEP Date is goal vintage and the two disagree on
+  // real exports — and contributes its own students too. 6 of JSUSD's 223
+  // appear ONLY there: brand-new referrals with no goals written yet.
   interface RosterRow {
     firstName: string;
     lastName: string;
     gradeLevel: string;
     districtStudentId: string | null;
     schoolName: string;
+    dates?: RosterDatesRecord;
   }
-  const rows = new Map<string, RosterRow>();
-  /** Row keys by name alone, for the same cross-export spelling fallback. */
-  const rowKeysByName = new Map<string, string[]>();
 
-  const addRow = (row: RosterRow, allowNameOnlyMerge: boolean) => {
-    const key = nameSchoolKey(row.firstName, row.lastName, normalizeSchoolName(row.schoolName));
-    const nameOnly = nameSchoolKey(row.firstName, row.lastName, null);
-    let existing = rows.get(key);
+  // EVERY goals student becomes its OWN row. They are never merged into each
+  // other: the parser has already collapsed each student's goal rows, so two
+  // entries here are two real children — and two children can share a name at
+  // one school. Merging them by name would silently drop one from the roster,
+  // which is the same guess this planner refuses to make everywhere else.
+  const rows: RosterRow[] = input.goalsStudents.map((student) => ({
+    firstName: clean(student.firstName),
+    lastName: clean(student.lastName),
+    gradeLevel: clean(student.gradeLevel),
+    districtStudentId: districtIdValue(student.districtStudentId),
+    schoolName: clean(student.schoolOfAttendance),
+  }));
 
-    // The dates report's own students merge onto a goals row that differs only
-    // in how its school is spelled — but only when there is exactly one such
-    // row, so a genuine same-name-different-school pair still stays apart.
-    if (!existing && allowNameOnlyMerge) {
-      const candidates = rowKeysByName.get(nameOnly) ?? [];
-      if (candidates.length === 1) existing = rows.get(candidates[0]);
-    }
-
-    if (!existing) {
-      rows.set(key, row);
-      rowKeysByName.set(nameOnly, [...(rowKeysByName.get(nameOnly) ?? []), key]);
-      return;
-    }
-    // Same student from both files: keep the first non-empty of each field.
-    if (!existing.districtStudentId && row.districtStudentId) {
-      existing.districtStudentId = row.districtStudentId;
-    }
-    if (!existing.gradeLevel && row.gradeLevel) existing.gradeLevel = row.gradeLevel;
+  // Indexes for attaching a dates record to the right goals row.
+  const rowsByNameSchool = new Map<string, RosterRow[]>();
+  const rowsByName = new Map<string, RosterRow[]>();
+  const indexRow = (row: RosterRow) => {
+    const ns = nameSchoolKey(row.firstName, row.lastName, normalizeSchoolName(row.schoolName));
+    rowsByNameSchool.set(ns, [...(rowsByNameSchool.get(ns) ?? []), row]);
+    const n = nameSchoolKey(row.firstName, row.lastName, null);
+    rowsByName.set(n, [...(rowsByName.get(n) ?? []), row]);
   };
+  for (const row of rows) indexRow(row);
 
-  for (const student of input.goalsStudents) {
-    addRow(
-      {
-        firstName: clean(student.firstName),
-        lastName: clean(student.lastName),
-        gradeLevel: clean(student.gradeLevel),
-        districtStudentId: districtIdValue(student.districtStudentId),
-        schoolName: clean(student.schoolOfAttendance),
-      },
-      false,
-    );
-  }
   for (const record of input.datesRecords) {
-    addRow(
-      {
-        firstName: clean(record.firstName),
-        lastName: clean(record.lastName),
-        gradeLevel: clean(record.gradeLevel),
-        districtStudentId: null,
-        schoolName: clean(record.schoolOfAttendance),
-      },
-      true,
-    );
+    const firstName = clean(record.firstName);
+    const lastName = clean(record.lastName);
+    const schoolName = clean(record.schoolOfAttendance);
+
+    // Name + school first. The name-only fallback covers the two reports
+    // spelling one school differently — separate SEIS exports, and a miss there
+    // would write the student with no review dates at all, which looks exactly
+    // like a district that keeps none. Both steps require EXACTLY one candidate,
+    // so neither can pick between two same-name students; when the files cannot
+    // tell them apart, the dates are simply not attached to either.
+    const exact =
+      rowsByNameSchool.get(nameSchoolKey(firstName, lastName, normalizeSchoolName(schoolName))) ??
+      [];
+    const byName = rowsByName.get(nameSchoolKey(firstName, lastName, null)) ?? [];
+    const target =
+      exact.length === 1 ? exact[0] : exact.length === 0 && byName.length === 1 ? byName[0] : null;
+
+    if (target) {
+      if (!target.dates) target.dates = record;
+      if (!target.gradeLevel) target.gradeLevel = clean(record.gradeLevel);
+      continue;
+    }
+    // More than one candidate: these dates belong to a student already on the
+    // roster, we just cannot say which. Adding a row would invent a student.
+    if (exact.length > 1 || byName.length > 1) continue;
+
+    const row: RosterRow = {
+      firstName,
+      lastName,
+      gradeLevel: clean(record.gradeLevel),
+      districtStudentId: null,
+      schoolName,
+      dates: record,
+    };
+    rows.push(row);
+    indexRow(row);
   }
 
   // Two file rows carrying ONE district student id — a mid-year transfer listed
@@ -391,7 +378,7 @@ export function planDistrictRoster(input: RosterPlanInput): RosterPlan {
   // `ux_children_district_student_id` and abort the publish partway through,
   // so refuse them here, where the admin can be told which students to check.
   const rowsByDistrictId = new Map<string, RosterRow[]>();
-  for (const row of rows.values()) {
+  for (const row of rows) {
     const key = districtIdKey(row.districtStudentId);
     if (key) rowsByDistrictId.set(key, [...(rowsByDistrictId.get(key) ?? []), row]);
   }
@@ -409,7 +396,7 @@ export function planDistrictRoster(input: RosterPlanInput): RosterPlan {
     cannotLinkToTeachers: 0,
   };
 
-  for (const row of [...rows.values()].sort((a, b) =>
+  for (const row of [...rows].sort((a, b) =>
     `${a.lastName}${a.firstName}`.localeCompare(`${b.lastName}${b.firstName}`),
   )) {
     const initials = initialsOf(row.firstName, row.lastName);
@@ -443,8 +430,7 @@ export function planDistrictRoster(input: RosterPlanInput): RosterPlan {
 
     // Two rows in the files claim one district student id (see above).
     if (rowIdKey && duplicatedIds.has(rowIdKey)) {
-      const claimed = byDistrictId.get(rowIdKey);
-      if (claimed) touchedChildIds.add(claimed.id);
+      for (const claimed of byDistrictId.get(rowIdKey) ?? []) touchedChildIds.add(claimed.id);
       exceptions.push({
         kind: 'duplicate-in-files',
         initials,
@@ -456,7 +442,7 @@ export function planDistrictRoster(input: RosterPlanInput): RosterPlan {
       continue;
     }
 
-    const dates = datesFor(row.firstName, row.lastName, row.schoolName);
+    const dates = row.dates;
 
     // Identity, most specific first: district id, then name + school, then —
     // only for a child Speddy holds under initials alone — initials + grade +
@@ -465,8 +451,23 @@ export function planDistrictRoster(input: RosterPlanInput): RosterPlan {
     let match: ExistingChild | undefined;
     let matchBasis: RosterMatchBasis = 'new';
     if (rowIdKey) {
-      match = byDistrictId.get(rowIdKey);
-      if (match) matchBasis = 'district-student-id';
+      const candidates = byDistrictId.get(rowIdKey) ?? [];
+      if (candidates.length > 1) {
+        for (const candidate of candidates) touchedChildIds.add(candidate.id);
+        exceptions.push({
+          kind: 'ambiguous-name-match',
+          initials,
+          gradeLevel: row.gradeLevel,
+          detail:
+            `${candidates.length} students in Speddy already carry this district student ID; ` +
+            'Speddy will not guess which one this is.',
+        });
+        continue;
+      }
+      if (candidates.length === 1) {
+        match = candidates[0];
+        matchBasis = 'district-student-id';
+      }
     }
     if (!match) {
       const candidates = byNameSchool.get(nameSchoolKey(row.firstName, row.lastName, schoolId)) ?? [];
@@ -613,7 +614,7 @@ export function planDistrictRoster(input: RosterPlanInput): RosterPlan {
       creates: children.filter((c) => c.action === 'create').length,
       updates: children.filter((c) => c.action === 'update').length,
       unchanged: children.filter((c) => c.action === 'unchanged').length,
-      inFiles: rows.size,
+      inFiles: rows.length,
     },
   };
 }

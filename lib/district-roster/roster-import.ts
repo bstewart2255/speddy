@@ -14,6 +14,7 @@
  * district that gate returned and can never be pointed at another one.
  */
 
+import { createHash } from 'crypto';
 import { createServiceClient } from '@/lib/supabase/server';
 import { logServerAuditEvent } from '@/lib/supabase/audit-log-server';
 import { logger } from '@/lib/logger';
@@ -68,25 +69,40 @@ export async function loadDistrictRosterContext(
 ): Promise<DistrictRosterContext> {
   const supabase = createServiceClient();
 
-  const { data: schoolRows, error: schoolsError } = await supabase
-    .from('schools')
-    .select('id, name')
-    .eq('district_id', districtId);
-  if (schoolsError) {
-    throw new Error(`Could not load this district's schools: ${schoolsError.message}`);
+  // Paged like every other read here. A short read would be silent and ugly:
+  // the students at the missing schools come back as "not one of your schools",
+  // so a real district-wide import would look like a district-wide data problem.
+  const schools: DistrictSchool[] = [];
+  for (let afterId: string | null = null; ; ) {
+    const query = supabase.from('schools').select('id, name').eq('district_id', districtId);
+    const { data, error } = await (afterId === null ? query : query.gt('id', afterId))
+      .order('id')
+      .limit(DB_PAGE);
+    if (error) throw new Error(`Could not load this district's schools: ${error.message}`);
+    schools.push(...(data ?? []).map((s) => ({ id: String(s.id), name: String(s.name ?? '') })));
+    if (!data || data.length < DB_PAGE) break;
+    afterId = String(data[data.length - 1].id);
   }
-  const schools: DistrictSchool[] = (schoolRows ?? []).map((s) => ({
-    id: String(s.id),
-    name: String(s.name ?? ''),
-  }));
   const schoolIds = schools.map((s) => s.id);
 
   const CHILD_COLUMNS =
     'id, district_student_id, first_name, last_name, initials, grade_level, school_id, ' +
     'upcoming_iep_date, upcoming_triennial_date';
 
-  // Ordered by id so pages cannot shear under a concurrent insert.
+  // KEYSET paged, not offset paged. With `.range()`, a row inserted with a
+  // lower id while we page shifts every later row across the offset boundary
+  // and one gets skipped — and a child this loader misses is a child the
+  // matcher cannot see, so the import creates a SECOND row for them. Filtering
+  // on the last id seen cannot skip.
+  //
+  // The FIRST page carries no `.gt()` at all rather than a sentinel value.
+  // These ids are uuids, and PostgREST casts the comparand to the column type —
+  // an empty-string sentinel is rejected outright ("invalid input syntax for
+  // type uuid"), which mocked tests cannot see because they never cast.
   const byId = new Map<string, ExistingChild>();
+  /** The last id of a page, for the next page's `.gt()`. */
+  const lastId = (rows: unknown[]): string =>
+    String((rows[rows.length - 1] as Record<string, unknown>).id);
   // `rows` is typed loosely because CHILD_COLUMNS is a shared constant rather
   // than an inline literal, so the client cannot infer the row shape from it.
   const collect = (rows: unknown[]) => {
@@ -109,30 +125,31 @@ export async function loadDistrictRosterContext(
     }
   };
 
-  for (let from = 0; ; from += DB_PAGE) {
-    const { data, error } = await supabase
-      .from('children')
-      .select(CHILD_COLUMNS)
-      .eq('district_id', districtId)
+  for (let afterId: string | null = null; ; ) {
+    const query = supabase.from('children').select(CHILD_COLUMNS).eq('district_id', districtId);
+    const { data, error } = await (afterId === null ? query : query.gt('id', afterId))
       .order('id')
-      .range(from, from + DB_PAGE - 1);
+      .limit(DB_PAGE);
     if (error) throw new Error(`Could not load this district's children: ${error.message}`);
     collect(data ?? []);
     if (!data || data.length < DB_PAGE) break;
+    afterId = lastId(data);
   }
 
   for (const chunk of chunked(schoolIds, IN_CHUNK)) {
-    for (let from = 0; ; from += DB_PAGE) {
-      const { data, error } = await supabase
+    for (let afterId: string | null = null; ; ) {
+      const query = supabase
         .from('children')
         .select(CHILD_COLUMNS)
         .in('school_id', chunk)
-        .is('district_id', null)
+        .is('district_id', null);
+      const { data, error } = await (afterId === null ? query : query.gt('id', afterId))
         .order('id')
-        .range(from, from + DB_PAGE - 1);
+        .limit(DB_PAGE);
       if (error) throw new Error(`Could not load this district's children: ${error.message}`);
       collect(data ?? []);
       if (!data || data.length < DB_PAGE) break;
+      afterId = lastId(data);
     }
   }
 
@@ -141,19 +158,18 @@ export async function loadDistrictRosterContext(
   // on — that is what "served by nobody" means on the review screen.
   const childIds = [...byId.keys()];
   for (const chunk of chunked(childIds, IN_CHUNK)) {
-    for (let from = 0; ; from += DB_PAGE) {
-      const { data, error } = await supabase
-        .from('students')
-        .select('id, child_id')
-        .in('child_id', chunk)
+    for (let afterId: string | null = null; ; ) {
+      const query = supabase.from('students').select('id, child_id').in('child_id', chunk);
+      const { data, error } = await (afterId === null ? query : query.gt('id', afterId))
         .order('id')
-        .range(from, from + DB_PAGE - 1);
+        .limit(DB_PAGE);
       if (error) throw new Error(`Could not load caseload rows: ${error.message}`);
       for (const row of data ?? []) {
         const child = byId.get(String(row.child_id));
         if (child) child.caseloadCount++;
       }
       if (!data || data.length < DB_PAGE) break;
+      afterId = lastId(data);
     }
   }
 
@@ -271,12 +287,51 @@ export async function applyDistrictRosterPlan(params: {
       result.updated++;
     }
   } catch (err) {
-    await recordOutcome(true);
+    // The write failure is the news. If recording the partial outcome ALSO
+    // fails, its rejection must not replace it — the route would then answer
+    // on the wrong cause entirely.
+    try {
+      await recordOutcome(true);
+    } catch (auditErr) {
+      log.error('Recording the partial roster import outcome failed', auditErr, { districtId });
+    }
     throw err;
   }
 
   await recordOutcome(false);
   return result;
+}
+
+/**
+ * A fingerprint of exactly which writes a plan would make.
+ *
+ * Publishing is bound to this, not only to the number of changes. A count alone
+ * cannot tell two different plans apart: swap the uploaded file for another
+ * that happens to produce the same total, or have the database shift one create
+ * into an update and an update into a create between preview and publish, and
+ * the count check passes while a different set of students gets written.
+ *
+ * Server-side only, and never sent anywhere but back to the admin who previewed
+ * it — the client only echoes the string it was given.
+ */
+export function rosterPlanDigest(plan: RosterPlan): string {
+  const lines = plan.children
+    .filter((c) => c.action !== 'unchanged')
+    .map((c) =>
+      [
+        c.action,
+        c.childId ?? 'new',
+        c.fields.districtStudentId ?? '',
+        c.fields.schoolId ?? '',
+        c.fields.gradeLevel,
+        c.fields.firstName,
+        c.fields.lastName,
+        c.fields.upcomingIepDate ?? '',
+        c.fields.upcomingTriennialDate ?? '',
+      ].join(''),
+    )
+    .sort();
+  return createHash('sha256').update(lines.join('\n')).digest('hex').slice(0, 32);
 }
 
 /** Counts only — what may be logged. The plan itself carries student detail. */

@@ -270,6 +270,33 @@ describe('planDistrictRoster', () => {
     });
   });
 
+  describe('two students who share a name at one school', () => {
+    const twins = [
+      goalsStudent({ firstName: 'Ana', lastName: 'Alvarez', gradeLevel: '1', districtStudentId: '100001' }),
+      goalsStudent({ firstName: 'Ana', lastName: 'Alvarez', gradeLevel: '4', districtStudentId: '100002' }),
+    ];
+
+    it('keeps both on the roster — merging them would drop one silently', () => {
+      const result = plan({ goalsStudents: twins, datesRecords: [] });
+
+      expect(result.counts).toMatchObject({ inFiles: 2, creates: 2 });
+      expect(result.children.map((c) => c.fields.districtStudentId).sort()).toEqual([
+        '100001',
+        '100002',
+      ]);
+      expect(result.children.map((c) => c.fields.gradeLevel).sort()).toEqual(['1', '4']);
+    });
+
+    it('attaches review dates to neither, rather than guessing which one', () => {
+      // The dates report carries no grade or district ID, so nothing in it can
+      // tell these two apart.
+      const result = plan({ goalsStudents: twins, datesRecords: [datesRecord()] });
+
+      expect(result.counts.inFiles).toBe(2);
+      expect(result.children.every((c) => c.fields.upcomingIepDate === null)).toBe(true);
+    });
+  });
+
   it('joins the two reports when they spell the school differently', () => {
     // Separate SEIS exports; one saying "John Swett High" and the other
     // "John Swett High School" must not split one student into two rows.

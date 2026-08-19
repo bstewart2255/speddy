@@ -119,6 +119,20 @@ const call = (fields: Record<string, string>, csv: string | null = GOALS_CSV) =>
   return POST(request, { params: Promise.resolve({}) });
 };
 
+/**
+ * Publish the way the panel does: preview first, then send back that preview's
+ * own count and digest. Overrides let a test send a stale or wrong one.
+ */
+const publishAfterPreview = async (
+  overrides: Record<string, string> = {},
+  csv: string | null = GOALS_CSV,
+) => {
+  const preview = await call({ mode: 'preview' }, csv);
+  const { plan, planDigest } = await preview.json();
+  const expectedChanges = String(plan.counts.creates + plan.counts.updates);
+  return call({ mode: 'publish', expectedChanges, planDigest, ...overrides }, csv);
+};
+
 const nothingHappened = () => {
   expect(mockLoad).not.toHaveBeenCalled();
   expect(mockApply).not.toHaveBeenCalled();
@@ -211,7 +225,7 @@ describe('preview', () => {
 
 describe('publish', () => {
   it('writes the plan the admin reviewed', async () => {
-    const res = await call({ mode: 'publish', expectedChanges: '1' });
+    const res = await publishAfterPreview();
     expect(res.status).toBe(200);
 
     const body = await res.json();
@@ -223,13 +237,35 @@ describe('publish', () => {
   });
 
   it('refuses when the plan moved since the preview — 409, nothing written', async () => {
-    const res = await call({ mode: 'publish', expectedChanges: '7' });
+    const res = await publishAfterPreview({ expectedChanges: '7' });
     expect(res.status).toBe(409);
     expect((await res.json()).error).toMatch(/changed since the preview/);
     expect(mockApply).not.toHaveBeenCalled();
   });
 
-  it('refuses a publish with no reviewed count at all', async () => {
+  it('refuses a DIFFERENT plan that happens to have the same change count', async () => {
+    // The count alone cannot tell two plans apart. Preview one file, then
+    // publish another with the same number of changes — a different student
+    // entirely, which the admin never reviewed.
+    const preview = await call({ mode: 'preview' }, GOALS_CSV);
+    const { plan, planDigest } = await preview.json();
+    const otherFile = GOALS_CSV.replace('Alvarez,Ana', 'Bishop,Ben').replace('100001', '200002');
+
+    const res = await call(
+      {
+        mode: 'publish',
+        expectedChanges: String(plan.counts.creates + plan.counts.updates),
+        planDigest,
+      },
+      otherFile,
+    );
+
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toMatch(/not the roster you previewed/);
+    expect(mockApply).not.toHaveBeenCalled();
+  });
+
+  it('refuses a publish with no reviewed preview at all', async () => {
     const res = await call({ mode: 'publish' });
     expect(res.status).toBe(400);
     expect(mockApply).not.toHaveBeenCalled();
@@ -237,7 +273,7 @@ describe('publish', () => {
 
   it('answers honestly when the write fails partway', async () => {
     mockApply.mockRejectedValue(new Error('children insert failed: duplicate key on ux_...'));
-    const res = await call({ mode: 'publish', expectedChanges: '1' });
+    const res = await publishAfterPreview();
 
     expect(res.status).toBe(500);
     const { error } = await res.json();
@@ -247,11 +283,13 @@ describe('publish', () => {
   });
 
   it('answers 502 without writing when the district records cannot be read', async () => {
+    const res = await publishAfterPreview();
     mockLoad.mockRejectedValue(new Error('Could not load this district\'s children: timeout'));
-    const res = await call({ mode: 'publish', expectedChanges: '1' });
+    const retry = await call({ mode: 'publish', expectedChanges: '1', planDigest: 'a'.repeat(32) });
 
-    expect(res.status).toBe(502);
-    expect((await res.json()).error).not.toMatch(/timeout|children/);
-    expect(mockApply).not.toHaveBeenCalled();
+    expect(res.status).toBe(200);
+    expect(retry.status).toBe(502);
+    expect((await retry.json()).error).not.toMatch(/timeout|children/);
+    expect(mockApply).toHaveBeenCalledTimes(1);
   });
 });
