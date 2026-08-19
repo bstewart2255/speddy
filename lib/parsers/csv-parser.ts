@@ -398,12 +398,13 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
             // survives the filter, the zero-student path returns warnings
             // uncapped. Name the first few, then count the rest (summarized
             // after the loop).
-            // Keyed WITH school, like the dedup key below: two different
-            // children sharing a name at two different other-schools are two
-            // skipped students, and the summary should say so (SPE-264).
-            const studentKey = `${firstName.trim().toLowerCase()}|${lastName
+            // Same identity the dedup key below uses — name + grade + school
+            // (SPE-264). Anything less collapses distinct children into one
+            // skipped student, so the summary undercounts and one of them is
+            // never named.
+            const studentKey = `${firstName.trim().toLowerCase()}_${lastName
               .trim()
-              .toLowerCase()}|${normalizeSchoolName(schoolOfAttendance)}`;
+              .toLowerCase()}_${normalizedGrade}_${normalizeSchoolName(schoolOfAttendance.trim())}`;
             if (
               !otherSchoolStudents.has(studentKey) &&
               otherSchoolStudents.size < OTHER_SCHOOL_WARNING_LIMIT
