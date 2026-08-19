@@ -60,10 +60,16 @@ jest.mock('@/lib/district-roster/claim-io', () => ({
 }));
 
 import { GET, POST } from '@/app/api/students/roster/route';
+import type { ProviderRosterContext } from '@/lib/district-roster/claim-io';
 
-/** One claimable child, plus one of theirs with a blank the roster can fill. */
-const CONTEXT = {
+/**
+ * One claimable child, plus one of theirs with a blank the roster can fill.
+ * TYPED as the loader's own return so the fixture cannot drift from the shape
+ * the route actually receives — `mockResolvedValue` would accept anything.
+ */
+const CONTEXT: ProviderRosterContext = {
   schoolIds: ['sch-rodeo'],
+  myName: 'Rosa Delgado',
   rosterChildren: [
     {
       id: CHILD_A,
@@ -75,6 +81,7 @@ const CONTEXT = {
       districtStudentId: '100001',
       upcomingIepDate: '2027-02-09',
       upcomingTriennialDate: '2029-02-09',
+      caseManager: 'Rosa Delgado',
       caseloadCount: 0,
     },
     {
@@ -87,6 +94,7 @@ const CONTEXT = {
       districtStudentId: '200002',
       upcomingIepDate: '2027-06-01',
       upcomingTriennialDate: null,
+      caseManager: 'Someone Else',
       caseloadCount: 1,
     },
   ],
@@ -162,6 +170,9 @@ describe('GET — what am I offered', () => {
     expect(hasOffers).toBe(true);
     expect(plan.counts).toMatchObject({ claimable: 1, updates: 1, fills: 1, conflicts: 0 });
     expect(plan.claimable[0].childId).toBe(CHILD_A);
+    // The district names this caller as case manager, so it arrives pre-ticked.
+    expect(plan.counts.suggested).toBe(1);
+    expect(plan.claimable[0].suggested).toBe(true);
     expect(plan.updates[0].changes[0]).toMatchObject({
       field: 'upcomingIepDate',
       kind: 'fill',

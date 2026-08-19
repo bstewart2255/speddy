@@ -796,8 +796,23 @@ const SEIS_CANONICAL_INDEX = {
   goalType: 12,
   goal: 14,
   personResponsible: 17,
-  caseManager: 8,
-} as const satisfies Record<keyof typeof SEIS_FIELDS, number>;
+} as const satisfies Partial<Record<keyof typeof SEIS_FIELDS, number>>;
+
+/**
+ * Fields resolved by LABEL ONLY — never a witness to the offset, never filled
+ * in by position.
+ *
+ * `caseManager` is optional and merely a hint (SPE-447 pre-selects a provider's
+ * claim list from it). Treating it like the other fields would be actively
+ * harmful in two ways: a district whose Case Manager column sits at a different
+ * relative position would make the offset witnesses disagree and switch OFF
+ * positional resolution for EVERY field — including the District ID the SIS
+ * teacher sync joins on — and an export with no Case Manager column at all
+ * would have whatever sits at that position filled in and shown to providers
+ * as who manages the student. A missing hint costs an unticked checkbox; both
+ * of those cost real data.
+ */
+const SEIS_LABEL_ONLY_FIELDS = ['caseManager'] as const satisfies readonly (keyof typeof SEIS_FIELDS)[];
 
 /** Human-facing column names, for warnings that name what couldn't be read. */
 const SEIS_FIELD_LABELS: Record<keyof typeof SEIS_FIELDS, string> = {
@@ -925,7 +940,15 @@ type SeisColumns = Partial<Record<keyof typeof SEIS_FIELDS, number>> & {
   positionallyResolved?: Array<keyof typeof SEIS_FIELDS>;
 };
 
-const SEIS_FIELD_NAMES = Object.keys(SEIS_CANONICAL_INDEX) as Array<keyof typeof SEIS_FIELDS>;
+const SEIS_FIELD_NAMES = Object.keys(SEIS_CANONICAL_INDEX) as Array<
+  keyof typeof SEIS_CANONICAL_INDEX
+>;
+
+/** Every field a header could legitimately name — positional or label-only. */
+const SEIS_ALL_FIELD_NAMES: Array<keyof typeof SEIS_FIELDS> = [
+  ...SEIS_FIELD_NAMES,
+  ...SEIS_LABEL_ONLY_FIELDS,
+];
 
 /**
  * Resolve every SEIS field: by label first, then — for whatever the labels
@@ -942,11 +965,13 @@ const SEIS_FIELD_NAMES = Object.keys(SEIS_CANONICAL_INDEX) as Array<keyof typeof
 function resolveSeisColumns(normalized: string[]): SeisColumns {
   const columns: SeisColumns = {};
   const guessed: Array<keyof typeof SEIS_FIELDS> = [];
-  for (const field of SEIS_FIELD_NAMES) {
+  for (const field of SEIS_ALL_FIELD_NAMES) {
     const index = findSeisColumn(normalized, field);
     if (index !== undefined) columns[field] = index;
   }
 
+  // Only the positioned fields vote on the offset. A label-only field has no
+  // canonical index to be measured against and must not be able to veto.
   const identified = SEIS_FIELD_NAMES.filter((field) => columns[field] !== undefined);
   const offsets = new Set(identified.map((field) => columns[field]! - SEIS_CANONICAL_INDEX[field]));
   if (identified.length < 3 || offsets.size !== 1) {
@@ -972,7 +997,7 @@ function resolveSeisColumns(normalized: string[]): SeisColumns {
     ) {
       return true;
     }
-    return SEIS_FIELD_NAMES.some((other) => {
+    return SEIS_ALL_FIELD_NAMES.some((other) => {
       if (other === field) return false;
       const { exact, pattern } = SEIS_FIELDS[other];
       return (exact as readonly string[]).includes(header) || pattern.test(header);

@@ -15,9 +15,10 @@ import type { ClaimPlan, RosterFieldKey, RosterUpdateOffer } from '@/lib/distric
  *
  * Two things, kept apart because they carry different risk:
  *
- *   * Students at this provider's school that nobody serves. Nothing is
- *     pre-ticked: the roster carries no case manager and no goals, so Speddy
- *     genuinely does not know which of them are this provider's. Guessing
+ *   * Students at this provider's school that nobody serves. The ones the
+ *     district names THEM as case manager for are pre-ticked; the rest are not,
+ *     because case manager is not the same role as service provider and Speddy
+ *     will not assume. An unticked student is never "not yours" — guessing
  *     would put a student on the wrong caseload, which is worse than asking.
  *   * Students they already serve where the roster holds something newer.
  *     Blanks the roster can FILL are pre-ticked — accepting only adds. A value
@@ -216,6 +217,13 @@ export default function RosterClaimBanner() {
 
   if (!plan || dismissed) return null;
   const { claimable, updates, counts } = plan;
+  /**
+   * Does the roster carry case-manager data at all? It does not before the
+   * district's first upload with it, nor if their names are spelled
+   * differently there — and in those cases "your district doesn't list you"
+   * would be a claim we cannot make from an empty column.
+   */
+  const knowsCaseManagers = claimable.some((c) => c.caseManager);
   if (counts.claimable === 0 && counts.updates === 0) return null;
 
   return (
@@ -270,10 +278,19 @@ export default function RosterClaimBanner() {
                     already. Check them, and tick anyone else you serve — case manager isn&apos;t
                     the same as service provider, so your students may not all be marked.
                   </>
-                ) : (
+                ) : knowsCaseManagers ? (
                   <>
                     Your district doesn&apos;t list you as case manager for any of these, so none
-                    are ticked. Tick the students you serve.
+                    are ticked. Tick the students you serve — you may well serve some of them.
+                  </>
+                ) : (
+                  // No case-manager data at all: before the district's next
+                  // upload, or when their names are spelled differently there.
+                  // Saying "your district doesn't list you" would be a claim we
+                  // cannot make from an empty column.
+                  <>
+                    Speddy doesn&apos;t know which of these are yours, so none are ticked. Tick the
+                    students you serve.
                   </>
                 )}
               </p>
