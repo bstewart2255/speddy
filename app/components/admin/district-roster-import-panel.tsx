@@ -350,21 +350,33 @@ export default function DistrictRosterImportPanel() {
                       {plan.exceptions.length} student(s) Speddy will not add. Nothing about them
                       changes.
                     </p>
-                    {[...exceptionsByKind.entries()].map(([kind, list]) => (
-                      <details key={kind} className="mt-1.5">
-                        <summary className="cursor-pointer text-xs font-medium text-amber-800">
-                          {EXCEPTION_HEADINGS[kind]} ({list.length})
-                        </summary>
-                        <ul className="mt-1 space-y-0.5 pl-4 text-xs text-amber-800/80">
-                          {list.map((e, i) => (
-                            <li key={`${e.initials}:${i}`}>
-                              {e.initials}
-                              {e.gradeLevel ? ` · grade ${e.gradeLevel}` : ''} — {e.detail}
-                            </li>
-                          ))}
-                        </ul>
-                      </details>
-                    ))}
+                    {[...exceptionsByKind.entries()].map(([kind, list]) => {
+                      // When every student in a group is held back for the same
+                      // reason — all 8 of "no grade in either file", say — the
+                      // sentence belongs once under the heading, not repeated
+                      // beside each pair of initials.
+                      const shared =
+                        list.length > 1 && list.every((e) => e.detail === list[0].detail)
+                          ? list[0].detail
+                          : null;
+                      return (
+                        <details key={kind} className="mt-1.5">
+                          <summary className="cursor-pointer text-xs font-medium text-amber-800">
+                            {EXCEPTION_HEADINGS[kind]} ({list.length})
+                          </summary>
+                          {shared && <p className="mt-1 pl-4 text-xs text-amber-800/80">{shared}</p>}
+                          <ul className="mt-1 space-y-0.5 pl-4 text-xs text-amber-800/80">
+                            {list.map((e, i) => (
+                              <li key={`${e.initials}:${i}`}>
+                                {e.initials}
+                                {e.gradeLevel ? ` · grade ${e.gradeLevel}` : ''}
+                                {shared ? '' : ` — ${e.detail}`}
+                              </li>
+                            ))}
+                          </ul>
+                        </details>
+                      );
+                    })}
                   </div>
                 )}
 

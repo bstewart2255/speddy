@@ -1,0 +1,321 @@
+'use client';
+
+import { useCallback, useEffect, useState } from 'react';
+
+/**
+ * Types come from the planner, never re-declared: `import type` is erased at
+ * compile time, so no server-only code reaches this bundle and the shapes
+ * cannot drift from what the route returns.
+ */
+import type { ClaimPlan, RosterFieldKey, RosterUpdateOffer } from '@/lib/district-roster/claim-plan';
+
+/**
+ * "Your district put students on the roster" — the provider's whole entry point
+ * to SPE-447 slice 2.
+ *
+ * Two things, kept apart because they carry different risk:
+ *
+ *   * Students at this provider's school that nobody serves. Nothing is
+ *     pre-ticked: the roster carries no case manager and no goals, so Speddy
+ *     genuinely does not know which of them are this provider's. Guessing
+ *     would put a student on the wrong caseload, which is worse than asking.
+ *   * Students they already serve where the roster holds something newer.
+ *     Blanks the roster can FILL are pre-ticked — accepting only adds. A value
+ *     that DISAGREES with theirs is never pre-ticked: it would overwrite
+ *     something they typed, so it stays their call.
+ *
+ * The provider's goals are not shown, not offered, and cannot be touched — the
+ * roster holds none.
+ */
+
+interface OffersResponse {
+  plan: ClaimPlan;
+  hasOffers: boolean;
+}
+
+const fullName = (first: string | null, last: string | null, fallback: string) =>
+  [first, last].filter(Boolean).join(' ').trim() || fallback;
+
+function ChangeRow({
+  offer,
+  change,
+  checked,
+  onToggle,
+}: {
+  offer: RosterUpdateOffer;
+  change: RosterUpdateOffer['changes'][number];
+  checked: boolean;
+  onToggle: () => void;
+}) {
+  const conflict = change.kind === 'conflict';
+  return (
+    <label
+      className={`flex cursor-pointer items-start gap-2 rounded-md border px-2.5 py-1.5 text-xs ${
+        conflict ? 'border-amber-200 bg-amber-50' : 'border-slate-200 bg-white'
+      }`}
+    >
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={onToggle}
+        className="mt-0.5"
+        aria-label={`${change.label} for ${offer.initials}`}
+      />
+      <span className="text-slate-700">
+        <span className="font-medium text-slate-900">{change.label}</span>
+        {conflict ? (
+          <>
+            {' '}
+            — you have <span className="font-medium">{change.current}</span>, the district says{' '}
+            <span className="font-medium">{change.roster}</span>
+          </>
+        ) : (
+          <>
+            {' '}
+            — you have none; the district says <span className="font-medium">{change.roster}</span>
+          </>
+        )}
+      </span>
+    </label>
+  );
+}
+
+export default function RosterClaimBanner() {
+  const [plan, setPlan] = useState<ClaimPlan | null>(null);
+  const [open, setOpen] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState<string | null>(null);
+  const [claimIds, setClaimIds] = useState<Set<string>>(new Set());
+  const [accepted, setAccepted] = useState<Map<string, Set<RosterFieldKey>>>(new Map());
+
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch('/api/students/roster', { cache: 'no-store' });
+      if (!res.ok) return; // Silent: this is an extra, never the reason a page fails.
+      const body: unknown = await res.json();
+      const offers = body as OffersResponse;
+      if (!offers?.plan?.counts) return;
+      setPlan(offers.plan);
+      // Pre-tick the safe fills only. A conflict is a decision, not a default.
+      const next = new Map<string, Set<RosterFieldKey>>();
+      for (const update of offers.plan.updates) {
+        const fills = update.changes.filter((c) => c.kind === 'fill').map((c) => c.field);
+        if (fills.length > 0) next.set(update.studentId, new Set(fills));
+      }
+      setAccepted(next);
+    } catch {
+      /* An offer the provider never sees is better than a broken page. */
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const toggleClaim = (childId: string) =>
+    setClaimIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(childId)) next.delete(childId);
+      else next.add(childId);
+      return next;
+    });
+
+  const toggleField = (studentId: string, field: RosterFieldKey) =>
+    setAccepted((prev) => {
+      const next = new Map(prev);
+      const fields = new Set(next.get(studentId) ?? []);
+      if (fields.has(field)) fields.delete(field);
+      else fields.add(field);
+      if (fields.size === 0) next.delete(studentId);
+      else next.set(studentId, fields);
+      return next;
+    });
+
+  const selectedCount =
+    claimIds.size + [...accepted.values()].reduce((sum, fields) => sum + fields.size, 0);
+
+  const submit = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/students/roster', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        cache: 'no-store',
+        body: JSON.stringify({
+          claimChildIds: [...claimIds],
+          acceptChanges: [...accepted.entries()].map(([studentId, fields]) => ({
+            studentId,
+            fields: [...fields],
+          })),
+        }),
+      });
+      const body: unknown = await res.json().catch(() => null);
+      if (!res.ok) {
+        setError(
+          typeof (body as { error?: unknown })?.error === 'string'
+            ? (body as { error: string }).error
+            : 'That could not be saved. Reload the page and try again.',
+        );
+        return;
+      }
+      const { claimed, notClaimed, updatedFields } = body as {
+        claimed: number;
+        notClaimed: number;
+        updatedFields: number;
+      };
+      setDone(
+        `${claimed} student(s) added to your caseload, ${updatedFields} detail(s) updated.` +
+          (notClaimed > 0
+            ? ` ${notClaimed} were already picked up by someone else — nothing changed for them.`
+            : ''),
+      );
+      setOpen(false);
+      setClaimIds(new Set());
+      setPlan(null);
+      // The page's own student list is now stale.
+      window.location.reload();
+    } catch {
+      setError('Could not reach Speddy. Reload the page — it shows what actually changed.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (done) {
+    return (
+      <div className="mb-6 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+        {done}
+      </div>
+    );
+  }
+
+  if (!plan || dismissed) return null;
+  const { claimable, updates, counts } = plan;
+  if (counts.claimable === 0 && counts.updates === 0) return null;
+
+  return (
+    <div className="mb-6 rounded-lg border border-sky-200 bg-sky-50">
+      <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+        <div>
+          <p className="text-sm font-semibold text-sky-900">
+            {counts.claimable > 0 && `${counts.claimable} student(s) at your school to claim`}
+            {counts.claimable > 0 && counts.updates > 0 && ' · '}
+            {counts.updates > 0 && `${counts.updates} of your students have updated information`}
+          </p>
+          <p className="mt-0.5 text-xs text-sky-800/80">
+            Your district put its student roster into Speddy. Nothing is added to your caseload and
+            nothing of yours changes until you choose it below.
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            className="rounded-md bg-sky-900 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-sky-800"
+          >
+            {open ? 'Hide' : 'Review'}
+          </button>
+          <button
+            type="button"
+            onClick={() => setDismissed(true)}
+            className="rounded-md border border-sky-300 bg-white px-3 py-2 text-sm font-medium text-sky-800 transition-colors hover:bg-sky-100"
+          >
+            Not now
+          </button>
+        </div>
+      </div>
+
+      {open && (
+        <div className="space-y-3 border-t border-sky-200 px-4 py-3">
+          {error && (
+            <div role="alert" className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+              {error}
+            </div>
+          )}
+
+          {claimable.length > 0 && (
+            <div>
+              <p className="text-xs font-semibold text-slate-900">
+                On your district&apos;s roster, on nobody&apos;s caseload
+              </p>
+              <p className="mt-0.5 text-xs text-slate-500">
+                Speddy doesn&apos;t know which of these are yours — the roster carries no case
+                manager — so tick only the students you serve.
+              </p>
+              <div className="mt-1.5 grid gap-1.5 sm:grid-cols-2">
+                {claimable.map((c) => (
+                  <label
+                    key={c.childId}
+                    className="flex cursor-pointer items-center gap-2 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={claimIds.has(c.childId)}
+                      onChange={() => toggleClaim(c.childId)}
+                    />
+                    <span className="text-slate-700">
+                      <span className="font-medium text-slate-900">
+                        {fullName(c.firstName, c.lastName, c.initials)}
+                      </span>
+                      {c.gradeLevel ? ` · grade ${c.gradeLevel}` : ''}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {updates.length > 0 && (
+            <div>
+              <p className="text-xs font-semibold text-slate-900">
+                Your students, where the district has newer information
+              </p>
+              <p className="mt-0.5 text-xs text-slate-500">
+                Blanks are ticked for you. Anything that disagrees with what you entered is left for
+                you to decide. Your goals are never touched.
+              </p>
+              <div className="mt-1.5 space-y-2">
+                {updates.map((u) => (
+                  <div key={u.studentId} className="rounded-md border border-slate-200 bg-white px-2.5 py-2">
+                    <p className="text-xs font-medium text-slate-900">
+                      {u.initials}
+                      {u.gradeLevel ? ` · grade ${u.gradeLevel}` : ''}
+                    </p>
+                    <div className="mt-1 space-y-1">
+                      {u.changes.map((change) => (
+                        <ChangeRow
+                          key={change.field}
+                          offer={u}
+                          change={change}
+                          checked={accepted.get(u.studentId)?.has(change.field) ?? false}
+                          onToggle={() => toggleField(u.studentId, change.field)}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => void submit()}
+              disabled={saving || selectedCount === 0}
+              className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-700 disabled:opacity-50"
+            >
+              {saving ? 'Saving…' : `Apply ${selectedCount} selected`}
+            </button>
+            <span className="text-xs text-slate-500">
+              Nothing else on your caseload changes.
+            </span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
