@@ -153,23 +153,27 @@ export const POST = withRoute<Record<string, string>, z.infer<typeof bodySchema>
       );
     }
 
-    // Per-outcome, NOT one lump. A student refused for a name collision needs a
-    // different remedy from one somebody else got to first, and telling a
-    // provider "already picked up by someone else" about a deterministic
-    // initials clash sends them looking for a race that never happened.
+    // Per-outcome, NOT one lump. Each refusal has a different remedy, so each
+    // keeps its own number: telling a provider "already picked up by someone
+    // else" about a deterministic initials clash — or about a student who left
+    // their school — sends them looking for a race that never happened.
     const countOf = (outcome: string) => claims.filter((c) => c.outcome === outcome).length;
     const claimed = countOf('claimed');
     const duplicateInitials = countOf('duplicate-initials');
-    // Refused by the database, plus anything the recomputed plan had already
-    // stopped offering before we asked.
-    const takenBysomeoneElse =
-      countOf('already-served') + countOf('out-of-scope') + (requested.length - claims.length);
+    // Somebody got there first: the database found a caseload row, or the
+    // recomputed plan had already stopped offering them before we asked. That
+    // gap is overwhelmingly the same race, seen a moment earlier.
+    const takenBySomeoneElse = countOf('already-served') + (requested.length - claims.length);
+    // A different refusal entirely, and it is NOT a race: the student is no
+    // longer on the roster at a school this caller works at.
+    const outOfScope = countOf('out-of-scope');
 
     log.info('Provider roster claim applied', {
       userId,
       claimed,
       duplicateInitials,
-      takenBysomeoneElse,
+      takenBySomeoneElse,
+      outOfScope,
       updated: accepted.applied,
       skipped: accepted.skipped,
     });
@@ -177,7 +181,8 @@ export const POST = withRoute<Record<string, string>, z.infer<typeof bodySchema>
     return NextResponse.json({
       claimed,
       duplicateInitials,
-      takenBySomeoneElse: takenBysomeoneElse,
+      takenBySomeoneElse,
+      outOfScope,
       updatedFields: accepted.applied,
       skippedFields: accepted.skipped,
     });

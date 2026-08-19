@@ -96,17 +96,29 @@ export default function RosterClaimBanner() {
       const res = await fetch('/api/students/roster', { cache: 'no-store' });
       if (!res.ok) return; // Silent: this is an extra, never the reason a page fails.
       const body: unknown = await res.json();
-      const offers = body as OffersResponse;
-      if (!offers?.plan?.counts) return;
-      setPlan(offers.plan);
+      const nextPlan = (body as Partial<OffersResponse> | null)?.plan;
+      // Check the SHAPE before storing it, not just that a plan came back.
+      // Everything below this line runs inside the try, so a malformed body
+      // would be swallowed — but rendering happens outside it, and a plan in
+      // state without its arrays takes the whole page down. A banner nobody
+      // sees is the acceptable failure here; a broken Students page is not.
+      if (
+        !nextPlan?.counts ||
+        !Array.isArray(nextPlan.claimable) ||
+        !Array.isArray(nextPlan.updates) ||
+        !nextPlan.updates.every((u) => Array.isArray(u?.changes))
+      ) {
+        return;
+      }
+      setPlan(nextPlan);
       // Pre-select the students the district's own roster names this provider
       // as case manager for. Still a suggestion — case manager is not the same
       // role as service provider, so the rest are left for them to pick, never
       // marked "not yours".
-      setClaimIds(new Set(offers.plan.claimable.filter((c) => c.suggested).map((c) => c.childId)));
+      setClaimIds(new Set(nextPlan.claimable.filter((c) => c.suggested).map((c) => c.childId)));
       // Pre-tick the safe fills only. A conflict is a decision, not a default.
       const next = new Map<string, Set<RosterFieldKey>>();
-      for (const update of offers.plan.updates) {
+      for (const update of nextPlan.updates) {
         const fills = update.changes.filter((c) => c.kind === 'fill').map((c) => c.field);
         if (fills.length > 0) next.set(update.studentId, new Set(fills));
       }
@@ -167,32 +179,59 @@ export default function RosterClaimBanner() {
         );
         return;
       }
-      const { claimed, duplicateInitials, takenBySomeoneElse, updatedFields } = body as {
-        claimed: number;
-        duplicateInitials: number;
-        takenBySomeoneElse: number;
-        updatedFields: number;
-      };
-      // Each refusal gets its own sentence. A name collision is not a race, and
-      // the remedy is different, so they must not be reported as one number.
+      // Coerced, not trusted: a missing number would otherwise render as
+      // "undefined student(s) added", and a refusal count that arrives as a
+      // string would never pass `> 0` and would go unsaid.
+      const count = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
+      const result = (body ?? {}) as Record<string, unknown>;
+      const claimed = count(result.claimed);
+      const updatedFields = count(result.updatedFields);
+
+      // Every refusal gets its OWN sentence, because every one has a different
+      // remedy. Folding them together is how a provider ends up hunting for a
+      // colleague who took a student nobody took.
+      const notes: string[] = [];
+      if (count(result.takenBySomeoneElse) > 0) {
+        notes.push(
+          `${count(result.takenBySomeoneElse)} were already picked up by someone else — nothing` +
+            ' changed for them.',
+        );
+      }
+      if (count(result.outOfScope) > 0) {
+        notes.push(
+          `${count(result.outOfScope)} are no longer on the roster at your school, so they were` +
+            " not added — refresh to see what's there now.",
+        );
+      }
+      if (count(result.duplicateInitials) > 0) {
+        notes.push(
+          `${count(result.duplicateInitials)} could not be added because you already have a` +
+            ' student with the same initials in that grade at that school — change the initials on' +
+            ' your existing student, then claim again.',
+        );
+      }
+      if (count(result.skippedFields) > 0) {
+        // Silence here would be the worst kind: they ticked it, so they believe
+        // it saved. It did not.
+        notes.push(
+          `${count(result.skippedFields)} detail(s) were not applied — the district's information` +
+            ' had already changed, or it clashed with another of your students.',
+        );
+      }
+
       setDone(
-        `${claimed} student(s) added to your caseload, ${updatedFields} detail(s) updated.` +
-          (takenBySomeoneElse > 0
-            ? ` ${takenBySomeoneElse} were already picked up by someone else — nothing changed for them.`
-            : '') +
-          (duplicateInitials > 0
-            ? ` ${duplicateInitials} could not be added because you already have a student with the` +
-              ' same initials in that grade at that school — change the initials on your existing' +
-              ' student, then claim again.'
-            : ''),
+        [`${claimed} student(s) added to your caseload, ${updatedFields} detail(s) updated.`, ...notes].join(
+          ' ',
+        ),
       );
       setOpen(false);
       setClaimIds(new Set());
       setPlan(null);
       // Deliberately NOT reloading here. The page's student list IS now stale,
       // but reloading would destroy this message before anyone read it — and
-      // "N were already picked up by someone else" is the one outcome they
-      // cannot find out any other way. The button below reloads on their say-so.
+      // the refusals above are the outcomes a provider cannot find out any
+      // other way: the student simply is not there, with no reason given. The
+      // button below reloads on their say-so.
     } catch {
       setError('Could not reach Speddy. Reload the page — it shows what actually changed.');
     } finally {

@@ -14,6 +14,7 @@ import { NextRequest } from 'next/server';
 const PROVIDER = '55555555-5555-4555-8555-555555555555';
 const CHILD_A = '11111111-1111-4111-8111-111111111111';
 const CHILD_B = '22222222-2222-4222-8222-222222222222';
+const CHILD_C = '44444444-4444-4444-8444-444444444444';
 const STUDENT_1 = '33333333-3333-4333-8333-333333333333';
 
 let currentUserId: string | null = PROVIDER;
@@ -63,7 +64,10 @@ import { GET, POST } from '@/app/api/students/roster/route';
 import type { ProviderRosterContext } from '@/lib/district-roster/claim-io';
 
 /**
- * One claimable child, plus one of theirs with a blank the roster can fill.
+ * Two claimable children — one the district names THIS caller as case manager
+ * for, one it names somebody else for — plus one of theirs with a blank the
+ * roster can fill.
+ *
  * TYPED as the loader's own return so the fixture cannot drift from the shape
  * the route actually receives — `mockResolvedValue` would accept anything.
  */
@@ -96,6 +100,19 @@ const CONTEXT: ProviderRosterContext = {
       upcomingTriennialDate: null,
       caseManager: 'Someone Else',
       caseloadCount: 1,
+    },
+    {
+      id: CHILD_C,
+      initials: 'CC',
+      firstName: 'Cara',
+      lastName: 'Cole',
+      gradeLevel: '2',
+      schoolId: 'sch-rodeo',
+      districtStudentId: '300003',
+      upcomingIepDate: null,
+      upcomingTriennialDate: null,
+      caseManager: 'Owen Pike',
+      caseloadCount: 0,
     },
   ],
   myStudents: [
@@ -168,11 +185,16 @@ describe('GET — what am I offered', () => {
 
     const { plan, hasOffers } = await res.json();
     expect(hasOffers).toBe(true);
-    expect(plan.counts).toMatchObject({ claimable: 1, updates: 1, fills: 1, conflicts: 0 });
-    expect(plan.claimable[0].childId).toBe(CHILD_A);
-    // The district names this caller as case manager, so it arrives pre-ticked.
+    expect(plan.counts).toMatchObject({ claimable: 2, updates: 1, fills: 1, conflicts: 0 });
+    expect(plan.claimable.map((c: { childId: string }) => c.childId)).toEqual([CHILD_A, CHILD_C]);
+    // The district names this caller as case manager for CHILD_A, so it arrives
+    // pre-ticked — and names someone else for CHILD_C, which must NOT. A
+    // pre-ticked box is the thing people stop reading, so a wrong one puts a
+    // student on the wrong caseload.
     expect(plan.counts.suggested).toBe(1);
     expect(plan.claimable[0].suggested).toBe(true);
+    expect(plan.claimable[1].suggested).toBe(false);
+    expect(plan.claimable[1].caseManager).toBe('Owen Pike');
     expect(plan.updates[0].changes[0]).toMatchObject({
       field: 'upcomingIepDate',
       kind: 'fill',
@@ -234,6 +256,31 @@ describe('POST — taking them', () => {
       duplicateInitials: 1,
       takenBySomeoneElse: 0,
     });
+  });
+
+  it('reports a student who left the school as its own outcome, not as a lost race', async () => {
+    // "Someone else picked them up" would send the provider looking for a
+    // colleague who never took anyone. Nobody has this student; they are simply
+    // no longer on the roster at a school this caller works at.
+    mockClaim.mockResolvedValue([{ childId: CHILD_A, studentId: null, outcome: 'out-of-scope' }]);
+    const res = await call('POST', { claimChildIds: [CHILD_A] });
+
+    expect(await res.json()).toMatchObject({
+      claimed: 0,
+      outOfScope: 1,
+      takenBySomeoneElse: 0,
+      duplicateInitials: 0,
+    });
+  });
+
+  it('reports fields it could not apply, rather than letting them pass as saved', async () => {
+    // The provider ticked these, so silence reads as "saved". It was not.
+    mockAccept.mockResolvedValue({ applied: 1, skipped: 2 });
+    const res = await call('POST', {
+      acceptChanges: [{ studentId: STUDENT_1, fields: ['upcomingIepDate'] }],
+    });
+
+    expect(await res.json()).toMatchObject({ updatedFields: 1, skippedFields: 2 });
   });
 
   it('refuses a non-provider before touching anything', async () => {
