@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
-import { resolveDistrictSisCaller } from '@/lib/api/district-sis-caller';
-import { createServiceClient } from '@/lib/supabase/server';
+import { requireDistrictAdmin } from '@/lib/api/district-admin-gate';
 import { logger } from '@/lib/logger';
 import { resolveOneRosterConnection } from '@/lib/sis/connections';
 
@@ -60,49 +59,22 @@ export async function requireDistrictAdminOneRoster(
     response: NextResponse.json(body, { status }),
   });
 
-  const caller = await resolveDistrictSisCaller(userId);
-  if (!caller.ok) {
-    log.warn(`Non-district-admin tried the ${surface.logLabel}`, {
-      userId,
-      denied: caller.denied,
-    });
-    return refuse({ error: 'Forbidden: district admin access required' }, 403);
-  }
-  if (caller.role !== 'district_admin') {
-    const { data: adminGrant, error: grantError } = await createServiceClient()
-      .from('admin_permissions')
-      .select('id')
-      .eq('admin_id', userId)
-      .eq('role', 'district_admin')
-      .eq('district_id', caller.districtId)
-      .limit(1)
-      .maybeSingle();
-    if (grantError) {
-      // Fail-closed either way, but a database fault must not read as a
-      // missing grant in the logs.
-      log.error('The district_admin grant re-check failed; refusing', grantError, {
-        userId,
-        districtId: caller.districtId,
-      });
-    }
-    if (!adminGrant) {
-      log.warn(`district_tech tried the ${surface.logLabel}`, {
-        userId,
-        districtId: caller.districtId,
-      });
-      return refuse({ error: surface.adminOnlyMessage }, 403);
-    }
-  }
+  const admitted = await requireDistrictAdmin(userId, {
+    logLabel: surface.logLabel,
+    adminOnlyMessage: surface.adminOnlyMessage,
+  });
+  if (!admitted.ok) return { ok: false, response: admitted.response };
+  const districtId = admitted.districtId;
 
   // Connection + credential resolution is SHARED with the unattended runner
   // (resolveOneRosterConnection, SPE-545) so the attended and unattended
   // paths cannot drift on "does this district have a dialable setup". This
   // gate owns only the mapping to its pinned HTTP refusals.
-  const resolved = await resolveOneRosterConnection(caller.districtId);
+  const resolved = await resolveOneRosterConnection(districtId);
   if (resolved.status === 'load-failed') {
     if (resolved.phase === 'connections') {
       log.error(`Failed to load SIS connections for the ${surface.logLabel}`, undefined, {
-        districtId: caller.districtId,
+        districtId: districtId,
       });
       return refuse({ error: 'Could not load your connection.' }, 500);
     }
@@ -126,7 +98,7 @@ export async function requireDistrictAdminOneRoster(
 
   return {
     ok: true,
-    districtId: caller.districtId,
+    districtId: districtId,
     connection: resolved.connection,
     credential: resolved.credential,
   };

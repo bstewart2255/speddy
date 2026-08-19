@@ -113,11 +113,16 @@ function normalizeHeader(cell: string): string {
 const COL = {
   firstName: 'first name',
   lastName: 'last name',
-  gradeLevel: 'grade level',
   school: 'school of attendance',
   iepDate: 'date of next annual plan review',
   triennial: 'date of next reevaluation',
 } as const;
+
+// Grade is the one column SEIS spells differently between reports: "Grade
+// Level" here, plain "Grade" on the Student Goals report. Accept both, in that
+// order of preference — a district that adds grade to this export is otherwise
+// silently ignored, which is the same class of miss as SPE-558.
+const GRADE_HEADERS = ['grade level', 'grade'] as const;
 
 /**
  * Parse a SEIS "IEP Dates" CSV buffer into a normalized-name → dates map.
@@ -177,7 +182,10 @@ export async function parseIepDatesCSV(buffer: Buffer): Promise<IepDatesParseRes
   const indexOf = (name: string) => header.indexOf(name);
   const firstNameIdx = indexOf(COL.firstName);
   const lastNameIdx = indexOf(COL.lastName);
-  const gradeIdx = indexOf(COL.gradeLevel);
+  const gradeIdx = GRADE_HEADERS.reduce<number>(
+    (found, name) => (found === -1 ? indexOf(name) : found),
+    -1,
+  );
   const schoolIdx = indexOf(COL.school);
   const iepDateIdx = indexOf(COL.iepDate);
   const triennialIdx = indexOf(COL.triennial);
