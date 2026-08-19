@@ -72,6 +72,46 @@ COMMENT ON TABLE public.backup_spe570_profile_scope_backfill IS
 -- No RLS policies: service-role / migration access only. Not exposed to clients.
 ALTER TABLE public.backup_spe570_profile_scope_backfill ENABLE ROW LEVEL SECURITY;
 
+-- Blast-radius guard, BEFORE anything is written. The audit on 2026-08-19 found
+-- 114 rows for statement 1 and 1 for statement 2; this aborts if the population
+-- has grown beyond anything that plausibly represents. Since the code fix ships
+-- in the same PR, the set can only SHRINK between the audit and this running —
+-- a large jump means something changed that a human should look at first.
+--
+-- Deliberately a bound, not an allowlist of the 114 ids (CodeRabbit, PR #909).
+-- An identity allowlist would be worse here on both sides: it would freeze in
+-- 114 UUIDs, and it would SKIP any row carrying this same bug that appeared
+-- between the audit and the deploy — leaving exactly the defect this migration
+-- exists to clear. The reason a wider set is safe is that no value here is
+-- chosen: each row's district comes from its OWN school and each state from its
+-- OWN district, so a row that qualifies is a row that is provably wrong today.
+-- Verified against prod: ZERO profiles anywhere disagree with their school's
+-- district, so this can only fill blanks, never overwrite a conflicting value.
+DO $$
+DECLARE
+  candidates_district bigint;
+  candidates_state    bigint;
+BEGIN
+  SELECT count(*) INTO candidates_district
+  FROM public.profiles p
+  JOIN public.schools s ON s.id = p.school_id
+  WHERE p.district_id IS NULL;
+
+  SELECT count(*) INTO candidates_state
+  FROM public.profiles p
+  JOIN public.districts d ON d.id = p.district_id
+  WHERE p.state_id IS NULL;
+
+  RAISE NOTICE 'SPE-570: backfilling % profile(s) missing a district, % missing a state (audited: 114 and 1)',
+    candidates_district, candidates_state;
+
+  IF candidates_district > 200 OR candidates_state > 50 THEN
+    RAISE EXCEPTION
+      'SPE-570: candidate set far larger than audited (% district, % state vs 114 and 1); refusing to backfill until a human confirms why',
+      candidates_district, candidates_state;
+  END IF;
+END $$;
+
 INSERT INTO public.backup_spe570_profile_scope_backfill (profile_id, previous_district_id, previous_state_id)
 SELECT p.id, p.district_id, p.state_id
 FROM public.profiles p

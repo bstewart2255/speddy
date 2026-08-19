@@ -356,8 +356,14 @@ describe('applyTeacherSyncPlan', () => {
     mockDeleteUser.mockResolvedValue({ data: null, error: { message: 'FK still references' } });
     await expect(run()).rejects.toThrow(/Profile creation failed/);
     const logged = JSON.stringify(logCalls);
-    expect(logged).toContain('orphaned auth account');
+    // Rollback now runs through the shared `rollbackProvisionedAccount`
+    // (SPE-570), so the wording comes from there. What matters is unchanged
+    // and is what these assert: the failure is logged rather than swallowed,
+    // it names the account id an operator has to chase, and it carries the
+    // reason the delete was refused.
+    expect(logged).toContain('Rollback could not remove the auth user');
     expect(logged).toContain('auth-1');
+    expect(logged).toContain('FK still references');
   });
 
   it('conflict detection honors the stable email_exists code, without prose', async () => {
