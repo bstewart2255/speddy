@@ -35,6 +35,8 @@ export interface RosterChild {
   districtStudentId: string | null;
   upcomingIepDate: string | null;
   upcomingTriennialDate: string | null;
+  /** Who SEIS names as case manager, verbatim. A hint, never an assignment. */
+  caseManager: string | null;
   /** Caseloads currently serving this child. 0 means claimable. */
   caseloadCount: number;
 }
@@ -56,6 +58,8 @@ export interface ProviderStudent {
 export interface ClaimPlanInput {
   rosterChildren: RosterChild[];
   myStudents: ProviderStudent[];
+  /** The caller's own name, for matching the roster's case-manager text. */
+  myName?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -104,6 +108,15 @@ export interface ClaimOffer {
   districtStudentId: string | null;
   upcomingIepDate: string | null;
   upcomingTriennialDate: string | null;
+  /** Verbatim, for the screen to say WHY this one is suggested. */
+  caseManager: string | null;
+  /**
+   * The district names this provider as the student's case manager, so the
+   * screen may pre-select them. Being a hint is the whole point: case manager
+   * is not the same role as service provider (one pilot SLP serves 42 students
+   * while managing 17), so a false means "decide yourself", never "not yours".
+   */
+  suggested: boolean;
 }
 
 export interface ClaimPlan {
@@ -113,6 +126,8 @@ export interface ClaimPlan {
     claimable: number;
     /** Students of theirs with at least one change on offer. */
     updates: number;
+    /** Of the claimable, how many the district says this provider manages. */
+    suggested: number;
     /** Blanks the roster can fill — safe to accept in bulk. */
     fills: number;
     /** Values that disagree — each one is a decision. */
@@ -123,6 +138,23 @@ export interface ClaimPlan {
 // ---------------------------------------------------------------------------
 
 const clean = (v: string | null | undefined): string => (v ?? '').trim();
+
+/**
+ * Compare a SEIS case-manager name with a Speddy provider's name.
+ *
+ * Exact after normalizing case, punctuation and spacing — deliberately no fuzzy
+ * matching. A miss costs one unticked checkbox the provider ticks themselves; a
+ * wrong hit pre-selects someone else's student, and although the provider still
+ * confirms, a pre-ticked box is exactly the thing people stop reading.
+ */
+const nameKey = (name: string | null | undefined): string =>
+  clean(name)
+    .toLowerCase()
+    // Apostrophes are pure noise between two spellings of one name — the pilot
+    // district's SEIS writes "Charli OMalley" where Speddy has "Charli
+    // O'Malley". Both the straight and curly forms, since exports use either.
+    .replace(/['\u2019.,]/g, '')
+    .replace(/\s+/g, ' ');
 
 /** Labels are the provider's words, not the column names. */
 const FIELD_LABELS: Record<RosterFieldKey, string> = {
@@ -139,6 +171,7 @@ export function planRosterClaims(input: ClaimPlanInput): ClaimPlan {
     input.myStudents.map((s) => clean(s.childId)).filter((id) => id !== ''),
   );
 
+  const myKey = nameKey(input.myName);
   const claimable: ClaimOffer[] = [];
   const rosterByChildId = new Map<string, RosterChild>();
   for (const child of input.rosterChildren) {
@@ -159,6 +192,8 @@ export function planRosterClaims(input: ClaimPlanInput): ClaimPlan {
         districtStudentId: child.districtStudentId,
         upcomingIepDate: child.upcomingIepDate,
         upcomingTriennialDate: child.upcomingTriennialDate,
+        caseManager: child.caseManager,
+        suggested: myKey !== '' && nameKey(child.caseManager) === myKey,
       });
     }
   }
@@ -213,6 +248,7 @@ export function planRosterClaims(input: ClaimPlanInput): ClaimPlan {
     updates,
     counts: {
       claimable: claimable.length,
+      suggested: claimable.filter((c) => c.suggested).length,
       updates: updates.length,
       fills: allChanges.filter((c) => c.kind === 'fill').length,
       conflicts: allChanges.filter((c) => c.kind === 'conflict').length,

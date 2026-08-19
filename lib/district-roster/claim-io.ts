@@ -35,6 +35,8 @@ export interface ProviderRosterContext {
   schoolIds: string[];
   rosterChildren: RosterChild[];
   myStudents: ProviderStudent[];
+  /** The caller's own name, matched against the roster's case-manager text. */
+  myName: string | null;
 }
 
 /**
@@ -45,6 +47,16 @@ export async function loadProviderRosterContext(
   userId: string,
 ): Promise<ProviderRosterContext> {
   const session = await createClient();
+
+  // Their own name, for the case-manager hint. Read through their session:
+  // `profiles_view_own` is what permits it, and a failure here must not stop
+  // the offers — it only costs the pre-selection.
+  const { data: me } = await session
+    .from('profiles')
+    .select('full_name')
+    .eq('id', userId)
+    .maybeSingle();
+  const myName = (me?.full_name as string | null) ?? null;
 
   // The caller's own schools, resolved BY the caller — the same function
   // `claim_roster_children` checks against, so the screen can never offer a
@@ -92,7 +104,7 @@ export async function loadProviderRosterContext(
   });
 
   if (schoolIds.length === 0) {
-    return { schoolIds, rosterChildren: [], myStudents };
+    return { schoolIds, rosterChildren: [], myStudents, myName };
   }
 
   // The roster. Service client, because an unclaimed child is invisible through
@@ -111,7 +123,7 @@ export async function loadProviderRosterContext(
         .from('children')
         .select(
           'id, initials, first_name, last_name, grade_level, school_id, ' +
-            'district_student_id, upcoming_iep_date, upcoming_triennial_date',
+            'district_student_id, upcoming_iep_date, upcoming_triennial_date, case_manager',
         )
         .in('school_id', chunk);
       const { data, error } = await (afterId === null ? query : query.gt('id', afterId))
@@ -156,10 +168,11 @@ export async function loadProviderRosterContext(
     districtStudentId: (row.district_student_id as string | null) ?? null,
     upcomingIepDate: (row.upcoming_iep_date as string | null) ?? null,
     upcomingTriennialDate: (row.upcoming_triennial_date as string | null) ?? null,
+    caseManager: (row.case_manager as string | null) ?? null,
     caseloadCount: served.get(String(row.id)) ?? 0,
   }));
 
-  return { schoolIds, rosterChildren, myStudents };
+  return { schoolIds, rosterChildren, myStudents, myName };
 }
 
 // ---------------------------------------------------------------------------

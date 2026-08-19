@@ -72,6 +72,7 @@ exports[`parseCSVReport — SEIS Student Goals Report (CSV) parses the full fixt
   },
   "students": [
     {
+      "caseManager": undefined,
       "districtStudentId": "100001",
       "firstName": "Ana",
       "goals": [
@@ -86,6 +87,7 @@ exports[`parseCSVReport — SEIS Student Goals Report (CSV) parses the full fixt
       "schoolOfAttendance": "Mt Diablo Elementary School",
     },
     {
+      "caseManager": "Rosa Delgado",
       "districtStudentId": "100002",
       "firstName": "Ben",
       "goals": [
@@ -99,6 +101,7 @@ exports[`parseCSVReport — SEIS Student Goals Report (CSV) parses the full fixt
       "schoolOfAttendance": "St Mary School",
     },
     {
+      "caseManager": "Rosa Delgado",
       "districtStudentId": "100003",
       "firstName": "Cora",
       "goals": [
@@ -112,6 +115,7 @@ exports[`parseCSVReport — SEIS Student Goals Report (CSV) parses the full fixt
       "schoolOfAttendance": "Mt Diablo Elementary School",
     },
     {
+      "caseManager": "Owen Pike",
       "districtStudentId": "100004",
       "firstName": "Drew",
       "goals": [
@@ -125,6 +129,7 @@ exports[`parseCSVReport — SEIS Student Goals Report (CSV) parses the full fixt
       "schoolOfAttendance": "Out of District- MOU",
     },
     {
+      "caseManager": undefined,
       "districtStudentId": "100005",
       "firstName": "Ella",
       "goals": [
@@ -138,6 +143,7 @@ exports[`parseCSVReport — SEIS Student Goals Report (CSV) parses the full fixt
       "schoolOfAttendance": "Mt Diablo Elementary School",
     },
     {
+      "caseManager": undefined,
       "districtStudentId": "100006",
       "firstName": "Finn",
       "goals": [
@@ -151,6 +157,7 @@ exports[`parseCSVReport — SEIS Student Goals Report (CSV) parses the full fixt
       "schoolOfAttendance": "Mt Diablo Elementary School",
     },
     {
+      "caseManager": undefined,
       "districtStudentId": undefined,
       "firstName": "Gia",
       "goals": [
@@ -164,6 +171,7 @@ exports[`parseCSVReport — SEIS Student Goals Report (CSV) parses the full fixt
       "schoolOfAttendance": "Mt Diablo Elementary School",
     },
     {
+      "caseManager": undefined,
       "districtStudentId": "100008",
       "firstName": "Hana",
       "goals": [
@@ -177,6 +185,7 @@ exports[`parseCSVReport — SEIS Student Goals Report (CSV) parses the full fixt
       "schoolOfAttendance": "Mt Diablo Elementary School",
     },
     {
+      "caseManager": undefined,
       "districtStudentId": "100009",
       "firstName": "Ivan",
       "goals": [
@@ -190,6 +199,7 @@ exports[`parseCSVReport — SEIS Student Goals Report (CSV) parses the full fixt
       "schoolOfAttendance": "Mt Diablo Elementary School",
     },
     {
+      "caseManager": undefined,
       "districtStudentId": "100010",
       "firstName": "Jae",
       "goals": [

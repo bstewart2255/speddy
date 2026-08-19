@@ -121,6 +121,25 @@ describe('parseCSVReport — SEIS Student Goals Report (CSV)', () => {
       expect(district.students).toEqual(provider.students);
     });
 
+    it('captures the Case Manager in both shapes — SPE-447 pre-ticks the claim list from it', async () => {
+      // Index 8 in the per-provider layout, 9 once the district export's SSID
+      // shifts everything right. Reading the wrong column here would pre-tick
+      // the wrong provider's students.
+      const [provider, district] = await Promise.all([
+        parseCSVReport(SEIS_GOALS_CSV()),
+        parseCSVReport(SEIS_GOALS_DISTRICT_CSV()),
+      ]);
+      const cmOf = (r: Awaited<ReturnType<typeof parseCSVReport>>, initials: string) =>
+        r.students.find((s) => s.initials === initials)?.caseManager;
+
+      expect(cmOf(provider, 'BB')).toBe('Rosa Delgado');
+      expect(cmOf(provider, 'DD')).toBe('Owen Pike');
+      expect(cmOf(district, 'BB')).toBe('Rosa Delgado');
+      expect(cmOf(district, 'DD')).toBe('Owen Pike');
+      // A student whose row leaves it blank stays undefined, never guessed.
+      expect(cmOf(provider, 'AA')).toBeUndefined();
+    });
+
     it('captures the District ID — not the SSID beside it, nor the SEIS ID', async () => {
       const result = await parseCSVReport(SEIS_GOALS_DISTRICT_CSV(), {});
       const ana = result.students.find((s) => s.lastName === 'Alvarez')!;

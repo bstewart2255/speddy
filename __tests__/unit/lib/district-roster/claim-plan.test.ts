@@ -27,6 +27,7 @@ const rosterChild = (over: Partial<RosterChild> = {}): RosterChild => ({
   districtStudentId: '100001',
   upcomingIepDate: '2027-02-09',
   upcomingTriennialDate: '2029-02-09',
+  caseManager: 'Cynthia Reyes',
   caseloadCount: 0,
   ...over,
 });
@@ -72,6 +73,80 @@ describe('planRosterClaims', () => {
         myStudents: [myStudent()],
       });
       expect(result.counts.claimable).toBe(0);
+    });
+  });
+
+  describe('the case-manager hint', () => {
+    it('suggests the students the district says this provider manages', () => {
+      const result = planRosterClaims({
+        rosterChildren: [rosterChild()],
+        myStudents: [],
+        myName: 'Cynthia Reyes',
+      });
+
+      expect(result.counts.suggested).toBe(1);
+      expect(result.claimable[0].suggested).toBe(true);
+      // Carried verbatim so the screen can say who, when it isn't them.
+      expect(result.claimable[0].caseManager).toBe('Cynthia Reyes');
+    });
+
+    it("matches across an apostrophe — SEIS writes O'Malley as OMalley", () => {
+      for (const cm of ['Charli OMalley', "Charli O'Malley", 'Charli O\u2019Malley']) {
+        expect(
+          planRosterClaims({
+            rosterChildren: [rosterChild({ caseManager: cm })],
+            myStudents: [],
+            myName: "Charli O'Malley",
+          }).claimable[0].suggested,
+        ).toBe(true);
+      }
+    });
+
+    it('ignores case, punctuation and spacing', () => {
+      const result = planRosterClaims({
+        rosterChildren: [rosterChild({ caseManager: '  cynthia   reyes ' })],
+        myStudents: [],
+        myName: 'Cynthia Reyes',
+      });
+      expect(result.claimable[0].suggested).toBe(true);
+    });
+
+    it('still OFFERS a student managed by someone else — just unticked', () => {
+      // Case manager is not the same role as service provider: an SLP serves
+      // students she does not manage, so a non-match must never hide anyone.
+      const result = planRosterClaims({
+        rosterChildren: [rosterChild({ caseManager: 'Someone Else' })],
+        myStudents: [],
+        myName: 'Cynthia Reyes',
+      });
+
+      expect(result.counts.claimable).toBe(1);
+      expect(result.counts.suggested).toBe(0);
+      expect(result.claimable[0].suggested).toBe(false);
+    });
+
+    it('suggests nothing when either side has no name, rather than guessing', () => {
+      expect(
+        planRosterClaims({ rosterChildren: [rosterChild({ caseManager: null })], myStudents: [], myName: 'Cynthia Reyes' })
+          .claimable[0].suggested,
+      ).toBe(false);
+      expect(
+        planRosterClaims({ rosterChildren: [rosterChild()], myStudents: [], myName: null }).claimable[0]
+          .suggested,
+      ).toBe(false);
+      expect(
+        planRosterClaims({ rosterChildren: [rosterChild({ caseManager: '' })], myStudents: [], myName: '' })
+          .claimable[0].suggested,
+      ).toBe(false);
+    });
+
+    it('does not match on a partial or reversed name', () => {
+      for (const cm of ['Cynthia', 'Reyes', 'Reyes Cynthia', 'Cynthia Reyes-Smith']) {
+        expect(
+          planRosterClaims({ rosterChildren: [rosterChild({ caseManager: cm })], myStudents: [], myName: 'Cynthia Reyes' })
+            .claimable[0].suggested,
+        ).toBe(false);
+      }
     });
   });
 

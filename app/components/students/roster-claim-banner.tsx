@@ -98,6 +98,11 @@ export default function RosterClaimBanner() {
       const offers = body as OffersResponse;
       if (!offers?.plan?.counts) return;
       setPlan(offers.plan);
+      // Pre-select the students the district's own roster names this provider
+      // as case manager for. Still a suggestion — case manager is not the same
+      // role as service provider, so the rest are left for them to pick, never
+      // marked "not yours".
+      setClaimIds(new Set(offers.plan.claimable.filter((c) => c.suggested).map((c) => c.childId)));
       // Pre-tick the safe fills only. A conflict is a decision, not a default.
       const next = new Map<string, Set<RosterFieldKey>>();
       for (const update of offers.plan.updates) {
@@ -259,8 +264,18 @@ export default function RosterClaimBanner() {
                 On your district&apos;s roster, on nobody&apos;s caseload
               </p>
               <p className="mt-0.5 text-xs text-slate-500">
-                Speddy doesn&apos;t know which of these are yours — the roster carries no case
-                manager — so tick only the students you serve.
+                {counts.suggested > 0 ? (
+                  <>
+                    The {counts.suggested} your district lists you as case manager for are ticked
+                    already. Check them, and tick anyone else you serve — case manager isn&apos;t
+                    the same as service provider, so your students may not all be marked.
+                  </>
+                ) : (
+                  <>
+                    Your district doesn&apos;t list you as case manager for any of these, so none
+                    are ticked. Tick the students you serve.
+                  </>
+                )}
               </p>
               <div className="mt-1.5 grid gap-1.5 sm:grid-cols-2">
                 {claimable.map((c) => (
@@ -278,6 +293,13 @@ export default function RosterClaimBanner() {
                         {fullName(c.firstName, c.lastName, c.initials)}
                       </span>
                       {c.gradeLevel ? ` · grade ${c.gradeLevel}` : ''}
+                      {c.suggested ? (
+                        <span className="ml-1.5 rounded-full bg-sky-100 px-1.5 py-0.5 text-[10px] font-medium text-sky-800">
+                          you&apos;re case manager
+                        </span>
+                      ) : c.caseManager ? (
+                        <span className="ml-1.5 text-slate-400">· {c.caseManager}</span>
+                      ) : null}
                     </span>
                   </label>
                 ))}

@@ -20,6 +20,9 @@ export interface ParsedStudent {
   // The district's own student id (SPE-339). SEIS "District ID"; the roster
   // template's optional "Student ID" column. Undefined when the file omits it.
   districtStudentId?: string;
+  // SEIS "Case Manager" (SPE-447). The district roster carries it as a hint
+  // about whose student this probably is; it is NOT the service provider.
+  caseManager?: string;
   goals: string[];
   rawRow: number; // For debugging
   // Speddy roster template only (SPE-225): the template carries the teacher name
@@ -57,6 +60,7 @@ interface ColumnMapping {
   areaOfNeed?: number; // SEIS "Area Of Need" - used for filtering
   goalType?: number; // SEIS "Annual Goal #" - used for filtering
   personResponsible?: number; // SEIS "Person Responsible" - used for filtering
+  caseManager?: number; // SEIS "Case Manager" - carried through for the district roster (SPE-447)
   goalColumns: number[];
   /** SEIS only: fields located by POSITION because their label wasn't recognized. */
   positionallyResolved?: string[];
@@ -426,6 +430,7 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
         const areaOfNeed = columnMapping.areaOfNeed !== undefined ? row[columnMapping.areaOfNeed] || '' : '';
         const goalType = columnMapping.goalType !== undefined ? row[columnMapping.goalType] || '' : '';
         const personResponsible = columnMapping.personResponsible !== undefined ? row[columnMapping.personResponsible] || '' : '';
+        const caseManager = columnMapping.caseManager !== undefined ? (row[columnMapping.caseManager] || '').trim() : '';
 
         // A SEIS goal row with blank Area of Need, Annual Goal #, AND Person
         // Responsible has no signal to route it to any provider. Under keyword
@@ -499,6 +504,11 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
           if (!existing.iepDate && iepDate) {
             existing.iepDate = iepDate;
           }
+          // A student's goal rows all name the same case manager, but only
+          // some rows may have it filled in — keep the first non-empty.
+          if (!existing.caseManager && caseManager) {
+            existing.caseManager = caseManager;
+          }
           // Same rule for the district id (SPE-339): a student's goal rows all
           // carry the same id, but only some rows may have it filled in.
           if (!existing.districtStudentId && districtStudentId) {
@@ -529,6 +539,7 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
             schoolOfAttendance: schoolOfAttendance ? schoolOfAttendance.trim() : undefined,
             iepDate,
             districtStudentId: districtStudentId || undefined,
+            caseManager: caseManager || undefined,
             goals,
             rawRow: rowIndex + 1
           });
@@ -750,6 +761,14 @@ const SEIS_FIELDS = {
     exact: ['person responsible'],
     pattern: /^person\s*responsible(\s*\(.*\))?$|^responsible\s*(person|party)$/,
   },
+  // SPE-447: the IEP case manager. NOT the same as the service provider — an
+  // SLP may serve 42 students while being case manager for 17 — so it is a
+  // hint about whose student this probably is, never an assignment. Deliberately
+  // NOT matching "case manager email", which is its own column.
+  caseManager: {
+    exact: ['case manager'],
+    pattern: /^case\s*manager(\s*name)?(\s*\(.*\))?$/,
+  },
 } as const;
 
 /**
@@ -777,6 +796,7 @@ const SEIS_CANONICAL_INDEX = {
   goalType: 12,
   goal: 14,
   personResponsible: 17,
+  caseManager: 8,
 } as const satisfies Record<keyof typeof SEIS_FIELDS, number>;
 
 /** Human-facing column names, for warnings that name what couldn't be read. */
@@ -791,6 +811,7 @@ const SEIS_FIELD_LABELS: Record<keyof typeof SEIS_FIELDS, string> = {
   goalType: 'Annual Goal #',
   goal: 'Goal',
   personResponsible: 'Person Responsible',
+  caseManager: 'Case Manager',
 };
 
 /** The six fields whose presence identifies the report (5 of 6 required). */
@@ -841,7 +862,6 @@ const SEIS_MARKER_HEADERS = [
 const SEIS_OTHER_COLUMNS: readonly (string | RegExp)[] = [
   'ssid',
   'birthdate',
-  'case manager',
   'case manager email',
   'baseline',
   'standard',
@@ -1035,6 +1055,7 @@ function mapSeisColumnsByHeader(headers: string[]): ColumnMapping {
     areaOfNeed: columns.areaOfNeed,
     goalType: columns.goalType,
     personResponsible: columns.personResponsible,
+    caseManager: columns.caseManager,
     goalColumns: columns.goal === undefined ? [] : [columns.goal],
     positionallyResolved: (columns.positionallyResolved ?? []).map(
       (field) => SEIS_FIELD_LABELS[field],
