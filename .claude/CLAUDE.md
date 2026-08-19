@@ -96,12 +96,20 @@ their guardrails hold; every other gate above still applies to them.
   pins it. "User-visible" is broad on purpose: emails, imports, scheduling
   outcomes, and anything reachable from a provider/teacher/admin screen all
   count as visible. Any doubt about visibility means it is not internal —
-  leave the label off and bring it to me.
+  leave the label off and bring it to me. Read-only investigations whose
+  deliverable is a report (no code change) also ride this lane.
 - **Index-only database migrations.** Adding or dropping indexes only — never
   tables, columns, constraints, triggers, functions, policies, or grants.
-  Additions use `CREATE INDEX CONCURRENTLY`; drops need advisor/usage evidence
-  (cited in the PR) that the index is unused or redundant. Every such PR states
-  each migration's one-line rollback in its description, and the standing
+  Our migrations apply transactionally, so never put `CREATE INDEX
+  CONCURRENTLY` in one — it cannot run inside a transaction (the 20250813
+  migration made that mistake and silently built nothing; see
+  `supabase/migrations/20260721_add_session_instance_indexes.sql`). Use plain
+  `CREATE INDEX IF NOT EXISTS` / `DROP INDEX IF EXISTS`, and cite the table's
+  current size in the PR to show the brief write-lock is acceptable — a table
+  too large for that needs the non-transactional zero-downtime path, which is
+  OUT of this lane: bring it to me. Drops need advisor/usage evidence (cited
+  in the PR) that the index is unused or redundant. Every such PR states each
+  migration's one-line rollback in its description, and the standing
   real-session verification rule applies as usual.
 
 **Explicitly NOT auto-deployable — security sweeps (deferred 2026-08-19,
@@ -149,6 +157,14 @@ can take to merge without me. Per the standing exception above, `auto-deployable
 tickets may be cleared end-to-end — implement → verify → PR → merge once every
 gate is green (typecheck, lint, tests, CI, and zero unresolved review threads) —
 without checking back. When in doubt, leave the label off.
+
+**Label hygiene (applies to whichever session files, grooms, or executes):**
+never label anything user-visible, schema changes beyond indexes, ALL
+security/auth/permissions work (deferred per SPE-569 — even pattern-repeat
+sweeps), dependency changes, or anything touching money, secrets, external
+services, or shared infra. **Executor backstop:** before executing any labeled
+ticket, re-check it against this bar; if it fails, strip the label, comment on
+the ticket why, and skip it — this is the standing guard against mislabels.
 
 **Weekly quick-win digest (approved 2026-08-19) — small user-facing fixes,
 batched.** Tiny visible fixes (`quick-win` label: renames, copy, one-screen
