@@ -27,6 +27,7 @@ import {
   SEIS_GOALS_DISTRICT_CSV,
   SEIS_GOALS_DISTRICT_NO_DISTRICT_ID_CSV,
   SEIS_GOALS_SHIFTED_CSV,
+  SEIS_HEADERS,
 } from './fixtures/builders';
 
 describe('parseCSVReport — SEIS Student Goals Report (CSV)', () => {
@@ -119,6 +120,53 @@ describe('parseCSVReport — SEIS Student Goals Report (CSV)', () => {
       const district = await parseCSVReport(SEIS_GOALS_DISTRICT_CSV(), {});
       const provider = await parseCSVReport(SEIS_GOALS_CSV(), {});
       expect(district.students).toEqual(provider.students);
+    });
+
+    it('captures the Case Manager in both shapes — SPE-447 pre-ticks the claim list from it', async () => {
+      // Index 8 in the per-provider layout, 9 once the district export's SSID
+      // shifts everything right. Reading the wrong column here would pre-tick
+      // the wrong provider's students.
+      const [provider, district] = await Promise.all([
+        parseCSVReport(SEIS_GOALS_CSV()),
+        parseCSVReport(SEIS_GOALS_DISTRICT_CSV()),
+      ]);
+      const cmOf = (r: Awaited<ReturnType<typeof parseCSVReport>>, initials: string) =>
+        r.students.find((s) => s.initials === initials)?.caseManager;
+
+      expect(cmOf(provider, 'BB')).toBe('Rosa Delgado');
+      expect(cmOf(provider, 'DD')).toBe('Owen Pike');
+      expect(cmOf(district, 'BB')).toBe('Rosa Delgado');
+      expect(cmOf(district, 'DD')).toBe('Owen Pike');
+      // A student whose row leaves it blank stays undefined, never guessed.
+      expect(cmOf(provider, 'AA')).toBeUndefined();
+    });
+
+    it('an odd Case Manager position cannot disable the other columns', async () => {
+      // The hint column is resolved by LABEL ONLY and never votes on the
+      // offset. If it did, a district whose Case Manager sits somewhere else
+      // would make the witnesses disagree and switch positional resolution OFF
+      // for every field — here, the District ID the SIS teacher sync joins on,
+      // whose own label has been changed to something unrecognisable.
+      const headers = [...SEIS_HEADERS];
+      headers[1] = 'Local Identifier'; // District ID: now findable only by position
+      headers[8] = 'Managing Staff'; // where Case Manager normally sits
+      headers[53] = 'Case Manager'; // ...and where this district put its label
+      const result = await parseCSVReport(buildSeisGoalsCsvWithHeaders(headers));
+
+      expect(result.metadata.formatDetected).toBe('seis-student-goals');
+      expect(result.students.find((s) => s.initials === 'BB')?.districtStudentId).toBe('100002');
+    });
+
+    it('does not invent a case manager when no column says so', async () => {
+      // Nothing may be filled in by position here: an unfamiliar column read as
+      // the case manager would be shown to providers as who manages the student.
+      const headers = [...SEIS_HEADERS];
+      headers[8] = 'Managing Staff';
+      const result = await parseCSVReport(buildSeisGoalsCsvWithHeaders(headers));
+
+      expect(result.metadata.formatDetected).toBe('seis-student-goals');
+      expect(result.students.every((s) => s.caseManager === undefined)).toBe(true);
+      expect(result.students.find((s) => s.initials === 'BB')?.districtStudentId).toBe('100002');
     });
 
     it('captures the District ID — not the SSID beside it, nor the SEIS ID', async () => {

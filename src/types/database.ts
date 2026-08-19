@@ -959,6 +959,7 @@ export type Database = {
       children: {
         Row: {
           accommodations: string[]
+          case_manager: string | null
           created_at: string
           date_of_birth: string | null
           district_id: string | null
@@ -976,6 +977,7 @@ export type Database = {
         }
         Insert: {
           accommodations?: string[]
+          case_manager?: string | null
           created_at?: string
           date_of_birth?: string | null
           district_id?: string | null
@@ -993,6 +995,7 @@ export type Database = {
         }
         Update: {
           accommodations?: string[]
+          case_manager?: string | null
           created_at?: string
           date_of_birth?: string | null
           district_id?: string | null

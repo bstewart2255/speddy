@@ -169,6 +169,10 @@ describe('POST /api/assistant/chat', () => {
     expect(systemText).toContain('never use markdown formatting');
     expect(systemText).toContain('no asterisks');
     expect(systemText).toContain('Never show internal field or column names');
+    // SPE-447 slice 2: the roster claim banner on the Students page.
+    expect(systemText).toContain('Students your district put on the roster');
+    expect(systemText).toContain('arrive already ticked');
+    expect(systemText).toContain('not the same job as being the service provider');
     expect(systemText).toContain('attribute them to California');
     expect(systemText).toContain('written request to review');
     expect(systemText).toContain('meeting held within 30 days');

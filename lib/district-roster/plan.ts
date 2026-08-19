@@ -30,6 +30,8 @@ export interface RosterFileStudent {
   /** SEIS "District ID" — the sole join to the SIS teacher link sync. */
   districtStudentId?: string;
   schoolOfAttendance?: string;
+  /** SEIS "Case Manager" — a hint for the claim screen, never an assignment. */
+  caseManager?: string;
 }
 
 /** One student as parsed from the SEIS IEP Dates report. */
@@ -61,6 +63,7 @@ export interface ExistingChild {
   schoolId: string | null;
   upcomingIepDate: string | null;
   upcomingTriennialDate: string | null;
+  caseManager: string | null;
   /** How many provider caseloads currently serve this child. */
   caseloadCount: number;
 }
@@ -98,6 +101,7 @@ export interface RosterChildFields {
   schoolId: string | null;
   upcomingIepDate: string | null;
   upcomingTriennialDate: string | null;
+  caseManager: string | null;
 }
 
 export interface PlannedChild {
@@ -317,6 +321,7 @@ export function planDistrictRoster(input: RosterPlanInput): RosterPlan {
     gradeLevel: string;
     districtStudentId: string | null;
     schoolName: string;
+    caseManager: string | null;
     dates?: RosterDatesRecord;
   }
 
@@ -331,6 +336,7 @@ export function planDistrictRoster(input: RosterPlanInput): RosterPlan {
     gradeLevel: clean(student.gradeLevel),
     districtStudentId: districtIdValue(student.districtStudentId),
     schoolName: clean(student.schoolOfAttendance),
+    caseManager: clean(student.caseManager) || null,
   }));
 
   // Indexes for attaching a dates record to the right goals row.
@@ -393,6 +399,7 @@ export function planDistrictRoster(input: RosterPlanInput): RosterPlan {
       gradeLevel: clean(record.gradeLevel),
       districtStudentId: null,
       schoolName,
+      caseManager: null,
       dates: record,
     };
     rows.push(row);
@@ -573,6 +580,7 @@ export function planDistrictRoster(input: RosterPlanInput): RosterPlan {
       schoolId,
       upcomingIepDate: dates?.upcomingIepDate ?? null,
       upcomingTriennialDate: dates?.upcomingTriennialDate ?? null,
+      caseManager: row.caseManager,
     };
 
     let action: RosterAction = 'create';
@@ -590,6 +598,7 @@ export function planDistrictRoster(input: RosterPlanInput): RosterPlan {
         ['district student ID', rowIdKey, districtIdKey(match.districtStudentId)],
         ['annual review date', fields.upcomingIepDate, match.upcomingIepDate],
         ['triennial date', fields.upcomingTriennialDate, match.upcomingTriennialDate],
+        ['case manager', fields.caseManager, match.caseManager],
       ];
       for (const [label, next, current] of compare) {
         // A blank in the file never erases a value already in Speddy — the

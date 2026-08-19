@@ -119,18 +119,21 @@ const SEIS_GOALS_ROWS: SparseRow[] = [
   },
   {
     0: '2000002', 1: '100002', 2: 'Bishop', 3: 'Ben', 5: '02', 6: 'St Mary School',
+    8: 'Rosa Delgado',
     9: '10/15/2025', 11: 'Math', 12: 'Academic #2: 2025 - 2026',
     14: 'By 10/15/2026, given manipulatives, Ben will solve two-digit addition problems with 80% accuracy across 3 sessions.',
     17: 'Resource Specialist and General Education Teacher',
   },
   {
     0: '2000003', 1: '100003', 2: 'Cho', 3: 'Cora', 5: '03', 6: 'Mt Diablo Elementary School',
+    8: 'Rosa Delgado',
     9: '01/20/2026', 11: 'Speech/Language', 12: 'Speech (1 of 1)',
     14: 'By 1/20/2027, Cora will produce /r/ in structured sentences with 80% accuracy in 4 of 5 trials.',
     17: 'Speech Language Pathologist',
   },
   {
     0: '2000004', 1: '100004', 2: 'Diaz', 3: 'Drew', 5: '04', 6: 'Out of District- MOU',
+    8: 'Owen Pike',
     9: '02/10/2026', 11: 'Social/Emotional', 12: 'Behavior (1 of 2)',
     14: 'By 2/10/2027, Drew will use a coping strategy when frustrated in 4 of 5 observed opportunities.',
     17: 'School Counselor',

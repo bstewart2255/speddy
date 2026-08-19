@@ -87,7 +87,7 @@ export async function loadDistrictRosterContext(
 
   const CHILD_COLUMNS =
     'id, district_student_id, first_name, last_name, initials, grade_level, school_id, ' +
-    'upcoming_iep_date, upcoming_triennial_date';
+    'upcoming_iep_date, upcoming_triennial_date, case_manager';
 
   // KEYSET paged, not offset paged. With `.range()`, a row inserted with a
   // lower id while we page shifts every later row across the offset boundary
@@ -120,6 +120,7 @@ export async function loadDistrictRosterContext(
         schoolId: (row.school_id as string | null) ?? null,
         upcomingIepDate: (row.upcoming_iep_date as string | null) ?? null,
         upcomingTriennialDate: (row.upcoming_triennial_date as string | null) ?? null,
+        caseManager: (row.case_manager as string | null) ?? null,
         caseloadCount: 0,
       });
     }
@@ -212,6 +213,7 @@ function rosterColumns(
   if (fields.districtStudentId) columns.district_student_id = fields.districtStudentId;
   if (fields.upcomingIepDate) columns.upcoming_iep_date = fields.upcomingIepDate;
   if (fields.upcomingTriennialDate) columns.upcoming_triennial_date = fields.upcomingTriennialDate;
+  if (fields.caseManager) columns.case_manager = fields.caseManager;
   return columns;
 }
 
@@ -328,6 +330,7 @@ export function rosterPlanDigest(plan: RosterPlan): string {
         c.fields.lastName,
         c.fields.upcomingIepDate ?? '',
         c.fields.upcomingTriennialDate ?? '',
+        c.fields.caseManager ?? '',
       ].join(''),
     )
     .sort();

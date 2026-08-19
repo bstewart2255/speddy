@@ -101,6 +101,7 @@ export async function readDistrictRosterFiles(files: {
         gradeLevel: student.gradeLevel,
         districtStudentId: student.districtStudentId,
         schoolOfAttendance: student.schoolOfAttendance,
+        caseManager: student.caseManager,
       });
     }
   }

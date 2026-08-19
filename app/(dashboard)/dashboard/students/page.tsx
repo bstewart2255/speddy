@@ -25,6 +25,7 @@ import {
 } from '@/lib/supabase/queries/student-teachers';
 import { useRouter } from 'next/navigation';
 import { StudentImportModal } from '../../../components/students/student-import-modal';
+import RosterClaimBanner from '../../../components/students/roster-claim-banner';
 import { StudentImportReview } from '../../../components/students/review/student-import-review';
 import { IepMinutesConverter } from '../../../components/students/iep-minutes-converter';
 import { calculateSessions, MAX_MINUTES_PER_SESSION } from '@/lib/services/weekly-minutes';
@@ -581,6 +582,11 @@ export default function StudentsPage() {
             </div>
           )}
         </div>
+
+        {/* SPE-447 slice 2: students the district put on the roster, waiting to
+            be claimed — and updates to students this provider already has.
+            Renders nothing at all when there is nothing on offer. */}
+        {!isViewOnly && <RosterClaimBanner />}
 
         {/* Unified Import Students Modal */}
         <StudentImportModal
