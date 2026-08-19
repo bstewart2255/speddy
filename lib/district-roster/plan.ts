@@ -154,6 +154,16 @@ export interface RosterPlan {
     unchanged: number;
     /** Distinct students across both files. */
     inFiles: number;
+    /**
+     * Rows read from the IEP Dates report whose dates reached nobody: either
+     * two students on the roster share that name and nothing in the report can
+     * separate them, or the row repeats a student already given their dates.
+     *
+     * Surfaced rather than dropped quietly. Those students end up counted as
+     * having no review date on file, and without this the admin has no way to
+     * tell that apart from a district that genuinely records none.
+     */
+    datesRowsNotUsed: number;
   };
 }
 
@@ -249,7 +259,7 @@ export function planDistrictRoster(input: RosterPlanInput): RosterPlan {
       cannotLinkToTeachers: 0,
     },
     notInRoster: [],
-    counts: { creates: 0, updates: 0, unchanged: 0, inFiles: 0 },
+    counts: { creates: 0, updates: 0, unchanged: 0, inFiles: 0, datesRowsNotUsed: 0 },
   });
 
   // A goals report with no students is either the wrong file or a failed
@@ -334,6 +344,7 @@ export function planDistrictRoster(input: RosterPlanInput): RosterPlan {
   };
   for (const row of rows) indexRow(row);
 
+  let datesRowsNotUsed = 0;
   for (const record of input.datesRecords) {
     const firstName = clean(record.firstName);
     const lastName = clean(record.lastName);
@@ -353,13 +364,28 @@ export function planDistrictRoster(input: RosterPlanInput): RosterPlan {
       exact.length === 1 ? exact[0] : exact.length === 0 && byName.length === 1 ? byName[0] : null;
 
     if (target) {
-      if (!target.dates) target.dates = record;
+      // A repeat row for a student who already has their dates. Keeping the
+      // first is right (the report is not ordered by recency), but a SECOND
+      // row saying something different is worth telling the admin about.
+      if (target.dates) {
+        if (
+          target.dates.upcomingIepDate !== record.upcomingIepDate ||
+          target.dates.upcomingTriennialDate !== record.upcomingTriennialDate
+        ) {
+          datesRowsNotUsed++;
+        }
+      } else {
+        target.dates = record;
+      }
       if (!target.gradeLevel) target.gradeLevel = clean(record.gradeLevel);
       continue;
     }
     // More than one candidate: these dates belong to a student already on the
     // roster, we just cannot say which. Adding a row would invent a student.
-    if (exact.length > 1 || byName.length > 1) continue;
+    if (exact.length > 1 || byName.length > 1) {
+      datesRowsNotUsed++;
+      continue;
+    }
 
     const row: RosterRow = {
       firstName,
@@ -615,6 +641,7 @@ export function planDistrictRoster(input: RosterPlanInput): RosterPlan {
       updates: children.filter((c) => c.action === 'update').length,
       unchanged: children.filter((c) => c.action === 'unchanged').length,
       inFiles: rows.length,
+      datesRowsNotUsed,
     },
   };
 }

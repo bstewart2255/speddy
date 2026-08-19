@@ -294,7 +294,25 @@ describe('planDistrictRoster', () => {
 
       expect(result.counts.inFiles).toBe(2);
       expect(result.children.every((c) => c.fields.upcomingIepDate === null)).toBe(true);
+      // Reported, not dropped quietly — otherwise these two look like students
+      // whose district simply keeps no review dates.
+      expect(result.counts.datesRowsNotUsed).toBe(1);
     });
+  });
+
+  it('reports a repeated IEP Dates row that disagrees with the first', () => {
+    const result = plan({
+      datesRecords: [datesRecord(), datesRecord({ upcomingIepDate: '2028-01-01' })],
+    });
+
+    // The first row wins — that report is not ordered by recency.
+    expect(result.children[0].fields.upcomingIepDate).toBe('2027-02-09');
+    expect(result.counts.datesRowsNotUsed).toBe(1);
+  });
+
+  it('does not report a repeated row that agrees', () => {
+    const result = plan({ datesRecords: [datesRecord(), datesRecord()] });
+    expect(result.counts.datesRowsNotUsed).toBe(0);
   });
 
   it('joins the two reports when they spell the school differently', () => {

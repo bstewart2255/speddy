@@ -334,6 +334,14 @@ export default function DistrictRosterImportPanel() {
                     />
                     <Stat n={plan.notInRoster.length} label="in Speddy, not in your files" />
                   </div>
+                  {plan.counts.datesRowsNotUsed > 0 && (
+                    <p className="mt-2 rounded border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs text-amber-800">
+                      {plan.counts.datesRowsNotUsed} row(s) in your IEP Dates report could not be
+                      matched to one student — either two students share that name, or the row
+                      repeats one already listed with different dates. Those students will show as
+                      having no review date on file.
+                    </p>
+                  )}
                 </div>
 
                 {exceptionsByKind.size > 0 && (
