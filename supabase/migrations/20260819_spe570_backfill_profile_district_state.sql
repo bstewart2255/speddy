@@ -31,6 +31,29 @@
 -- Two accounts are deliberately NOT touched: `marsb@mdusd.org` and
 -- `help@speddy.xyz` have no school_id either, so nothing is derivable for them.
 -- Both are legacy test/support accounts.
+--
+-- DOES THIS CHANGE WHAT ANYONE CAN SEE? No — checked, not assumed, because
+-- SPE-514 is the cautionary tale of a backfill that was correct as
+-- normalization and wrong as a shipped change.
+--
+--   * `profiles_select`'s district-admin branch matches on `school_id`; its
+--     `district_id` branch is gated on `school_id IS NULL` and exists only for
+--     school-less roles. Every row here has a school, so RLS is unmoved.
+--   * The district-scoped app queries resolve school ids from `schools` first
+--     and filter profiles by school (`getDistrictStaffCounts`), or OR the two
+--     (`setup-guide.ts`), and the latter is restricted to specialist roles —
+--     which teacher and site_admin are not.
+--   * `care_case_status_history`'s SELECT policy DOES contain a branch keyed on
+--     the caller's `profiles.district_id`, which reads as though it would hand
+--     110 teachers district-wide CARE visibility. It does not: that branch sits
+--     inside an EXISTS over `care_cases`/`care_referrals`, whose own RLS is
+--     evaluated for the caller and does not grant teachers district-wide access,
+--     so the predicate never gets a row to match. Confirmed with real signed-in
+--     sessions against the sim district, where teachers already carry
+--     district_id: a teacher with ZERO students (no other route to any CARE row)
+--     reads 0 of the 6 status-history rows in their own district, while a
+--     provider reads 3 and the district admin reads 6. No other CARE policy has
+--     a `profiles.district_id` branch at all.
 
 BEGIN;
 

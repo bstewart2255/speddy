@@ -4,7 +4,10 @@ import { Database } from '@/src/types';
 import { logger } from '@/lib/logger';
 import { generateTemporaryPassword } from '@/lib/utils/password-generator';
 import { withRoute } from '@/lib/api/with-route';
-import { pinProfileScopeFromSchool } from '@/lib/supabase/pin-profile-scope';
+import {
+  pinProfileScopeFromSchool,
+  rollbackProvisionedAccount,
+} from '@/lib/supabase/account-provisioning';
 
 const log = logger.child({ module: 'district-admin-site-admin' });
 
@@ -226,7 +229,10 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
       // Rollback: Delete the auth user if profile or permission creation failed
       log.error('Rolling back site admin auth user creation', rollbackError);
 
-      await adminClient.auth.admin.deleteUser(authUser.user.id);
+      // Profile row first, then the auth user: profiles.id -> auth.users(id)
+      // is NO ACTION, so the reverse order is refused by the FK and silently
+      // leaves an orphaned account (see rollbackProvisionedAccount).
+      await rollbackProvisionedAccount(adminClient, authUser.user.id);
 
       return NextResponse.json(
         { error: rollbackError instanceof Error ? rollbackError.message : 'Failed to complete account creation' },

@@ -4,6 +4,7 @@ import { Database } from '@/src/types';
 import { generateTemporaryPassword } from '@/lib/utils/password-generator';
 import { logger } from '@/lib/logger';
 import { withRoute } from '@/lib/api/with-route';
+import { rollbackProvisionedAccount } from '@/lib/supabase/account-provisioning';
 
 const log = logger.child({ module: 'internal-create-admin' });
 
@@ -229,12 +230,12 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
       // Rollback: delete the auth user if profile/permissions creation failed
       log.error('Error during admin creation, rolling back', error);
 
-      try {
-        await adminClient.auth.admin.deleteUser(newUserId);
-        log.info('Rolled back auth user after failure', { userId: newUserId });
-      } catch (rollbackError) {
-        log.error('Failed to rollback auth user', rollbackError);
-      }
+      // Profile row first, then the auth user. This used to call deleteUser
+      // directly and log a clean rollback — but `profiles.id -> auth.users(id)`
+      // is NO ACTION, so with a profile present the delete is refused, and the
+      // admin API RESOLVES with `{ error }` instead of throwing, so the catch
+      // never fired and the success line printed over an orphaned account.
+      await rollbackProvisionedAccount(adminClient, newUserId);
 
       return NextResponse.json(
         { error: error instanceof Error ? error.message : 'Failed to create admin account' },

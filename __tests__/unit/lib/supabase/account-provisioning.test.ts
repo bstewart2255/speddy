@@ -12,7 +12,7 @@
  * So the write shape is the contract: all THREE ids, every time, or throw.
  */
 
-import { pinProfileScopeFromSchool } from '@/lib/supabase/pin-profile-scope';
+import { pinProfileScopeFromSchool, rollbackProvisionedAccount } from '@/lib/supabase/account-provisioning';
 
 interface RecordedQuery {
   table: string;
@@ -126,5 +126,90 @@ describe('pinProfileScopeFromSchool', () => {
     await expect(pinProfileScopeFromSchool(client as never, 'user-1', 'sch-1')).rejects.toThrow(
       /affected no row for profile user-1/
     );
+  });
+});
+
+describe('rollbackProvisionedAccount', () => {
+  /** Records the ORDER of operations across both the table and auth surfaces. */
+  function makeRollbackClient(
+    results: { profileError?: { message: string }; userError?: { message: string } } = {}
+  ) {
+    const order: string[] = [];
+    const client = {
+      from(table: string) {
+        const chain: Record<string, unknown> = {};
+        for (const method of ['delete', 'eq']) {
+          chain[method] = () => {
+            if (method === 'delete') order.push(`delete:${table}`);
+            return chain;
+          };
+        }
+        chain.then = (resolve: (v: unknown) => unknown) =>
+          Promise.resolve({ data: null, error: results.profileError ?? null }).then(resolve);
+        return chain;
+      },
+      auth: {
+        admin: {
+          deleteUser: async () => {
+            order.push('deleteUser');
+            // The real admin API RESOLVES with { error } — it does not reject.
+            return { data: null, error: results.userError ?? null };
+          },
+        },
+      },
+    };
+    return { client, order };
+  }
+
+  it('deletes the profile BEFORE the auth user', async () => {
+    const { client, order } = makeRollbackClient();
+
+    await rollbackProvisionedAccount(client as never, 'user-1');
+
+    // profiles.id -> auth.users(id) is NO ACTION: the reverse order is refused
+    // by the FK, and the admin API reports that by resolving with an error
+    // rather than throwing — so the wrong order fails silently.
+    expect(order).toEqual(['delete:profiles', 'deleteUser']);
+  });
+
+  it('still removes the auth user when the profile delete errors', async () => {
+    const { client, order } = makeRollbackClient({ profileError: { message: 'nope' } });
+
+    await rollbackProvisionedAccount(client as never, 'user-1');
+
+    expect(order).toEqual(['delete:profiles', 'deleteUser']);
+  });
+
+  it('still removes the auth user when the profile delete THROWS', async () => {
+    // Not the same as resolving with an error: a throw here (a broken client, a
+    // network fault) must not skip the auth-user delete, or the rollback leaves
+    // behind exactly the orphaned account it exists to remove.
+    const order: string[] = [];
+    const client = {
+      from() {
+        throw new Error('client exploded');
+      },
+      auth: {
+        admin: {
+          deleteUser: async () => {
+            order.push('deleteUser');
+            return { data: null, error: null };
+          },
+        },
+      },
+    };
+
+    await rollbackProvisionedAccount(client as never, 'user-1');
+
+    expect(order).toEqual(['deleteUser']);
+  });
+
+  it('never throws — a failed rollback must not mask the original error', async () => {
+    const { client } = makeRollbackClient({
+      profileError: { message: 'boom' },
+      userError: { message: 'also boom' },
+    });
+
+    await expect(rollbackProvisionedAccount(client as never, 'user-1')).resolves.toBeUndefined();
   });
 });

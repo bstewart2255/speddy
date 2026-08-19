@@ -48,7 +48,7 @@ import { logger } from '@/lib/logger';
 import { createServiceClient } from '@/lib/supabase/server';
 import { logServerAuditEvent } from '@/lib/supabase/audit-log-server';
 import { generateTemporaryPassword } from '@/lib/utils/password-generator';
-import { pinProfileScopeFromSchool } from '@/lib/supabase/pin-profile-scope';
+import { pinProfileScopeFromSchool } from '@/lib/supabase/account-provisioning';
 import {
   OneRosterClient,
   type RawOneRosterEnrollment,
