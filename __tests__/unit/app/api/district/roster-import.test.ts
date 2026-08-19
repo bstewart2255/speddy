@@ -200,6 +200,13 @@ describe('preview', () => {
     expect(res.status).toBe(400);
     expect(mockApply).not.toHaveBeenCalled();
   });
+
+  it('refuses a text value posted under a file field, rather than erroring', async () => {
+    const res = await call({ mode: 'preview', goalsFile: 'not-a-file' }, null);
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/was not sent as a file/);
+    expect(mockLoad).not.toHaveBeenCalled();
+  });
 });
 
 describe('publish', () => {

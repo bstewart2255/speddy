@@ -172,6 +172,122 @@ describe('planDistrictRoster', () => {
       expect(result.children).toHaveLength(0);
       expect(result.exceptions[0]).toMatchObject({ kind: 'conflicting-district-id' });
     });
+
+    describe('children Speddy holds under initials only', () => {
+      // Most children in Speddy have no name at all — a provider typed
+      // initials. Neither key above can reach them, so without this rung the
+      // first import duplicates every one of them.
+      const nameLess = (over: Partial<ExistingChild> = {}) =>
+        existingChild({ firstName: null, lastName: null, districtStudentId: null, ...over });
+
+      it('matches one on initials + grade + school and fills in the real name', () => {
+        const result = plan({ existingChildren: [nameLess()] });
+
+        expect(result.counts.creates).toBe(0);
+        expect(result.children[0]).toMatchObject({
+          action: 'update',
+          matchBasis: 'initials-and-school',
+          childId: 'child-1',
+        });
+        expect(result.children[0].changedFields).toEqual(
+          expect.arrayContaining(['first name', 'last name', 'district student ID']),
+        );
+      });
+
+      it('refuses when two name-less children share initials and grade there', () => {
+        const result = plan({
+          existingChildren: [nameLess(), nameLess({ id: 'child-2' })],
+        });
+
+        expect(result.children).toHaveLength(0);
+        expect(result.exceptions[0]).toMatchObject({ kind: 'ambiguous-name-match' });
+        expect(result.exceptions[0].detail).toMatch(/with no name/);
+      });
+
+      it('never falls back to initials for a child that HAS a name', () => {
+        // A stored name that doesn't match means a different student; matching
+        // on initials anyway would merge two real children.
+        const result = plan({
+          existingChildren: [existingChild({ firstName: 'Amy', lastName: 'Anders', districtStudentId: null })],
+        });
+
+        expect(result.counts.creates).toBe(1);
+        expect(result.children[0].matchBasis).toBe('new');
+      });
+
+      it('does not report a matched name-less child as missing from the roster', () => {
+        const result = plan({ existingChildren: [nameLess()] });
+        expect(result.notInRoster).toEqual([]);
+      });
+    });
+
+    it('keeps the district ID spelling Speddy already stored', () => {
+      // The SIS teacher join compares this value case-sensitively, so a silent
+      // re-casing could break a link that works today.
+      const result = plan({
+        goalsStudents: [goalsStudent({ districtStudentId: 'abc-1', gradeLevel: '2' })],
+        datesRecords: [],
+        existingChildren: [existingChild({ districtStudentId: 'ABC-1' })],
+      });
+
+      expect(result.children[0]).toMatchObject({ action: 'update', matchBasis: 'district-student-id' });
+      expect(result.children[0].changedFields).toEqual(['grade']);
+      expect(result.children[0].fields.districtStudentId).toBe('ABC-1');
+    });
+
+    it('writes a NEW student\'s district ID exactly as the file spells it', () => {
+      const result = plan({ goalsStudents: [goalsStudent({ districtStudentId: 'abc-1' })] });
+      expect(result.children[0].fields.districtStudentId).toBe('abc-1');
+    });
+  });
+
+  describe('rows the files cannot pin down', () => {
+    it('refuses both students when two rows claim one district student ID', () => {
+      // A mid-year transfer listed at both schools, or a mistyped ID. Creating
+      // both would violate the unique index and abort the publish partway.
+      const result = plan({
+        goalsStudents: [
+          goalsStudent({ districtStudentId: '100001' }),
+          goalsStudent({ firstName: 'Ben', lastName: 'Bishop', districtStudentId: '100001' }),
+        ],
+        datesRecords: [],
+      });
+
+      expect(result.children).toHaveLength(0);
+      expect(result.exceptions.map((e) => e.kind)).toEqual([
+        'duplicate-in-files',
+        'duplicate-in-files',
+      ]);
+    });
+
+    it('does not list an exception student as one the files never mentioned', () => {
+      const result = plan({
+        existingChildren: [existingChild({ districtStudentId: '999999' })],
+      });
+
+      expect(result.exceptions[0].kind).toBe('conflicting-district-id');
+      expect(result.notInRoster).toEqual([]);
+    });
+  });
+
+  it('joins the two reports when they spell the school differently', () => {
+    // Separate SEIS exports; one saying "John Swett High" and the other
+    // "John Swett High School" must not split one student into two rows.
+    const result = plan({
+      goalsStudents: [
+        goalsStudent({ firstName: 'Rex', lastName: 'Edsinger', gradeLevel: '9', schoolOfAttendance: 'John Swett High' }),
+      ],
+      datesRecords: [
+        datesRecord({ firstName: 'Rex', lastName: 'Edsinger', gradeLevel: '9', schoolOfAttendance: 'John Swett High School' }),
+      ],
+    });
+
+    expect(result.counts.inFiles).toBe(1);
+    expect(result.exceptions).toEqual([]);
+    expect(result.children[0].fields).toMatchObject({
+      schoolId: 'sch-high',
+      upcomingIepDate: '2027-02-09',
+    });
   });
 
   describe('rules that protect existing data', () => {

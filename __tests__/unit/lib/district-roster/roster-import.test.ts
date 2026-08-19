@@ -36,9 +36,42 @@ const writes: Write[] = [];
 let failOnWrite: number | null = null;
 let writeCount = 0;
 
+/** Every read the loader issued: table plus the filters it applied, in order. */
+interface Read {
+  table: string;
+  filters: [string, string, unknown][];
+}
+const reads: Read[] = [];
+/** Rows each table's select resolves to, keyed by table. */
+let rowsByTable: Record<string, Record<string, unknown>[]> = {};
+
 jest.mock('@/lib/supabase/server', () => ({
   createServiceClient: () => ({
     from: (table: string) => ({
+      select: () => {
+        const read: Read = { table, filters: [] };
+        reads.push(read);
+        const q: Record<string, unknown> = {};
+        const filter = (op: string) => (col: string, val: unknown) => {
+          read.filters.push([op, col, val]);
+          return q;
+        };
+        q.eq = filter('eq');
+        q.is = filter('is');
+        q.in = filter('in');
+        q.not = (col: string, op: string, val: unknown) => {
+          read.filters.push([`not.${op}`, col, val]);
+          return q;
+        };
+        q.order = () => q;
+        // The loader pages until a short page comes back, so answer once.
+        q.range = (from: number) =>
+          Promise.resolve({ data: from === 0 ? (rowsByTable[table] ?? []) : [], error: null });
+        // The unpaged reads (schools) await the builder itself.
+        q.then = (resolve: (v: unknown) => unknown) =>
+          Promise.resolve({ data: rowsByTable[table] ?? [], error: null }).then(resolve);
+        return q;
+      },
       insert: (rows: Record<string, unknown>[]) => {
         writes.push({ kind: 'insert', table, rows });
         writeCount++;
@@ -59,7 +92,10 @@ jest.mock('@/lib/supabase/server', () => ({
   }),
 }));
 
-import { applyDistrictRosterPlan } from '@/lib/district-roster/roster-import';
+import {
+  applyDistrictRosterPlan,
+  loadDistrictRosterContext,
+} from '@/lib/district-roster/roster-import';
 import { planDistrictRoster, type RosterPlanInput } from '@/lib/district-roster/plan';
 
 const DISTRICT_ID = '0618990';
@@ -93,8 +129,50 @@ const apply = (over: Partial<RosterPlanInput> = {}) =>
 beforeEach(() => {
   writes.length = 0;
   auditCalls.length = 0;
+  reads.length = 0;
+  rowsByTable = {};
   writeCount = 0;
   failOnWrite = null;
+});
+
+describe('loadDistrictRosterContext', () => {
+  it('reads children by district, and by school ONLY where no district is set', async () => {
+    rowsByTable = { schools: [{ id: 'sch-rodeo', name: 'Rodeo Hills Elementary' }] };
+    await loadDistrictRosterContext(DISTRICT_ID);
+
+    const childReads = reads.filter((r) => r.table === 'children');
+    expect(childReads).toHaveLength(2);
+    expect(childReads[0].filters).toEqual([['eq', 'district_id', DISTRICT_ID]]);
+    // Some children legitimately sit at another district's school. Without the
+    // null filter, this district's import could re-home one of them.
+    expect(childReads[1].filters).toEqual([
+      ['in', 'school_id', ['sch-rodeo']],
+      ['is', 'district_id', null],
+    ]);
+  });
+
+  it('counts the caseloads serving each child', async () => {
+    rowsByTable = {
+      schools: [{ id: 'sch-rodeo', name: 'Rodeo Hills Elementary' }],
+      children: [
+        { id: 'child-1', initials: 'AA', grade_level: '1', school_id: 'sch-rodeo' },
+        { id: 'child-2', initials: 'BB', grade_level: '2', school_id: 'sch-rodeo' },
+      ],
+      students: [
+        { id: 's1', child_id: 'child-1' },
+        { id: 's2', child_id: 'child-1' },
+      ],
+    };
+    const context = await loadDistrictRosterContext(DISTRICT_ID);
+
+    expect(context.schools).toEqual([{ id: 'sch-rodeo', name: 'Rodeo Hills Elementary' }]);
+    expect(
+      context.existingChildren.map((c) => [c.id, c.caseloadCount]),
+    ).toEqual([
+      ['child-1', 2],
+      ['child-2', 0],
+    ]);
+  });
 });
 
 describe('applyDistrictRosterPlan', () => {

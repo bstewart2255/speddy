@@ -97,6 +97,23 @@ describe('readDistrictRosterFiles', () => {
     expect(result.datesRecords[0].gradeLevel).toBe('');
   });
 
+  it('normalizes a grade from the IEP Dates report to Speddy\'s own form', async () => {
+    // That parser hands the cell back verbatim, unlike the Goals parser. A raw
+    // "Kindergarten" would be written where the rest of Speddy stores 'K'.
+    const result = await readDistrictRosterFiles({
+      goalsFile: null,
+      datesFile: csvFile(
+        'dates.csv',
+        'Last Name,First Name,School of Attendance,Grade,Date of Next Annual Plan Review\n' +
+          'Alvarez,Ana,Rodeo Hills Elementary,Kindergarten,09/01/2026\n' +
+          'Bishop,Ben,Rodeo Hills Elementary,3rd,09/02/2026',
+      ),
+    });
+
+    expect(result.error).toBeNull();
+    expect(result.datesRecords.map((r) => r.gradeLevel)).toEqual(['K', '3']);
+  });
+
   it('refuses a spreadsheet that is not the Student Goals report', async () => {
     const result = await readDistrictRosterFiles({
       goalsFile: csvFile(

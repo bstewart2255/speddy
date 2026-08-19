@@ -13,6 +13,7 @@
 
 import { parseCSVReport } from '@/lib/parsers/csv-parser';
 import { parseIepDatesCSV } from '@/lib/parsers/iep-dates-parser';
+import { normalizeGradeLevel } from '@/lib/utils/grade-parser';
 import type { RosterDatesRecord, RosterFileStudent } from './plan';
 
 export interface RosterFilesResult {
@@ -28,7 +29,7 @@ export interface RosterFilesResult {
 
 const isCsv = (file: File): boolean =>
   ['text/csv', 'text/plain', 'application/csv'].includes(file.type) ||
-  file.name.toLowerCase().endsWith('.csv');
+  (typeof file.name === 'string' && file.name.toLowerCase().endsWith('.csv'));
 
 /** Cap on how many per-row parser notes ride along to the review screen. */
 const WARNING_LIMIT = 20;
@@ -127,7 +128,12 @@ export async function readDistrictRosterFiles(files: {
       datesRecords.push({
         firstName: record.firstName,
         lastName: record.lastName,
-        gradeLevel: record.gradeLevel,
+        // Normalized here because this parser hands back the cell verbatim,
+        // while the Goals parser normalizes internally. Without it a
+        // dates-only student would be written as "Kindergarten" or "Grade 3"
+        // where the rest of Speddy stores 'K' and '3' — and would overwrite an
+        // existing child's already-normalized grade with the raw text.
+        gradeLevel: normalizeGradeLevel(record.gradeLevel),
         schoolOfAttendance: record.schoolOfAttendance,
         upcomingIepDate: record.upcomingIepDate,
         upcomingTriennialDate: record.upcomingTriennialDate,

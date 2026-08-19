@@ -81,8 +81,31 @@ export const POST = withRoute({
     throw err;
   }
 
-  const goalsFile = form.get('goalsFile') as File | null;
-  const datesFile = form.get('datesFile') as File | null;
+  // A form field can carry a plain string under a file's name. Reading `.name`
+  // off one would throw and answer 500 for what is really a malformed request.
+  const isUploadedFile = (value: unknown): value is File =>
+    typeof value === 'object' &&
+    value !== null &&
+    typeof (value as File).name === 'string' &&
+    typeof (value as File).arrayBuffer === 'function';
+
+  const uploads: Record<'goalsFile' | 'datesFile', File | null> = {
+    goalsFile: null,
+    datesFile: null,
+  };
+  for (const field of ['goalsFile', 'datesFile'] as const) {
+    const value = form.get(field);
+    if (value === null) continue;
+    if (!isUploadedFile(value)) {
+      return NextResponse.json(
+        { error: `"${field}" was not sent as a file. Choose your CSV export and try again.` },
+        { status: 400 },
+      );
+    }
+    uploads[field] = value;
+  }
+  const { goalsFile, datesFile } = uploads;
+
   for (const file of [goalsFile, datesFile]) {
     if (file && typeof file.size === 'number' && file.size > MAX_UPLOAD_FILE_BYTES) {
       return NextResponse.json(

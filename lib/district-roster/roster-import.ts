@@ -49,12 +49,19 @@ export interface DistrictRosterContext {
 /**
  * Everything the planner compares the two files against.
  *
- * Children are gathered by district AND by school membership, deduped by id.
- * Both are needed: `children.district_id` is how the roster scopes itself and
- * how `ux_children_district_student_id` enforces uniqueness, but a handful of
- * legacy rows carry a school without a district. Loading only by district_id
- * would leave those invisible to the matcher, and the import would create a
- * SECOND row for a child the district already has.
+ * Children are gathered by district, PLUS the district-less legacy rows sitting
+ * at one of this district's schools, deduped by id. Both are needed:
+ * `children.district_id` is how the roster scopes itself and how
+ * `ux_children_district_student_id` enforces uniqueness, but a handful of older
+ * rows carry a school without a district. Loading only by district_id would
+ * leave those invisible to the matcher, and the import would create a SECOND
+ * row for a child the district already has.
+ *
+ * The second read is filtered to `district_id IS NULL` deliberately. Some
+ * children legitimately sit at a school in one district while belonging to
+ * ANOTHER (a county program placing students on a district campus — 29 such
+ * rows in production today). Loading those by school alone would let this
+ * district's import match, rewrite, and re-home another district's child.
  */
 export async function loadDistrictRosterContext(
   districtId: string,
@@ -120,6 +127,7 @@ export async function loadDistrictRosterContext(
         .from('children')
         .select(CHILD_COLUMNS)
         .in('school_id', chunk)
+        .is('district_id', null)
         .order('id')
         .range(from, from + DB_PAGE - 1);
       if (error) throw new Error(`Could not load this district's children: ${error.message}`);

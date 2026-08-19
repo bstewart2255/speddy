@@ -38,8 +38,9 @@ const writableCount = (plan: RosterPlan): number =>
 const EXCEPTION_HEADINGS: Record<RosterException['kind'], string> = {
   'missing-grade': 'No grade in either file',
   'unknown-school': 'School not in your district in Speddy',
-  'ambiguous-name-match': 'Two students share this name at one school',
+  'ambiguous-name-match': 'Speddy could not tell which student this is',
   'conflicting-district-id': 'Already has a different district student ID',
+  'duplicate-in-files': 'Two students in your files share one district student ID',
 };
 
 function FilePicker({
