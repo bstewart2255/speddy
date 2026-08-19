@@ -207,8 +207,11 @@ describe('detectSEISStudentGoalsFormat — 5-of-6 threshold', () => {
   // from its canonical position (SPE-558), but removing one slides everything
   // after it left, the surviving columns stop agreeing on a single offset, and
   // positional recovery correctly declines to guess.
+  // School of Attendance and Annual Goal # dropped: the Goal column is still
+  // present, so this pins the signature threshold itself rather than the
+  // separate goal-column requirement below.
   it('falls back (returns false) at 4 of 6 key columns', () => {
-    const fourOfSix = SEIS_HEADERS.filter((_, i) => i !== 6 && i !== 14);
+    const fourOfSix = SEIS_HEADERS.filter((_, i) => i !== 6 && i !== 12);
     expect(detectSEISStudentGoalsFormat([fourOfSix])).toBe(false);
   });
 

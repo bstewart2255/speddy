@@ -527,7 +527,7 @@ describe('parseCSVReport — SEIS Student Goals Report (CSV)', () => {
       expect(summary).toBeDefined();
       // The fixture's distinct students, not its goal-row count.
       const allStudents = await parseCSVReport(SEIS_GOALS_CSV(), {});
-      expect(summary!.message).toMatch(new RegExp(`^${allStudents.students.length} students`));
+      expect(summary!.message.startsWith(`${allStudents.students.length} students`)).toBe(true);
       // And nobody is named twice among the individual warnings.
       const named = result.warnings
         .filter((w) => /doesn't match your school/i.test(w.message))
@@ -557,6 +557,51 @@ describe('parseCSVReport — SEIS Student Goals Report (CSV)', () => {
 
       const named = result.warnings.filter((w) => /doesn't match your school/i.test(w.message));
       expect(named).toHaveLength(2);
+    });
+
+    // Capping without saying so is the same silent truncation this change is
+    // about, so every capped warning kind reports its remainder.
+    it('reports the remainder when blank-metadata warnings are capped', async () => {
+      const rows = Array.from({ length: 30 }, (_, i) => ({
+        1: `2000${i}`, 2: `Student${i}`, 3: 'Sam', 5: '03',
+        6: 'Mt Diablo Elementary School', 9: '05/01/2026',
+        // 11 / 12 / 17 deliberately blank: no routing signal on any row.
+        14: `By 5/1/2027, Sam will complete task ${i} with 80% accuracy in 4 of 5 trials.`,
+      }));
+
+      const result = await parseCSVReport(buildSeisGoalsCsvFrom(rows), { providerRole: 'resource' });
+
+      const perRow = result.warnings.filter((w) => w.row > 0);
+      expect(perRow.length).toBeLessThanOrEqual(25);
+      expect(result.warnings.some((w) => /30 goal rows have no/.test(w.message))).toBe(true);
+    });
+
+    it('reports the remainder when ID-mismatch warnings are capped', async () => {
+      // Each student gets two goal rows carrying different district IDs.
+      const rows = Array.from({ length: 26 }, (_, i) => [
+        {
+          1: `100${i}`, 2: `Student${i}`, 3: 'Sam', 5: '03',
+          6: 'Mt Diablo Elementary School', 9: '05/01/2026', 11: 'Reading',
+          12: 'Academic #1',
+          14: `By 5/1/2027, Sam will read passage ${i} at 90 words per minute in 3 of 4 trials.`,
+          17: 'Resource Specialist',
+        },
+        {
+          1: `999${i}`, 2: `Student${i}`, 3: 'Sam', 5: '03',
+          6: 'Mt Diablo Elementary School', 9: '05/01/2026', 11: 'Reading',
+          12: 'Academic #2',
+          14: `By 5/1/2027, Sam will summarize passage ${i} with 80% accuracy in 3 of 4 trials.`,
+          17: 'Resource Specialist',
+        },
+      ]).flat();
+
+      const result = await parseCSVReport(buildSeisGoalsCsvFrom(rows), {});
+
+      const perRow = result.warnings.filter((w) => /Student ID mismatch/.test(w.message));
+      expect(perRow.length).toBeLessThanOrEqual(25);
+      expect(result.warnings.some((w) => /26 rows carry a district student ID/.test(w.message))).toBe(
+        true,
+      );
     });
 
     it('stays quiet when those columns are present', async () => {

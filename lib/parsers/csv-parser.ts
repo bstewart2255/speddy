@@ -551,6 +551,28 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
       });
     }
 
+    // The other two capped kinds get the same treatment. Truncating without
+    // saying so is the silent-failure shape this whole change is about.
+    if (blankMetadataWarnings > PER_ROW_WARNING_LIMIT) {
+      warnings.push({
+        row: 0,
+        message:
+          `${blankMetadataWarnings} goal rows have no "Area Of Need", "Annual Goal #" or ` +
+          `"Person Responsible" value (${PER_ROW_WARNING_LIMIT} of them listed above), so they ` +
+          'cannot be matched to a caseload. Review those rows in your export.',
+      });
+    }
+
+    if (idMismatchWarnings > PER_ROW_WARNING_LIMIT) {
+      warnings.push({
+        row: 0,
+        message:
+          `${idMismatchWarnings} rows carry a district student ID that conflicts with an earlier ` +
+          `row for the same student (${PER_ROW_WARNING_LIMIT} of them listed above). The first ID ` +
+          'was kept in each case.',
+      });
+    }
+
     // Convert map to array
     students.push(...Array.from(studentMap.values()));
 
@@ -904,11 +926,13 @@ function resolveSeisColumns(normalized: string[]): SeisColumns {
     const index = findSeisColumn(normalized, field);
     if (index !== undefined) columns[field] = index;
   }
-  columns.positionallyResolved = guessed;
 
   const identified = SEIS_FIELD_NAMES.filter((field) => columns[field] !== undefined);
   const offsets = new Set(identified.map((field) => columns[field]! - SEIS_CANONICAL_INDEX[field]));
-  if (identified.length < 3 || offsets.size !== 1) return columns;
+  if (identified.length < 3 || offsets.size !== 1) {
+    columns.positionallyResolved = guessed;
+    return columns;
+  }
 
   const offset = [...offsets][0];
   const taken = new Set(identified.map((field) => columns[field]!));
@@ -944,6 +968,7 @@ function resolveSeisColumns(normalized: string[]): SeisColumns {
     taken.add(candidate);
     guessed.push(field);
   }
+  columns.positionallyResolved = guessed;
   return columns;
 }
 
