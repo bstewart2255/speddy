@@ -184,7 +184,7 @@ describe('POST — taking them', () => {
     expect(res.status).toBe(200);
 
     expect(mockClaim).toHaveBeenCalledWith([CHILD_A]);
-    expect(await res.json()).toMatchObject({ claimed: 1, notClaimed: 0 });
+    expect(await res.json()).toMatchObject({ claimed: 1, takenBySomeoneElse: 0, duplicateInitials: 0 });
   });
 
   it('never forwards a child the plan does not offer', async () => {
@@ -194,7 +194,7 @@ describe('POST — taking them', () => {
 
     expect(res.status).toBe(200);
     expect(mockClaim).not.toHaveBeenCalled();
-    expect(await res.json()).toMatchObject({ claimed: 0, notClaimed: 1 });
+    expect(await res.json()).toMatchObject({ claimed: 0, takenBySomeoneElse: 1 });
   });
 
   it('applies accepted fields from the recomputed plan, not from the request', async () => {
@@ -208,6 +208,21 @@ describe('POST — taking them', () => {
     expect(args.requests).toEqual([{ studentId: STUDENT_1, fields: ['upcomingIepDate'] }]);
     expect((args.plan as { counts: unknown }).counts).toMatchObject({ fills: 1 });
     expect(await res.json()).toMatchObject({ updatedFields: 1 });
+  });
+
+  it('reports an initials collision as its own outcome, not as a lost race', async () => {
+    // Telling a provider "someone else got there first" about a deterministic
+    // name clash sends them looking for a race that never happened.
+    mockClaim.mockResolvedValue([
+      { childId: CHILD_A, studentId: null, outcome: 'duplicate-initials' },
+    ]);
+    const res = await call('POST', { claimChildIds: [CHILD_A] });
+
+    expect(await res.json()).toMatchObject({
+      claimed: 0,
+      duplicateInitials: 1,
+      takenBySomeoneElse: 0,
+    });
   });
 
   it('refuses a non-provider before touching anything', async () => {

@@ -161,15 +161,23 @@ export default function RosterClaimBanner() {
         );
         return;
       }
-      const { claimed, notClaimed, updatedFields } = body as {
+      const { claimed, duplicateInitials, takenBySomeoneElse, updatedFields } = body as {
         claimed: number;
-        notClaimed: number;
+        duplicateInitials: number;
+        takenBySomeoneElse: number;
         updatedFields: number;
       };
+      // Each refusal gets its own sentence. A name collision is not a race, and
+      // the remedy is different, so they must not be reported as one number.
       setDone(
         `${claimed} student(s) added to your caseload, ${updatedFields} detail(s) updated.` +
-          (notClaimed > 0
-            ? ` ${notClaimed} were already picked up by someone else — nothing changed for them.`
+          (takenBySomeoneElse > 0
+            ? ` ${takenBySomeoneElse} were already picked up by someone else — nothing changed for them.`
+            : '') +
+          (duplicateInitials > 0
+            ? ` ${duplicateInitials} could not be added because you already have a student with the` +
+              ' same initials in that grade at that school — change the initials on your existing' +
+              ' student, then claim again.'
             : ''),
       );
       setOpen(false);

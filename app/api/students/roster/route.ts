@@ -153,22 +153,31 @@ export const POST = withRoute<Record<string, string>, z.infer<typeof bodySchema>
       );
     }
 
-    const claimed = claims.filter((c) => c.outcome === 'claimed').length;
-    // Anything asked for that the roster no longer offers — someone else got
-    // there first, or the admin republished. Reported, never swallowed.
-    const notClaimed = requested.length - claimed;
+    // Per-outcome, NOT one lump. A student refused for a name collision needs a
+    // different remedy from one somebody else got to first, and telling a
+    // provider "already picked up by someone else" about a deterministic
+    // initials clash sends them looking for a race that never happened.
+    const countOf = (outcome: string) => claims.filter((c) => c.outcome === outcome).length;
+    const claimed = countOf('claimed');
+    const duplicateInitials = countOf('duplicate-initials');
+    // Refused by the database, plus anything the recomputed plan had already
+    // stopped offering before we asked.
+    const takenBysomeoneElse =
+      countOf('already-served') + countOf('out-of-scope') + (requested.length - claims.length);
 
     log.info('Provider roster claim applied', {
       userId,
       claimed,
-      notClaimed,
+      duplicateInitials,
+      takenBysomeoneElse,
       updated: accepted.applied,
       skipped: accepted.skipped,
     });
 
     return NextResponse.json({
       claimed,
-      notClaimed,
+      duplicateInitials,
+      takenBySomeoneElse: takenBysomeoneElse,
       updatedFields: accepted.applied,
       skippedFields: accepted.skipped,
     });
