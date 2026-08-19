@@ -35,6 +35,22 @@ describe('parseIepDatesCSV', () => {
     expect(rec!.schoolOfAttendance).toBe('Maple Elementary');
   });
 
+  it('reads a grade column spelled "Grade", the way the Goals report spells it', async () => {
+    const csv =
+      'Last Name,First Name,School of Attendance,Grade,Date of Next Annual Plan Review\n' +
+      'Doe,John,Maple Elementary,4,09/01/2026';
+    const { records } = await parseIepDatesCSV(buf(csv));
+    expect(byName(records, 'John', 'Doe')!.gradeLevel).toBe('4');
+  });
+
+  it('prefers "Grade Level" when a report carries both spellings', async () => {
+    const csv =
+      'Last Name,First Name,Grade,Grade Level,Date of Next Annual Plan Review\n' +
+      'Doe,John,ignored,4,09/01/2026';
+    const { records } = await parseIepDatesCSV(buf(csv));
+    expect(byName(records, 'John', 'Doe')!.gradeLevel).toBe('4');
+  });
+
   it('is order-independent — locates columns by header, not position', async () => {
     const csv =
       'Date of Next Reevaluation,First Name,Last Name,Date of Next Annual Plan Review\n' +
