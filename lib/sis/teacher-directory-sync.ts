@@ -49,6 +49,10 @@ import { createServiceClient } from '@/lib/supabase/server';
 import { logServerAuditEvent } from '@/lib/supabase/audit-log-server';
 import { generateTemporaryPassword } from '@/lib/utils/password-generator';
 import {
+  pinProfileScopeFromSchool,
+  rollbackProvisionedAccount,
+} from '@/lib/supabase/account-provisioning';
+import {
   OneRosterClient,
   type RawOneRosterEnrollment,
   type RawOneRosterUser,
@@ -977,39 +981,6 @@ export async function applyTeacherSyncPlan(params: {
   return results;
 }
 
-/**
- * Undo a provisioned account: profile row FIRST, then the auth user.
- *
- * The order is load-bearing and was verified against the live schema:
- * `profiles.id` references `auth.users(id)` with NO cascade, so deleting the
- * auth user while its profile exists fails on the FK — the exact path the
- * first version swallowed with an empty catch (PR #833 review, confirmed
- * live). Both steps inspect their returned error (the admin API RESOLVES
- * with `{ error }`, it does not reject) and a failed rollback is logged
- * loudly by id — our own UUID, no PII — because an orphaned sign-in-capable
- * account that nothing will retry is exactly what an operator must hear
- * about. Never throws: rollback failing must not mask the original error.
- */
-async function rollbackAccount(admin: SupabaseClient, accountId: string): Promise<void> {
-  try {
-    const { error: profileError } = await admin.from('profiles').delete().eq('id', accountId);
-    if (profileError) {
-      log.error('Rollback could not remove the profile of an orphaned account', undefined, {
-        accountId,
-        reason: profileError.message,
-      });
-    }
-    const { error: authError } = await admin.auth.admin.deleteUser(accountId);
-    if (authError) {
-      log.error('Rollback could not remove an orphaned auth account', undefined, {
-        accountId,
-        reason: authError.message,
-      });
-    }
-  } catch (err) {
-    log.error('Rollback of an orphaned account threw', err, { accountId });
-  }
-}
 
 /**
  * One login account for one planned create — the account half of the
@@ -1068,15 +1039,15 @@ async function createLoginAccount(
     });
     if (profileError) throw new Error(`Profile creation failed: ${profileError.message}`);
 
-    const { error: updateError } = await admin
-      .from('profiles')
-      .update({ school_id: school.schoolId })
-      .eq('id', data.user.id);
-    if (updateError) throw new Error(`Profile school update failed: ${updateError.message}`);
+    // The RPC is passed empty district/state names above, so its name matcher
+    // resolves nothing — school, district AND state all have to be pinned here.
+    // Pinning only school_id is what left every sync-provisioned teacher
+    // district-less (SPE-570).
+    await pinProfileScopeFromSchool(admin, data.user.id, school.schoolId);
 
     return { accountId: data.user.id };
   } catch (err) {
-    await rollbackAccount(admin, data.user.id);
+    await rollbackProvisionedAccount(admin, data.user.id);
     throw err;
   }
 }
@@ -1168,7 +1139,7 @@ async function applySchools(
         // own orphan as a conflict forever. A REUSED account belongs to an
         // earlier, committed row — it stays.
         if (accountId && outcome === 'account') {
-          await rollbackAccount(admin, accountId);
+          await rollbackProvisionedAccount(admin, accountId);
         }
         // Stop rather than continue past a failed school: a partial apply that
         // keeps going reports success about a state it does not know.

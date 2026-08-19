@@ -4,6 +4,10 @@ import { Database } from '@/src/types';
 import { logger } from '@/lib/logger';
 import { generateTemporaryPassword } from '@/lib/utils/password-generator';
 import { withRoute } from '@/lib/api/with-route';
+import {
+  pinProfileScopeFromSchool,
+  rollbackProvisionedAccount,
+} from '@/lib/supabase/account-provisioning';
 
 const log = logger.child({ module: 'district-admin-teachers' });
 
@@ -178,15 +182,11 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
         throw new Error(`Profile creation failed: ${profileError.message}`);
       }
 
-      // Update profile with school_id
-      const { error: updateError } = await adminClient
-        .from('profiles')
-        .update({ school_id })
-        .eq('id', authUser.user.id);
-
-      if (updateError) {
-        throw new Error(`Profile update failed: ${updateError.message}`);
-      }
+      // Pin the profile's scope from the validated school. The RPC above is
+      // passed empty district/state names, so its name matcher resolves
+      // nothing — school, district AND state all have to be pinned here
+      // (SPE-570).
+      await pinProfileScopeFromSchool(adminClient, authUser.user.id, school_id);
 
       // Create teacher record
       const { data: teacher, error: teacherError } = await adminClient
@@ -229,7 +229,10 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
       // Rollback: Delete the auth user if profile or teacher creation failed
       log.error('Rolling back teacher auth user creation', rollbackError);
 
-      await adminClient.auth.admin.deleteUser(authUser.user.id);
+      // Profile row first, then the auth user: profiles.id -> auth.users(id)
+      // is NO ACTION, so the reverse order is refused by the FK and silently
+      // leaves an orphaned account (see rollbackProvisionedAccount).
+      await rollbackProvisionedAccount(adminClient, authUser.user.id);
 
       return NextResponse.json(
         { error: rollbackError instanceof Error ? rollbackError.message : 'Failed to complete account creation' },

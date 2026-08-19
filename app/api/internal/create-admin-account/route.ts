@@ -4,6 +4,7 @@ import { Database } from '@/src/types';
 import { generateTemporaryPassword } from '@/lib/utils/password-generator';
 import { logger } from '@/lib/logger';
 import { withRoute } from '@/lib/api/with-route';
+import { rollbackProvisionedAccount } from '@/lib/supabase/account-provisioning';
 
 const log = logger.child({ module: 'internal-create-admin' });
 
@@ -181,21 +182,16 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
         })
         .eq('id', newUserId);
 
-      if (updateError && adminType === 'district_tech') {
-        // Fatal for this role only. Both things this update carries are
-        // load-bearing for district_tech and for nothing else here:
-        // `district_id` is what makes the account visible to its district admin
-        // (profiles_select's district branch, SPE-394), and
-        // `must_change_password` is the forced rotation. A district_tech that
-        // silently skipped this would exist, authorize correctly via
-        // admin_permissions, and still be invisible with an un-rotated temp
-        // password — the worst of both. Throwing rolls the auth user back.
-        throw new Error(`Profile scoping update failed: ${updateError.message}`);
-      }
-
       if (updateError) {
-        log.warn('Failed to update profile with NCES IDs', { error: updateError });
-        // Non-fatal - profile was still created
+        // Fatal for EVERY role (SPE-570). This was district_tech-only, on the
+        // reasoning that only that role needed `district_id` to be visible to
+        // its district admin (profiles_select's district branch, SPE-394) and
+        // needed the forced rotation. But a swallowed failure here is exactly
+        // how a profile ends up with no district and no state while the
+        // request still reports success — the shape found on 116 production
+        // rows. Nothing this update carries is optional for any role, so
+        // throwing (which rolls the auth user back) is right for all of them.
+        throw new Error(`Profile scoping update failed: ${updateError.message}`);
       }
 
       // Create admin_permissions record
@@ -234,12 +230,12 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
       // Rollback: delete the auth user if profile/permissions creation failed
       log.error('Error during admin creation, rolling back', error);
 
-      try {
-        await adminClient.auth.admin.deleteUser(newUserId);
-        log.info('Rolled back auth user after failure', { userId: newUserId });
-      } catch (rollbackError) {
-        log.error('Failed to rollback auth user', rollbackError);
-      }
+      // Profile row first, then the auth user. This used to call deleteUser
+      // directly and log a clean rollback — but `profiles.id -> auth.users(id)`
+      // is NO ACTION, so with a profile present the delete is refused, and the
+      // admin API RESOLVES with `{ error }` instead of throwing, so the catch
+      // never fired and the success line printed over an orphaned account.
+      await rollbackProvisionedAccount(adminClient, newUserId);
 
       return NextResponse.json(
         { error: error instanceof Error ? error.message : 'Failed to create admin account' },

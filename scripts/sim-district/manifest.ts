@@ -937,6 +937,13 @@ export const DECLARED_UNSEEDED_TABLES: string[] = [
   // 2026-08-12, so a reversal can be precise. RLS-enabled with no policies
   // (service-role only). Drop it, and this entry, once the fix has held.
   'backup_spe459_school_year_retag',
+  // SPE-570 recovery record. Same shape as the SPE-459 entry above: it lists
+  // the exact prod profiles whose NULL district_id/state_id were backfilled
+  // from schools/districts on 2026-08-19, so a reversal can be precise. Never
+  // sim-owned — sim profiles are seeded with their district_id already pinned,
+  // which is why the fixture never reproduced the bug. RLS-enabled with no
+  // policies (service-role only). Drop it, and this entry, once the fix holds.
+  'backup_spe570_profile_scope_backfill',
   // Personal / auxiliary:
   'documents', 'curriculum_tracking', 'calendar_connections', 'calendar_events',
   'api_keys', 'teams', 'team_members', 'material_constraints',

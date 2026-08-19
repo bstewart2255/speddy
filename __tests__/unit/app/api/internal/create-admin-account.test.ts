@@ -24,6 +24,7 @@ const PROFILES: Record<string, { is_speddy_admin: boolean }> = {
 };
 let profileErrorOverride: { data: unknown; error: unknown } | null = null;
 const profilesEqSpy = jest.fn();
+const profileDeleted = jest.fn();
 
 const createUser = jest.fn();
 const deleteUser = jest.fn();
@@ -53,16 +54,27 @@ jest.mock('@supabase/supabase-js', () => ({
     rpc: (...args: unknown[]) => rpc(...args),
     from: (table: string) => {
       let queriedId: string | null = null;
+      let deleting = false;
       const q: Record<string, unknown> = {};
       q.select = () => q;
       q.eq = (col: string, val: string) => {
         if (table === 'profiles') {
           profilesEqSpy(col, val);
           if (col === 'id') queriedId = val;
+          // The id arrives on .eq(), which the builder calls AFTER .delete().
+          if (deleting && col === 'id') profileDeleted(val);
         }
         return q;
       };
       q.update = () => q;
+      // Rollback deletes the profile row BEFORE the auth user (profiles.id ->
+      // auth.users(id) is NO ACTION, so the reverse order is refused by the
+      // FK). Without this the rollback path throws on a missing method and
+      // never reaches deleteUser.
+      q.delete = () => {
+        deleting = true;
+        return q;
+      };
       q.insert = () => Promise.resolve({ error: null });
       q.maybeSingle = () => {
         if (table === 'profiles') return Promise.resolve({ data: null, error: null }); // no existing account
@@ -113,6 +125,7 @@ describe('POST /api/internal/create-admin-account', () => {
     currentUserId = STAFF_ID;
     profileErrorOverride = null;
     profilesEqSpy.mockClear();
+    profileDeleted.mockClear();
     createUser.mockReset().mockResolvedValue({ data: { user: { id: NEW_USER_ID } }, error: null });
     deleteUser.mockReset().mockResolvedValue({ error: null });
     rpc.mockReset().mockResolvedValue({ error: null });
@@ -155,5 +168,11 @@ describe('POST /api/internal/create-admin-account', () => {
     const res = await POST(req(validBody));
     expect(res.status).toBe(500);
     expect(deleteUser).toHaveBeenCalledWith(NEW_USER_ID);
+    // Order matters: the profile row must go first, or the FK refuses the
+    // auth-user delete and the account is orphaned (SPE-570).
+    expect(profileDeleted).toHaveBeenCalledWith(NEW_USER_ID);
+    expect(profileDeleted.mock.invocationCallOrder[0]).toBeLessThan(
+      deleteUser.mock.invocationCallOrder[0]
+    );
   });
 });
