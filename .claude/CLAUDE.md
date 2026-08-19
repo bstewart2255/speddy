@@ -74,13 +74,43 @@ every turn.
 
 **Stop and discuss with me first if ANY of these are true:**
 - Any user-facing or UX change, or any change in behavior.
-- Database schema/data migrations, or anything destructive or hard to reverse.
+- Database schema/data migrations, or anything destructive or hard to reverse
+  (index-only migrations are the one exception — see the expansion below).
 - Security, auth, or permissions changes where I am not fully certain.
 - Adding, removing, or upgrading dependencies.
 - Anything touching money, secrets, external services, or shared infra.
 - Ambiguous requirements, multiple reasonable interpretations, or scope creep
   beyond what we agreed.
-- A real bug or regression surfaces that was not part of the plan.
+- A real bug or regression surfaces that was not part of the plan
+  (internal-only bug fixes are the exception — see the expansion below;
+  anything a user can see or feel still stops here).
+
+**Expanded auto-deployable categories (approved 2026-08-19).** Two categories
+that would otherwise trip the stop list qualify for the autonomous lane when
+their guardrails hold; every other gate above still applies to them.
+
+- **Internal-only bug fixes & internal tooling.** A bug fix qualifies when the
+  fix changes nothing a user can see or do — it lives in error logging, the
+  build, CI, the test suite, sim-district tooling, internal scripts, or
+  staff-only `/internal` surfaces — and it lands with a regression test that
+  pins it. "User-visible" is broad on purpose: emails, imports, scheduling
+  outcomes, and anything reachable from a provider/teacher/admin screen all
+  count as visible. Any doubt about visibility means it is not internal —
+  leave the label off and bring it to me.
+- **Index-only database migrations.** Adding or dropping indexes only — never
+  tables, columns, constraints, triggers, functions, policies, or grants.
+  Additions use `CREATE INDEX CONCURRENTLY`; drops need advisor/usage evidence
+  (cited in the PR) that the index is unused or redundant. Every such PR states
+  each migration's one-line rollback in its description, and the standing
+  real-session verification rule applies as usual.
+
+**Explicitly NOT auto-deployable — security sweeps (deferred 2026-08-19,
+tracked in SPE-569).** Security/permissions work (RLS, grants, EXECUTE
+revokes, SECURITY DEFINER hardening) stays out of the autonomous lane even
+when it repeats an established convention: prepare the PR end-to-end, hold the
+merge for me. Permission failures are silent (SPE-332), so my one click stays
+as cheap insurance. Revisit per SPE-569 once the two expansions above have a
+few weeks of clean track record.
 
 **Always, regardless of confidence:** never force-push, never merge over branch
 protection, never bypass hooks or commit signing, stay on the designated
@@ -110,13 +140,29 @@ any other code — those still wait for my merge call.
 
 **Tracked in Linear via the `auto-deployable` label.** A ticket carries this
 label only if it meets the bar above: purely internal/technical, no user-facing
-or UX change, no schema/data migration, no dependency/security/auth/infra
-change, CI-verifiable, reversible. Apply it when you file or groom a qualifying
+or UX change, no schema/data migration beyond index-only changes, no
+dependency/security/auth/infra change, CI-verifiable, reversible — including
+the two expanded categories (internal-only bug fixes with a pinned regression
+test; index-only migrations). Apply it when you file or groom a qualifying
 ticket (and strip it if scope grows past the bar); filter to it to find work you
 can take to merge without me. Per the standing exception above, `auto-deployable`
 tickets may be cleared end-to-end — implement → verify → PR → merge once every
 gate is green (typecheck, lint, tests, CI, and zero unresolved review threads) —
 without checking back. When in doubt, leave the label off.
+
+**Weekly quick-win digest (approved 2026-08-19) — small user-facing fixes,
+batched.** Tiny visible fixes (`quick-win` label: renames, copy, one-screen
+polish) don't trickle to me one at a time. A Monday routine builds each as its
+own green PR with before/after screenshots and sends me one digest; I approve
+in a single reply and the approved ones merge. This batches my decision — it
+does not delegate it: nothing user-facing merges without my approval.
+
+**Fix-instead-of-file (approved 2026-08-19).** When a session discovers a
+small side issue that would itself qualify as auto-deployable and takes under
+~30 minutes, fix it in the same session as its own small PR instead of filing
+a ticket — capped at two per session so the main task stays on track. File a
+ticket only for what can't be done now: too big, outside the bar, or needing
+my call.
 
 ## How we use Linear (issue statuses)
 
@@ -128,7 +174,8 @@ tickets never archived), not too few columns. Keep the statuses true and they
 cost nothing.
 
 - **Backlog** — not started. The pool, including follow-ups you discover
-  mid-task and log instead of doing right then.
+  mid-task and log instead of doing right then (small auto-deployable finds
+  get fixed, not filed — see fix-instead-of-file above).
 - **In Progress** — actively being worked right now. Usually short-lived.
 - **In Review** — a finished, green PR waiting on my merge call. This is the one
   genuine "ball's in my court" state (see "merging is the pause point" above).
