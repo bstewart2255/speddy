@@ -351,7 +351,24 @@ a self-write path is only genuinely covered by a **sim-district walk with a real
 signed-in session** — that is the gate that catches this class of bug, and it is
 why SPE-320 shipped broken with three green test files.
 
+**The trigger also blocks MIGRATIONS (SPE-570).** It gates on
+`auth.role() = 'service_role'`, and `auth.role()` reads the JWT claim — which a
+migration connection does not carry. So a migration that writes `role`,
+`is_speddy_admin`, `school_id` or `district_id` aborts with `42501` before
+writing anything, no matter how privileged the connecting role is. Found the
+only way it can be: by running one. The fix is one line at the top of the
+transaction, declaring the migration to be the server-side admin flow the guard's
+own comment sanctions:
+
+```sql
+SET LOCAL request.jwt.claims = '{"role":"service_role"}';
+```
+
+`SET LOCAL` scopes it to that transaction — the guard is untouched for every
+other actor. Any future migration touching those four columns needs this line.
+
 **Source of truth:** `supabase/migrations/20260724_fix_profiles_update_rls_recursion.sql`;
+`supabase/migrations/20260819_spe570_backfill_profile_district_state.sql`;
 live `profiles_update` policy + `profiles_guard_immutable_columns` trigger.
 
 ### `profiles_select`: school-scoped, plus a district branch (SPE-394)
@@ -588,6 +605,37 @@ flowchart TD
 - **Profile auto-creation trigger:** `on_auth_user_created → handle_new_user()`
   creates a `profiles` row (default role `resource`) for **every** new auth
   user. This is why the SSO gate (§5) can't rely on "profile exists".
+- **Every creation route must PIN the structured scope itself (SPE-570).**
+  `create_profile_for_new_user` resolves `school_id` / `district_id` /
+  `state_id` by fuzzy **name** matching (`find_school_ids_by_names`), and its
+  district lookup is gated on a non-empty state **and** district name. Every
+  admin/SIS route passes `state: ''` and `school_district: ''`, so the matcher
+  returns NULL for all three and the caller's follow-up `UPDATE` is the *only*
+  thing that sets them. Four routes pinned `school_id` alone, which left **114
+  production profiles** carrying a school but no district and no state (110
+  `teacher`, 4 `site_admin`, across John Swett, Mt. Diablo and Hayward) —
+  invisible to any count filtering on district, and silent, because the accounts
+  worked. Those 114 are what the SPE-570 backfill repaired, along with **1**
+  further profile that had a correct district but no state; 115 rows in
+  `backup_spe570_profile_scope_backfill`. Two more accounts carried neither a
+  district *nor* a school, so nothing was derivable for them and they were left
+  alone — which is why the raw "profiles with no district" count was 116, not
+  114.
+  All routes now go through `pinProfileScopeFromSchool`
+  (`lib/supabase/account-provisioning.ts`), which derives district and state
+  from the **school** via the reference tables — not from the caller's grant,
+  since `admin_permissions.state_id` is not normalized (production holds both
+  `'CA'` and `'ca'`, and `profiles.state_id` is FK-constrained to `states.id`,
+  which is uppercase-only). School-less roles (`district_admin`,
+  `district_tech`) have nothing to derive from and pin from their grant instead.
+- **Rollback order is load-bearing (SPE-570).** `profiles.id → auth.users(id)`
+  is `ON DELETE NO ACTION`, so deleting the auth user while its profile row
+  still exists is **refused by the FK** — and the admin API *resolves* with
+  `{ error }` rather than throwing, so a caller that ignores the return value
+  logs a clean rollback over an orphaned, sign-in-capable account whose email is
+  now permanently taken. Undo goes through `rollbackProvisionedAccount`
+  (same module): profile row first, then the auth user, each step guarded
+  separately so a throw in the first cannot skip the second.
 - **Removed — SPE-111 (done, PR #678):** the self-signup UI (`app/(auth)/signup/*`),
   `app/api/auth/signup/route.ts`, the auth-provider `signUp()`, and the `/signup`
   route-allowlist entries are **deleted** — account creation is admin-only. (There
@@ -615,6 +663,7 @@ flowchart TD
 
 **Source of truth:** `app/api/admin/create-teacher-account/route.ts`;
 `app/auth/callback/route.ts`; `lib/supabase/queries/admin-accounts.ts`;
+`lib/supabase/account-provisioning.ts`;
 `supabase/migrations/20250117_create_profile_on_signup.sql`.
 
 ---
