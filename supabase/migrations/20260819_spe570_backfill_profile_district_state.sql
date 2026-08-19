@@ -57,6 +57,23 @@
 
 BEGIN;
 
+-- THE GUARD THIS HAS TO SATISFY. `profiles` carries the SPE-782 trigger
+-- `profiles_guard_immutable_columns()`, which refuses ANY change to role /
+-- is_speddy_admin / school_id / district_id unless `auth.role()` returns
+-- 'service_role'. `auth.role()` reads the JWT claim, and a migration connection
+-- carries none — so without the line below this whole migration aborts with
+-- 42501 before writing anything. Found by running it: the first attempt against
+-- production failed exactly here and rolled back clean, no table, no rows.
+--
+-- A migration is precisely the "server-side admin flow" the guard's own comment
+-- names as the legitimate way these columns change, so the claim says so.
+-- SET LOCAL scopes it to this transaction: the guard is untouched for every
+-- other actor, and a browser session still cannot move these columns.
+--
+-- Any future migration that writes profiles.role, is_speddy_admin, school_id or
+-- district_id needs this same line.
+SET LOCAL request.jwt.claims = '{"role":"service_role"}';
+
 -- Recovery record: the exact rows changed, with their prior values, so this is
 -- precisely reversible even after later writes land on these profiles.
 CREATE TABLE IF NOT EXISTS public.backup_spe570_profile_scope_backfill (
