@@ -107,8 +107,9 @@ their guardrails hold; every other gate above still applies to them.
   `CREATE INDEX IF NOT EXISTS` / `DROP INDEX IF EXISTS`, and cite the table's
   current size in the PR to show the brief write-lock is acceptable — a table
   too large for that needs the non-transactional zero-downtime path, which is
-  OUT of this lane: bring it to me. Drops need advisor/usage evidence (cited
-  in the PR) that the index is unused or redundant. Every such PR states each
+  OUT of this lane: bring it to me. Additions cite the evidence for the index
+  (the advisor finding or the query shape it serves); drops cite advisor/usage
+  evidence that the index is unused or redundant. Every such PR states each
   migration's one-line rollback in its description, and the standing
   real-session verification rule applies as usual.
 
@@ -177,8 +178,8 @@ does not delegate it: nothing user-facing merges without my approval.
 small side issue that would itself qualify as auto-deployable and takes under
 ~30 minutes, fix it in the same session as its own small PR instead of filing
 a ticket — capped at two per session so the main task stays on track. File a
-ticket only for what can't be done now: too big, outside the bar, or needing
-my call.
+ticket only for what can't be done now: too big, outside the bar, needing my
+call, or past the session cap.
 
 ## How we use Linear (issue statuses)
 
