@@ -37,11 +37,22 @@ const recorded: RecordedQuery[] = [];
 /** Set per-test to control what a chain resolves to. */
 let nextResult: (q: RecordedQuery) => { data: unknown; error: unknown };
 
+/**
+ * Reference reads performed by `pinProfileScopeFromSchool` (SPE-570): the
+ * school's district, then that district's state. Answered here rather than in
+ * each test's `nextResult` because they are lookups, not the write shape under
+ * test — every test needs them to succeed, and none is asserting on them.
+ */
+const SCOPE_LOOKUPS: Record<string, { data: unknown; error: unknown }> = {
+  'admin:schools': { data: { district_id: 'district-1' }, error: null },
+  'admin:districts': { data: { state_id: 'CA' }, error: null },
+};
+
 function makeFrom(table: string): Record<string, unknown> {
   const record: RecordedQuery = { table, calls: [], result: { data: [], error: null } };
   recorded.push(record);
   const chain: Record<string, unknown> = {};
-  for (const method of ['insert', 'update', 'delete', 'select', 'eq', 'is', 'in']) {
+  for (const method of ['insert', 'update', 'delete', 'select', 'eq', 'is', 'in', 'single']) {
     chain[method] = (...args: unknown[]) => {
       record.calls.push({ method, args });
       return chain;
@@ -49,7 +60,7 @@ function makeFrom(table: string): Record<string, unknown> {
   }
   // Thenable, like the real builder: awaiting the chain resolves it.
   chain.then = (resolve: (v: unknown) => unknown) => {
-    record.result = nextResult(record);
+    record.result = SCOPE_LOOKUPS[record.table] ?? nextResult(record);
     return Promise.resolve(record.result).then(resolve);
   };
   return chain;
@@ -239,6 +250,19 @@ describe('applyTeacherSyncPlan', () => {
       'create_profile_for_new_user',
       expect.objectContaining({ user_id: 'auth-1' }),
     );
+    // The profile is scoped with all THREE ids. The RPC above resolves none of
+    // them (it name-matches on the district/state strings this caller passes
+    // as ''), so stamping school_id alone is what left every sync-provisioned
+    // teacher district-less — 110 rows in production before SPE-570.
+    const profileScope = recorded.find(
+      (q) => q.table === 'admin:profiles' && q.calls.some((c) => c.method === 'update'),
+    );
+    expect(profileScope).toBeDefined();
+    expect(profileScope!.calls.find((c) => c.method === 'update')!.args[0]).toEqual({
+      school_id: 'sch-elem',
+      district_id: 'district-1',
+      state_id: 'CA',
+    });
     expect(results).toEqual([
       {
         schoolId: 'sch-elem',

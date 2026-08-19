@@ -4,6 +4,7 @@ import { Database } from '@/src/types';
 import { createClient as createServerClient } from '@/lib/supabase/server';
 import { generateTemporaryPassword } from '@/lib/utils/password-generator';
 import { withRoute } from '@/lib/api/with-route';
+import { pinProfileScopeFromSchool } from '@/lib/supabase/pin-profile-scope';
 
 /**
  * Admin API endpoint to create a teacher account with login credentials
@@ -153,17 +154,12 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
         throw new Error(`Profile creation failed: ${profileError.message}`);
       }
 
-      // Update the profile with the known school_id
-      // The RPC function relies on name matching which may fail or mismatch
-      // We already have a validated school_id from the admin permission check
-      const { error: updateError } = await adminClient
-        .from('profiles')
-        .update({ school_id })
-        .eq('id', authUser.user.id);
-
-      if (updateError) {
-        throw new Error(`Profile school_id update failed: ${updateError.message}`);
-      }
+      // Pin the profile's scope from the validated school_id.
+      // The RPC function relies on name matching which may fail or mismatch,
+      // and it is passed empty district/state names above, so it resolves
+      // nothing — school, district AND state all have to be pinned here
+      // (SPE-570).
+      await pinProfileScopeFromSchool(adminClient, authUser.user.id, school_id);
 
       // Create teacher record linked to the auth account
       const { data: teacher, error: teacherError } = await adminClient

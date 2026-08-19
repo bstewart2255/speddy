@@ -48,6 +48,7 @@ import { logger } from '@/lib/logger';
 import { createServiceClient } from '@/lib/supabase/server';
 import { logServerAuditEvent } from '@/lib/supabase/audit-log-server';
 import { generateTemporaryPassword } from '@/lib/utils/password-generator';
+import { pinProfileScopeFromSchool } from '@/lib/supabase/pin-profile-scope';
 import {
   OneRosterClient,
   type RawOneRosterEnrollment,
@@ -1068,11 +1069,11 @@ async function createLoginAccount(
     });
     if (profileError) throw new Error(`Profile creation failed: ${profileError.message}`);
 
-    const { error: updateError } = await admin
-      .from('profiles')
-      .update({ school_id: school.schoolId })
-      .eq('id', data.user.id);
-    if (updateError) throw new Error(`Profile school update failed: ${updateError.message}`);
+    // The RPC is passed empty district/state names above, so its name matcher
+    // resolves nothing — school, district AND state all have to be pinned here.
+    // Pinning only school_id is what left every sync-provisioned teacher
+    // district-less (SPE-570).
+    await pinProfileScopeFromSchool(admin, data.user.id, school.schoolId);
 
     return { accountId: data.user.id };
   } catch (err) {
