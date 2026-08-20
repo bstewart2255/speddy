@@ -653,6 +653,30 @@ describe('planDistrictRoster — SPE-575 district data files', () => {
     expect(result.counts.withGoals).toBe(1);
   });
 
+  it('refuses to attach a record whose district ID contradicts the row it matches', () => {
+    // Same name, school and grade, but a different district ID: a different
+    // real student. Applying would hand this row their accommodations and
+    // silently drop the ID that proves the mismatch.
+    const result = plan({
+      accommodationsStudents: [accommodationsStudent({ districtStudentId: '999999' })],
+    });
+
+    expect(result.counts.accommodationsStudentsNotUsed).toBe(1);
+    expect(result.children[0].fields.accommodations).toBeNull();
+  });
+
+  it('refuses to attach a record whose birth date contradicts the row', () => {
+    const result = plan({
+      goalsStudents: [],
+      datesRecords: [],
+      servicesStudents: [servicesStudent()],
+      testingStudents: [testingStudent({ dateOfBirth: '2015-01-01' })],
+    });
+
+    expect(result.counts.testingStudentsNotUsed).toBe(1);
+    expect(result.children[0].fields.testingAccommodations).toBeNull();
+  });
+
   it('does not duplicate a service line when two records reach one row', () => {
     // A blank-grade second record legitimately folds into the first student's
     // row; repeating the line would double the weekly minutes the claim

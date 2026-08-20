@@ -406,8 +406,9 @@ export default function DistrictRosterImportPanel() {
                       plan.counts.testingStudentsNotUsed >
                       0 && (
                       <p className="mt-2 rounded border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs text-amber-800">
-                        Some students&apos; data could not be attached because two students on the
-                        roster share their name
+                        Some records could not be safely attached to one student — either two
+                        students on the roster share the name, or the record&apos;s district ID or
+                        birth date disagrees with the student it would have joined
                         {plan.counts.servicesStudentsNotUsed > 0 &&
                           ` — ${plan.counts.servicesStudentsNotUsed} in the Services report`}
                         {plan.counts.accommodationsStudentsNotUsed > 0 &&

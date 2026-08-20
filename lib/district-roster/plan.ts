@@ -599,6 +599,23 @@ export function planDistrictRoster(input: RosterPlanInput): RosterPlan {
         exact.length === 1 ? exact[0] : exact.length === 0 && byName.length === 1 ? byName[0] : null;
 
       if (target) {
+        // Fill-only is not enough (CodeRabbit, PR #917): a record whose
+        // district ID or birth date CONTRADICTS the row it would join is a
+        // different same-named student, and applying would hand this row their
+        // data while silently discarding the identity value that proves it.
+        // Refused and counted; the review screen's could-not-attach note says
+        // why. Creating a second row instead would poison the name indexes
+        // every later record consults, so refusal is the safe shape.
+        const recordIdKey = districtIdKey(record.districtStudentId);
+        const targetIdKey = districtIdKey(target.districtStudentId);
+        const recordDob = clean(record.dateOfBirth);
+        if (
+          (recordIdKey && targetIdKey && recordIdKey !== targetIdKey) ||
+          (recordDob && target.dateOfBirth && recordDob !== target.dateOfBirth)
+        ) {
+          notUsed++;
+          continue;
+        }
         apply(target, record);
         if (!target.gradeLevel) target.gradeLevel = clean(record.gradeLevel);
         if (!target.dateOfBirth) target.dateOfBirth = clean(record.dateOfBirth) || undefined;
