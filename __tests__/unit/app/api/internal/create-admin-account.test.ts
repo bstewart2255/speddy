@@ -143,6 +143,8 @@ describe('POST /api/internal/create-admin-account', () => {
     createUser.mockReset().mockResolvedValue({ data: { user: { id: NEW_USER_ID } }, error: null });
     deleteUser.mockReset().mockResolvedValue({ error: null });
     rpc.mockReset().mockResolvedValue({ error: null });
+    insertSpy.mockClear();
+    updateSpy.mockClear();
   });
 
   it('401s an unauthenticated caller without creating anything', async () => {
