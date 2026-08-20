@@ -37,9 +37,12 @@ export interface ParsedStudent {
   // about whose student this probably is; it is NOT the service provider.
   caseManager?: string;
   goals: string[];
-  // The same goals with their routing metadata, in the same order as `goals`
-  // (SPE-575). Only the district roster reads this; per-provider consumers
-  // keep using the flat, already-role-filtered `goals`.
+  // The goals with their routing metadata (SPE-575): one entry per distinct
+  // routing signature (text + area of need + goal type + person responsible).
+  // NOT positionally aligned with `goals` — that list dedupes by text alone,
+  // so a goal repeated under two signatures appears once there and twice here;
+  // never zip the two by index. Only the district roster reads this;
+  // per-provider consumers keep the flat, already-role-filtered `goals`.
   goalDetails?: ParsedGoalDetail[];
   rawRow: number; // For debugging
   // Speddy roster template only (SPE-225): the template carries the teacher name

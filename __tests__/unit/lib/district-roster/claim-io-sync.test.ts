@@ -135,11 +135,34 @@ it('creates the initial unscheduled sessions for a freshly claimed student', asy
   expect(after).toEqual({ sessions_per_week: 2, minutes_per_session: 30 });
 });
 
-it('counts a failed enrichment sync instead of failing the claim', async () => {
+it('counts a failed enrichment sync and reverts the minutes so they stay on offer', async () => {
   mockSync.mockResolvedValueOnce({ success: false, error: 'boom' });
   const result = await enrichClaimedStudents({
     plan: basePlan,
     claims: [{ childId: CHILD, studentId: STUDENT, outcome: 'claimed' }],
   });
   expect(result).toEqual({ enriched: 0, enrichFailures: 1 });
+  // Committed minutes that match the proposal would never be offered again
+  // (CodeRabbit, PR #917) — the revert is what makes the next banner load the
+  // retry path. A fresh claim's row starts with no minutes, so back to null.
+  expect(writes).toEqual([
+    { table: 'students', values: { sessions_per_week: 2, minutes_per_session: 30 } },
+    { table: 'students', values: { sessions_per_week: null, minutes_per_session: null } },
+  ]);
+});
+
+it('reverts an accepted minutes change to the stored pair when its sync fails', async () => {
+  mockSync.mockResolvedValueOnce({ success: false, error: 'boom' });
+  const result = await applyRosterAcceptances({
+    plan: basePlan,
+    requests: [{ studentId: STUDENT, fields: ['serviceMinutes'] }],
+  });
+
+  // Counted skipped, not applied: after the revert the field genuinely did not
+  // change, and the reload the response asks for shows the offer again.
+  expect(result).toEqual({ applied: 0, skipped: 1 });
+  expect(writes).toEqual([
+    { table: 'students', values: { sessions_per_week: 2, minutes_per_session: 30 } },
+    { table: 'students', values: { sessions_per_week: 1, minutes_per_session: 30 } },
+  ]);
 });

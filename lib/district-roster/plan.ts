@@ -156,6 +156,7 @@ export interface PlannedChild {
 export interface RosterException {
   kind:
     | 'ambiguous-name-match'
+    | 'identity-mismatch'
     | 'unknown-school'
     | 'conflicting-district-id'
     | 'duplicate-in-files'
@@ -271,7 +272,9 @@ const districtIdValue = (id: string | null | undefined): string | null => {
  * row against children persisted across time, and grade is exactly what changes
  * at a year rollover; including it would make every September re-import
  * duplicate the students who have no district id. Two children sharing a name
- * at one school are reported as ambiguous rather than guessed at.
+ * at one school are reported as ambiguous rather than guessed at — and the one
+ * candidate this key does find is still vetted by `identityDoubt` below before
+ * anything is written to it.
  */
 export const nameSchoolKey = (
   firstName: string | null | undefined,
@@ -283,6 +286,44 @@ export const nameSchoolKey = (
     clean(firstName).toLowerCase().replace(/\s+/g, ' '),
     clean(schoolId),
   ].join('|');
+
+/** Speddy's normalized grades in order. Unrecognized spellings get no rank. */
+const GRADE_RANK = new Map<string, number>([
+  ['TK', -1],
+  ['K', 0],
+  ...Array.from({ length: 12 }, (_, i) => [String(i + 1), i + 1] as [string, number]),
+]);
+
+/**
+ * Why a name+school match should NOT be trusted, or null when it can be.
+ *
+ * The name key above excludes grade so a September re-import still finds last
+ * year's students — but that same blindness would let a file row update a
+ * same-named DIFFERENT child: a grade-4 record from the Services report (which
+ * carries no District ID) folding into a grade-1 child (CodeRabbit review on
+ * PR #917). So the single candidate the key finds is vetted here:
+ *
+ * - Matching birth dates confirm the match outright, whatever the grades say —
+ *   the file may be correcting a wrong grade.
+ * - Contradicting birth dates refuse it: two birth dates are two children.
+ * - With no birth date to arbitrate, the file's grade must be the stored grade
+ *   or exactly one year ahead — the mid-year re-import and the fall rollover.
+ *   A regression or a multi-year jump is identity doubt, reported to the admin
+ *   rather than guessed at. Blank or unrecognized grades cannot testify either
+ *   way and stay compatible, so legacy spellings degrade to the old behavior.
+ */
+const identityDoubt = (
+  row: { dateOfBirth?: string; gradeLevel: string },
+  child: { dateOfBirth: string | null; gradeLevel: string | null },
+): 'birth-date' | 'grade' | null => {
+  const rowDob = clean(row.dateOfBirth);
+  const childDob = clean(child.dateOfBirth);
+  if (rowDob && childDob) return rowDob === childDob ? null : 'birth-date';
+  const stored = GRADE_RANK.get(clean(child.gradeLevel).toUpperCase());
+  const fromFile = GRADE_RANK.get(clean(row.gradeLevel).toUpperCase());
+  if (stored === undefined || fromFile === undefined) return null;
+  return fromFile === stored || fromFile === stored + 1 ? null : 'grade';
+};
 
 /**
  * The last-resort identity, for a child Speddy holds under INITIALS ONLY.
@@ -683,7 +724,8 @@ export function planDistrictRoster(input: RosterPlanInput): RosterPlan {
     // Identity, most specific first: district id, then name + school, then —
     // only for a child Speddy holds under initials alone — initials + grade +
     // school. Every rung refuses rather than guesses when more than one child
-    // could be the answer.
+    // could be the answer, and the name rung additionally refuses its single
+    // candidate when the birth date or grade says it may be a different child.
     let match: ExistingChild | undefined;
     let matchBasis: RosterMatchBasis = 'new';
     if (rowIdKey) {
@@ -718,6 +760,25 @@ export function planDistrictRoster(input: RosterPlanInput): RosterPlan {
         continue;
       }
       if (candidates.length === 1) {
+        const doubt = identityDoubt(row, candidates[0]);
+        if (doubt) {
+          touchedChildIds.add(candidates[0].id);
+          exceptions.push({
+            kind: 'identity-mismatch',
+            initials,
+            gradeLevel: row.gradeLevel,
+            detail:
+              doubt === 'birth-date'
+                ? 'A student in Speddy shares this name and school but has a different birth ' +
+                  'date. Both were left alone — if these really are two students, include the ' +
+                  'District ID column so Speddy can tell them apart.'
+                : `The file says grade ${row.gradeLevel}, but the student with this name in ` +
+                  `Speddy is in grade ${clean(candidates[0].gradeLevel) || '(none)'}. Left ` +
+                  'alone — if this is the same student, include their District ID so Speddy ' +
+                  'can be sure.',
+          });
+          continue;
+        }
         match = candidates[0];
         matchBasis = 'name-and-school';
       }

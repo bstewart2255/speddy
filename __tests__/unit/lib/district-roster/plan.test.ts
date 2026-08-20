@@ -159,6 +159,101 @@ describe('planDistrictRoster', () => {
       expect(result.children[0].changedFields).toEqual(['grade']);
     });
 
+    describe('vetting the single name+school candidate (CodeRabbit, PR #917)', () => {
+      // The name key excludes grade for the rollover's sake, so without this a
+      // grade-4 record from a file with no District ID column would fold into
+      // a same-named grade-1 child and rewrite their grade, birth date and
+      // district data.
+      it('refuses when the grades are too far apart to be a rollover', () => {
+        const result = plan({
+          goalsStudents: [goalsStudent({ districtStudentId: undefined, gradeLevel: '4' })],
+          datesRecords: [],
+          existingChildren: [existingChild({ districtStudentId: null, gradeLevel: '1' })],
+        });
+
+        expect(result.children).toHaveLength(0);
+        expect(result.exceptions[0]).toMatchObject({ kind: 'identity-mismatch' });
+        expect(result.exceptions[0].detail).toMatch(/grade 4.*grade 1/s);
+      });
+
+      it('refuses a grade regression too — students do not move down a grade', () => {
+        const result = plan({
+          goalsStudents: [goalsStudent({ districtStudentId: undefined, gradeLevel: '1' })],
+          datesRecords: [],
+          existingChildren: [existingChild({ districtStudentId: null, gradeLevel: '2' })],
+        });
+
+        expect(result.children).toHaveLength(0);
+        expect(result.exceptions[0]).toMatchObject({ kind: 'identity-mismatch' });
+      });
+
+      it('a matching birth date confirms the match whatever the grades say', () => {
+        // The file may be correcting a grade Speddy holds wrong.
+        const result = plan({
+          goalsStudents: [goalsStudent({ districtStudentId: undefined, gradeLevel: '4' })],
+          datesRecords: [],
+          servicesStudents: [
+            {
+              firstName: 'Ana',
+              lastName: 'Alvarez',
+              gradeLevel: '4',
+              schoolOfAttendance: 'Rodeo Hills Elementary',
+              dateOfBirth: '2016-01-05',
+              services: [],
+            },
+          ],
+          existingChildren: [
+            existingChild({ districtStudentId: null, gradeLevel: '1', dateOfBirth: '2016-01-05' }),
+          ],
+        });
+
+        expect(result.exceptions).toHaveLength(0);
+        expect(result.children[0]).toMatchObject({ action: 'update', matchBasis: 'name-and-school' });
+        expect(result.children[0].changedFields).toContain('grade');
+      });
+
+      it('refuses when the birth dates contradict, even with matching grades', () => {
+        // Two birth dates are two children; updating would hand one child the
+        // other's services and accommodations.
+        const result = plan({
+          goalsStudents: [goalsStudent({ districtStudentId: undefined })],
+          datesRecords: [],
+          servicesStudents: [
+            {
+              firstName: 'Ana',
+              lastName: 'Alvarez',
+              gradeLevel: '1',
+              schoolOfAttendance: 'Rodeo Hills Elementary',
+              dateOfBirth: '2017-09-30',
+              services: [],
+            },
+          ],
+          existingChildren: [
+            existingChild({ districtStudentId: null, dateOfBirth: '2016-01-05' }),
+          ],
+        });
+
+        expect(result.children).toHaveLength(0);
+        expect(result.exceptions[0]).toMatchObject({ kind: 'identity-mismatch' });
+        expect(result.exceptions[0].detail).toMatch(/birth date/);
+      });
+
+      it('a district-id match is never second-guessed by grade distance', () => {
+        // The id IS the identity; a big grade jump there is a data correction.
+        const result = plan({
+          goalsStudents: [goalsStudent({ gradeLevel: '5' })],
+          datesRecords: [],
+          existingChildren: [existingChild({ gradeLevel: '1' })],
+        });
+
+        expect(result.exceptions).toHaveLength(0);
+        expect(result.children[0]).toMatchObject({
+          action: 'update',
+          matchBasis: 'district-student-id',
+        });
+      });
+    });
+
     it('refuses to guess when two children at one school share a name', () => {
       const result = plan({
         goalsStudents: [goalsStudent({ districtStudentId: undefined })],

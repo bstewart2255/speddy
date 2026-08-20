@@ -372,8 +372,6 @@ export async function applyRosterAcceptances(params: {
           // Same follow-through as every other minutes writer: adjust the
           // student's existing scheduled sessions (or create the initial
           // unscheduled ones) so the calendar matches the new requirement.
-          // A sync miss is logged, never thrown — the acceptance itself
-          // committed, and the students-page edit path remains the repair.
           const sync = await updateExistingSessionsForStudent(
             request.studentId,
             oldSplit,
@@ -384,9 +382,33 @@ export async function applyRosterAcceptances(params: {
             session,
           );
           if (!sync.success) {
-            log.error('Session sync after a minutes acceptance failed', new Error(sync.error ?? 'unknown'), {
-              studentId: request.studentId,
-            });
+            // Committed minutes that match the offer would never be offered
+            // again, leaving the calendar permanently behind the requirement
+            // (CodeRabbit, PR #917) — so put the stored pair back and count
+            // the field as skipped: the banner re-offers it on reload and
+            // accepting it retries both writes. Only if even the revert fails
+            // do the minutes stay applied, with the students-page edit as the
+            // logged repair.
+            const revert = await session
+              .from('students')
+              .update({
+                sessions_per_week: oldSplit.sessions_per_week,
+                minutes_per_session: oldSplit.minutes_per_session,
+              })
+              .eq('id', request.studentId);
+            if (revert.error) {
+              log.error(
+                'Session sync after a minutes acceptance failed, and so did the revert; a minutes re-edit on the students page is the repair',
+                new Error(`${sync.error ?? 'unknown'}; revert: ${revert.error.message}`),
+                { studentId: request.studentId },
+              );
+            } else {
+              log.error('Session sync after a minutes acceptance failed; minutes reverted and re-offered', new Error(sync.error ?? 'unknown'), {
+                studentId: request.studentId,
+              });
+              result.applied -= 1;
+              result.skipped += 1;
+            }
           }
         }
       }
@@ -437,6 +459,9 @@ export async function claimRosterChildren(
  * the claim already committed, and whatever this misses reappears as a fill
  * offer the next time the banner loads, because the update planner compares
  * the same fields. That self-healing is why claim + enrich need not be atomic.
+ * For minutes it takes one explicit step: a failed session sync REVERTS the
+ * just-written pair, because stored minutes that already match the offer are
+ * precisely what the planner stops offering.
  */
 export async function enrichClaimedStudents(params: {
   plan: ClaimPlan;
@@ -477,7 +502,27 @@ export async function enrichClaimedStudents(params: {
           },
           session,
         );
-        if (!sync.success) throw new Error(sync.error ?? 'session sync failed');
+        if (!sync.success) {
+          // The minutes just committed, and a stored pair that MATCHES the
+          // offer is exactly what stops the banner from offering it again — so
+          // leaving them would strand the student with a requirement but no
+          // sessions and no repair path (CodeRabbit, PR #917). Put the columns
+          // back to what the claim RPC created (it sets no minutes), so the
+          // proposal returns on the next banner load and accepting it retries
+          // both writes.
+          const revert = await session
+            .from('students')
+            .update({ sessions_per_week: null, minutes_per_session: null })
+            .eq('id', claim.studentId);
+          if (revert.error) {
+            log.error(
+              'Reverting minutes after a failed session sync also failed; a minutes re-edit on the students page is the repair',
+              new Error(revert.error.message),
+              { studentId: claim.studentId },
+            );
+          }
+          throw new Error(sync.error ?? 'session sync failed');
+        }
       }
 
       const detailsPatch: Record<string, unknown> = {};

@@ -41,6 +41,7 @@ const EXCEPTION_HEADINGS: Record<RosterException['kind'], string> = {
   'missing-grade': 'No grade in either file',
   'unknown-school': 'School not in your district in Speddy',
   'ambiguous-name-match': 'Speddy could not tell which student this is',
+  'identity-mismatch': 'A student in Speddy shares this name, but may be someone else',
   'conflicting-district-id': 'Already has a different district student ID',
   'duplicate-in-files': 'Two students in your files share one district student ID',
 };
