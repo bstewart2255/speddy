@@ -352,14 +352,14 @@ export default function RosterClaimBanner() {
                       `${c.minutesProposal.sessionsPerWeek}×${c.minutesProposal.minutesPerSession} min/week`,
                     );
                   }
-                  if (c.goals.length > 0) {
-                    includes.push(`${c.goals.length} goal${c.goals.length === 1 ? '' : 's'}`);
-                  }
+                  const plural = (n: number, noun: string) =>
+                    `${n} ${noun}${n === 1 ? '' : 's'}`;
+                  if (c.goals.length > 0) includes.push(plural(c.goals.length, 'goal'));
                   if (c.accommodations.length > 0) {
-                    includes.push(`${c.accommodations.length} accommodations`);
+                    includes.push(plural(c.accommodations.length, 'accommodation'));
                   }
                   if (c.testingAccommodations.length > 0) {
-                    includes.push(`${c.testingAccommodations.length} testing`);
+                    includes.push(`${plural(c.testingAccommodations.length, 'testing accommodation')}`);
                   }
                   return (
                     <label

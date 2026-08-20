@@ -575,6 +575,39 @@ describe('planDistrictRoster — SPE-575 district data files', () => {
     expect(result.children[0].action).toBe('unchanged');
   });
 
+  it('merges the child\'s stored list with the district\'s, never replacing it', () => {
+    // The SPE-347 mirror writes provider-accepted entries onto these child
+    // columns; a wholesale replace would drop them on every re-import and then
+    // re-flag the student forever as the mirror wrote them back.
+    const result = plan({
+      accommodationsStudents: [accommodationsStudent()],
+      existingChildren: [
+        existingChild({
+          accommodations: ['Provider-added entry', 'Extended time'],
+        }),
+      ],
+    });
+    const child = result.children[0];
+    expect(child.fields.accommodations).toEqual([
+      'Provider-added entry',
+      'Extended time',
+      'Modification: Shortened assignments',
+    ]);
+    expect(child.changedFields).toContain('accommodations');
+
+    // Once the child holds every district entry, a re-import reads unchanged.
+    const again = plan({
+      accommodationsStudents: [accommodationsStudent()],
+      existingChildren: [
+        existingChild({
+          accommodations: ['Provider-added entry', 'Extended time', 'Modification: Shortened assignments'],
+          testingAccommodations: ['Text-to-Speech (Reading Passages)'],
+        }),
+      ],
+    });
+    expect(again.children[0].action).toBe('unchanged');
+  });
+
   it('never erases stored district data when the file was not uploaded', () => {
     const result = plan({
       existingChildren: [

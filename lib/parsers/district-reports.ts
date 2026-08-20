@@ -167,8 +167,12 @@ const cellAt = (row: string[], index: number | undefined): string =>
 
 const isoDate = (raw: string): string | undefined => (raw ? parseDate(raw) : undefined);
 
-/** Case-insensitive de-dup that keeps first spelling and drops blanks. */
-function dedupe(values: string[]): string[] {
+/**
+ * Case-insensitive de-dup that keeps first spelling and drops blanks. Shared
+ * with the roster planner's merge (one normalization, so the parsers and the
+ * plan can never disagree about what counts as a duplicate).
+ */
+export function dedupeEntries(values: string[]): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
   for (const value of values) {
@@ -430,12 +434,13 @@ export async function parseAccommodationsReport(
       if (!student.caseManager) student.caseManager = cellAt(row, col.caseManager) || undefined;
     }
 
-    // Assessment rows carry their text in their own column and belong on the
-    // student's testing list, not among classroom accommodations.
+    // Assessment text goes to the student's testing list. NOT an either/or
+    // with the classroom columns: a row carrying both keeps both — dropping
+    // the classroom half silently would be the exact quiet loss this parser's
+    // refusal posture exists to avoid.
     const assessment = cellAt(row, col.assessmentList).replace(/\s+/g, ' ');
     if (assessment) {
       student.testingAccommodations.push(assessment);
-      continue;
     }
 
     const text = composeAccommodationText(
@@ -445,9 +450,10 @@ export async function parseAccommodationsReport(
       cellAt(row, col.category),
     );
     if (text.length === 0) {
-      // Category chosen in SEIS, nothing written — a district-side entry gap.
-      // 33 such rows in the pilot file; skipping quietly per row, counted once.
-      emptyRows++;
+      // Category chosen in SEIS, nothing written anywhere on the row — a
+      // district-side entry gap. Skipped quietly per row, counted once. A row
+      // whose only content was assessment text is NOT an entry gap.
+      if (!assessment) emptyRows++;
       continue;
     }
     student.accommodations.push(...text);
@@ -463,8 +469,8 @@ export async function parseAccommodationsReport(
   }
 
   for (const student of byStudent.values()) {
-    student.accommodations = dedupe(student.accommodations);
-    student.testingAccommodations = dedupe(student.testingAccommodations);
+    student.accommodations = dedupeEntries(student.accommodations);
+    student.testingAccommodations = dedupeEntries(student.testingAccommodations);
   }
 
   return {
@@ -588,7 +594,7 @@ export async function parseTestingAccommodationsReport(
       schoolOfAttendance: cellAt(row, col.school) || undefined,
       dateOfBirth: isoDate(cellAt(row, col.birthdate)),
       caseManager: cellAt(row, col.caseManager) || undefined,
-      testingAccommodations: dedupe(labels),
+      testingAccommodations: dedupeEntries(labels),
     });
   }
 

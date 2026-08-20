@@ -17,6 +17,7 @@
 
 import { normalizeSchoolName } from '@/lib/school-helpers';
 import type { ParsedGoalDetail } from '@/lib/parsers/csv-parser';
+import { dedupeEntries } from '@/lib/parsers/district-reports';
 import type {
   AccommodationsReportStudent,
   DistrictServiceLine,
@@ -222,17 +223,8 @@ export interface RosterPlan {
 const clean = (v: string | null | undefined): string => (v ?? '').trim();
 
 /** Merge two entry lists, keeping first spelling, dropping case-dup entries. */
-const mergeUnique = (a: string[] | undefined, b: string[]): string[] => {
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const value of [...(a ?? []), ...b]) {
-    const key = value.trim().toLowerCase();
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
-    out.push(value.trim());
-  }
-  return out;
-};
+const mergeUnique = (a: string[] | undefined, b: string[]): string[] =>
+  dedupeEntries([...(a ?? []), ...b]);
 
 /**
  * Deterministic JSON for change detection: object keys sorted recursively, so
@@ -764,6 +756,24 @@ export function planDistrictRoster(input: RosterPlanInput): RosterPlan {
       ? districtIdValue(match!.districtStudentId)
       : row.districtStudentId;
 
+    // The two accommodation lists MERGE into what the child already carries,
+    // never replace it: the SPE-347 mirror writes provider-accepted (and
+    // provider-authored) entries onto these same child columns, so a wholesale
+    // replace would drop those on every re-import — and then flag the student
+    // as changed again the moment the provider's next edit mirrored them back,
+    // forever. Merging also makes re-imports converge: once the child holds
+    // every district entry, the comparison below reads unchanged.
+    // `district_services`/`district_goals` stay replace — they are roster-owned
+    // and nothing else writes them.
+    const mergedAccommodations =
+      row.accommodations && row.accommodations.length > 0
+        ? mergeUnique(match?.accommodations, row.accommodations)
+        : null;
+    const mergedTesting =
+      row.testingAccommodations && row.testingAccommodations.length > 0
+        ? mergeUnique(match?.testingAccommodations, row.testingAccommodations)
+        : null;
+
     const fields: RosterChildFields = {
       firstName: row.firstName,
       lastName: row.lastName,
@@ -775,8 +785,8 @@ export function planDistrictRoster(input: RosterPlanInput): RosterPlan {
       upcomingIepDate: dates?.upcomingIepDate ?? null,
       upcomingTriennialDate: dates?.upcomingTriennialDate ?? null,
       caseManager: row.caseManager,
-      accommodations: row.accommodations ?? null,
-      testingAccommodations: row.testingAccommodations ?? null,
+      accommodations: mergedAccommodations,
+      testingAccommodations: mergedTesting,
       districtServices: row.services ?? null,
       districtGoals: row.districtGoals ?? null,
     };

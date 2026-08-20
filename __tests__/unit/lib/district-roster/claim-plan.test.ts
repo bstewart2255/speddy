@@ -249,13 +249,19 @@ describe('planRosterClaims', () => {
     });
   });
 
-  it('never mentions goals — the roster holds none, so they cannot be touched', () => {
+  it('offers no goal changes for a child the district uploaded no goals for', () => {
+    // The pre-SPE-575 rule was "goals are never touched, the roster holds
+    // none". Goals now ride the roster when the district uploads its Goals
+    // report — but a child WITHOUT district goals must still produce zero
+    // goal offers, and a provider's own goals are still never subtracted
+    // (offers only ever append; see the SPE-575 suite below).
     const result = plan({
-      rosterChildren: [rosterChild({ caseloadCount: 1, gradeLevel: '2' })],
-      myStudents: [myStudent()],
+      myRole: 'resource',
+      rosterChildren: [rosterChild({ caseloadCount: 1, gradeLevel: '2', districtGoals: null })],
+      myStudents: [myStudent({ gradeLevel: '2', iepGoals: ['A goal the provider wrote'] })],
     });
 
-    expect(JSON.stringify(result)).not.toMatch(/goal/i);
+    expect(result.updates.flatMap((u) => u.changes.map((c) => c.field))).not.toContain('iepGoals');
   });
 });
 
@@ -348,6 +354,20 @@ describe('planRosterClaims — SPE-575 district data', () => {
       expect(change.kind).toBe('fill');
       expect(change.split).toEqual({ sessionsPerWeek: 1, minutesPerSession: 30 });
       expect(change.roster).toContain('30 min/week of Language and Speech');
+    });
+
+    it('does not re-flag the split acceptance itself wrote for a rounded-up mandate', () => {
+      // A 51 min/week mandate stores as ceil(51/30) = 2×30 = 60. Comparing the
+      // stored 60 against the raw 51 would conflict forever; the stored split
+      // matching the proposal's own split is the fixed point.
+      const result = plan({
+        myRole: 'speech',
+        rosterChildren: [
+          rosterChild({ caseloadCount: 1, districtServices: [speechLine(30), speechLine(21)] }),
+        ],
+        myStudents: [myStudent({ sessionsPerWeek: 2, minutesPerSession: 30 })],
+      });
+      expect(result.updates).toHaveLength(0);
     });
 
     it('does not flag a different split of the SAME weekly total', () => {

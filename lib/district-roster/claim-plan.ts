@@ -422,6 +422,10 @@ export function planRosterClaims(input: ClaimPlanInput): ClaimPlan {
     // Service minutes compare on the WEEKLY TOTAL, never the split: how a
     // mandate is chopped into sessions is the provider's scheduling call, so
     // their 2×15 equals the district's 30 min/week and proposes nothing.
+    // A current split equal to the one acceptance would WRITE is also not a
+    // change: the 30-minute chop rounds up (51 min/week stores as 2×30 = 60),
+    // so comparing the stored 60 against the mandate's 51 after acceptance
+    // would re-flag a conflict forever that accepting can never clear.
     const school = input.schoolLevels?.[child.schoolId] ?? null;
     const proposal = proposeServiceMinutes(child.districtServices, input.myRole, school);
     if (proposal) {
@@ -433,7 +437,11 @@ export function planRosterClaims(input: ClaimPlanInput): ClaimPlan {
       const currentWeekly = hasMinutes
         ? student.sessionsPerWeek! * student.minutesPerSession!
         : null;
-      if (currentWeekly === null || currentWeekly !== proposal.weeklyMinutes) {
+      const matchesProposalSplit =
+        hasMinutes &&
+        student.sessionsPerWeek === proposal.sessionsPerWeek &&
+        student.minutesPerSession === proposal.minutesPerSession;
+      if (!matchesProposalSplit && (currentWeekly === null || currentWeekly !== proposal.weeklyMinutes)) {
         changes.push({
           field: 'serviceMinutes',
           label: FIELD_LABELS.serviceMinutes,
