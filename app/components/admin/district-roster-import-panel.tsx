@@ -217,9 +217,7 @@ export default function DistrictRosterImportPanel() {
       <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
         <p className="text-sm font-semibold text-slate-900">Your SEIS reports</p>
         <p className="mt-0.5 max-w-3xl text-xs text-slate-500">
-          Any one file on its own works — together they give the fullest roster. The Student Goals
-          and IEP Dates reports come out of SEIS as CSV; the Services, Accommodations and Student
-          Download reports upload as the Excel files SEIS produces.
+          Any one file on its own works — together they give the fullest roster.
         </p>
 
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
@@ -241,7 +239,7 @@ export default function DistrictRosterImportPanel() {
           />
           <FilePicker
             id="roster-services-file"
-            label="Services report (Excel)"
+            label="Services report (Excel or CSV)"
             hint="Each student's IEP services with minutes and frequency"
             file={servicesFile}
             onPick={pickFile(setServicesFile)}
@@ -250,7 +248,7 @@ export default function DistrictRosterImportPanel() {
           />
           <FilePicker
             id="roster-accommodations-file"
-            label="Accommodations report (Excel)"
+            label="Accommodations report (Excel or CSV)"
             hint="Classroom accommodations, modifications and supports"
             file={accommodationsFile}
             onPick={pickFile(setAccommodationsFile)}
@@ -259,7 +257,7 @@ export default function DistrictRosterImportPanel() {
           />
           <FilePicker
             id="roster-testing-file"
-            label="Student Download — testing accommodations (Excel)"
+            label="Student Download — testing accommodations (Excel or CSV)"
             hint="State-testing accommodations (not the TOMS upload file, which has no names)"
             file={testingFile}
             onPick={pickFile(setTestingFile)}
