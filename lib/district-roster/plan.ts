@@ -637,7 +637,16 @@ export function planDistrictRoster(input: RosterPlanInput): RosterPlan {
   // (a blank-grade duplicate, or the accommodations file adding to a row the
   // services file created) must add to it, never overwrite it.
   const servicesStudentsNotUsed = attachStudents(input.servicesStudents, (row, record) => {
-    if (record.services.length > 0) row.services = [...(row.services ?? []), ...record.services];
+    if (record.services.length === 0) return;
+    // Same posture as the two accommodation lists below: a second record that
+    // legitimately reaches this row must not repeat lines it already carries —
+    // the claim planner SUMS these into the minutes proposal, so a duplicated
+    // line would double the minutes offered (CodeRabbit, PR #917).
+    const seen = new Set((row.services ?? []).map(stableStringify));
+    row.services = [
+      ...(row.services ?? []),
+      ...record.services.filter((line) => !seen.has(stableStringify(line))),
+    ];
   });
   const accommodationsStudentsNotUsed = attachStudents(
     input.accommodationsStudents,

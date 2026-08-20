@@ -193,6 +193,24 @@ describe('planDistrictRoster', () => {
         expect(result.exceptions[0]).toMatchObject({ kind: 'identity-mismatch' });
       });
 
+      // The transitions the vet deliberately ACCEPTS with no birth date to
+      // arbitrate — the tolerance the name key exists for. A future change to
+      // the rank table would break these silently otherwise.
+      it.each([
+        ['the same grade — a mid-year re-import', '1', '1'],
+        ['one grade ahead — the fall rollover', '1', '2'],
+        ['TK to K — the rollover at the bottom of the scale', 'TK', 'K'],
+      ])('accepts %s', (_label, stored, fromFile) => {
+        const result = plan({
+          goalsStudents: [goalsStudent({ districtStudentId: undefined, gradeLevel: fromFile })],
+          datesRecords: [],
+          existingChildren: [existingChild({ districtStudentId: null, gradeLevel: stored })],
+        });
+
+        expect(result.exceptions).toHaveLength(0);
+        expect(result.children[0]).toMatchObject({ matchBasis: 'name-and-school' });
+      });
+
       it('a matching birth date confirms the match whatever the grades say', () => {
         // The file may be correcting a grade Speddy holds wrong.
         const result = plan({
@@ -633,6 +651,20 @@ describe('planDistrictRoster — SPE-575 district data files', () => {
     expect(result.counts.withAccommodations).toBe(1);
     expect(result.counts.withTestingAccommodations).toBe(1);
     expect(result.counts.withGoals).toBe(1);
+  });
+
+  it('does not duplicate a service line when two records reach one row', () => {
+    // A blank-grade second record legitimately folds into the first student's
+    // row; repeating the line would double the weekly minutes the claim
+    // planner sums from these.
+    const result = plan({
+      goalsStudents: [],
+      datesRecords: [],
+      servicesStudents: [servicesStudent(), servicesStudent({ gradeLevel: '' })],
+    });
+
+    expect(result.children).toHaveLength(1);
+    expect(result.children[0].fields.districtServices).toEqual([serviceLine()]);
   });
 
   it('creates a roster row for a student only the Services report mentions', () => {

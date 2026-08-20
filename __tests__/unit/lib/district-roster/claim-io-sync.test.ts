@@ -22,12 +22,14 @@ jest.mock('@/lib/logger', () => {
  * two write paths under test. Reads resolve with `readRow`; writes succeed.
  */
 const readRow = { sessions_per_week: 1, minutes_per_session: 30 };
+let readError: { message: string } | null = null;
 const writes: Array<{ table: string; values: unknown }> = [];
 const fakeSession = {
   from: (table: string) => ({
     select: () => ({
       eq: () => ({
-        maybeSingle: async () => ({ data: readRow, error: null }),
+        maybeSingle: async () =>
+          readError ? { data: null, error: readError } : { data: readRow, error: null },
       }),
     }),
     update: (values: unknown) => ({
@@ -104,6 +106,7 @@ const basePlan: ClaimPlan = {
 beforeEach(() => {
   mockSync.mockClear();
   writes.length = 0;
+  readError = null;
 });
 
 it('synchronizes the schedule after an accepted minutes change, with the stored before-values', async () => {
@@ -138,17 +141,37 @@ it('creates the initial unscheduled sessions for a freshly claimed student', asy
 it('counts a failed enrichment sync and reverts the minutes so they stay on offer', async () => {
   mockSync.mockResolvedValueOnce({ success: false, error: 'boom' });
   const result = await enrichClaimedStudents({
-    plan: basePlan,
+    plan: {
+      ...basePlan,
+      claimable: [{ ...basePlan.claimable[0], accommodations: ['Extra time'] }],
+    },
     claims: [{ childId: CHILD, studentId: STUDENT, outcome: 'claimed' }],
   });
   expect(result).toEqual({ enriched: 0, enrichFailures: 1 });
   // Committed minutes that match the proposal would never be offered again
   // (CodeRabbit, PR #917) — the revert is what makes the next banner load the
   // retry path. A fresh claim's row starts with no minutes, so back to null.
+  // And the details land FIRST, so the failed sync does not also cost the
+  // student their accommodations.
   expect(writes).toEqual([
+    { table: 'student_details', values: { student_id: STUDENT, accommodations: ['Extra time'] } },
     { table: 'students', values: { sessions_per_week: 2, minutes_per_session: 30 } },
     { table: 'students', values: { sessions_per_week: null, minutes_per_session: null } },
   ]);
+});
+
+it('skips a minutes acceptance when the stored pair cannot be read', async () => {
+  // A failed read is not "no stored minutes": writing on a null default would
+  // erase the provider's real pair if the sync then failed and reverted.
+  readError = { message: 'read boom' };
+  const result = await applyRosterAcceptances({
+    plan: basePlan,
+    requests: [{ studentId: STUDENT, fields: ['serviceMinutes'] }],
+  });
+
+  expect(result).toEqual({ applied: 0, skipped: 1 });
+  expect(writes).toEqual([]);
+  expect(mockSync).not.toHaveBeenCalled();
 });
 
 it('reverts an accepted minutes change to the stored pair when its sync fails', async () => {

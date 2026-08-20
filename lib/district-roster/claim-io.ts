@@ -331,28 +331,44 @@ export async function applyRosterAcceptances(params: {
       }
     }
 
-    if (studentFields > 0) {
-      // Accepting minutes must also carry the student's SCHEDULE along, the
-      // way the students-page edit and the import confirm do — so read the
-      // stored pair first for the sync's before/after contract.
-      let oldSplit: { sessions_per_week: number | null; minutes_per_session: number | null } = {
-        sessions_per_week: null,
-        minutes_per_session: null,
-      };
-      if (acceptedSplit) {
-        const { data: before } = await session
-          .from('students')
-          .select('sessions_per_week, minutes_per_session')
-          .eq('id', request.studentId)
-          .maybeSingle();
-        if (before) {
-          oldSplit = {
-            sessions_per_week: (before.sessions_per_week as number | null) ?? null,
-            minutes_per_session: (before.minutes_per_session as number | null) ?? null,
-          };
-        }
+    // Accepting minutes must also carry the student's SCHEDULE along, the
+    // way the students-page edit and the import confirm do — so read the
+    // stored pair first for the sync's before/after contract.
+    let oldSplit: { sessions_per_week: number | null; minutes_per_session: number | null } = {
+      sessions_per_week: null,
+      minutes_per_session: null,
+    };
+    if (acceptedSplit) {
+      const { data: before, error: beforeError } = await session
+        .from('students')
+        .select('sessions_per_week, minutes_per_session')
+        .eq('id', request.studentId)
+        .maybeSingle();
+      if (beforeError) {
+        // A failed read is NOT "no stored minutes". Defaulting the pair to
+        // null would hand the sync a false first-time "before" — and hand the
+        // revert below a null target that would ERASE the provider's real
+        // minutes if the sync then failed (CodeRabbit, PR #917). No honest
+        // before, no write: skip the field and let the banner re-offer it.
+        log.error(
+          'Reading the stored minutes failed; the minutes acceptance was skipped',
+          new Error(beforeError.message),
+          { studentId: request.studentId },
+        );
+        delete studentPatch.sessions_per_week;
+        delete studentPatch.minutes_per_session;
+        acceptedSplit = null;
+        studentFields -= 1;
+        result.skipped += 1;
+      } else if (before) {
+        oldSplit = {
+          sessions_per_week: (before.sessions_per_week as number | null) ?? null,
+          minutes_per_session: (before.minutes_per_session as number | null) ?? null,
+        };
       }
+    }
 
+    if (studentFields > 0) {
       const { error } = await session
         .from('students')
         .update(studentPatch)
@@ -478,6 +494,28 @@ export async function enrichClaimedStudents(params: {
     if (!offer) continue;
 
     try {
+      // The detail fields don't depend on the minutes, so they land FIRST: a
+      // failed session sync must not also cost the student their birth date,
+      // accommodations and goals (CodeRabbit, PR #917). The claim RPC already
+      // inserted the details row (name + dates); this upsert fills the
+      // SPE-575 columns beside it.
+      const detailsPatch: Record<string, unknown> = {};
+      if (offer.dateOfBirth) detailsPatch.date_of_birth = offer.dateOfBirth;
+      if (offer.accommodations.length > 0) detailsPatch.accommodations = offer.accommodations;
+      if (offer.testingAccommodations.length > 0) {
+        detailsPatch.testing_accommodations = offer.testingAccommodations;
+      }
+      if (offer.goals.length > 0) {
+        detailsPatch.iep_goals = offer.goals;
+        if (offer.goalsIepDate) detailsPatch.goals_iep_date = offer.goalsIepDate;
+      }
+      if (Object.keys(detailsPatch).length > 0) {
+        const { error } = await session
+          .from('student_details')
+          .upsert({ student_id: claim.studentId, ...detailsPatch }, { onConflict: 'student_id' });
+        if (error) throw new Error(error.message);
+      }
+
       if (offer.minutesProposal) {
         const { error } = await session
           .from('students')
@@ -523,25 +561,6 @@ export async function enrichClaimedStudents(params: {
           }
           throw new Error(sync.error ?? 'session sync failed');
         }
-      }
-
-      const detailsPatch: Record<string, unknown> = {};
-      if (offer.dateOfBirth) detailsPatch.date_of_birth = offer.dateOfBirth;
-      if (offer.accommodations.length > 0) detailsPatch.accommodations = offer.accommodations;
-      if (offer.testingAccommodations.length > 0) {
-        detailsPatch.testing_accommodations = offer.testingAccommodations;
-      }
-      if (offer.goals.length > 0) {
-        detailsPatch.iep_goals = offer.goals;
-        if (offer.goalsIepDate) detailsPatch.goals_iep_date = offer.goalsIepDate;
-      }
-      if (Object.keys(detailsPatch).length > 0) {
-        // The claim RPC already inserted the details row (name + dates); this
-        // upsert fills the SPE-575 columns beside them.
-        const { error } = await session
-          .from('student_details')
-          .upsert({ student_id: claim.studentId, ...detailsPatch }, { onConflict: 'student_id' });
-        if (error) throw new Error(error.message);
       }
 
       if (offer.minutesProposal || Object.keys(detailsPatch).length > 0) enriched++;
