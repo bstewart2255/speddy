@@ -1,3 +1,4 @@
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { SessionGenerator } from './session-generator';
 import type { Database } from '@/src/types';
 
@@ -9,17 +10,21 @@ type ScheduleSession = Database['public']['Tables']['schedule_sessions']['Row'];
  * If the session is already permanent, it will be returned as-is.
  *
  * @param session - The session to ensure is persisted
+ * @param client - Supabase client (browser client for UI callers)
  * @returns The permanent session with a real database ID
  * @throws Error if saving fails
  */
-export async function ensureSessionPersisted(session: ScheduleSession): Promise<ScheduleSession> {
+export async function ensureSessionPersisted(
+  session: ScheduleSession,
+  client: SupabaseClient<Database>
+): Promise<ScheduleSession> {
   // If already permanent, return as-is
   if (!session.id.startsWith('temp-')) {
     return session;
   }
 
   // Save temporary session to database
-  const sessionGenerator = new SessionGenerator();
+  const sessionGenerator = new SessionGenerator(client);
   const savedSession = await sessionGenerator.saveSessionInstance(session);
 
   if (!savedSession) {
@@ -34,14 +39,18 @@ export async function ensureSessionPersisted(session: ScheduleSession): Promise<
  * Filters out any sessions that fail to save.
  *
  * @param sessions - Array of sessions to ensure are persisted
+ * @param client - Supabase client (browser client for UI callers)
  * @returns Array of permanent sessions with real database IDs
  */
-export async function ensureSessionsPersisted(sessions: ScheduleSession[]): Promise<ScheduleSession[]> {
+export async function ensureSessionsPersisted(
+  sessions: ScheduleSession[],
+  client: SupabaseClient<Database>
+): Promise<ScheduleSession[]> {
   const persistedSessions: ScheduleSession[] = [];
 
   for (const session of sessions) {
     try {
-      const persistedSession = await ensureSessionPersisted(session);
+      const persistedSession = await ensureSessionPersisted(session, client);
       persistedSessions.push(persistedSession);
     } catch (error) {
       console.error(`Failed to persist session ${session.id}:`, error);

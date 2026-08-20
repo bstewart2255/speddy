@@ -90,6 +90,7 @@ jest.mock('@/lib/supabase/client', () => ({
   },
 }));
 
+const { createClient } = require('@/lib/supabase/client');
 const { updateExistingSessionsForStudent } = require('@/lib/scheduling/session-requirement-sync');
 
 /**
@@ -106,7 +107,8 @@ async function detectConflicts() {
   const result = await updateExistingSessionsForStudent(
     'student-1',
     { minutes_per_session: 30, sessions_per_week: 2 },
-    { minutes_per_session: 30, sessions_per_week: 2 }
+    { minutes_per_session: 30, sessions_per_week: 2 },
+    createClient()
   );
   expect(result).toMatchObject({ success: true });
   // Detection genuinely ran and agrees with what was written.

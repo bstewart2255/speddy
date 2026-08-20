@@ -160,7 +160,7 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
       }
 
       // Persist all temp sessions and get the results
-      const persistedSessions = await ensureSessionsPersisted(tempSessions);
+      const persistedSessions = await ensureSessionsPersisted(tempSessions, createClient());
 
       // Return the first persisted session ID
       return persistedSessions[0]?.id;
@@ -171,7 +171,7 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
       }
 
       // Persist the temp session and update our tracked ID
-      const persistedSession = await ensureSessionPersisted(props.session);
+      const persistedSession = await ensureSessionPersisted(props.session, createClient());
       setCurrentSessionId(persistedSession.id);
       return persistedSession.id;
     }
@@ -677,7 +677,7 @@ export function SessionDetailsModal(props: SessionDetailsModalProps) {
       if (props.mode === 'group') {
         // For group mode, save attendance per session using session.id as key
         const tempSessions = props.sessions.filter(s => s.id.startsWith('temp-'));
-        const persistedSessions = await ensureSessionsPersisted(tempSessions);
+        const persistedSessions = await ensureSessionsPersisted(tempSessions, createClient());
         
         // Build a map from original temp id to persisted session
         const tempToPersistedMap = new Map<string, typeof persistedSessions[0]>();

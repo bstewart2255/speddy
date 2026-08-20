@@ -451,7 +451,8 @@ export async function updateStudent(studentId: string, updates: {
       {
         minutes_per_session: updatedStudent.minutes_per_session,
         sessions_per_week: updatedStudent.sessions_per_week,
-      }
+      },
+      supabase
     );
 
     if (!syncResult.success) {

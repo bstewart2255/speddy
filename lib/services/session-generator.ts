@@ -1,5 +1,4 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { createClient } from '@/lib/supabase/client';
 import { Database } from '../../src/types/database';
 import { isSpecialistSourceRole } from '@/lib/auth/role-utils';
 import { formatDateLocal } from '@/lib/utils/date-helpers';
@@ -30,21 +29,19 @@ interface SupabaseQueryBuilder {
 
 
 export class SessionGenerator {
-  // Field initializer keeps the (intentionally loose) inferred client type, so
-  // every existing query call-site below is unchanged.
-  private supabase = createClient();
+  private supabase: SupabaseClient<Database>;
 
   /**
-   * @param client Optional Supabase client. Defaults to the browser client for
-   * UI callers. Server-side callers (e.g. the daily-schedule-emails cron, which
-   * has no user session) must pass a service-role client so the role-filtered
-   * reads aren't blocked by RLS. The browser and service clients are
-   * structurally the same SupabaseClient.
+   * @param client Required. UI callers pass the browser client
+   * (`@/lib/supabase/client`); server-side callers (e.g. the
+   * daily-schedule-emails cron, which has no user session) must pass a
+   * service-role client so the role-filtered reads aren't blocked by RLS.
+   * No default — SPE-506 found a silent browser-client fallback here that
+   * would have returned empty RLS-filtered reads for any server caller that
+   * forgot to inject one.
    */
-  constructor(client?: SupabaseClient<Database>) {
-    if (client) {
-      this.supabase = client as typeof this.supabase;
-    }
+  constructor(client: SupabaseClient<Database>) {
+    this.supabase = client;
   }
 
   /**
@@ -332,18 +329,24 @@ export class SessionGenerator {
       console.error('Cannot save instance without session_date');
       return null;
     }
+    if (!session.student_id) {
+      console.error('Cannot save instance without student_id');
+      return null;
+    }
 
     // If this is a temporary instance, create it in the database
     if (session.id.startsWith('temp-')) {
       // First check if this session already exists (idempotent operation)
       // This handles race conditions where multiple operations trigger persistence
-      const { data: existing, error: existingError } = await this.supabase
+      let dupCheckQuery = this.supabase
         .from('schedule_sessions')
         .select('*')
         .eq('student_id', session.student_id)
-        .eq('session_date', session.session_date)
-        .eq('start_time', session.start_time)
-        .maybeSingle();
+        .eq('session_date', session.session_date);
+      dupCheckQuery = session.start_time
+        ? dupCheckQuery.eq('start_time', session.start_time)
+        : dupCheckQuery.is('start_time', null);
+      const { data: existing, error: existingError } = await dupCheckQuery.maybeSingle();
 
       // If we found an existing session, return it (idempotent)
       if (existing) {
@@ -388,13 +391,15 @@ export class SessionGenerator {
         // Handle race condition: if another request created it between pre-check and insert,
         // fetch and return the existing session instead of failing
         if (error.code === '23505') {
-          const { data: raceExisting } = await this.supabase
+          let raceQuery = this.supabase
             .from('schedule_sessions')
             .select('*')
             .eq('student_id', session.student_id)
-            .eq('session_date', session.session_date)
-            .eq('start_time', session.start_time)
-            .maybeSingle();
+            .eq('session_date', session.session_date);
+          raceQuery = session.start_time
+            ? raceQuery.eq('start_time', session.start_time)
+            : raceQuery.is('start_time', null);
+          const { data: raceExisting } = await raceQuery.maybeSingle();
           if (raceExisting) {
             return raceExisting;
           }

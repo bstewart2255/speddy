@@ -138,7 +138,7 @@ export default function CalendarPage() {
       const schoolDistrict = currentSchool ? getSchoolDistrict(currentSchool) : null;
 
       // Use SessionGenerator to get sessions with curriculum data (avoids code duplication)
-      const sessionGenerator = new SessionGenerator();
+      const sessionGenerator = new SessionGenerator(createClient());
 
       // Get a broad date range for sessions (e.g., 6 months back and forward)
       const startDate = new Date();

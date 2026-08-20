@@ -81,7 +81,7 @@ export function WeeklyView({ viewMode, className }: WeeklyViewProps) {
       : startOfWeek(today, { weekStartsOn: 1 });
   }, []); // Calculate once on mount
 
-  const sessionGenerator = React.useMemo(() => new SessionGenerator(), []);
+  const sessionGenerator = React.useMemo(() => new SessionGenerator(createClient()), []);
 
   const [sessions, setSessions] = React.useState<SessionWithCurriculum[]>([]);
   const [students, setStudents] = React.useState<Record<string, {
