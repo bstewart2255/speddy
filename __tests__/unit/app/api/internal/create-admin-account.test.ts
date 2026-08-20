@@ -23,12 +23,15 @@ const PROFILES: Record<string, { is_speddy_admin: boolean }> = {
   [NON_STAFF_ID]: { is_speddy_admin: false },
 };
 let profileErrorOverride: { data: unknown; error: unknown } | null = null;
+let districtOverride: { data: unknown; error: unknown } | null = null;
 const profilesEqSpy = jest.fn();
 const profileDeleted = jest.fn();
 
 const createUser = jest.fn();
 const deleteUser = jest.fn();
 const rpc = jest.fn();
+const insertSpy = jest.fn();
+const updateSpy = jest.fn();
 
 jest.mock('@/lib/supabase/server', () => ({
   createClient: async () => ({
@@ -66,7 +69,10 @@ jest.mock('@supabase/supabase-js', () => ({
         }
         return q;
       };
-      q.update = () => q;
+      q.update = (vals: Record<string, unknown>) => {
+        if (table === 'profiles') updateSpy(vals);
+        return q;
+      };
       // Rollback deletes the profile row BEFORE the auth user (profiles.id ->
       // auth.users(id) is NO ACTION, so the reverse order is refused by the
       // FK). Without this the rollback path throws on a missing method and
@@ -75,7 +81,10 @@ jest.mock('@supabase/supabase-js', () => ({
         deleting = true;
         return q;
       };
-      q.insert = () => Promise.resolve({ error: null });
+      q.insert = (vals: Record<string, unknown>) => {
+        if (table === 'admin_permissions') insertSpy(vals);
+        return Promise.resolve({ error: null });
+      };
       q.maybeSingle = () => {
         if (table === 'profiles') return Promise.resolve({ data: null, error: null }); // no existing account
         return Promise.resolve({ data: null, error: null });
@@ -86,7 +95,11 @@ jest.mock('@supabase/supabase-js', () => ({
             profileErrorOverride ?? { data: (queriedId && PROFILES[queriedId]) ?? null, error: null }
           );
         }
-        if (table === 'districts') return Promise.resolve({ data: { name: 'Metro USD' }, error: null });
+        if (table === 'districts') {
+          return Promise.resolve(
+            districtOverride ?? { data: { name: 'Metro USD', state_id: 'state-1' }, error: null }
+          );
+        }
         if (table === 'schools') return Promise.resolve({ data: { name: 'Lincoln Elementary' }, error: null });
         return Promise.resolve({ data: null, error: null });
       };
@@ -124,11 +137,14 @@ describe('POST /api/internal/create-admin-account', () => {
   beforeEach(() => {
     currentUserId = STAFF_ID;
     profileErrorOverride = null;
+    districtOverride = null;
     profilesEqSpy.mockClear();
     profileDeleted.mockClear();
     createUser.mockReset().mockResolvedValue({ data: { user: { id: NEW_USER_ID } }, error: null });
     deleteUser.mockReset().mockResolvedValue({ error: null });
     rpc.mockReset().mockResolvedValue({ error: null });
+    insertSpy.mockClear();
+    updateSpy.mockClear();
   });
 
   it('401s an unauthenticated caller without creating anything', async () => {
@@ -161,6 +177,24 @@ describe('POST /api/internal/create-admin-account', () => {
     expect(createUser).toHaveBeenCalled();
     const body = await res.json();
     expect(body).toMatchObject({ success: true, userId: NEW_USER_ID });
+  });
+
+  it('resolves state_id from the district, ignoring a mismatched client-supplied stateId (SPE-402)', async () => {
+    const res = await POST(req({ ...validBody, stateId: 'wrong-state' }));
+    expect(res.status).toBe(200);
+    expect(updateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ state_id: 'state-1', district_id: 'district-1' })
+    );
+    expect(insertSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ state_id: 'state-1', district_id: 'district-1' })
+    );
+  });
+
+  it('400s when the districtId does not resolve to a district with a state', async () => {
+    districtOverride = { data: { name: 'Metro USD', state_id: null }, error: null };
+    const res = await POST(req(validBody));
+    expect(res.status).toBe(400);
+    expect(createUser).not.toHaveBeenCalled();
   });
 
   it('rolls back the auth user when profile/permissions creation fails after a staff caller creates it', async () => {
