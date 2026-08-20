@@ -547,8 +547,11 @@ export async function parseTestingAccommodationsReport(
     }
   }
 
+  // The (EMBEDDED)/(NON-EMBEDDED) markers are the distinctive signal; the real
+  // export carries 64 such columns, but the threshold stays low so detection
+  // never hinges on how many the state defines this year.
   const formatDetected =
-    col.firstName !== undefined && col.lastName !== undefined && accommodationColumns.length >= 10;
+    col.firstName !== undefined && col.lastName !== undefined && accommodationColumns.length >= 3;
   if (!formatDetected) {
     errors.push({
       row: 0,
