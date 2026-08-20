@@ -95,12 +95,24 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
       );
     }
 
-    // Get district and school names for the profile
-    const { data: district } = await adminClient
+    // Get district and school names for the profile. `districts.state_id` is
+    // the authoritative state for this district — resolved here and used for
+    // every write below instead of the client-supplied stateId, so a mismatched
+    // stateId/districtId pair (SPE-402) can't produce a profile whose state and
+    // district disagree.
+    const { data: district, error: districtError } = await adminClient
       .from('districts')
-      .select('name')
+      .select('name, state_id')
       .eq('id', districtId)
       .single();
+
+    if (districtError || !district?.state_id) {
+      return NextResponse.json(
+        { error: 'Invalid districtId: district not found or has no state' },
+        { status: 400 }
+      );
+    }
+    const resolvedStateId = district.state_id;
 
     let schoolName: string | null = null;
     if (schoolId) {
@@ -131,7 +143,7 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
       user_metadata: {
         full_name: fullName,
         role: adminType,
-        state: stateId,
+        state: resolvedStateId,
         school_district: district?.name || districtId,
         school_site: schoolName || district?.name || districtId,
       }
@@ -155,7 +167,7 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
         user_metadata: {
           full_name: fullName,
           role: adminType,
-          state: stateId,
+          state: resolvedStateId,
           school_district: district?.name || districtId,
           school_site: schoolName || district?.name || districtId,
           works_at_multiple_schools: false,
@@ -171,7 +183,7 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
       const { error: updateError } = await adminClient
         .from('profiles')
         .update({
-          state_id: stateId,
+          state_id: resolvedStateId,
           district_id: districtId,
           school_id: adminType === 'site_admin' ? schoolId : null,
           // district_tech must behave identically however it is minted, so it
@@ -200,7 +212,7 @@ export const POST = withRoute({}, async ({ req: request, userId }) => {
         .insert({
           admin_id: newUserId,
           role: adminType,
-          state_id: stateId,
+          state_id: resolvedStateId,
           district_id: districtId,
           school_id: adminType === 'site_admin' ? schoolId : null,
           granted_by: userId,
