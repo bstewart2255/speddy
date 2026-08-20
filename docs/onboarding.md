@@ -52,3 +52,5 @@ This guide walks new contributors through setting up Speddy locally and understa
 - `.claude/CLAUDE.md` – team workflow, branching strategy, and how work is tracked in Linear.
 - `supabase/migrations/` – current database schema history.
 - `scripts/` – utilities for data import, validation, and migrations.
+- `docs/sdc-dual-role-onboarding.md` – account setup for staff who are both
+  case manager and classroom teacher of record for their own caseload.
