@@ -444,8 +444,9 @@ export default function DistrictRosterImportPanel() {
                           <ul className="mt-1 space-y-0.5 pl-4 text-xs text-amber-800/80">
                             {list.map((e, i) => (
                               <li key={`${e.initials}:${i}`}>
-                                {e.initials}
+                                {e.name || e.initials}
                                 {e.gradeLevel ? ` · grade ${e.gradeLevel}` : ''}
+                                {e.schoolName ? ` · ${e.schoolName}` : ''}
                                 {shared ? '' : ` — ${e.detail}`}
                               </li>
                             ))}
@@ -465,8 +466,9 @@ export default function DistrictRosterImportPanel() {
                     <ul className="mt-1 space-y-0.5 pl-4 text-xs text-slate-500">
                       {plan.notInRoster.map((c, i) => (
                         <li key={`${c.initials}:${i}`}>
-                          {c.initials}
-                          {c.gradeLevel ? ` · grade ${c.gradeLevel}` : ''} —{' '}
+                          {c.name || c.initials}
+                          {c.gradeLevel ? ` · grade ${c.gradeLevel}` : ''}
+                          {c.schoolName ? ` · ${c.schoolName}` : ''} —{' '}
                           {c.caseloadCount === 0
                             ? 'on no caseload'
                             : `on ${c.caseloadCount} caseload(s)`}

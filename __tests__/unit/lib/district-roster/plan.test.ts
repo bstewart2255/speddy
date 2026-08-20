@@ -172,7 +172,13 @@ describe('planDistrictRoster', () => {
         });
 
         expect(result.children).toHaveLength(0);
-        expect(result.exceptions[0]).toMatchObject({ kind: 'identity-mismatch' });
+        // Exceptions name the student and school — the admin has to act on
+        // these, and initials cannot locate anyone in a large district.
+        expect(result.exceptions[0]).toMatchObject({
+          kind: 'identity-mismatch',
+          name: 'Ana Alvarez',
+          schoolName: 'Rodeo Hills Elementary',
+        });
         expect(result.exceptions[0].detail).toMatch(/grade 4.*grade 1/s);
       });
 
@@ -458,7 +464,17 @@ describe('planDistrictRoster', () => {
         ],
       });
 
-      expect(result.notInRoster).toEqual([{ initials: 'BB', gradeLevel: '1', caseloadCount: 2 }]);
+      // Name + school ride along: a large district's admin cannot find a
+      // student from initials and a grade alone.
+      expect(result.notInRoster).toEqual([
+        {
+          initials: 'BB',
+          name: 'Ben Bishop',
+          gradeLevel: '1',
+          schoolName: 'Rodeo Hills Elementary',
+          caseloadCount: 2,
+        },
+      ]);
       // Nothing in the plan touches that child.
       expect(result.children.every((c) => c.childId !== 'child-2')).toBe(true);
     });

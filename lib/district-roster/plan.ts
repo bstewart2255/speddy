@@ -162,6 +162,12 @@ export interface RosterException {
     | 'duplicate-in-files'
     | 'missing-grade';
   initials: string;
+  /** Full name and school as the files give them. The review screen shows
+   *  these — the admin has to go fix the student, and in a district of many
+   *  schools initials + grade cannot locate anyone. Logging stays counts-only
+   *  (`rosterPlanCounts`), so neither ever reaches a log. */
+  name: string;
+  schoolName: string;
   gradeLevel: string;
   detail: string;
 }
@@ -186,8 +192,16 @@ export interface RosterPlan {
   children: PlannedChild[];
   exceptions: RosterException[];
   compliance: RosterCompliance;
-  /** Children in this district the roster did not mention. Never removed. */
-  notInRoster: { initials: string; gradeLevel: string; caseloadCount: number }[];
+  /** Children in this district the roster did not mention. Never removed.
+   *  `name`/`schoolName` are null for a legacy child stored without them —
+   *  the screen falls back to initials. */
+  notInRoster: {
+    initials: string;
+    name: string | null;
+    gradeLevel: string;
+    schoolName: string | null;
+    caseloadCount: number;
+  }[];
   counts: {
     creates: number;
     updates: number;
@@ -677,12 +691,15 @@ export function planDistrictRoster(input: RosterPlanInput): RosterPlan {
     `${a.lastName}${a.firstName}`.localeCompare(`${b.lastName}${b.firstName}`),
   )) {
     const initials = initialsOf(row.firstName, row.lastName);
+    const fullName = `${row.firstName} ${row.lastName}`.trim();
 
     // Grade is NOT NULL on `children`, so a row without one cannot be written.
     if (!row.gradeLevel) {
       exceptions.push({
         kind: 'missing-grade',
         initials,
+        name: fullName,
+        schoolName: row.schoolName,
         gradeLevel: '',
         detail: 'No grade in either file, so this student cannot be added to the roster.',
       });
@@ -697,6 +714,8 @@ export function planDistrictRoster(input: RosterPlanInput): RosterPlan {
       exceptions.push({
         kind: 'unknown-school',
         initials,
+        name: fullName,
+        schoolName: row.schoolName,
         gradeLevel: row.gradeLevel,
         detail: `"${row.schoolName || 'no school listed'}" is not one of your district's schools in Speddy.`,
       });
@@ -711,6 +730,8 @@ export function planDistrictRoster(input: RosterPlanInput): RosterPlan {
       exceptions.push({
         kind: 'duplicate-in-files',
         initials,
+        name: fullName,
+        schoolName: row.schoolName,
         gradeLevel: row.gradeLevel,
         detail:
           'Another student in your files has this same district student ID. Both were left ' +
@@ -735,6 +756,8 @@ export function planDistrictRoster(input: RosterPlanInput): RosterPlan {
         exceptions.push({
           kind: 'ambiguous-name-match',
           initials,
+          name: fullName,
+          schoolName: row.schoolName,
           gradeLevel: row.gradeLevel,
           detail:
             `${candidates.length} students in Speddy already carry this district student ID; ` +
@@ -754,6 +777,8 @@ export function planDistrictRoster(input: RosterPlanInput): RosterPlan {
         exceptions.push({
           kind: 'ambiguous-name-match',
           initials,
+          name: fullName,
+          schoolName: row.schoolName,
           gradeLevel: row.gradeLevel,
           detail: `${candidates.length} students at this school share this name; Speddy will not guess which one this is.`,
         });
@@ -766,6 +791,8 @@ export function planDistrictRoster(input: RosterPlanInput): RosterPlan {
           exceptions.push({
             kind: 'identity-mismatch',
             initials,
+            name: fullName,
+            schoolName: row.schoolName,
             gradeLevel: row.gradeLevel,
             detail:
               doubt === 'birth-date'
@@ -791,6 +818,8 @@ export function planDistrictRoster(input: RosterPlanInput): RosterPlan {
         exceptions.push({
           kind: 'ambiguous-name-match',
           initials,
+          name: fullName,
+          schoolName: row.schoolName,
           gradeLevel: row.gradeLevel,
           detail:
             `${candidates.length} students at this school are recorded as "${initials}" in ` +
@@ -818,6 +847,8 @@ export function planDistrictRoster(input: RosterPlanInput): RosterPlan {
       exceptions.push({
         kind: 'conflicting-district-id',
         initials,
+        name: fullName,
+        schoolName: row.schoolName,
         gradeLevel: row.gradeLevel,
         detail:
           'This student already has a different district student ID in Speddy. Left unchanged — check which is right.',
@@ -932,11 +963,14 @@ export function planDistrictRoster(input: RosterPlanInput): RosterPlan {
 
   // Children this district already has that the roster did not mention.
   // Reported so the admin can see them; never removed (SPE-447 rule).
+  const schoolNameById = new Map(input.schools.map((s) => [s.id, s.name]));
   const notInRoster = input.existingChildren
     .filter((child) => !touchedChildIds.has(child.id))
     .map((child) => ({
       initials: clean(child.initials) || '—',
+      name: `${clean(child.firstName)} ${clean(child.lastName)}`.trim() || null,
       gradeLevel: clean(child.gradeLevel),
+      schoolName: (child.schoolId ? schoolNameById.get(child.schoolId) : null) ?? null,
       caseloadCount: child.caseloadCount,
     }));
 
