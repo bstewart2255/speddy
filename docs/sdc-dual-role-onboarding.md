@@ -23,14 +23,28 @@ repeatable pattern; use it for every dual-role teacher, not just JSUSD's.
    account (`account_id` stays null). The admin's directory edit form is
    `app/components/admin/teacher-edit-modal.tsx`.
 
-3. **Point their caseload to that classroom-teacher entry.** A student's set
-   of teachers now lives on the child (`student_teachers`, keyed by
-   `child_id`+`teacher_id` — see `docs/ARCHITECTURE.md`'s "Teacher links"
-   section), not a single column, so use the student's teacher-link editor
-   (multi-teacher picker) to add the resource specialist's own directory
-   entry as that student's classroom teacher. The legacy
-   `students.teacher_id`/`teacher_name` pair is dual-written from this
-   automatically — don't set it directly.
+3. **Point their caseload to that classroom-teacher entry, then verify it
+   became the scheduling teacher.** A student's set of teachers lives on the
+   child (`student_teachers`, keyed by `child_id`+`teacher_id` — see
+   `docs/ARCHITECTURE.md`'s "Teacher links" section), not a single column, so
+   use the student's teacher-link editor (multi-teacher picker) to add the
+   resource specialist's own directory entry. **This step is the one most
+   likely to silently fail for a student who already has a different teacher
+   linked** (e.g. an existing gen-ed teacher on an imported or previously-set-up
+   student): the legacy `students.teacher_id`/`teacher_name` mirror only
+   repoints itself to the newly-added link when the student's *current* legacy
+   teacher is no longer one of their linked teachers — adding a second link
+   next to a still-valid one does not move it. Scheduling (the auto-scheduler
+   and `lib/scheduling/conflict-resolver.ts`) reads only that legacy pair, not
+   the full link set, so a student left pointed at their old teacher will have
+   the SDC teacher's special activities invisible to conflict checking — the
+   exact silent double-booking this guide exists to prevent. **After adding
+   the link, open the student's record and confirm the displayed classroom
+   teacher is the SDC teacher's own entry.** If it still shows the old
+   teacher, remove that old link first (which frees the mirror to repoint to
+   the SDC teacher's link) rather than assuming the add alone was enough. For
+   a brand-new student with no prior teacher this isn't an issue — their first
+   link becomes the legacy teacher automatically.
 
 4. **Enter the class's special activities under that teacher entry.** PE,
    recess, assemblies, etc. — this is what lets speech/OT/psych schedule
