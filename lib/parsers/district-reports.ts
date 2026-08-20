@@ -120,7 +120,13 @@ export async function readReportGrid(buffer: Buffer): Promise<string[][]> {
 
   if (isXlsx) {
     const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.load(buffer as unknown as ArrayBuffer);
+    try {
+      await workbook.xlsx.load(buffer as unknown as ArrayBuffer);
+    } catch {
+      // A truncated or non-spreadsheet ZIP. An empty grid makes the caller
+      // report its own named refusal instead of an opaque 500.
+      return [];
+    }
     const worksheet = workbook.worksheets[0];
     if (!worksheet) return [];
     const rows: string[][] = [];
@@ -137,14 +143,18 @@ export async function readReportGrid(buffer: Buffer): Promise<string[][]> {
     return rows;
   }
 
-  const records: string[][] = parse(buffer, {
-    bom: true,
-    relax_column_count: true,
-    relax_quotes: true,
-    skip_empty_lines: true,
-    trim: true,
-  });
-  return records;
+  try {
+    return parse(buffer, {
+      bom: true,
+      relax_column_count: true,
+      relax_quotes: true,
+      skip_empty_lines: true,
+      trim: true,
+    }) as string[][];
+  } catch {
+    // A hard CSV error (e.g. an unterminated quote to EOF). Same posture.
+    return [];
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -250,7 +260,11 @@ export async function parseServicesReport(
     const serviceCell = cellAt(row, col.serviceCode);
     const codeMatch = serviceCell.match(/^(\d{3})\b/);
     const durationRaw = cellAt(row, col.duration);
-    const minutes = Number.parseInt(durationRaw, 10);
+    // Whole-cell numeric only, group separators stripped: parseInt stops at
+    // the first non-digit, so an Excel re-save's "1,200" would silently
+    // import as a ONE-minute service.
+    const durationDigits = durationRaw.replace(/[,\s]/g, '');
+    const minutes = /^\d+$/.test(durationDigits) ? Number.parseInt(durationDigits, 10) : NaN;
     const frequencyCell = cellAt(row, col.frequency);
     const frequency = parseFrequencyCode(frequencyCell);
 
@@ -278,18 +292,18 @@ export async function parseServicesReport(
     };
 
     const school = cellAt(row, col.school);
-    const key = studentKey(firstName, lastName, school);
+    const grade = normalizeGradeLevel(cellAt(row, col.grade));
+    const key = studentKey(firstName, lastName, school, grade);
     const existing = byStudent.get(key);
     if (existing) {
       existing.services.push(line);
       if (!existing.dateOfBirth) existing.dateOfBirth = isoDate(cellAt(row, col.birthDate));
       if (!existing.caseManager) existing.caseManager = cellAt(row, col.caseManager) || undefined;
-      if (!existing.gradeLevel) existing.gradeLevel = normalizeGradeLevel(cellAt(row, col.grade));
     } else {
       byStudent.set(key, {
         firstName,
         lastName,
-        gradeLevel: normalizeGradeLevel(cellAt(row, col.grade)),
+        gradeLevel: grade,
         schoolOfAttendance: school || undefined,
         dateOfBirth: isoDate(cellAt(row, col.birthDate)),
         caseManager: cellAt(row, col.caseManager) || undefined,
@@ -337,8 +351,13 @@ function parseFrequencyCode(cell: string): ServicePeriod | null {
   return null;
 }
 
-const studentKey = (firstName: string, lastName: string, school: string): string =>
-  [firstName.toLowerCase(), lastName.toLowerCase(), school.toLowerCase()]
+/**
+ * Consolidation identity WITHIN one export: name + school + grade — the same
+ * rule the SEIS goals parsers use (SPE-264), so two same-named students in
+ * different grades at one school never merge into one record.
+ */
+const studentKey = (firstName: string, lastName: string, school: string, grade: string): string =>
+  [firstName.toLowerCase(), lastName.toLowerCase(), school.toLowerCase(), grade.toUpperCase()]
     .map((v) => v.replace(/\s+/g, ' ').trim())
     .join('|');
 
@@ -411,13 +430,14 @@ export async function parseAccommodationsReport(
     if (!firstName || !lastName) continue;
 
     const school = cellAt(row, col.school);
-    const key = studentKey(firstName, lastName, school);
+    const grade = normalizeGradeLevel(cellAt(row, col.grade));
+    const key = studentKey(firstName, lastName, school, grade);
     let student = byStudent.get(key);
     if (!student) {
       student = {
         firstName,
         lastName,
-        gradeLevel: normalizeGradeLevel(cellAt(row, col.grade)),
+        gradeLevel: grade,
         schoolOfAttendance: school || undefined,
         dateOfBirth: isoDate(cellAt(row, col.dob)),
         caseManager: cellAt(row, col.caseManager) || undefined,
@@ -570,7 +590,11 @@ export async function parseTestingAccommodationsReport(
     return { students: [], errors, warnings, metadata: { totalRows: 0, formatDetected } };
   }
 
-  const students: TestingReportStudent[] = [];
+  // Consolidated by the same name+school+grade identity as the other parsers,
+  // so a repeated row for one student merges instead of arriving as a second
+  // record — which the roster planner would otherwise fold into whichever row
+  // it created first (Codex review on PR #917).
+  const byStudent = new Map<string, TestingReportStudent>();
   let totalRows = 0;
 
   for (let r = 1; r < grid.length; r++) {
@@ -587,18 +611,36 @@ export async function parseTestingAccommodationsReport(
       if ((row[index] ?? '').trim() !== '') labels.push(label);
     }
 
-    students.push({
-      firstName,
-      lastName,
-      gradeLevel: normalizeGradeLevel(cellAt(row, col.grade)),
-      schoolOfAttendance: cellAt(row, col.school) || undefined,
-      dateOfBirth: isoDate(cellAt(row, col.birthdate)),
-      caseManager: cellAt(row, col.caseManager) || undefined,
-      testingAccommodations: dedupeEntries(labels),
-    });
+    const school = cellAt(row, col.school);
+    const grade = normalizeGradeLevel(cellAt(row, col.grade));
+    const key = studentKey(firstName, lastName, school, grade);
+    const existing = byStudent.get(key);
+    if (existing) {
+      existing.testingAccommodations = dedupeEntries([
+        ...existing.testingAccommodations,
+        ...labels,
+      ]);
+      if (!existing.dateOfBirth) existing.dateOfBirth = isoDate(cellAt(row, col.birthdate));
+      if (!existing.caseManager) existing.caseManager = cellAt(row, col.caseManager) || undefined;
+    } else {
+      byStudent.set(key, {
+        firstName,
+        lastName,
+        gradeLevel: grade,
+        schoolOfAttendance: school || undefined,
+        dateOfBirth: isoDate(cellAt(row, col.birthdate)),
+        caseManager: cellAt(row, col.caseManager) || undefined,
+        testingAccommodations: dedupeEntries(labels),
+      });
+    }
   }
 
-  return { students, errors, warnings, metadata: { totalRows, formatDetected } };
+  return {
+    students: [...byStudent.values()],
+    errors,
+    warnings,
+    metadata: { totalRows, formatDetected },
+  };
 }
 
 /**

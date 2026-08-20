@@ -109,7 +109,16 @@ export default function RosterClaimBanner() {
         !nextPlan?.counts ||
         !Array.isArray(nextPlan.claimable) ||
         !Array.isArray(nextPlan.updates) ||
-        !nextPlan.updates.every((u) => Array.isArray(u?.changes))
+        !nextPlan.updates.every((u) => Array.isArray(u?.changes)) ||
+        // The SPE-575 list fields render unguarded below — a claimable entry
+        // without them (an older cached response) must fail the shape check
+        // here, not the render.
+        !nextPlan.claimable.every(
+          (c) =>
+            Array.isArray(c?.goals) &&
+            Array.isArray(c?.accommodations) &&
+            Array.isArray(c?.testingAccommodations),
+        )
       ) {
         return;
       }

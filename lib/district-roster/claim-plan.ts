@@ -31,6 +31,7 @@ import {
   getDeliveryServiceTypeCodes,
   isGoalForProviderByKeywords,
 } from '@/lib/parsers/service-type-mapping';
+import { dedupeEntries } from '@/lib/parsers/district-reports';
 import type { SchoolLevelInput } from '@/lib/school-helpers';
 import type { DistrictServiceLine } from '@/lib/parsers/district-reports';
 import type { RosterDistrictGoals } from './plan';
@@ -309,7 +310,10 @@ export function proposeServiceMinutes(
   if (codes.length === 0) return null;
   const mine = services.filter((line) => codes.includes(line.code));
   const weeklyMinutes = mine.reduce((sum, line) => sum + line.weeklyMinutes, 0);
-  if (weeklyMinutes <= 0) return null;
+  // Whole positive integers only: the parsers always produce them, but the
+  // stored JSONB is untyped, and a fractional total would flow into the
+  // integer minutes columns unchecked.
+  if (!Number.isInteger(weeklyMinutes) || weeklyMinutes <= 0) return null;
   const split = calculateSessions(weeklyMinutes, {
     weeklyBucket: shouldUseWeeklyBucket(role, school),
   });
@@ -327,20 +331,31 @@ export function goalsForRole(
   role: string | null | undefined,
 ): string[] {
   if (!districtGoals || !role) return [];
-  return districtGoals.goals
-    .filter((goal) =>
-      isGoalForProviderByKeywords(goal.areaOfNeed, goal.goalType, goal.personResponsible, role),
-    )
-    .map((goal) => goal.text);
+  // De-duped: one goal text can carry several routing signatures (the same
+  // goal listed under two disciplines), and more than one may match this role.
+  return dedupeEntries(
+    districtGoals.goals
+      .filter((goal) =>
+        isGoalForProviderByKeywords(goal.areaOfNeed, goal.goalType, goal.personResponsible, role),
+      )
+      .map((goal) => goal.text),
+  );
 }
 
 /** Whitespace-insensitive text key, for "does the provider already have this entry". */
 const entryKey = (value: string): string => value.trim().replace(/\s+/g, ' ').toLowerCase();
 
-/** The district entries the provider's own list is missing. */
+/** The district entries the provider's own list is missing, themselves de-duped. */
 const listAdditions = (mine: string[], district: string[]): string[] => {
   const have = new Set(mine.map(entryKey));
-  return district.filter((entry) => entry.trim() !== '' && !have.has(entryKey(entry)));
+  const additions: string[] = [];
+  for (const entry of district) {
+    const key = entryKey(entry);
+    if (entry.trim() === '' || have.has(key)) continue;
+    have.add(key);
+    additions.push(entry);
+  }
+  return additions;
 };
 
 const describeSplit = (split: { sessionsPerWeek: number; minutesPerSession: number }): string =>

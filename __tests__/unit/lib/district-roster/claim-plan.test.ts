@@ -435,3 +435,45 @@ describe('planRosterClaims — SPE-575 district data', () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// Stored-JSON validators (drop, never crash)
+// ---------------------------------------------------------------------------
+
+import { parseDistrictGoals, parseDistrictServices, proposeServiceMinutes } from '@/lib/district-roster/claim-plan';
+
+describe('parseDistrictServices / parseDistrictGoals', () => {
+  it('drops malformed service payloads instead of crashing an offer', () => {
+    expect(parseDistrictServices(null)).toBeNull();
+    expect(parseDistrictServices({ not: 'an array' })).toBeNull();
+    expect(parseDistrictServices([{ code: '415' }])).toBeNull(); // no weeklyMinutes
+    // A bad line is dropped; a good one beside it survives.
+    expect(
+      parseDistrictServices([{ code: '415', weeklyMinutes: 30 }, 'garbage']),
+    ).toEqual([
+      { code: '415', name: 'Service 415', minutes: 0, frequency: 'weekly', weeklyMinutes: 30 },
+    ]);
+  });
+
+  it('drops malformed goal payloads instead of crashing an offer', () => {
+    expect(parseDistrictGoals(null)).toBeNull();
+    expect(parseDistrictGoals([])).toBeNull();
+    expect(parseDistrictGoals({ goals: 'nope' })).toBeNull();
+    expect(parseDistrictGoals({ iepDate: '2026-01-15', goals: [{ text: '   ' }] })).toBeNull();
+    expect(
+      parseDistrictGoals({ iepDate: '2026-01-15', goals: [{ text: 'A real goal about reading.' }] }),
+    ).toEqual({
+      iepDate: '2026-01-15',
+      goals: [{ text: 'A real goal about reading.', areaOfNeed: '', goalType: '', personResponsible: '' }],
+    });
+  });
+
+  it('refuses a fractional weekly total from untyped stored JSON', () => {
+    const proposal = proposeServiceMinutes(
+      [{ code: '415', name: 'Language and Speech', minutes: 0, frequency: 'weekly', weeklyMinutes: 21.5 }],
+      'speech',
+      null,
+    );
+    expect(proposal).toBeNull();
+  });
+});

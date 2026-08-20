@@ -354,3 +354,70 @@ describe('testingAccommodationLabel', () => {
     expect(testingAccommodationLabel(header)).toBe(expected);
   });
 });
+
+describe('same-name students within one file (Codex review, PR #917)', () => {
+  it('keeps two same-named students in different grades as separate services records', async () => {
+    const buffer = await xlsxBuffer([
+      SERVICES_HEADERS,
+      servicesRow('Pat', 'Example', '415 - Language and Speech', '30', '20 - Weekly (one or more times a week)', { grade: 'First grade' }),
+      servicesRow('Pat', 'Example', '330 - Specialized Academic Instruction', '60', '20 - Weekly (one or more times a week)', { grade: 'Fourth grade' }),
+    ]);
+    const result = await parseServicesReport(buffer);
+    expect(result.students).toHaveLength(2);
+    expect(result.students.map((s) => s.gradeLevel).sort()).toEqual(['1', '4']);
+  });
+
+  it('merges a repeated testing row for one student instead of emitting two records', async () => {
+    const buffer = await xlsxBuffer([
+      TESTING_HEADERS,
+      [
+        '9', '1', 'Pat', 'Example', '03/02/2013', 'LEA', 'Fictional Middle',
+        'Public day school ', 'Eighth grade', 'CM',
+        '', 'NEA_MT', '', '', '', '', '', '', '', '',
+      ],
+      [
+        '9', '1', 'Pat', 'Example', '03/02/2013', 'LEA', 'Fictional Middle',
+        'Public day school ', 'Eighth grade', 'CM',
+        '', '', '', '', '', 'NEDS_SS', '', '', '', '',
+      ],
+    ]);
+    const result = await parseTestingAccommodationsReport(buffer);
+    expect(result.students).toHaveLength(1);
+    expect(result.students[0].testingAccommodations).toEqual([
+      'Masking (embedded)',
+      'Separate Setting (non-embedded)',
+    ]);
+  });
+});
+
+describe('malformed inputs (CodeRabbit review, PR #917)', () => {
+  it('refuses a corrupt buffer with the named message instead of throwing', async () => {
+    // Starts with the xlsx ZIP magic but is not a workbook.
+    const corrupt = Buffer.concat([Buffer.from([0x50, 0x4b, 0x03, 0x04]), Buffer.from('garbage')]);
+    const result = await parseServicesReport(corrupt);
+    expect(result.metadata.formatDetected).toBe(false);
+    expect(result.errors[0].message).toContain('does not look like the SEIS Services report');
+  });
+
+  it('reads a thousands-separated duration whole instead of stopping at the comma', async () => {
+    // parseInt('1,200') is 1 — a silent one-minute service. The parser strips
+    // group separators and reads the real total.
+    const buffer = await xlsxBuffer([
+      SERVICES_HEADERS,
+      servicesRow('Pat', 'Example', '330 - Specialized Academic Instruction', '1,200', '20 - Weekly (one or more times a week)'),
+    ]);
+    const result = await parseServicesReport(buffer);
+    expect(result.students).toHaveLength(1);
+    expect(result.students[0].services[0]).toMatchObject({ minutes: 1200, weeklyMinutes: 1200 });
+  });
+
+  it('rejects a duration cell that is not wholly numeric', async () => {
+    const buffer = await xlsxBuffer([
+      SERVICES_HEADERS,
+      servicesRow('Pat', 'Example', '330 - Specialized Academic Instruction', '30 min x 2', '20 - Weekly (one or more times a week)'),
+    ]);
+    const result = await parseServicesReport(buffer);
+    expect(result.students).toHaveLength(0);
+    expect(result.warnings[0].message).toContain('could not be read');
+  });
+});

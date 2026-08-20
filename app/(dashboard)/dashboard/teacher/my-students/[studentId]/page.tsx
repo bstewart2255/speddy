@@ -226,9 +226,9 @@ export default function StudentDetailPage() {
           <h2 className="text-lg font-medium text-gray-900">Accommodations</h2>
         </div>
         <div className="px-6 py-4">
-          {accommodations.length === 0 ? (
+          {accommodations.length === 0 && testingAccommodations.length === 0 ? (
             <p className="text-gray-500 italic">No accommodations recorded.</p>
-          ) : (
+          ) : accommodations.length === 0 ? null : (
             <ul className="space-y-4">
               {accommodations.map((accommodation, index) => (
                 <li key={index} className="flex gap-3">

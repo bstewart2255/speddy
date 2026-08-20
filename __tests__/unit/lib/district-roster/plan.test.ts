@@ -642,3 +642,34 @@ describe('planDistrictRoster — SPE-575 district data files', () => {
     expect(kept.children[0].fields.districtStudentId).toBe('100001');
   });
 });
+
+describe('same-name students across a supplemental-only upload (Codex review, PR #917)', () => {
+  it('creates two rows for same-named students in different grades, folding neither into the other', () => {
+    const result = plan({
+      goalsStudents: [],
+      datesRecords: [],
+      testingStudents: [
+        testingStudent({ gradeLevel: '1', testingAccommodations: ['Masking (embedded)'] }),
+        testingStudent({ gradeLevel: '4', testingAccommodations: ['Separate Setting (non-embedded)'] }),
+      ],
+    });
+    expect(result.children).toHaveLength(2);
+    const byGrade = new Map(result.children.map((c) => [c.fields.gradeLevel, c]));
+    expect(byGrade.get('1')!.fields.testingAccommodations).toEqual(['Masking (embedded)']);
+    expect(byGrade.get('4')!.fields.testingAccommodations).toEqual(['Separate Setting (non-embedded)']);
+  });
+
+  it('does not attach a graded record onto a roster student whose grade contradicts it', () => {
+    const result = plan({
+      goalsStudents: [goalsStudent({ gradeLevel: '1' })],
+      datesRecords: [],
+      servicesStudents: [servicesStudent({ gradeLevel: '4' })],
+    });
+    // The grade-4 services student is a different child: their own row.
+    expect(result.children).toHaveLength(2);
+    const grade1 = result.children.find((c) => c.fields.gradeLevel === '1')!;
+    expect(grade1.fields.districtServices).toBeNull();
+    const grade4 = result.children.find((c) => c.fields.gradeLevel === '4')!;
+    expect(grade4.fields.districtServices).toEqual([serviceLine()]);
+  });
+});

@@ -143,8 +143,20 @@ export const POST = withRoute<Record<string, string>, z.infer<typeof bodySchema>
     // The district's data rides along onto the rows just created (SPE-575):
     // minutes for this caller's role, accommodations, testing accommodations,
     // their discipline's goals, DOB. Best-effort — a miss is logged and comes
-    // back as a fill offer on the next banner load, never a failed claim.
-    const enrichment = await enrichClaimedStudents({ plan, claims });
+    // back as a fill offer on the next banner load, never a failed claim. The
+    // wrapper is what makes that promise total: a throw from outside the
+    // per-student guard (e.g. client construction) must not turn committed
+    // claims into a 500 that hides them.
+    let enrichment = { enriched: 0, enrichFailures: 0 };
+    try {
+      enrichment = await enrichClaimedStudents({ plan, claims });
+    } catch (err) {
+      log.error('Enriching claimed students failed outright', err, { userId });
+      enrichment = {
+        enriched: 0,
+        enrichFailures: claims.filter((c) => c.outcome === 'claimed').length,
+      };
+    }
 
     let accepted = { applied: 0, skipped: 0 };
     try {

@@ -520,10 +520,22 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
           // Add goals to existing student (avoid duplicates)
           const existing = studentMap.get(studentKey)!;
           for (const detail of goalDetails) {
+            // Flat display goals dedupe by TEXT (long-standing behavior), but
+            // routing metadata dedupes by its whole signature: the same goal
+            // text repeated under a different Area of Need / Person
+            // Responsible is a second routing signal, and dropping it would
+            // hide the goal from that discipline's claim offers (SPE-575).
             if (!existing.goals.includes(detail.text)) {
               existing.goals.push(detail.text);
-              existing.goalDetails?.push(detail);
             }
+            const sameRouting = existing.goalDetails?.some(
+              (d) =>
+                d.text === detail.text &&
+                d.areaOfNeed === detail.areaOfNeed &&
+                d.goalType === detail.goalType &&
+                d.personResponsible === detail.personResponsible,
+            );
+            if (!sameRouting) existing.goalDetails?.push(detail);
           }
           // Merge iepDate (keep first non-empty value)
           if (!existing.iepDate && iepDate) {

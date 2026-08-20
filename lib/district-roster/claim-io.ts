@@ -18,6 +18,7 @@
 
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { logger } from '@/lib/logger';
+import { updateExistingSessionsForStudent } from '@/lib/scheduling/session-requirement-sync';
 import { parseDistrictGoals, parseDistrictServices } from './claim-plan';
 import type { ClaimPlan, ProviderStudent, RosterChild, RosterFieldKey } from './claim-plan';
 import type { SchoolLevelInput } from '@/lib/school-helpers';
@@ -281,6 +282,7 @@ export async function applyRosterAcceptances(params: {
     // is one tick for the provider even though it writes two columns.
     let studentFields = 0;
     let detailsFields = 0;
+    let acceptedSplit: { sessionsPerWeek: number; minutesPerSession: number } | null = null;
 
     for (const field of new Set(request.fields)) {
       const change = offer?.changes.find((c) => c.field === field);
@@ -311,6 +313,7 @@ export async function applyRosterAcceptances(params: {
         }
         studentPatch.sessions_per_week = change.split.sessionsPerWeek;
         studentPatch.minutes_per_session = change.split.minutesPerSession;
+        acceptedSplit = change.split;
         studentFields++;
         continue;
       }
@@ -329,6 +332,27 @@ export async function applyRosterAcceptances(params: {
     }
 
     if (studentFields > 0) {
+      // Accepting minutes must also carry the student's SCHEDULE along, the
+      // way the students-page edit and the import confirm do — so read the
+      // stored pair first for the sync's before/after contract.
+      let oldSplit: { sessions_per_week: number | null; minutes_per_session: number | null } = {
+        sessions_per_week: null,
+        minutes_per_session: null,
+      };
+      if (acceptedSplit) {
+        const { data: before } = await session
+          .from('students')
+          .select('sessions_per_week, minutes_per_session')
+          .eq('id', request.studentId)
+          .maybeSingle();
+        if (before) {
+          oldSplit = {
+            sessions_per_week: (before.sessions_per_week as number | null) ?? null,
+            minutes_per_session: (before.minutes_per_session as number | null) ?? null,
+          };
+        }
+      }
+
       const { error } = await session
         .from('students')
         .update(studentPatch)
@@ -343,6 +367,28 @@ export async function applyRosterAcceptances(params: {
         else throw new Error(`Could not update your student: ${error.message}`);
       } else {
         result.applied += studentFields;
+
+        if (acceptedSplit) {
+          // Same follow-through as every other minutes writer: adjust the
+          // student's existing scheduled sessions (or create the initial
+          // unscheduled ones) so the calendar matches the new requirement.
+          // A sync miss is logged, never thrown — the acceptance itself
+          // committed, and the students-page edit path remains the repair.
+          const sync = await updateExistingSessionsForStudent(
+            request.studentId,
+            oldSplit,
+            {
+              sessions_per_week: acceptedSplit.sessionsPerWeek,
+              minutes_per_session: acceptedSplit.minutesPerSession,
+            },
+            session,
+          );
+          if (!sync.success) {
+            log.error('Session sync after a minutes acceptance failed', new Error(sync.error ?? 'unknown'), {
+              studentId: request.studentId,
+            });
+          }
+        }
       }
     }
 
@@ -416,6 +462,22 @@ export async function enrichClaimedStudents(params: {
           })
           .eq('id', claim.studentId);
         if (error) throw new Error(error.message);
+
+        // A freshly claimed row has no schedule_sessions at all; without this
+        // the student carries a requirement but never appears in Unscheduled
+        // Sessions until someone re-edits the minutes. Same sync every other
+        // minutes writer runs; the null "before" makes it create the initial
+        // unscheduled sessions.
+        const sync = await updateExistingSessionsForStudent(
+          claim.studentId,
+          { sessions_per_week: null, minutes_per_session: null },
+          {
+            sessions_per_week: offer.minutesProposal.sessionsPerWeek,
+            minutes_per_session: offer.minutesProposal.minutesPerSession,
+          },
+          session,
+        );
+        if (!sync.success) throw new Error(sync.error ?? 'session sync failed');
       }
 
       const detailsPatch: Record<string, unknown> = {};

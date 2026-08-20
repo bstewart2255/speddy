@@ -505,6 +505,15 @@ export function planDistrictRoster(input: RosterPlanInput): RosterPlan {
   // the earlier files mentioned becomes their own roster row — every file
   // carries name, school and grade, which is all a row needs. Ambiguity is
   // counted per file, so the admin can see data that reached nobody.
+  // Grade compatibility narrows a name match WITHIN one upload batch: every
+  // file in the batch is the same vintage, so two same-named students in
+  // different grades are two children, and a record must never fold into a row
+  // whose grade contradicts it (Codex review on PR #917). A blank on either
+  // side stays compatible — several files legitimately omit or fail to carry
+  // grade for a student.
+  const gradesCompatible = (a: string, b: string): boolean =>
+    !a || !b || a.toUpperCase() === b.toUpperCase();
+
   const attachStudents = <T extends {
     firstName: string;
     lastName: string;
@@ -522,11 +531,15 @@ export function planDistrictRoster(input: RosterPlanInput): RosterPlan {
       const firstName = clean(record.firstName);
       const lastName = clean(record.lastName);
       const schoolName = clean(record.schoolOfAttendance);
+      const recordGrade = clean(record.gradeLevel);
 
-      const exact =
+      const exact = (
         rowsByNameSchool.get(nameSchoolKey(firstName, lastName, normalizeSchoolName(schoolName))) ??
-        [];
-      const byName = rowsByName.get(nameSchoolKey(firstName, lastName, null)) ?? [];
+        []
+      ).filter((row) => gradesCompatible(recordGrade, row.gradeLevel));
+      const byName = (rowsByName.get(nameSchoolKey(firstName, lastName, null)) ?? []).filter(
+        (row) => gradesCompatible(recordGrade, row.gradeLevel),
+      );
       const target =
         exact.length === 1 ? exact[0] : exact.length === 0 && byName.length === 1 ? byName[0] : null;
 
@@ -565,13 +578,18 @@ export function planDistrictRoster(input: RosterPlanInput): RosterPlan {
     return notUsed;
   };
 
+  // Every apply APPENDS: a second record legitimately reaching the same row
+  // (a blank-grade duplicate, or the accommodations file adding to a row the
+  // services file created) must add to it, never overwrite it.
   const servicesStudentsNotUsed = attachStudents(input.servicesStudents, (row, record) => {
-    if (record.services.length > 0) row.services = record.services;
+    if (record.services.length > 0) row.services = [...(row.services ?? []), ...record.services];
   });
   const accommodationsStudentsNotUsed = attachStudents(
     input.accommodationsStudents,
     (row, record) => {
-      if (record.accommodations.length > 0) row.accommodations = record.accommodations;
+      if (record.accommodations.length > 0) {
+        row.accommodations = mergeUnique(row.accommodations, record.accommodations);
+      }
       // The Accommodations report's assessment rows join the Student Download's
       // entries rather than replacing them (or vice versa) — merged, de-duped.
       if (record.testingAccommodations.length > 0) {
