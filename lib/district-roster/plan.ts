@@ -16,6 +16,13 @@
  */
 
 import { normalizeSchoolName } from '@/lib/school-helpers';
+import type { ParsedGoalDetail } from '@/lib/parsers/csv-parser';
+import type {
+  AccommodationsReportStudent,
+  DistrictServiceLine,
+  ServicesReportStudent,
+  TestingReportStudent,
+} from '@/lib/parsers/district-reports';
 
 // ---------------------------------------------------------------------------
 // Inputs
@@ -32,6 +39,17 @@ export interface RosterFileStudent {
   schoolOfAttendance?: string;
   /** SEIS "Case Manager" — a hint for the claim screen, never an assignment. */
   caseManager?: string;
+  /** The report's IEP Date — the vintage of the goals below, not a compliance date. */
+  iepDate?: string;
+  /** Goal text with its routing metadata, for role-filtered claim offers (SPE-575). */
+  goalDetails?: ParsedGoalDetail[];
+}
+
+/** The goals payload stored on `children.district_goals` (SPE-575). */
+export interface RosterDistrictGoals {
+  /** Goal vintage — the Goals report's IEP Date, never the compliance dates. */
+  iepDate: string | null;
+  goals: ParsedGoalDetail[];
 }
 
 /** One student as parsed from the SEIS IEP Dates report. */
@@ -61,9 +79,15 @@ export interface ExistingChild {
   initials: string;
   gradeLevel: string | null;
   schoolId: string | null;
+  dateOfBirth: string | null;
   upcomingIepDate: string | null;
   upcomingTriennialDate: string | null;
   caseManager: string | null;
+  accommodations: string[];
+  testingAccommodations: string[];
+  /** Stored `district_services` / `district_goals` JSON, verbatim. */
+  districtServices: unknown;
+  districtGoals: unknown;
   /** How many provider caseloads currently serve this child. */
   caseloadCount: number;
 }
@@ -74,6 +98,9 @@ export interface RosterPlanInput {
   today: string;
   goalsStudents: RosterFileStudent[];
   datesRecords: RosterDatesRecord[];
+  servicesStudents: ServicesReportStudent[];
+  accommodationsStudents: AccommodationsReportStudent[];
+  testingStudents: TestingReportStudent[];
   schools: DistrictSchool[];
   existingChildren: ExistingChild[];
 }
@@ -99,9 +126,16 @@ export interface RosterChildFields {
   gradeLevel: string;
   districtStudentId: string | null;
   schoolId: string | null;
+  dateOfBirth: string | null;
   upcomingIepDate: string | null;
   upcomingTriennialDate: string | null;
   caseManager: string | null;
+  /** Null when the matching file was not uploaded or holds nothing for this
+   *  student — and null is never written, per the never-erase rule. */
+  accommodations: string[] | null;
+  testingAccommodations: string[] | null;
+  districtServices: DistrictServiceLine[] | null;
+  districtGoals: RosterDistrictGoals | null;
 }
 
 export interface PlannedChild {
@@ -156,7 +190,7 @@ export interface RosterPlan {
     creates: number;
     updates: number;
     unchanged: number;
-    /** Distinct students across both files. */
+    /** Distinct students across the uploaded files. */
     inFiles: number;
     /**
      * Rows read from the IEP Dates report whose dates reached nobody: either
@@ -168,6 +202,16 @@ export interface RosterPlan {
      * tell that apart from a district that genuinely records none.
      */
     datesRowsNotUsed: number;
+    /** Same posture for the three SPE-575 files: students whose data could not
+     *  be attached because two roster students share their name. */
+    servicesStudentsNotUsed: number;
+    accommodationsStudentsNotUsed: number;
+    testingStudentsNotUsed: number;
+    /** How many planned children carry each kind of district data. */
+    withServices: number;
+    withAccommodations: number;
+    withTestingAccommodations: number;
+    withGoals: number;
   };
 }
 
@@ -176,6 +220,35 @@ export interface RosterPlan {
 // ---------------------------------------------------------------------------
 
 const clean = (v: string | null | undefined): string => (v ?? '').trim();
+
+/** Merge two entry lists, keeping first spelling, dropping case-dup entries. */
+const mergeUnique = (a: string[] | undefined, b: string[]): string[] => {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const value of [...(a ?? []), ...b]) {
+    const key = value.trim().toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(value.trim());
+  }
+  return out;
+};
+
+/**
+ * Deterministic JSON for change detection: object keys sorted recursively, so
+ * a value read back from a jsonb column (which re-orders keys) compares equal
+ * to the same value freshly parsed from a file.
+ */
+export const stableStringify = (value: unknown): string => {
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
+  if (value !== null && typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([, v]) => v !== undefined)
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+    return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${stableStringify(v)}`).join(',')}}`;
+  }
+  return JSON.stringify(value) ?? 'null';
+};
 
 /**
  * The district-student-id MATCH key, matching `ux_children_district_student_id`
@@ -263,14 +336,33 @@ export function planDistrictRoster(input: RosterPlanInput): RosterPlan {
       cannotLinkToTeachers: 0,
     },
     notInRoster: [],
-    counts: { creates: 0, updates: 0, unchanged: 0, inFiles: 0, datesRowsNotUsed: 0 },
+    counts: {
+      creates: 0,
+      updates: 0,
+      unchanged: 0,
+      inFiles: 0,
+      datesRowsNotUsed: 0,
+      servicesStudentsNotUsed: 0,
+      accommodationsStudentsNotUsed: 0,
+      testingStudentsNotUsed: 0,
+      withServices: 0,
+      withAccommodations: 0,
+      withTestingAccommodations: 0,
+      withGoals: 0,
+    },
   });
 
-  // A goals report with no students is either the wrong file or a failed
-  // parse. Applying it would write nothing but still report success, so say
-  // so instead — the same posture as the link sync's empty-feed refusal.
-  if (input.goalsStudents.length === 0 && input.datesRecords.length === 0) {
-    return empty('Neither file contained any students. Nothing was changed.');
+  // A report with no students is either the wrong file or a failed parse.
+  // Applying it would write nothing but still report success, so say so
+  // instead — the same posture as the link sync's empty-feed refusal.
+  if (
+    input.goalsStudents.length === 0 &&
+    input.datesRecords.length === 0 &&
+    input.servicesStudents.length === 0 &&
+    input.accommodationsStudents.length === 0 &&
+    input.testingStudents.length === 0
+  ) {
+    return empty('No file contained any students. Nothing was changed.');
   }
 
   // Schools by normalized name, so "Rodeo Hills Elementary" resolves whichever
@@ -323,6 +415,11 @@ export function planDistrictRoster(input: RosterPlanInput): RosterPlan {
     schoolName: string;
     caseManager: string | null;
     dates?: RosterDatesRecord;
+    dateOfBirth?: string;
+    districtGoals?: RosterDistrictGoals;
+    services?: DistrictServiceLine[];
+    accommodations?: string[];
+    testingAccommodations?: string[];
   }
 
   // EVERY goals student becomes its OWN row. They are never merged into each
@@ -337,6 +434,10 @@ export function planDistrictRoster(input: RosterPlanInput): RosterPlan {
     districtStudentId: districtIdValue(student.districtStudentId),
     schoolName: clean(student.schoolOfAttendance),
     caseManager: clean(student.caseManager) || null,
+    districtGoals:
+      student.goalDetails && student.goalDetails.length > 0
+        ? { iepDate: clean(student.iepDate) || null, goals: student.goalDetails }
+        : undefined,
   }));
 
   // Indexes for attaching a dates record to the right goals row.
@@ -405,6 +506,98 @@ export function planDistrictRoster(input: RosterPlanInput): RosterPlan {
     rows.push(row);
     indexRow(row);
   }
+
+  // ---- The three SPE-575 files attach the same way the dates report does ----
+  // Name + school first, name-only fallback (two SEIS exports can spell one
+  // school differently), exactly one candidate or nothing. A student none of
+  // the earlier files mentioned becomes their own roster row — every file
+  // carries name, school and grade, which is all a row needs. Ambiguity is
+  // counted per file, so the admin can see data that reached nobody.
+  const attachStudents = <T extends {
+    firstName: string;
+    lastName: string;
+    gradeLevel: string;
+    schoolOfAttendance?: string;
+    dateOfBirth?: string;
+    caseManager?: string;
+    districtStudentId?: string;
+  }>(
+    records: T[],
+    apply: (row: RosterRow, record: T) => void,
+  ): number => {
+    let notUsed = 0;
+    for (const record of records) {
+      const firstName = clean(record.firstName);
+      const lastName = clean(record.lastName);
+      const schoolName = clean(record.schoolOfAttendance);
+
+      const exact =
+        rowsByNameSchool.get(nameSchoolKey(firstName, lastName, normalizeSchoolName(schoolName))) ??
+        [];
+      const byName = rowsByName.get(nameSchoolKey(firstName, lastName, null)) ?? [];
+      const target =
+        exact.length === 1 ? exact[0] : exact.length === 0 && byName.length === 1 ? byName[0] : null;
+
+      if (target) {
+        apply(target, record);
+        if (!target.gradeLevel) target.gradeLevel = clean(record.gradeLevel);
+        if (!target.dateOfBirth) target.dateOfBirth = clean(record.dateOfBirth) || undefined;
+        if (!target.caseManager) target.caseManager = clean(record.caseManager) || null;
+        // The Accommodations report is the one extra file carrying District ID
+        // — it can fill a blank, but never overwrites (a mismatch against the
+        // Goals report would be resolved silently in whichever order the files
+        // were read, which is a guess this planner refuses everywhere else).
+        if (!target.districtStudentId && record.districtStudentId) {
+          target.districtStudentId = districtIdValue(record.districtStudentId);
+        }
+        continue;
+      }
+      if (exact.length > 1 || byName.length > 1) {
+        notUsed++;
+        continue;
+      }
+
+      const row: RosterRow = {
+        firstName,
+        lastName,
+        gradeLevel: clean(record.gradeLevel),
+        districtStudentId: districtIdValue(record.districtStudentId),
+        schoolName,
+        caseManager: clean(record.caseManager) || null,
+        dateOfBirth: clean(record.dateOfBirth) || undefined,
+      };
+      apply(row, record);
+      rows.push(row);
+      indexRow(row);
+    }
+    return notUsed;
+  };
+
+  const servicesStudentsNotUsed = attachStudents(input.servicesStudents, (row, record) => {
+    if (record.services.length > 0) row.services = record.services;
+  });
+  const accommodationsStudentsNotUsed = attachStudents(
+    input.accommodationsStudents,
+    (row, record) => {
+      if (record.accommodations.length > 0) row.accommodations = record.accommodations;
+      // The Accommodations report's assessment rows join the Student Download's
+      // entries rather than replacing them (or vice versa) — merged, de-duped.
+      if (record.testingAccommodations.length > 0) {
+        row.testingAccommodations = mergeUnique(
+          row.testingAccommodations,
+          record.testingAccommodations,
+        );
+      }
+    },
+  );
+  const testingStudentsNotUsed = attachStudents(input.testingStudents, (row, record) => {
+    if (record.testingAccommodations.length > 0) {
+      row.testingAccommodations = mergeUnique(
+        row.testingAccommodations,
+        record.testingAccommodations,
+      );
+    }
+  });
 
   // Two file rows carrying ONE district student id — a mid-year transfer listed
   // at both schools, or a data error in the export. Creating both would violate
@@ -578,9 +771,14 @@ export function planDistrictRoster(input: RosterPlanInput): RosterPlan {
       gradeLevel: row.gradeLevel,
       districtStudentId,
       schoolId,
+      dateOfBirth: row.dateOfBirth ?? null,
       upcomingIepDate: dates?.upcomingIepDate ?? null,
       upcomingTriennialDate: dates?.upcomingTriennialDate ?? null,
       caseManager: row.caseManager,
+      accommodations: row.accommodations ?? null,
+      testingAccommodations: row.testingAccommodations ?? null,
+      districtServices: row.services ?? null,
+      districtGoals: row.districtGoals ?? null,
     };
 
     let action: RosterAction = 'create';
@@ -596,6 +794,7 @@ export function planDistrictRoster(input: RosterPlanInput): RosterPlan {
         // the file's casing, so comparing it raw against an upper-cased one
         // would report a change on every run and rewrite the column forever.
         ['district student ID', rowIdKey, districtIdKey(match.districtStudentId)],
+        ['date of birth', fields.dateOfBirth, match.dateOfBirth],
         ['annual review date', fields.upcomingIepDate, match.upcomingIepDate],
         ['triennial date', fields.upcomingTriennialDate, match.upcomingTriennialDate],
         ['case manager', fields.caseManager, match.caseManager],
@@ -605,6 +804,19 @@ export function planDistrictRoster(input: RosterPlanInput): RosterPlan {
         // roster fills gaps and corrects, it does not delete (SPE-447 rule).
         if (next === null || next === '') continue;
         if (clean(next) !== clean(current)) changedFields.push(label);
+      }
+      // The structured fields follow the same rule through canonical JSON: a
+      // file that was not uploaded (null) proposes nothing, and equal content
+      // read back from jsonb (whose key order differs) is not a change.
+      const compareJson: [string, unknown, unknown][] = [
+        ['accommodations', fields.accommodations, match.accommodations],
+        ['testing accommodations', fields.testingAccommodations, match.testingAccommodations],
+        ['service schedule', fields.districtServices, match.districtServices],
+        ['goals', fields.districtGoals, match.districtGoals],
+      ];
+      for (const [label, next, current] of compareJson) {
+        if (next === null || (Array.isArray(next) && next.length === 0)) continue;
+        if (stableStringify(next) !== stableStringify(current ?? null)) changedFields.push(label);
       }
       action = changedFields.length > 0 ? 'update' : 'unchanged';
     }
@@ -651,6 +863,15 @@ export function planDistrictRoster(input: RosterPlanInput): RosterPlan {
       unchanged: children.filter((c) => c.action === 'unchanged').length,
       inFiles: rows.length,
       datesRowsNotUsed,
+      servicesStudentsNotUsed,
+      accommodationsStudentsNotUsed,
+      testingStudentsNotUsed,
+      withServices: children.filter((c) => (c.fields.districtServices?.length ?? 0) > 0).length,
+      withAccommodations: children.filter((c) => (c.fields.accommodations?.length ?? 0) > 0).length,
+      withTestingAccommodations: children.filter(
+        (c) => (c.fields.testingAccommodations?.length ?? 0) > 0,
+      ).length,
+      withGoals: children.filter((c) => (c.fields.districtGoals?.goals.length ?? 0) > 0).length,
     },
   };
 }

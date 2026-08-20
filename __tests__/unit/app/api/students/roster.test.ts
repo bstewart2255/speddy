@@ -54,10 +54,12 @@ jest.mock('@/lib/logger', () => {
 const mockLoad = jest.fn();
 const mockClaim = jest.fn();
 const mockAccept = jest.fn();
+const mockEnrich = jest.fn();
 jest.mock('@/lib/district-roster/claim-io', () => ({
   loadProviderRosterContext: (...a: unknown[]) => mockLoad(...a),
   claimRosterChildren: (...a: unknown[]) => mockClaim(...a),
   applyRosterAcceptances: (...a: unknown[]) => mockAccept(...a),
+  enrichClaimedStudents: (...a: unknown[]) => mockEnrich(...a),
 }));
 
 import { GET, POST } from '@/app/api/students/roster/route';
@@ -83,9 +85,22 @@ const CONTEXT: ProviderRosterContext = {
       gradeLevel: '1',
       schoolId: 'sch-rodeo',
       districtStudentId: '100001',
+      dateOfBirth: '2019-05-04',
       upcomingIepDate: '2027-02-09',
       upcomingTriennialDate: '2029-02-09',
       caseManager: 'Rosa Delgado',
+      accommodations: ['Extended time'],
+      testingAccommodations: [],
+      districtServices: [
+        {
+          code: '330',
+          name: 'Specialized Academic Instruction',
+          minutes: 60,
+          frequency: 'weekly' as const,
+          weeklyMinutes: 60,
+        },
+      ],
+      districtGoals: null,
       caseloadCount: 0,
     },
     {
@@ -96,9 +111,14 @@ const CONTEXT: ProviderRosterContext = {
       gradeLevel: '3',
       schoolId: 'sch-rodeo',
       districtStudentId: '200002',
+      dateOfBirth: null,
       upcomingIepDate: '2027-06-01',
       upcomingTriennialDate: null,
       caseManager: 'Someone Else',
+      accommodations: [],
+      testingAccommodations: [],
+      districtServices: null,
+      districtGoals: null,
       caseloadCount: 1,
     },
     {
@@ -109,9 +129,14 @@ const CONTEXT: ProviderRosterContext = {
       gradeLevel: '2',
       schoolId: 'sch-rodeo',
       districtStudentId: '300003',
+      dateOfBirth: null,
       upcomingIepDate: null,
       upcomingTriennialDate: null,
       caseManager: 'Owen Pike',
+      accommodations: [],
+      testingAccommodations: [],
+      districtServices: null,
+      districtGoals: null,
       caseloadCount: 0,
     },
   ],
@@ -124,10 +149,18 @@ const CONTEXT: ProviderRosterContext = {
       lastName: 'Bishop',
       gradeLevel: '3',
       districtStudentId: '200002',
+      dateOfBirth: null,
       upcomingIepDate: null,
       upcomingTriennialDate: null,
+      sessionsPerWeek: null,
+      minutesPerSession: null,
+      accommodations: [],
+      testingAccommodations: [],
+      iepGoals: [],
     },
   ],
+  myRole: 'resource',
+  schoolLevels: {},
 };
 
 const call = (method: 'GET' | 'POST', body?: unknown) => {
@@ -148,6 +181,7 @@ beforeEach(() => {
   mockLoad.mockResolvedValue(CONTEXT);
   mockClaim.mockResolvedValue([{ childId: CHILD_A, studentId: 'new-stu', outcome: 'claimed' }]);
   mockAccept.mockResolvedValue({ applied: 1, skipped: 0 });
+  mockEnrich.mockResolvedValue({ enriched: 0, enrichFailures: 0 });
 });
 
 describe('GET — what am I offered', () => {
@@ -300,8 +334,9 @@ describe('POST — taking them', () => {
   });
 
   it('rejects a field name it does not offer', async () => {
+    // 'iepGoals' used to be the example here; SPE-575 made it a real field.
     const res = await call('POST', {
-      acceptChanges: [{ studentId: STUDENT_1, fields: ['iepGoals'] }],
+      acceptChanges: [{ studentId: STUDENT_1, fields: ['schoolId'] }],
     });
     expect(res.status).toBe(400);
     expect(mockAccept).not.toHaveBeenCalled();
@@ -319,5 +354,27 @@ describe('POST — taking them', () => {
     expect(body.error).toMatch(/shows what actually changed/);
     expect(body.error).not.toMatch(/nothing was changed/i);
     expect(body.claimed).toBe(1);
+  });
+});
+
+describe('POST — district data rides along on a claim (SPE-575)', () => {
+  it('enriches the claimed rows from the recomputed plan, never the request', async () => {
+    const res = await call('POST', { claimChildIds: [CHILD_A] });
+    expect(res.status).toBe(200);
+
+    expect(mockEnrich).toHaveBeenCalledTimes(1);
+    const [args] = mockEnrich.mock.calls[0] as [
+      { plan: { claimable: Array<{ childId: string }> }; claims: unknown },
+    ];
+    // The plan handed over is the server's own recomputation with the offer
+    // for the claimed child inside it — the request contributed only the id.
+    expect(args.plan.claimable.some((c) => c.childId === CHILD_A)).toBe(true);
+    expect(args.claims).toEqual([{ childId: CHILD_A, studentId: 'new-stu', outcome: 'claimed' }]);
+  });
+
+  it('reports enrichment misses so the provider knows to look at the banner again', async () => {
+    mockEnrich.mockResolvedValue({ enriched: 0, enrichFailures: 1 });
+    const res = await call('POST', { claimChildIds: [CHILD_A] });
+    expect(await res.json()).toMatchObject({ claimed: 1, enrichFailures: 1 });
   });
 });

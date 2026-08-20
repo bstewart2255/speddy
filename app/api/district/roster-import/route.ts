@@ -25,8 +25,8 @@ export const maxDuration = 300;
 
 const log = logger.child({ module: 'district-roster-import' });
 
-/** Two files at the per-file cap, plus ~1 MB for multipart framing. */
-const MAX_TOTAL_BYTES = MAX_UPLOAD_FILE_BYTES * 2 + 1024 * 1024;
+/** Five files at the per-file cap, plus ~1 MB for multipart framing. */
+const MAX_TOTAL_BYTES = MAX_UPLOAD_FILE_BYTES * 5 + 1024 * 1024;
 
 const TOO_LARGE = `Upload too large. Each file must be under ${MAX_FILE_SIZE_MB} MB.`;
 
@@ -91,24 +91,34 @@ export const POST = withRoute({
     typeof (value as File).name === 'string' &&
     typeof (value as File).arrayBuffer === 'function';
 
-  const uploads: Record<'goalsFile' | 'datesFile', File | null> = {
+  const FILE_FIELDS = [
+    'goalsFile',
+    'datesFile',
+    'servicesFile',
+    'accommodationsFile',
+    'testingFile',
+  ] as const;
+  const uploads: Record<(typeof FILE_FIELDS)[number], File | null> = {
     goalsFile: null,
     datesFile: null,
+    servicesFile: null,
+    accommodationsFile: null,
+    testingFile: null,
   };
-  for (const field of ['goalsFile', 'datesFile'] as const) {
+  for (const field of FILE_FIELDS) {
     const value = form.get(field);
     if (value === null) continue;
     if (!isUploadedFile(value)) {
       return NextResponse.json(
-        { error: `"${field}" was not sent as a file. Choose your CSV export and try again.` },
+        { error: `"${field}" was not sent as a file. Choose your SEIS export and try again.` },
         { status: 400 },
       );
     }
     uploads[field] = value;
   }
-  const { goalsFile, datesFile } = uploads;
 
-  for (const file of [goalsFile, datesFile]) {
+  for (const field of FILE_FIELDS) {
+    const file = uploads[field];
     if (file && typeof file.size === 'number' && file.size > MAX_UPLOAD_FILE_BYTES) {
       return NextResponse.json(
         { error: `"${file.name}" exceeds the ${MAX_FILE_SIZE_MB} MB limit.` },
@@ -133,7 +143,7 @@ export const POST = withRoute({
     );
   }
 
-  const files = await readDistrictRosterFiles({ goalsFile, datesFile });
+  const files = await readDistrictRosterFiles(uploads);
   if (files.error) {
     return NextResponse.json({ error: files.error }, { status: 400 });
   }
@@ -160,6 +170,9 @@ export const POST = withRoute({
     today: formatDateLocal(new Date()),
     goalsStudents: files.goalsStudents,
     datesRecords: files.datesRecords,
+    servicesStudents: files.servicesStudents,
+    accommodationsStudents: files.accommodationsStudents,
+    testingStudents: files.testingStudents,
     schools: context.schools,
     existingChildren: context.existingChildren,
   });

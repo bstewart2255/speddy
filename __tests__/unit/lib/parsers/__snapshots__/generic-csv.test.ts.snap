@@ -21,6 +21,14 @@ exports[`parseCSVReport — Windows-1252 encoding re-decodes accented names as l
       "caseManager": undefined,
       "districtStudentId": undefined,
       "firstName": "Sofía",
+      "goalDetails": [
+        {
+          "areaOfNeed": "",
+          "goalType": "",
+          "personResponsible": "",
+          "text": "The student will read 50 words per minute with 90% accuracy.",
+        },
+      ],
       "goals": [
         "The student will read 50 words per minute with 90% accuracy.",
       ],
@@ -35,6 +43,14 @@ exports[`parseCSVReport — Windows-1252 encoding re-decodes accented names as l
       "caseManager": undefined,
       "districtStudentId": undefined,
       "firstName": "José",
+      "goalDetails": [
+        {
+          "areaOfNeed": "",
+          "goalType": "",
+          "personResponsible": "",
+          "text": "The student will write a five-sentence paragraph with 80% accuracy.",
+        },
+      ],
       "goals": [
         "The student will write a five-sentence paragraph with 80% accuracy.",
       ],
@@ -49,6 +65,14 @@ exports[`parseCSVReport — Windows-1252 encoding re-decodes accented names as l
       "caseManager": undefined,
       "districtStudentId": undefined,
       "firstName": "Renée",
+      "goalDetails": [
+        {
+          "areaOfNeed": "",
+          "goalType": "",
+          "personResponsible": "",
+          "text": "The student will identify rhyming words in 4 of 5 trials.",
+        },
+      ],
       "goals": [
         "The student will identify rhyming words in 4 of 5 trials.",
       ],
@@ -85,6 +109,14 @@ exports[`parseCSVReport — messy grade values (generic format) matches the gold
       "caseManager": undefined,
       "districtStudentId": undefined,
       "firstName": "Ava",
+      "goalDetails": [
+        {
+          "areaOfNeed": "",
+          "goalType": "",
+          "personResponsible": "",
+          "text": "The student will read 60 words per minute by year end with 90% accuracy.",
+        },
+      ],
       "goals": [
         "The student will read 60 words per minute by year end with 90% accuracy.",
       ],
@@ -99,6 +131,14 @@ exports[`parseCSVReport — messy grade values (generic format) matches the gold
       "caseManager": undefined,
       "districtStudentId": undefined,
       "firstName": "Ben",
+      "goalDetails": [
+        {
+          "areaOfNeed": "",
+          "goalType": "",
+          "personResponsible": "",
+          "text": "The student will identify all letter sounds by June with 80% accuracy.",
+        },
+      ],
       "goals": [
         "The student will identify all letter sounds by June with 80% accuracy.",
       ],
@@ -113,6 +153,14 @@ exports[`parseCSVReport — messy grade values (generic format) matches the gold
       "caseManager": undefined,
       "districtStudentId": undefined,
       "firstName": "Cara",
+      "goalDetails": [
+        {
+          "areaOfNeed": "",
+          "goalType": "",
+          "personResponsible": "",
+          "text": "The student will solve two-digit addition problems with 80% accuracy.",
+        },
+      ],
       "goals": [
         "The student will solve two-digit addition problems with 80% accuracy.",
       ],
@@ -127,6 +175,14 @@ exports[`parseCSVReport — messy grade values (generic format) matches the gold
       "caseManager": undefined,
       "districtStudentId": undefined,
       "firstName": "Dan",
+      "goalDetails": [
+        {
+          "areaOfNeed": "",
+          "goalType": "",
+          "personResponsible": "",
+          "text": "The student will write complete sentences with correct capitalization.",
+        },
+      ],
       "goals": [
         "The student will write complete sentences with correct capitalization.",
       ],
@@ -141,6 +197,14 @@ exports[`parseCSVReport — messy grade values (generic format) matches the gold
       "caseManager": undefined,
       "districtStudentId": undefined,
       "firstName": "Ella",
+      "goalDetails": [
+        {
+          "areaOfNeed": "",
+          "goalType": "",
+          "personResponsible": "",
+          "text": "The student will follow two-step directions in the classroom in 4 of 5 trials.",
+        },
+      ],
       "goals": [
         "The student will follow two-step directions in the classroom in 4 of 5 trials.",
       ],
@@ -155,6 +219,14 @@ exports[`parseCSVReport — messy grade values (generic format) matches the gold
       "caseManager": undefined,
       "districtStudentId": undefined,
       "firstName": "Finn",
+      "goalDetails": [
+        {
+          "areaOfNeed": "",
+          "goalType": "",
+          "personResponsible": "",
+          "text": "The student will count to 20 with one-to-one correspondence in 4 of 5 trials.",
+        },
+      ],
       "goals": [
         "The student will count to 20 with one-to-one correspondence in 4 of 5 trials.",
       ],
@@ -169,6 +241,14 @@ exports[`parseCSVReport — messy grade values (generic format) matches the gold
       "caseManager": undefined,
       "districtStudentId": undefined,
       "firstName": "Grace",
+      "goalDetails": [
+        {
+          "areaOfNeed": "",
+          "goalType": "",
+          "personResponsible": "",
+          "text": "The student will decode CVC words with 85% accuracy across 3 sessions.",
+        },
+      ],
       "goals": [
         "The student will decode CVC words with 85% accuracy across 3 sessions.",
       ],
@@ -183,6 +263,14 @@ exports[`parseCSVReport — messy grade values (generic format) matches the gold
       "caseManager": undefined,
       "districtStudentId": undefined,
       "firstName": "Will",
+      "goalDetails": [
+        {
+          "areaOfNeed": "",
+          "goalType": "",
+          "personResponsible": "",
+          "text": "The student will summarize a short passage in writing with 80% accuracy.",
+        },
+      ],
       "goals": [
         "The student will summarize a short passage in writing with 80% accuracy.",
       ],

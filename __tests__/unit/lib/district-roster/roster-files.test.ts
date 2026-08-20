@@ -57,6 +57,9 @@ describe('readDistrictRosterFiles', () => {
         `${DATES_HEADER}\n2838067,2578106158,Alvarez,Ana,D Domich,Rodeo Hills Elementary,` +
           '02/09/2027,02/09/2029,02/10/2026',
       ),
+      servicesFile: null,
+      accommodationsFile: null,
+      testingFile: null,
     });
 
     expect(result.error).toBeNull();
@@ -87,6 +90,9 @@ describe('readDistrictRosterFiles', () => {
         'dates.csv',
         `${DATES_HEADER}\n1,2,Edsinger,Rex,D Domich,John Swett High,09/01/2026,,08/15/2025`,
       ),
+      servicesFile: null,
+      accommodationsFile: null,
+      testingFile: null,
     });
 
     expect(result.error).toBeNull();
@@ -108,6 +114,9 @@ describe('readDistrictRosterFiles', () => {
           'Alvarez,Ana,Rodeo Hills Elementary,Kindergarten,09/01/2026\n' +
           'Bishop,Ben,Rodeo Hills Elementary,3rd,09/02/2026',
       ),
+      servicesFile: null,
+      accommodationsFile: null,
+      testingFile: null,
     });
 
     expect(result.error).toBeNull();
@@ -121,6 +130,9 @@ describe('readDistrictRosterFiles', () => {
         'First Name,Last Name,Grade,Teacher\nAna,Alvarez,1,Ms Chen',
       ),
       datesFile: null,
+      servicesFile: null,
+      accommodationsFile: null,
+      testingFile: null,
     });
 
     expect(result.error).toMatch(/does not look like the SEIS Student Goals report/);
@@ -135,6 +147,9 @@ describe('readDistrictRosterFiles', () => {
         'not really xlsx',
       ),
       datesFile: null,
+      servicesFile: null,
+      accommodationsFile: null,
+      testingFile: null,
     });
 
     expect(result.error).toMatch(/is not a CSV/);
@@ -144,14 +159,17 @@ describe('readDistrictRosterFiles', () => {
     const result = await readDistrictRosterFiles({
       goalsFile: null,
       datesFile: csvFile('dates.csv', 'Some Column,Another\n1,2'),
+      servicesFile: null,
+      accommodationsFile: null,
+      testingFile: null,
     });
 
     expect(result.error).toMatch(/"dates\.csv" could not be read/);
   });
 
   it('refuses an empty upload rather than planning nothing', async () => {
-    const result = await readDistrictRosterFiles({ goalsFile: null, datesFile: null });
-    expect(result.error).toMatch(/Upload your SEIS Student Goals report/);
+    const result = await readDistrictRosterFiles({ goalsFile: null, datesFile: null, servicesFile: null, accommodationsFile: null, testingFile: null });
+    expect(result.error).toMatch(/Upload at least one of your SEIS reports/);
   });
 
   it('caps the per-row notes it carries to the review screen', async () => {
@@ -164,6 +182,9 @@ describe('readDistrictRosterFiles', () => {
     const result = await readDistrictRosterFiles({
       goalsFile: null,
       datesFile: csvFile('dates.csv', `${DATES_HEADER}\n${rows}`),
+      servicesFile: null,
+      accommodationsFile: null,
+      testingFile: null,
     });
 
     expect(result.error).toBeNull();

@@ -25,8 +25,11 @@ import type { ClaimPlan, RosterFieldKey, RosterUpdateOffer } from '@/lib/distric
  *     that DISAGREES with theirs is never pre-ticked: it would overwrite
  *     something they typed, so it stays their call.
  *
- * The provider's goals are not shown, not offered, and cannot be touched — the
- * roster holds none.
+ * Claiming also brings the district's data along (SPE-575): the caller's
+ * role's service minutes, accommodations, testing accommodations, and their
+ * discipline's goals — summarized on each claim row so the provider sees what
+ * they are taking. List offers on existing students only ever APPEND entries
+ * they lack; nothing of theirs is removed or replaced.
  */
 
 interface OffersResponse {
@@ -218,6 +221,13 @@ export default function RosterClaimBanner() {
             ' had already changed, or it clashed with another of your students.',
         );
       }
+      if (count(result.enrichFailures) > 0) {
+        notes.push(
+          `${count(result.enrichFailures)} student(s) were added but their district details` +
+            " (minutes, goals, accommodations) didn't all save — they'll be offered again on" +
+            ' this banner.',
+        );
+      }
 
       setDone(
         [`${claimed} student(s) added to your caseload, ${updatedFields} detail(s) updated.`, ...notes].join(
@@ -334,31 +344,55 @@ export default function RosterClaimBanner() {
                 )}
               </p>
               <div className="mt-1.5 grid gap-1.5 sm:grid-cols-2">
-                {claimable.map((c) => (
-                  <label
-                    key={c.childId}
-                    className="flex cursor-pointer items-center gap-2 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={claimIds.has(c.childId)}
-                      onChange={() => toggleClaim(c.childId)}
-                    />
-                    <span className="text-slate-700">
-                      <span className="font-medium text-slate-900">
-                        {fullName(c.firstName, c.lastName, c.initials)}
-                      </span>
-                      {c.gradeLevel ? ` · grade ${c.gradeLevel}` : ''}
-                      {c.suggested ? (
-                        <span className="ml-1.5 rounded-full bg-sky-100 px-1.5 py-0.5 text-[10px] font-medium text-sky-800">
-                          you&apos;re case manager
+                {claimable.map((c) => {
+                  // What claiming brings along, so nobody takes a student blind.
+                  const includes: string[] = [];
+                  if (c.minutesProposal) {
+                    includes.push(
+                      `${c.minutesProposal.sessionsPerWeek}×${c.minutesProposal.minutesPerSession} min/week`,
+                    );
+                  }
+                  if (c.goals.length > 0) {
+                    includes.push(`${c.goals.length} goal${c.goals.length === 1 ? '' : 's'}`);
+                  }
+                  if (c.accommodations.length > 0) {
+                    includes.push(`${c.accommodations.length} accommodations`);
+                  }
+                  if (c.testingAccommodations.length > 0) {
+                    includes.push(`${c.testingAccommodations.length} testing`);
+                  }
+                  return (
+                    <label
+                      key={c.childId}
+                      className="flex cursor-pointer items-start gap-2 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs"
+                    >
+                      <input
+                        type="checkbox"
+                        className="mt-0.5"
+                        checked={claimIds.has(c.childId)}
+                        onChange={() => toggleClaim(c.childId)}
+                      />
+                      <span className="text-slate-700">
+                        <span className="font-medium text-slate-900">
+                          {fullName(c.firstName, c.lastName, c.initials)}
                         </span>
-                      ) : c.caseManager ? (
-                        <span className="ml-1.5 text-slate-400">· {c.caseManager}</span>
-                      ) : null}
-                    </span>
-                  </label>
-                ))}
+                        {c.gradeLevel ? ` · grade ${c.gradeLevel}` : ''}
+                        {c.suggested ? (
+                          <span className="ml-1.5 rounded-full bg-sky-100 px-1.5 py-0.5 text-[10px] font-medium text-sky-800">
+                            you&apos;re case manager
+                          </span>
+                        ) : c.caseManager ? (
+                          <span className="ml-1.5 text-slate-400">· {c.caseManager}</span>
+                        ) : null}
+                        {includes.length > 0 && (
+                          <span className="mt-0.5 block text-[11px] text-slate-500">
+                            comes with {includes.join(' · ')}
+                          </span>
+                        )}
+                      </span>
+                    </label>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -370,7 +404,8 @@ export default function RosterClaimBanner() {
               </p>
               <p className="mt-0.5 text-xs text-slate-500">
                 Blanks are ticked for you. Anything that disagrees with what you entered is left for
-                you to decide. Your goals are never touched.
+                you to decide. Goals and accommodations only ever add the district&apos;s entries —
+                nothing of yours is removed or rewritten.
               </p>
               <div className="mt-1.5 space-y-2">
                 {updates.map((u) => (

@@ -17,6 +17,7 @@ type StudentDetail = {
   student_details: {
     iep_goals: string[];
     accommodations: string[] | null;
+    testing_accommodations: string[] | null;
     upcoming_iep_date: string | null;
   } | null;
   profiles: {
@@ -158,6 +159,7 @@ export default function StudentDetailPage() {
 
   const iepGoals = student.student_details?.iep_goals || [];
   const accommodations = student.student_details?.accommodations || [];
+  const testingAccommodations = student.student_details?.testing_accommodations || [];
   const upcomingIepDate = student.student_details?.upcoming_iep_date;
 
   return (
@@ -237,6 +239,26 @@ export default function StudentDetailPage() {
                 </li>
               ))}
             </ul>
+          )}
+
+          {/* State testing accommodations (SPE-575) — shown to teachers the
+              same way classroom accommodations are, as its own sub-section. */}
+          {testingAccommodations.length > 0 && (
+            <div className="mt-6 pt-4 border-t border-gray-200">
+              <h3 className="text-sm font-medium text-gray-900 mb-3">
+                State Testing Accommodations
+              </h3>
+              <ul className="space-y-2">
+                {testingAccommodations.map((accommodation, index) => (
+                  <li key={index} className="flex gap-3">
+                    <span className="flex-shrink-0 flex items-center justify-center w-6 h-6 rounded-full bg-blue-100 text-blue-800 text-sm font-semibold">
+                      {index + 1}
+                    </span>
+                    <span className="flex-1 text-gray-800">{accommodation}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
         </div>
       </Card>

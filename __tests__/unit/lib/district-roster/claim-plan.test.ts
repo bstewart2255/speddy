@@ -25,9 +25,14 @@ const rosterChild = (over: Partial<RosterChild> = {}): RosterChild => ({
   gradeLevel: '1',
   schoolId: 'sch-rodeo',
   districtStudentId: '100001',
+  dateOfBirth: null,
   upcomingIepDate: '2027-02-09',
   upcomingTriennialDate: '2029-02-09',
   caseManager: 'Cynthia Reyes',
+  accommodations: [],
+  testingAccommodations: [],
+  districtServices: null,
+  districtGoals: null,
   caseloadCount: 0,
   ...over,
 });
@@ -40,8 +45,14 @@ const myStudent = (over: Partial<ProviderStudent> = {}): ProviderStudent => ({
   lastName: 'Alvarez',
   gradeLevel: '1',
   districtStudentId: '100001',
+  dateOfBirth: null,
   upcomingIepDate: '2027-02-09',
   upcomingTriennialDate: '2029-02-09',
+  sessionsPerWeek: null,
+  minutesPerSession: null,
+  accommodations: [],
+  testingAccommodations: [],
+  iepGoals: [],
   ...over,
 });
 
@@ -245,5 +256,162 @@ describe('planRosterClaims', () => {
     });
 
     expect(JSON.stringify(result)).not.toMatch(/goal/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SPE-575: minutes, accommodations, testing accommodations, goals
+// ---------------------------------------------------------------------------
+
+const speechLine = (weeklyMinutes: number, code = '415', name = 'Language and Speech') => ({
+  code,
+  name,
+  minutes: weeklyMinutes,
+  frequency: 'weekly' as const,
+  weeklyMinutes,
+});
+
+const districtGoals = {
+  iepDate: '2026-01-22',
+  goals: [
+    { text: 'Will produce /r/ in conversation', areaOfNeed: 'Speech/Language', goalType: '', personResponsible: 'SLP' },
+    { text: 'Will read 90 words per minute', areaOfNeed: 'Academic', goalType: '', personResponsible: 'Resource Specialist' },
+  ],
+};
+
+describe('planRosterClaims — SPE-575 district data', () => {
+  it('proposes the claiming role its own services, summed across split lines', () => {
+    const result = plan({
+      myRole: 'speech',
+      rosterChildren: [
+        rosterChild({
+          districtServices: [speechLine(30), speechLine(21), speechLine(240, '330', 'Specialized Academic Instruction')],
+          districtGoals,
+          accommodations: ['Extended time'],
+          testingAccommodations: ['Masking (embedded)'],
+        }),
+      ],
+    });
+
+    const offer = result.claimable[0];
+    // 51 weekly speech minutes → ceil(51/30) thirty-minute sessions; the SAI
+    // line belongs to resource and is ignored.
+    expect(offer.minutesProposal).toEqual({
+      weeklyMinutes: 51,
+      sessionsPerWeek: 2,
+      minutesPerSession: 30,
+      serviceNames: ['Language and Speech'],
+    });
+    // Only the speech goal routes to an SLP.
+    expect(offer.goals).toEqual(['Will produce /r/ in conversation']);
+    expect(offer.goalsIepDate).toBe('2026-01-22');
+    expect(offer.accommodations).toEqual(['Extended time']);
+    expect(offer.testingAccommodations).toEqual(['Masking (embedded)']);
+  });
+
+  it('keeps a secondary resource mandate as one weekly bucket', () => {
+    const result = plan({
+      myRole: 'resource',
+      schoolLevels: { 'sch-rodeo': { school_type: 'High School', grade_span_low: '9' } },
+      rosterChildren: [
+        rosterChild({ districtServices: [speechLine(285, '330', 'Specialized Academic Instruction')] }),
+      ],
+    });
+    expect(result.claimable[0].minutesProposal).toMatchObject({
+      sessionsPerWeek: 1,
+      minutesPerSession: 285,
+    });
+  });
+
+  it('proposes nothing for a role with no service of its own', () => {
+    const result = plan({
+      myRole: 'specialist',
+      rosterChildren: [rosterChild({ districtServices: [speechLine(30)] })],
+    });
+    expect(result.claimable[0].minutesProposal).toBeNull();
+    // But a specialist imports every goal, matching the per-provider rule.
+    const withGoals = plan({
+      myRole: 'specialist',
+      rosterChildren: [rosterChild({ districtGoals })],
+    });
+    expect(withGoals.claimable[0].goals).toHaveLength(2);
+  });
+
+  describe('updates on students the provider already has', () => {
+    it('offers minutes as a fill when the provider has none', () => {
+      const result = plan({
+        myRole: 'speech',
+        rosterChildren: [rosterChild({ caseloadCount: 1, districtServices: [speechLine(30)] })],
+        myStudents: [myStudent()],
+      });
+      const change = result.updates[0].changes.find((c) => c.field === 'serviceMinutes')!;
+      expect(change.kind).toBe('fill');
+      expect(change.split).toEqual({ sessionsPerWeek: 1, minutesPerSession: 30 });
+      expect(change.roster).toContain('30 min/week of Language and Speech');
+    });
+
+    it('does not flag a different split of the SAME weekly total', () => {
+      // The provider schedules 2×15; the district mandate is 30/week. Equal.
+      const result = plan({
+        myRole: 'speech',
+        rosterChildren: [rosterChild({ caseloadCount: 1, districtServices: [speechLine(30)] })],
+        myStudents: [myStudent({ sessionsPerWeek: 2, minutesPerSession: 15 })],
+      });
+      expect(result.updates).toHaveLength(0);
+    });
+
+    it('flags a different weekly total as a conflict, never pre-applied', () => {
+      const result = plan({
+        myRole: 'speech',
+        rosterChildren: [rosterChild({ caseloadCount: 1, districtServices: [speechLine(60)] })],
+        myStudents: [myStudent({ sessionsPerWeek: 1, minutesPerSession: 30 })],
+      });
+      const change = result.updates[0].changes.find((c) => c.field === 'serviceMinutes')!;
+      expect(change.kind).toBe('conflict');
+      expect(change.current).toContain('30 min/week');
+      expect(change.roster).toContain('60 min/week');
+    });
+
+    it('appends missing list entries, keeping the provider\'s own first', () => {
+      const result = plan({
+        myRole: 'speech',
+        rosterChildren: [
+          rosterChild({
+            caseloadCount: 1,
+            accommodations: ['Extended time', 'Preferential seating'],
+          }),
+        ],
+        myStudents: [myStudent({ accommodations: ['Preferential seating', 'My own note'] })],
+      });
+      const change = result.updates[0].changes.find((c) => c.field === 'accommodations')!;
+      // Non-empty list → the provider decides; never a pre-ticked fill.
+      expect(change.kind).toBe('conflict');
+      expect(change.values).toEqual(['Preferential seating', 'My own note', 'Extended time']);
+      expect(change.roster).toContain('adds 1 accommodation');
+    });
+
+    it('fills goals with the role\'s subset and carries the goal vintage', () => {
+      const result = plan({
+        myRole: 'speech',
+        rosterChildren: [rosterChild({ caseloadCount: 1, districtGoals })],
+        myStudents: [myStudent()],
+      });
+      const change = result.updates[0].changes.find((c) => c.field === 'iepGoals')!;
+      expect(change.kind).toBe('fill');
+      expect(change.values).toEqual(['Will produce /r/ in conversation']);
+      expect(change.goalsIepDate).toBe('2026-01-22');
+    });
+
+    it('offers nothing when the provider already holds every district entry', () => {
+      const result = plan({
+        myRole: 'speech',
+        rosterChildren: [
+          rosterChild({ caseloadCount: 1, accommodations: ['Extended  time'] }),
+        ],
+        // Whitespace differences are not additions.
+        myStudents: [myStudent({ accommodations: ['Extended time'] })],
+      });
+      expect(result.updates).toHaveLength(0);
+    });
   });
 });

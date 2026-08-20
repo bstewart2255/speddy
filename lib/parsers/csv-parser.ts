@@ -10,6 +10,19 @@ import { getServiceTypeCode, getServiceTypeNameForRole, isGoalForProviderByKeywo
 import { normalizeGradeLevel } from '../utils/grade-parser';
 import { buildStudentDedupKey, normalizeInitialsForKey } from '../utils/student-dedup-key';
 
+/**
+ * One goal WITH the columns that route it to a provider role (SPE-575). The
+ * district roster stores these so the claim flow can offer each provider only
+ * their discipline's goals, using the same keyword rules the per-provider
+ * import applies at parse time.
+ */
+export interface ParsedGoalDetail {
+  text: string;
+  areaOfNeed: string;
+  goalType: string;
+  personResponsible: string;
+}
+
 export interface ParsedStudent {
   firstName: string;
   lastName: string;
@@ -24,6 +37,10 @@ export interface ParsedStudent {
   // about whose student this probably is; it is NOT the service provider.
   caseManager?: string;
   goals: string[];
+  // The same goals with their routing metadata, in the same order as `goals`
+  // (SPE-575). Only the district roster reads this; per-provider consumers
+  // keep using the flat, already-role-filtered `goals`.
+  goalDetails?: ParsedGoalDetail[];
   rawRow: number; // For debugging
   // Speddy roster template only (SPE-225): the template carries the teacher name
   // and schedule inline (no goals, no names). Undefined for SEIS/generic rows.
@@ -425,6 +442,7 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
 
         // Extract goals from goal columns
         const goals: string[] = [];
+        const goalDetails: ParsedGoalDetail[] = [];
 
         // Get provider-related columns for filtering (SEIS Student Goals Report)
         const areaOfNeed = columnMapping.areaOfNeed !== undefined ? row[columnMapping.areaOfNeed] || '' : '';
@@ -472,6 +490,12 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
 
           if (goalText.trim().length > 10) {
             goals.push(goalText.trim());
+            goalDetails.push({
+              text: goalText.trim(),
+              areaOfNeed: areaOfNeed.trim(),
+              goalType: goalType.trim(),
+              personResponsible: personResponsible.trim(),
+            });
           }
         }
 
@@ -495,9 +519,10 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
         if (studentMap.has(studentKey)) {
           // Add goals to existing student (avoid duplicates)
           const existing = studentMap.get(studentKey)!;
-          for (const goal of goals) {
-            if (!existing.goals.includes(goal)) {
-              existing.goals.push(goal);
+          for (const detail of goalDetails) {
+            if (!existing.goals.includes(detail.text)) {
+              existing.goals.push(detail.text);
+              existing.goalDetails?.push(detail);
             }
           }
           // Merge iepDate (keep first non-empty value)
@@ -541,6 +566,7 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
             districtStudentId: districtStudentId || undefined,
             caseManager: caseManager || undefined,
             goals,
+            goalDetails,
             rawRow: rowIndex + 1
           });
         }

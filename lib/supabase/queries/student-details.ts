@@ -25,6 +25,8 @@ export interface StudentDetails {
   upcoming_triennial_date: string;
   iep_goals: string[];
   accommodations: string[];
+  /** State-testing accommodations (SPE-575), beside the classroom list. */
+  testing_accommodations: string[];
   goals_iep_date?: string; // The IEP date from imported SEIS report, for validation warnings
 }
 
@@ -129,6 +131,7 @@ export async function getStudentDetails(studentId: string): Promise<StudentDetai
       upcoming_triennial_date: '',
       iep_goals: [],
       accommodations: [],
+      testing_accommodations: [],
       goals_iep_date: undefined,
     };
   }
@@ -136,6 +139,7 @@ export async function getStudentDetails(studentId: string): Promise<StudentDetai
   // Cast to include fields added in later migrations
   const dataWithExtras = data as typeof data & {
     accommodations?: string[] | null;
+    testing_accommodations?: string[] | null;
     goals_iep_date?: string | null;
   };
 
@@ -148,6 +152,7 @@ export async function getStudentDetails(studentId: string): Promise<StudentDetai
     upcoming_triennial_date: data.upcoming_triennial_date || '',
     iep_goals: data.iep_goals || [],
     accommodations: dataWithExtras.accommodations || [],
+    testing_accommodations: dataWithExtras.testing_accommodations || [],
     goals_iep_date: dataWithExtras.goals_iep_date || undefined
   };
 }
@@ -252,6 +257,7 @@ export async function upsertStudentDetails(
           upcoming_triennial_date: details.upcoming_triennial_date || null,
           iep_goals: details.iep_goals,
           accommodations: details.accommodations,
+          testing_accommodations: details.testing_accommodations,
           goals_iep_date: details.goals_iep_date || null,
           updated_at: new Date().toISOString(),
         }, {

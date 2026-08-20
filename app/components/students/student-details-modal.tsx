@@ -92,6 +92,7 @@ export function StudentDetailsModal({
     upcoming_triennial_date: '',
     iep_goals: [],
     accommodations: [],
+    testing_accommodations: [],
     goals_iep_date: undefined
   });
   const [loading, setLoading] = useState(false);
@@ -182,6 +183,7 @@ export function StudentDetailsModal({
               upcoming_triennial_date: '',
               iep_goals: [],
               accommodations: [],
+              testing_accommodations: [],
               goals_iep_date: undefined
             });
           }
@@ -989,6 +991,70 @@ export function StudentDetailsModal({
                               onClick={() => {
                                 const newAccommodations = details.accommodations.filter((_, i) => i !== index);
                                 setDetails({...details, accommodations: newAccommodations});
+                              }}
+                              type="button"
+                              className="self-start"
+                            >
+                              Remove
+                            </Button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* State testing accommodations (SPE-575): the CAASPP supports
+                    from the district's Student Download, kept apart from the
+                    classroom list because test proctors need them separately. */}
+                <div className="space-y-2 pt-4 border-t">
+                  <div className="space-y-1">
+                    <h4 className="font-medium text-gray-900">State Testing Accommodations</h4>
+                    <p className="text-sm text-gray-600">
+                      Supports this student receives on statewide tests (CAASPP)
+                    </p>
+                  </div>
+                  {!readOnly && (
+                    <div className="flex justify-end">
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => setDetails({
+                          ...details,
+                          testing_accommodations: [...details.testing_accommodations, '']
+                        })}
+                        type="button"
+                      >
+                        + Add Testing Accommodation
+                      </Button>
+                    </div>
+                  )}
+                  {details.testing_accommodations.length === 0 ? (
+                    <p className="text-sm text-gray-500 italic py-4 text-center bg-gray-50 rounded-md">
+                      No testing accommodations added yet
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      {details.testing_accommodations.map((accommodation, index) => (
+                        <div key={index} className="flex gap-2">
+                          <textarea
+                            value={accommodation}
+                            onChange={(e) => {
+                              const next = [...details.testing_accommodations];
+                              next[index] = e.target.value;
+                              setDetails({...details, testing_accommodations: next});
+                            }}
+                            placeholder="Enter testing accommodation..."
+                            className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 min-h-[48px] resize-y read-only:bg-gray-50 read-only:cursor-default"
+                            readOnly={readOnly}
+                          />
+                          {!readOnly && (
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              onClick={() => {
+                                const next = details.testing_accommodations.filter((_, i) => i !== index);
+                                setDetails({...details, testing_accommodations: next});
                               }}
                               type="button"
                               className="self-start"

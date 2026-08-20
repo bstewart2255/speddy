@@ -12,13 +12,28 @@
  * very different risk: filling a blank is safe, overwriting a value the
  * provider typed is not.
  *
- * WHAT IS NEVER OFFERED: a goal. The roster holds none — slice 1 writes names,
- * grade, school, district student id and the two review dates, and nothing
- * else — so a provider's own goals cannot be touched by this flow even in
- * principle. That is the strongest form of "merge, never replace".
+ * SPE-575 widened what the roster carries: service minutes, accommodation
+ * lists, and goals with routing metadata. The goals/list rules stay the
+ * strongest form of "merge, never replace" — an offer only ever APPENDS the
+ * district's entries the provider lacks, keeps every entry of theirs, and a
+ * non-empty list is never pre-ticked. Service minutes compare on the weekly
+ * total, because the session split is the provider's scheduling call.
  *
  * Pure and IO-free, so the rules can be tested without a database.
  */
+
+import {
+  calculateSessions,
+  fitsScheduleConstraints,
+  shouldUseWeeklyBucket,
+} from '@/lib/services/weekly-minutes';
+import {
+  getDeliveryServiceTypeCodes,
+  isGoalForProviderByKeywords,
+} from '@/lib/parsers/service-type-mapping';
+import type { SchoolLevelInput } from '@/lib/school-helpers';
+import type { DistrictServiceLine } from '@/lib/parsers/district-reports';
+import type { RosterDistrictGoals } from './plan';
 
 // ---------------------------------------------------------------------------
 // Inputs
@@ -33,10 +48,16 @@ export interface RosterChild {
   gradeLevel: string;
   schoolId: string;
   districtStudentId: string | null;
+  dateOfBirth: string | null;
   upcomingIepDate: string | null;
   upcomingTriennialDate: string | null;
   /** Who SEIS names as case manager, verbatim. A hint, never an assignment. */
   caseManager: string | null;
+  /** District-supplied lists (SPE-575); empty when the district hasn't uploaded them. */
+  accommodations: string[];
+  testingAccommodations: string[];
+  districtServices: DistrictServiceLine[] | null;
+  districtGoals: RosterDistrictGoals | null;
   /** Caseloads currently serving this child. 0 means claimable. */
   caseloadCount: number;
 }
@@ -51,8 +72,14 @@ export interface ProviderStudent {
   lastName: string | null;
   gradeLevel: string;
   districtStudentId: string | null;
+  dateOfBirth: string | null;
   upcomingIepDate: string | null;
   upcomingTriennialDate: string | null;
+  sessionsPerWeek: number | null;
+  minutesPerSession: number | null;
+  accommodations: string[];
+  testingAccommodations: string[];
+  iepGoals: string[];
 }
 
 export interface ClaimPlanInput {
@@ -60,6 +87,10 @@ export interface ClaimPlanInput {
   myStudents: ProviderStudent[];
   /** The caller's own name, for matching the roster's case-manager text. */
   myName?: string | null;
+  /** The caller's role — decides which services and goals are theirs (SPE-575). */
+  myRole?: string | null;
+  /** Level info per school id, for the secondary-resource weekly bucket. */
+  schoolLevels?: Record<string, SchoolLevelInput | undefined>;
 }
 
 // ---------------------------------------------------------------------------
@@ -72,8 +103,13 @@ export type RosterFieldKey =
   | 'lastName'
   | 'gradeLevel'
   | 'districtStudentId'
+  | 'dateOfBirth'
   | 'upcomingIepDate'
-  | 'upcomingTriennialDate';
+  | 'upcomingTriennialDate'
+  | 'serviceMinutes'
+  | 'accommodations'
+  | 'testingAccommodations'
+  | 'iepGoals';
 
 export interface RosterFieldChange {
   field: RosterFieldKey;
@@ -85,9 +121,30 @@ export interface RosterFieldChange {
   roster: string;
   /**
    * `fill` — the provider has nothing here, so accepting only adds.
-   * `conflict` — they have a DIFFERENT value, so accepting overwrites theirs.
+   * `conflict` — they have a DIFFERENT value, so accepting overwrites theirs
+   * (for the list fields: adds to a list they curated, which is theirs to
+   * decide too).
    */
   kind: 'fill' | 'conflict';
+  /**
+   * List fields only: the FULL list acceptance stores — the provider's own
+   * entries first, the district's additions appended. The write layer uses
+   * this, never the display strings above.
+   */
+  values?: string[];
+  /** serviceMinutes only: the split acceptance stores. */
+  split?: { sessionsPerWeek: number; minutesPerSession: number };
+  /** iepGoals only: the goal vintage written to `goals_iep_date`. */
+  goalsIepDate?: string | null;
+}
+
+/** What claiming would put on the new caseload row, per the caller's role. */
+export interface ServiceMinutesProposal {
+  weeklyMinutes: number;
+  sessionsPerWeek: number;
+  minutesPerSession: number;
+  /** The service names the minutes came from, e.g. ["Language and Speech"]. */
+  serviceNames: string[];
 }
 
 export interface RosterUpdateOffer {
@@ -106,10 +163,22 @@ export interface ClaimOffer {
   gradeLevel: string;
   schoolId: string;
   districtStudentId: string | null;
+  dateOfBirth: string | null;
   upcomingIepDate: string | null;
   upcomingTriennialDate: string | null;
   /** Verbatim, for the screen to say WHY this one is suggested. */
   caseManager: string | null;
+  /**
+   * What claiming brings along (SPE-575), all computed for THIS caller: their
+   * role's service minutes, the district's accommodation lists, and the goals
+   * whose SEIS metadata routes to their discipline. Applied right after the
+   * claim through the provider's own session — never someone else's row.
+   */
+  minutesProposal: ServiceMinutesProposal | null;
+  accommodations: string[];
+  testingAccommodations: string[];
+  goals: string[];
+  goalsIepDate: string | null;
   /**
    * The district names this provider as the student's case manager, so the
    * screen may pre-select them. Being a hint is the whole point: case manager
@@ -162,9 +231,120 @@ const FIELD_LABELS: Record<RosterFieldKey, string> = {
   lastName: 'Last name',
   gradeLevel: 'Grade',
   districtStudentId: 'District student ID',
+  dateOfBirth: 'Date of birth',
   upcomingIepDate: 'Annual review date',
   upcomingTriennialDate: 'Triennial date',
+  serviceMinutes: 'Service minutes',
+  accommodations: 'Classroom accommodations',
+  testingAccommodations: 'Testing accommodations',
+  iepGoals: 'IEP goals',
 };
+
+// ---------------------------------------------------------------------------
+// District data helpers (SPE-575)
+// ---------------------------------------------------------------------------
+
+/**
+ * Validate the `children.district_services` JSON into typed service lines.
+ * Anything malformed is dropped rather than crashing an offer — a child with
+ * unreadable stored data simply carries no proposal.
+ */
+export function parseDistrictServices(value: unknown): DistrictServiceLine[] | null {
+  if (!Array.isArray(value)) return null;
+  const lines: DistrictServiceLine[] = [];
+  for (const raw of value) {
+    if (raw === null || typeof raw !== 'object') continue;
+    const line = raw as Record<string, unknown>;
+    if (typeof line.code !== 'string' || typeof line.weeklyMinutes !== 'number') continue;
+    lines.push({
+      code: line.code,
+      name: typeof line.name === 'string' ? line.name : `Service ${line.code}`,
+      minutes: typeof line.minutes === 'number' ? line.minutes : 0,
+      frequency:
+        line.frequency === 'daily' ||
+        line.frequency === 'weekly' ||
+        line.frequency === 'monthly' ||
+        line.frequency === 'yearly'
+          ? line.frequency
+          : 'weekly',
+      weeklyMinutes: line.weeklyMinutes,
+    });
+  }
+  return lines.length > 0 ? lines : null;
+}
+
+/** Validate the `children.district_goals` JSON. Same drop-don't-crash posture. */
+export function parseDistrictGoals(value: unknown): RosterDistrictGoals | null {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return null;
+  const parsed = value as Record<string, unknown>;
+  if (!Array.isArray(parsed.goals)) return null;
+  const goals = parsed.goals
+    .filter((g): g is Record<string, unknown> => g !== null && typeof g === 'object')
+    .filter((g) => typeof g.text === 'string' && (g.text as string).trim() !== '')
+    .map((g) => ({
+      text: String(g.text),
+      areaOfNeed: typeof g.areaOfNeed === 'string' ? g.areaOfNeed : '',
+      goalType: typeof g.goalType === 'string' ? g.goalType : '',
+      personResponsible: typeof g.personResponsible === 'string' ? g.personResponsible : '',
+    }));
+  if (goals.length === 0) return null;
+  return { iepDate: typeof parsed.iepDate === 'string' ? parsed.iepDate : null, goals };
+}
+
+/**
+ * The minutes a claim would pre-fill for THIS role, from the child's district
+ * service lines: the role's own services (the deliveries question, SPE-554),
+ * summed across split lines, shaped by the same session math the per-provider
+ * minutes import uses. Roles that deliver no single service (specialist,
+ * intervention) get no proposal — summing every service on the IEP into one
+ * caseload number would be wrong for all of them.
+ */
+export function proposeServiceMinutes(
+  services: DistrictServiceLine[] | null,
+  role: string | null | undefined,
+  school: SchoolLevelInput | null | undefined,
+): ServiceMinutesProposal | null {
+  if (!services || !role) return null;
+  const codes = getDeliveryServiceTypeCodes(role);
+  if (codes.length === 0) return null;
+  const mine = services.filter((line) => codes.includes(line.code));
+  const weeklyMinutes = mine.reduce((sum, line) => sum + line.weeklyMinutes, 0);
+  if (weeklyMinutes <= 0) return null;
+  const split = calculateSessions(weeklyMinutes, {
+    weeklyBucket: shouldUseWeeklyBucket(role, school),
+  });
+  if (!fitsScheduleConstraints(split)) return null;
+  const serviceNames: string[] = [];
+  for (const line of mine) {
+    if (!serviceNames.includes(line.name)) serviceNames.push(line.name);
+  }
+  return { weeklyMinutes, ...split, serviceNames };
+}
+
+/** The district goals whose SEIS metadata routes to this role's discipline. */
+export function goalsForRole(
+  districtGoals: RosterDistrictGoals | null,
+  role: string | null | undefined,
+): string[] {
+  if (!districtGoals || !role) return [];
+  return districtGoals.goals
+    .filter((goal) =>
+      isGoalForProviderByKeywords(goal.areaOfNeed, goal.goalType, goal.personResponsible, role),
+    )
+    .map((goal) => goal.text);
+}
+
+/** Whitespace-insensitive text key, for "does the provider already have this entry". */
+const entryKey = (value: string): string => value.trim().replace(/\s+/g, ' ').toLowerCase();
+
+/** The district entries the provider's own list is missing. */
+const listAdditions = (mine: string[], district: string[]): string[] => {
+  const have = new Set(mine.map(entryKey));
+  return district.filter((entry) => entry.trim() !== '' && !have.has(entryKey(entry)));
+};
+
+const describeSplit = (split: { sessionsPerWeek: number; minutesPerSession: number }): string =>
+  `${split.sessionsPerWeek}×${split.minutesPerSession} min/week`;
 
 export function planRosterClaims(input: ClaimPlanInput): ClaimPlan {
   const myChildIds = new Set(
@@ -182,6 +362,7 @@ export function planRosterClaims(input: ClaimPlanInput): ClaimPlan {
     // confirmation (SPE-348), and the database refuses it through this path
     // regardless of what this planner says.
     if (child.caseloadCount === 0 && !myChildIds.has(child.id)) {
+      const school = input.schoolLevels?.[child.schoolId] ?? null;
       claimable.push({
         childId: child.id,
         initials: child.initials,
@@ -190,9 +371,15 @@ export function planRosterClaims(input: ClaimPlanInput): ClaimPlan {
         gradeLevel: child.gradeLevel,
         schoolId: child.schoolId,
         districtStudentId: child.districtStudentId,
+        dateOfBirth: child.dateOfBirth,
         upcomingIepDate: child.upcomingIepDate,
         upcomingTriennialDate: child.upcomingTriennialDate,
         caseManager: child.caseManager,
+        minutesProposal: proposeServiceMinutes(child.districtServices, input.myRole, school),
+        accommodations: child.accommodations,
+        testingAccommodations: child.testingAccommodations,
+        goals: goalsForRole(child.districtGoals, input.myRole),
+        goalsIepDate: child.districtGoals?.iepDate ?? null,
         suggested: myKey !== '' && nameKey(child.caseManager) === myKey,
       });
     }
@@ -210,6 +397,7 @@ export function planRosterClaims(input: ClaimPlanInput): ClaimPlan {
       ['lastName', child.lastName, student.lastName],
       ['gradeLevel', child.gradeLevel, student.gradeLevel],
       ['districtStudentId', child.districtStudentId, student.districtStudentId],
+      ['dateOfBirth', child.dateOfBirth, student.dateOfBirth],
       ['upcomingIepDate', child.upcomingIepDate, student.upcomingIepDate],
       ['upcomingTriennialDate', child.upcomingTriennialDate, student.upcomingTriennialDate],
     ];
@@ -228,6 +416,84 @@ export function planRosterClaims(input: ClaimPlanInput): ClaimPlan {
         current: current === '' ? null : current,
         roster,
         kind: current === '' ? 'fill' : 'conflict',
+      });
+    }
+
+    // Service minutes compare on the WEEKLY TOTAL, never the split: how a
+    // mandate is chopped into sessions is the provider's scheduling call, so
+    // their 2×15 equals the district's 30 min/week and proposes nothing.
+    const school = input.schoolLevels?.[child.schoolId] ?? null;
+    const proposal = proposeServiceMinutes(child.districtServices, input.myRole, school);
+    if (proposal) {
+      const hasMinutes =
+        typeof student.sessionsPerWeek === 'number' &&
+        student.sessionsPerWeek > 0 &&
+        typeof student.minutesPerSession === 'number' &&
+        student.minutesPerSession > 0;
+      const currentWeekly = hasMinutes
+        ? student.sessionsPerWeek! * student.minutesPerSession!
+        : null;
+      if (currentWeekly === null || currentWeekly !== proposal.weeklyMinutes) {
+        changes.push({
+          field: 'serviceMinutes',
+          label: FIELD_LABELS.serviceMinutes,
+          current: hasMinutes
+            ? `${describeSplit({
+                sessionsPerWeek: student.sessionsPerWeek!,
+                minutesPerSession: student.minutesPerSession!,
+              })} (${currentWeekly} min/week)`
+            : null,
+          roster: `${proposal.weeklyMinutes} min/week of ${proposal.serviceNames.join(' + ')} — would be set as ${describeSplit(proposal)}`,
+          kind: currentWeekly === null ? 'fill' : 'conflict',
+          split: {
+            sessionsPerWeek: proposal.sessionsPerWeek,
+            minutesPerSession: proposal.minutesPerSession,
+          },
+        });
+      }
+    }
+
+    // The three lists MERGE, never replace: acceptance appends the district's
+    // entries the provider lacks and keeps every entry of theirs. An empty
+    // list fills quietly; additions to a list they curated are their call.
+    const listOffers: Array<{
+      field: RosterFieldKey;
+      mine: string[];
+      district: string[];
+      noun: string;
+      goalsIepDate?: string | null;
+    }> = [
+      {
+        field: 'accommodations',
+        mine: student.accommodations,
+        district: child.accommodations,
+        noun: 'accommodation',
+      },
+      {
+        field: 'testingAccommodations',
+        mine: student.testingAccommodations,
+        district: child.testingAccommodations,
+        noun: 'testing accommodation',
+      },
+      {
+        field: 'iepGoals',
+        mine: student.iepGoals,
+        district: goalsForRole(child.districtGoals, input.myRole),
+        noun: 'goal',
+        goalsIepDate: child.districtGoals?.iepDate ?? null,
+      },
+    ];
+    for (const offer of listOffers) {
+      const additions = listAdditions(offer.mine, offer.district);
+      if (additions.length === 0) continue;
+      changes.push({
+        field: offer.field,
+        label: FIELD_LABELS[offer.field],
+        current: offer.mine.length > 0 ? `${offer.mine.length} of your own` : null,
+        roster: `adds ${additions.length} ${offer.noun}${additions.length === 1 ? '' : 's'} from the district`,
+        kind: offer.mine.length === 0 ? 'fill' : 'conflict',
+        values: [...offer.mine, ...additions],
+        ...(offer.field === 'iepGoals' ? { goalsIepDate: offer.goalsIepDate } : {}),
       });
     }
 

@@ -962,7 +962,9 @@ export type Database = {
           case_manager: string | null
           created_at: string
           date_of_birth: string | null
+          district_goals: Json | null
           district_id: string | null
+          district_services: Json | null
           district_student_id: string | null
           first_name: string | null
           grade_level: string
@@ -971,6 +973,7 @@ export type Database = {
           last_name: string | null
           school_id: string | null
           state_id: string | null
+          testing_accommodations: string[]
           upcoming_iep_date: string | null
           upcoming_triennial_date: string | null
           updated_at: string
@@ -980,7 +983,9 @@ export type Database = {
           case_manager?: string | null
           created_at?: string
           date_of_birth?: string | null
+          district_goals?: Json | null
           district_id?: string | null
+          district_services?: Json | null
           district_student_id?: string | null
           first_name?: string | null
           grade_level: string
@@ -989,6 +994,7 @@ export type Database = {
           last_name?: string | null
           school_id?: string | null
           state_id?: string | null
+          testing_accommodations?: string[]
           upcoming_iep_date?: string | null
           upcoming_triennial_date?: string | null
           updated_at?: string
@@ -998,7 +1004,9 @@ export type Database = {
           case_manager?: string | null
           created_at?: string
           date_of_birth?: string | null
+          district_goals?: Json | null
           district_id?: string | null
+          district_services?: Json | null
           district_student_id?: string | null
           first_name?: string | null
           grade_level?: string
@@ -1007,6 +1015,7 @@ export type Database = {
           last_name?: string | null
           school_id?: string | null
           state_id?: string | null
+          testing_accommodations?: string[]
           upcoming_iep_date?: string | null
           upcoming_triennial_date?: string | null
           updated_at?: string
@@ -3390,6 +3399,7 @@ export type Database = {
           last_exit_ticket_goal_index: number | null
           last_name: string | null
           student_id: string | null
+          testing_accommodations: string[] | null
           upcoming_iep_date: string | null
           upcoming_triennial_date: string | null
           updated_at: string | null
@@ -3406,6 +3416,7 @@ export type Database = {
           last_exit_ticket_goal_index?: number | null
           last_name?: string | null
           student_id?: string | null
+          testing_accommodations?: string[] | null
           upcoming_iep_date?: string | null
           upcoming_triennial_date?: string | null
           updated_at?: string | null
@@ -3422,6 +3433,7 @@ export type Database = {
           last_exit_ticket_goal_index?: number | null
           last_name?: string | null
           student_id?: string | null
+          testing_accommodations?: string[] | null
           upcoming_iep_date?: string | null
           upcoming_triennial_date?: string | null
           updated_at?: string | null
