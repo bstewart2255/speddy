@@ -245,7 +245,7 @@ export function CalendarWeekView({
     }
     loadedSchoolKeyRef.current = schoolKey;
 
-    const sessionGenerator = new SessionGenerator();
+    const sessionGenerator = new SessionGenerator(createClient());
     const loadSessions = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;

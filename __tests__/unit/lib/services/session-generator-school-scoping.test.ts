@@ -23,8 +23,9 @@ jest.mock('@/lib/monitoring/logger', () => ({
   log: { error: jest.fn(), warn: jest.fn(), info: jest.fn() },
 }));
 
-// The generator builds its own client when none is injected; this stub stands in
-// for the module so importing it in a test env doesn't reach for real config.
+// SessionGenerator no longer imports this module directly (SPE-506: the client
+// is now a required constructor arg), but other modules in this import chain
+// still may; stubbed so importing it in a test env doesn't reach for real config.
 jest.mock('@/lib/supabase/client', () => ({ createClient: () => ({}) }));
 
 const SCHOOL = { school_id: 'school-1', school_site: null, school_district: null } as any;

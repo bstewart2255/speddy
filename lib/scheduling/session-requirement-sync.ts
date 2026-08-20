@@ -5,7 +5,6 @@
  * (e.g., minutes_per_session or sessions_per_week).
  */
 
-import { createClient } from '@/lib/supabase/client';
 import type { Database } from '@/src/types';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { deleteOrArchiveTemplate } from '@/lib/supabase/queries/schedule-sessions';
@@ -24,14 +23,13 @@ interface ConflictDetectionResult {
 /**
  * Main function to synchronize existing sessions with updated student requirements
  *
- * IMPORTANT: When calling from server-side API routes, you MUST pass a server Supabase client.
- * The default browser client does not have auth context in server environments, causing RLS
- * to return empty results and creating duplicate sessions.
- *
  * @param studentId - The student's ID
  * @param oldRequirements - Previous session requirements
  * @param newRequirements - New session requirements
- * @param supabaseClient - Optional Supabase client (required for server-side calls)
+ * @param supabaseClient - Required. Browser client for UI callers; a server
+ * client (never the browser default) for server-side callers — SPE-506 found
+ * a silent browser-client fallback here that would have returned empty
+ * RLS-filtered reads for any server caller that forgot to inject one.
  */
 export async function updateExistingSessionsForStudent(
   studentId: string,
@@ -43,11 +41,8 @@ export async function updateExistingSessionsForStudent(
     minutes_per_session?: number | null;
     sessions_per_week?: number | null;
   },
-  supabaseClient?: SupabaseClient<Database>
+  supabase: SupabaseClient<Database>
 ): Promise<{ success: boolean; error?: string; conflictCount?: number }> {
-  // Use provided client or fall back to browser client (for client-side calls)
-  const supabase = supabaseClient || createClient<Database>();
-
   try {
     const durationChanged =
       oldRequirements.minutes_per_session !== newRequirements.minutes_per_session;
@@ -183,7 +178,7 @@ export async function updateExistingSessionsForStudent(
  * This clears any stale conflict flags before re-running conflict detection
  */
 async function resetSessionsToActive(
-  supabase: ReturnType<typeof createClient<Database>>,
+  supabase: SupabaseClient<Database>,
   studentId: string
 ): Promise<void> {
   const { error } = await supabase
@@ -206,7 +201,7 @@ async function resetSessionsToActive(
  * Updates end_time for all sessions based on new duration
  */
 async function updateSessionDurations(
-  supabase: ReturnType<typeof createClient<Database>>,
+  supabase: SupabaseClient<Database>,
   sessions: ScheduleSession[],
   newMinutesPerSession: number
 ): Promise<void> {
@@ -243,7 +238,7 @@ async function updateSessionDurations(
  * Adjusts the number of sessions by deleting excess ones or creating missing ones
  */
 async function adjustSessionCount(
-  supabase: ReturnType<typeof createClient<Database>>,
+  supabase: SupabaseClient<Database>,
   studentId: string,
   providerId: string | undefined,
   currentCount: number,
@@ -434,7 +429,7 @@ function overlapComparisonKey(session: {
  * Detects conflicts in sessions after updates
  */
 async function detectSessionConflicts(
-  supabase: ReturnType<typeof createClient<Database>>,
+  supabase: SupabaseClient<Database>,
   studentId: string
 ): Promise<ConflictDetectionResult> {
   const conflictingSessions: Array<{ sessionId: string; reason: string }> = [];
@@ -508,7 +503,7 @@ async function detectSessionConflicts(
  * Marks sessions as needing attention
  */
 async function markConflictingSessions(
-  supabase: ReturnType<typeof createClient<Database>>,
+  supabase: SupabaseClient<Database>,
   conflicts: Array<{ sessionId: string; reason: string }>
 ): Promise<void> {
   const updates = conflicts.map(conflict =>
