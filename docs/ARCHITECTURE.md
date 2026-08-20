@@ -329,6 +329,11 @@ Verified against a real signed-in session, not assumed:
 `app/api/tech/sis/aeries/`; `app/api/internal/sis-connections/`;
 `app/api/internal/sis-key-health/`.
 
+**Onboarding a new district end-to-end** — collecting credentials, dialect
+verification, the watched first preview/apply runs, what "automatic" does
+and doesn't cover today, and the failure playbook — is
+`docs/district-onboarding-runbook.md`.
+
 ### `profiles` self-updates: policy + trigger (SPE-332)
 
 `profiles_update` has three branches — the row owner, `service_role`, and a
