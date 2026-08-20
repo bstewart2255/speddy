@@ -561,7 +561,111 @@ export const EDGE = {
   specialistDelegatedIndex: 7,
   /** Index with a manually placed session. */
   manuallyPlacedIndex: 6,
+  /**
+   * Index of the student with NO service minutes at all — both
+   * `sessions_per_week` and `minutes_per_session` NULL (SPE-566).
+   *
+   * Unlike every other EDGE index this one applies to EVERY elementary
+   * caseload rule, not just Rachel's, so any elementary persona's walk can
+   * reach the state without first manufacturing it.
+   *
+   * The state it models is common in real caseloads and was previously
+   * unreachable here: goals imported with no Deliveries file, leaving both
+   * columns unset. A whole family of UI hangs off it — the Students list's
+   * "Not configured" Schedule Requirements cell, that row's Edit affordance,
+   * the details modal's Sessions/Minutes dropdowns in their unset state
+   * (the PR #903 fix), and "nothing appears on the Schedule page until
+   * service minutes exist". Note this student contributes nothing to the
+   * Unscheduled Sessions panel either — no requirement means no placeholder
+   * to show. That panel's populated state is SPE-486's job (see
+   * UNPLACED_REQUIREMENT_PROVIDERS), and for Rachel, Derek and Maria it is
+   * NOT empty.
+   *
+   * Consequence to keep in mind: session generation keys off
+   * `sessions_per_week`, so this student produces ZERO `schedule_sessions`
+   * rows — deliberately, and asserted by verify.ts.
+   *
+   * 4 is the only index under 8 that collides with nothing on Rachel's
+   * caseload: not another EDGE index (2, 5, 6, 7), not a grouped student
+   * (2, 3, 8, 9, 11, 14), and not one of her first two, which are the same
+   * children as Tomás's first two. Under 8 matters because the smallest
+   * elementary rule (Jun at Maple) has only 8 students.
+   */
+  unconfiguredIndex: 4,
 } as const;
+
+/**
+ * The student left with an UNPLACED session requirement (SPE-486) — one
+ * `schedule_sessions` row with `session_date`, `day_of_week`, `start_time` and
+ * `end_time` all NULL, which is exactly what `getUnscheduledSessionsCount`
+ * counts and what the Auto-Schedule button gates on.
+ *
+ * Before this, every seeded provider's weekly schedule was fully placed, so
+ * the gate returned 0 for every persona and the button rendered permanently
+ * disabled — the *least* interesting of its states, and the only one a walk
+ * could observe without first raising a student's sessions-per-week on the
+ * Students page and letting the requirement sync mint placeholders. That extra
+ * act quietly changed the fixture shape mid-run (SPE-477's verification run had
+ * to do it).
+ *
+ * Returns the LAST index in the rule whose mix has at least 2 sessions a week
+ * — "last" so it never collides with the low-index edge cases and groups on
+ * Rachel's caseload, and "at least 2" so the student keeps a placed session
+ * alongside the unplaced one. A student with a single weekly session would
+ * otherwise end up with nothing placed, which is `zeroSessionsIndex`'s job,
+ * not this one.
+ *
+ * Returns null when the rule has no such index, in which case that caseload
+ * seeds no placeholder.
+ */
+export function unplacedRequirementIndex(rule: CaseloadRule): number | null {
+  const isRachelWillow = rule.providerKey === 'rachel' && rule.schoolId === WILLOW;
+  for (let i = rule.count - 1; i >= 0; i--) {
+    // Must skip every index the seed's session loop also skips, or this
+    // function would count a placeholder that never gets written and the
+    // reset would fail on a count mismatch with no obvious cause.
+    // `zeroSessionsIndex` is Rachel-only in the seed, and mirrored as such
+    // here rather than skipped everywhere — on another caseload that index is
+    // an ordinary student and a perfectly good candidate.
+    if (i === EDGE.unconfiguredIndex) continue;
+    if (isRachelWillow && i === EDGE.zeroSessionsIndex) continue;
+    if (sessionMix(i).sessionsPerWeek >= 2) return i;
+  }
+  return null;
+}
+
+/**
+ * Resource caseloads that get an unplaced requirement (SPE-486).
+ *
+ * Alicia is deliberately EXCLUDED so at least one provider stays fully
+ * scheduled: the "all students are fully scheduled" path — Auto-Schedule
+ * correctly disabled, empty Unscheduled panel — has to stay observable too,
+ * or this change would just swap which single state the fixture can show.
+ */
+export const UNPLACED_REQUIREMENT_PROVIDERS = ['rachel', 'derek', 'maria'] as const;
+
+/** Caseload rules at an elementary school — the schedulable ones (§9). */
+function isElementaryRule(rule: CaseloadRule): boolean {
+  return !schoolById(rule.schoolId).isSecondary;
+}
+
+/**
+ * Students seeded with NULL service minutes (SPE-566) — derived, not a magic
+ * number, so adding an elementary caseload doesn't silently fail verify.
+ * The index guard matters: a rule smaller than the index carries no such
+ * student, and counting it anyway would make the reset unpassable.
+ */
+export const TOTAL_UNCONFIGURED_STUDENTS = CASELOADS.filter(
+  r => isElementaryRule(r) && r.count > EDGE.unconfiguredIndex,
+).length;
+
+/** Unplaced requirement placeholders seeded (SPE-486). Derived, same reasoning. */
+export const TOTAL_UNPLACED_REQUIREMENTS = CASELOADS.filter(
+  r =>
+    isElementaryRule(r) &&
+    (UNPLACED_REQUIREMENT_PROVIDERS as readonly string[]).includes(r.providerKey) &&
+    unplacedRequirementIndex(r) !== null,
+).length;
 
 // ---------------------------------------------------------------------------
 // Groups v2 fixture (SPE-315) — durable session_groups records + a

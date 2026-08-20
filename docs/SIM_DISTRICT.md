@@ -270,14 +270,45 @@ exists, including that quirk:
 
 | Caseload | School(s) | Count | Notable rows |
 |---|---|---|---|
-| Rachel (RSP) | Willow | **28 — at the CA cap** | spread TK/K–5 across Nora + 5 record-only teachers; 3 in Nora's class; **1 with zero scheduled sessions** (unscheduled alert); **6 across three Groups v2 scenarios** — a multi-day group (same members Tue+Thu), a split slot (two groups sharing one time), and an SEA-run group (delegated whole to Leah) |
-| Alicia (RSP) | Maple | 26 | full-time caseload #2 |
-| Derek (RSP) | Juniper | 24 | full-time caseload #3 |
-| Maria (RSP, itinerant) | Maple 10 · Juniper 10 | 20 | the owner-described two-site RSP pattern, layered over each site's full-timer |
+| Rachel (RSP) | Willow | **28 — at the CA cap** | spread TK/K–5 across Nora + 5 record-only teachers; 3 in Nora's class; **1 with zero scheduled sessions** (unscheduled alert); **1 with no service minutes at all** and **1 with an unplaced requirement** (see below); **6 across three Groups v2 scenarios** — a multi-day group (same members Tue+Thu), a split slot (two groups sharing one time), and an SEA-run group (delegated whole to Leah) |
+| Alicia (RSP) | Maple | 26 | full-time caseload #2; **deliberately the fully-scheduled provider** — no unplaced requirements, so the disabled-Auto-Schedule path stays walkable |
+| Derek (RSP) | Juniper | 24 | full-time caseload #3; **1 unplaced requirement** |
+| Maria (RSP, itinerant) | Maple 10 · Juniper 10 | 20 | the owner-described two-site RSP pattern, layered over each site's full-timer; **1 unplaced requirement per site** |
 | Hannah (RSP) | Cedar | 18 | secondary-only site: full caseload/goals/accommodations data, **no session instances** (see §7) |
 | Victor (RSP) | Redwood | 20 | secondary-only site: same posture as Hannah, at 9–12 |
 | Tomás (SLP) | Willow 15 · Juniper 15 · Cedar 18 | **48 (of the 55 average)** | 2 Willow students are the "same child" as Rachel rows (cross-provider identity quirk, on purpose); Cedar students feed Fatima's gr-7 roster alongside Hannah's |
 | Jun (OT) | Maple 8 · Redwood 10 | 18 | elementary + high-school split on one login |
+
+### Scheduling-state coverage (SPE-566, SPE-486)
+
+Two states a real caseload hits constantly were unreachable until 2026-08-20,
+so a walk had to manufacture them first — which quietly changed the fixture
+shape mid-run. Both are now seeded, and `sim:verify` asserts exact counts for
+each, so a future seed edit that drops them fails the reset instead of
+silently removing the only way to walk that UI.
+
+- **Student with no service minutes** — `EDGE.unconfiguredIndex` (index 4)
+  on **every elementary caseload**: 8 students total, with both
+  `sessions_per_week` and `minutes_per_session` NULL. This is the shape of
+  goals imported with no Deliveries file. Reach for **index 4 of whichever
+  elementary provider you're signed in as**. Because session generation keys
+  off `sessions_per_week`, these students deliberately have **zero**
+  `schedule_sessions` rows — that is the fixture, not a bug. Unlocks the
+  Students list's "Not configured" Schedule Requirements cell, that row's
+  Edit affordance, the details modal's Sessions/Minutes dropdowns in their
+  unset state, and the "nothing appears on the Schedule page until service
+  minutes exist" path.
+- **Unplaced session requirement** — one `schedule_sessions` row with
+  `session_date`, `day_of_week`, `start_time` and `end_time` **all NULL**,
+  which is exactly what `getUnscheduledSessionsCount` counts and what the
+  Auto-Schedule button gates on. Seeded for **Rachel, Derek and Maria**
+  (4 placeholders; Maria has one per site), each alongside a full set of
+  placed sessions, so those personas are *partially* unscheduled and the
+  Auto-Schedule gate **opens**.
+  **Alicia is deliberately left fully scheduled** — the "all students are
+  scheduled" state (button correctly disabled, empty Unscheduled panel) has
+  to stay observable too, or this would just swap which single state the
+  fixture can show. Sign in as **rsp.maple** for that path.
 
 **The manifest holds generator rules, not 126 hand-written rows.** Per
 caseload: counts, grade distributions, teacher assignments, and
@@ -344,7 +375,7 @@ Small but representative; exact values live in the manifest.
 | `school_hours` | Per provider per **elementary** site they serve (table is provider-scoped). |
 | `special_activities` | Each elementary: PE / Music / Library entries against its teachers (school-wide visibility). |
 | `user_site_schedules` | Tomás: Willow Mon–Tue, Juniper Wed, Cedar Thu–Fri. Jun: Maple Mon–Wed, Redwood Thu–Fri. Maria: Maple Mon–Wed, Juniper Thu–Fri. |
-| `schedule_sessions` | **Elementary sites only** (see policy below): templates matching each student's `sessions_per_week`, plus instances **2 weeks back / 2 weeks forward** of the seed date (weekday-aligned) — 136 elementary-caseload students (Rachel 28 + Alicia 26 + Derek 24 + Maria 20 + Tomás 30 + Jun 8) × 1–3/wk over 4 weeks ≈ 900–1,300 dated instances, trivial for the DB, realistic for the UI. Includes: sessions delegated to Leah (`delivered_by='sea'`, `assigned_to_sea_id`), group sessions (`group_id`/`group_name`/`group_color`), 1 `manually_placed`, past instances partially completed with `session_notes`. `service_type` matches provider role. |
+| `schedule_sessions` | **Elementary sites only** (see policy below): templates matching each student's `sessions_per_week`, plus instances **2 weeks back / 2 weeks forward** of the seed date (weekday-aligned) — 136 elementary-caseload students (Rachel 28 + Alicia 26 + Derek 24 + Maria 20 + Tomás 30 + Jun 8) × 1–3/wk over 4 weeks ≈ 900–1,300 dated instances, trivial for the DB, realistic for the UI. **Three deliberate exceptions to "templates matching each student's `sessions_per_week`"** (see §6's scheduling-state coverage): Rachel's `zeroSessionsIndex` student has none at all; the 8 students with NULL service minutes have none, because there is no requirement to generate from; and the 4 unplaced requirements are templates with NULL day/time and no instances. Includes: sessions delegated to Leah (`delivered_by='sea'`, `assigned_to_sea_id`), group sessions (`group_id`/`group_name`/`group_color`), 1 `manually_placed`, past instances partially completed with `session_notes`. `service_type` matches provider role. |
 | `attendance` | Marked for most past-week instances (mix of present/absent with `absence_reason`). |
 | `teachers` | 3 linked (teacher login personas via `account_id`) + 1 SDC dual-role classroom (Derek's provider account, SPE-478) + 18 record-only, across all five schools. |
 | `care_referrals` + case tree | 6 referrals across Willow, Cedar, and Redwood: **(a)** Lane A `teacher_concern` from Nora, `pending`; **(b)** Lane A `active` with `care_cases` row, 2 meeting notes, 1 action item assigned to Rachel, status history; **(c)** Lane B `parent_written_request` → born `initial` with case + `ap_due_date = request_received_date + 15 days`; **(d)** one `closed` (full lifecycle); **(e)** one **soft-deleted** (`deleted_at` set — verifies list exclusion); **(f)** one at Redwood referred by Naomi (secondary-site referral). Student names are free-text fictional (`Maya Torres-Sim`), loosely matching seeded students. Referrers spread across teacher/provider/admin. |

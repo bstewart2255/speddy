@@ -25,6 +25,8 @@ import {
   TOTAL_CHILDREN,
   TOTAL_STUDENT_TEACHER_LINKS,
   TOTAL_STUDENTS,
+  TOTAL_UNCONFIGURED_STUDENTS,
+  TOTAL_UNPLACED_REQUIREMENTS,
   careCaseId,
   sdcClassroomTeacherId,
 } from './manifest';
@@ -232,6 +234,34 @@ async function collectCounts(admin: Admin) {
       (specialistRows ?? []).filter(r => r.assigned_to_specialist_id).length;
     counts['dangling group_ref'] = danglingRefs;
     counts['groups with < 2 members'] = groupsUnder2;
+
+    // SPE-566: students with NO service minutes. Counted so a fixture edit
+    // that re-configures them fails the reset rather than quietly removing the
+    // "Not configured" coverage — the same reasoning as the specialist
+    // delegation counter above.
+    const { data: unconfiguredRows, error: unconfErr } = await admin
+      .from('students')
+      .select('id')
+      .in('provider_id', simUserIds)
+      .is('sessions_per_week', null)
+      .is('minutes_per_session', null);
+    if (unconfErr) throw new Error(`unconfigured-student scan failed: ${unconfErr.message}`);
+    counts['students with no service minutes'] = (unconfiguredRows ?? []).length;
+
+    // SPE-486: unplaced requirement placeholders — exactly the predicate
+    // getUnscheduledSessionsCount uses, so this counts what the Auto-Schedule
+    // gate counts rather than something merely similar to it.
+    const { data: unplacedRows, error: unplacedErr } = await admin
+      .from('schedule_sessions')
+      .select('id')
+      .in('provider_id', simUserIds)
+      .is('session_date', null)
+      .is('deleted_at', null)
+      .is('day_of_week', null)
+      .is('start_time', null)
+      .is('end_time', null);
+    if (unplacedErr) throw new Error(`unplaced-requirement scan failed: ${unplacedErr.message}`);
+    counts['unplaced requirement placeholders'] = (unplacedRows ?? []).length;
   }
   return counts;
 }
@@ -288,6 +318,20 @@ async function main() {
     expect('special_activities', n => n === 9, '9');
     expect('schedule_sessions', n => n > 0, '> 0');
     expect('attendance', n => n > 0, '> 0');
+    // SPE-566 / SPE-486: the two scheduling states the fixture could not reach
+    // before. Exact counts, derived from the manifest — a seed edit that stops
+    // producing either one fails the reset instead of silently removing the
+    // only way to walk that UI.
+    expect(
+      'students with no service minutes',
+      n => n === TOTAL_UNCONFIGURED_STUDENTS,
+      String(TOTAL_UNCONFIGURED_STUDENTS),
+    );
+    expect(
+      'unplaced requirement placeholders',
+      n => n === TOTAL_UNPLACED_REQUIREMENTS,
+      String(TOTAL_UNPLACED_REQUIREMENTS),
+    );
     expect('care_referrals', n => n === CARE_REFERRALS.length, String(CARE_REFERRALS.length));
     const withCase = CARE_REFERRALS.filter(c => c.withCase);
     const expectedNotes = withCase.reduce((n, c) => n + (c.notes?.length ?? 0), 0);

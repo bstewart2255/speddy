@@ -34,6 +34,7 @@ import {
   SIM_EMAIL_DOMAIN,
   SPECIAL_ACTIVITIES,
   TOTAL_STUDENTS,
+  UNPLACED_REQUIREMENT_PROVIDERS,
   WILLOW,
   attendanceId,
   bellScheduleId,
@@ -65,6 +66,7 @@ import {
   studentInitials,
   studentTeacher,
   studentTeacherLinkId,
+  unplacedRequirementIndex,
   studentTeacherLinks,
   teacherRecordId,
   userSiteScheduleId,
@@ -312,6 +314,10 @@ async function main() {
       const name = studentFullName(rule.providerKey, rule.schoolId, i);
       const gradeNum = grade === 'K' ? 0 : parseInt(grade, 10);
       const hasDetails = i < nDetails;
+      // SPE-566 — see EDGE.unconfiguredIndex. Elementary only: secondary
+      // schools don't schedule at all (§9), so the unset state has no meaning
+      // there and would just remove a student from the secondary fixture.
+      const isUnconfigured = !school.isSecondary && i === EDGE.unconfiguredIndex;
       // First writer wins for a shared child — but a writer that HAS details
       // beats one that doesn't, so the child never ends up with a NULL name just
       // because CASELOADS happens to list a detail-less caseload first. (Today
@@ -365,8 +371,12 @@ async function main() {
         grade_level: grade,
         teacher_name: teacher.teacherName,
         teacher_id: teacher.teacherRowId,
-        sessions_per_week: mix.sessionsPerWeek,
-        minutes_per_session: mix.minutes,
+        // SPE-566: one student per ELEMENTARY caseload carries no service
+        // minutes at all, modelling goals imported with no Deliveries file.
+        // Session generation keys off sessions_per_week, so this student
+        // deliberately produces zero schedule_sessions rows.
+        sessions_per_week: isUnconfigured ? null : mix.sessionsPerWeek,
+        minutes_per_session: isUnconfigured ? null : mix.minutes,
         school_site: school.name,
         school_district: DISTRICT.name,
         state_id: DISTRICT.state_id,
@@ -508,8 +518,17 @@ async function main() {
     if (school.isSecondary) continue;
     const providerId = userIds.get(rule.providerKey)!;
     const isRachel = rule.providerKey === 'rachel' && rule.schoolId === WILLOW;
+    // SPE-486: which student on this caseload keeps one requirement UNPLACED.
+    // Null for caseloads not in the list (Alicia stays fully scheduled) and for
+    // any rule with no eligible index.
+    const unplacedIndex = (UNPLACED_REQUIREMENT_PROVIDERS as readonly string[]).includes(rule.providerKey)
+      ? unplacedRequirementIndex(rule)
+      : null;
     for (let i = 0; i < rule.count; i++) {
       if (isRachel && i === EDGE.zeroSessionsIndex) continue; // unscheduled-alert student
+      // SPE-566: no service minutes means no sessions to generate, which is
+      // the whole point of that fixture — see EDGE.unconfiguredIndex.
+      if (i === EDGE.unconfiguredIndex) continue;
       const sid = studentId(rule.providerKey, rule.schoolId, i);
       const mix = sessionMix(i);
       // Standalone SEA-delegated edge case: this student's non-grouped sessions
@@ -521,8 +540,39 @@ async function main() {
       // are never specialist-delegated, so this only applies to non-grouped
       // slots, exactly like the SEA case.
       const isSpecialistDelegated = isRachel && i === EDGE.specialistDelegatedIndex;
+      // SPE-486: this student keeps their LAST weekly requirement unplaced, so
+      // `getUnscheduledSessionsCount` returns non-zero for this provider and
+      // the Auto-Schedule gate opens. Their remaining requirements are placed
+      // normally, so the student is partially — not wholly — unscheduled.
+      const unplacedFrom = i === unplacedIndex ? mix.sessionsPerWeek - 1 : mix.sessionsPerWeek;
       for (let k = 0; k < mix.sessionsPerWeek; k++) {
         const templateId = sessionTemplateId(sid, k);
+        if (k >= unplacedFrom) {
+          // The placeholder the real app mints when a requirement exists but
+          // has not been placed: NULL date AND NULL day/time, which is exactly
+          // the predicate the unscheduled count and the Auto-Schedule gate use.
+          // No dated instances — there is no day or time to generate them from.
+          sessionRows.push({
+            id: templateId,
+            provider_id: providerId,
+            student_id: sid,
+            service_type: rule.serviceType,
+            day_of_week: null,
+            start_time: null,
+            end_time: null,
+            session_date: null,
+            template_id: null,
+            is_template: true,
+            status: 'active',
+            delivered_by: 'provider',
+            assigned_to_sea_id: null,
+            assigned_to_specialist_id: null,
+            is_completed: false,
+            student_absent: false,
+            outside_schedule_conflict: false,
+          });
+          continue;
+        }
         // Groups v2 (SPE-315): if this (student, k) session belongs to a seeded
         // group it is repurposed into the group's slot and dual-writes group_ref
         // + the legacy group columns. A SEA-run group delivers the whole session
