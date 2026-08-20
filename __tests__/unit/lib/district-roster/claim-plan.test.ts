@@ -25,9 +25,14 @@ const rosterChild = (over: Partial<RosterChild> = {}): RosterChild => ({
   gradeLevel: '1',
   schoolId: 'sch-rodeo',
   districtStudentId: '100001',
+  dateOfBirth: null,
   upcomingIepDate: '2027-02-09',
   upcomingTriennialDate: '2029-02-09',
   caseManager: 'Cynthia Reyes',
+  accommodations: [],
+  testingAccommodations: [],
+  districtServices: null,
+  districtGoals: null,
   caseloadCount: 0,
   ...over,
 });
@@ -40,8 +45,14 @@ const myStudent = (over: Partial<ProviderStudent> = {}): ProviderStudent => ({
   lastName: 'Alvarez',
   gradeLevel: '1',
   districtStudentId: '100001',
+  dateOfBirth: null,
   upcomingIepDate: '2027-02-09',
   upcomingTriennialDate: '2029-02-09',
+  sessionsPerWeek: null,
+  minutesPerSession: null,
+  accommodations: [],
+  testingAccommodations: [],
+  iepGoals: [],
   ...over,
 });
 
@@ -238,12 +249,231 @@ describe('planRosterClaims', () => {
     });
   });
 
-  it('never mentions goals — the roster holds none, so they cannot be touched', () => {
+  it('offers no goal changes for a child the district uploaded no goals for', () => {
+    // The pre-SPE-575 rule was "goals are never touched, the roster holds
+    // none". Goals now ride the roster when the district uploads its Goals
+    // report — but a child WITHOUT district goals must still produce zero
+    // goal offers, and a provider's own goals are still never subtracted
+    // (offers only ever append; see the SPE-575 suite below).
     const result = plan({
-      rosterChildren: [rosterChild({ caseloadCount: 1, gradeLevel: '2' })],
-      myStudents: [myStudent()],
+      myRole: 'resource',
+      rosterChildren: [rosterChild({ caseloadCount: 1, gradeLevel: '2', districtGoals: null })],
+      myStudents: [myStudent({ gradeLevel: '2', iepGoals: ['A goal the provider wrote'] })],
     });
 
-    expect(JSON.stringify(result)).not.toMatch(/goal/i);
+    expect(result.updates.flatMap((u) => u.changes.map((c) => c.field))).not.toContain('iepGoals');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SPE-575: minutes, accommodations, testing accommodations, goals
+// ---------------------------------------------------------------------------
+
+const speechLine = (weeklyMinutes: number, code = '415', name = 'Language and Speech') => ({
+  code,
+  name,
+  minutes: weeklyMinutes,
+  frequency: 'weekly' as const,
+  weeklyMinutes,
+});
+
+const districtGoals = {
+  iepDate: '2026-01-22',
+  goals: [
+    { text: 'Will produce /r/ in conversation', areaOfNeed: 'Speech/Language', goalType: '', personResponsible: 'SLP' },
+    { text: 'Will read 90 words per minute', areaOfNeed: 'Academic', goalType: '', personResponsible: 'Resource Specialist' },
+  ],
+};
+
+describe('planRosterClaims — SPE-575 district data', () => {
+  it('proposes the claiming role its own services, summed across split lines', () => {
+    const result = plan({
+      myRole: 'speech',
+      rosterChildren: [
+        rosterChild({
+          districtServices: [speechLine(30), speechLine(21), speechLine(240, '330', 'Specialized Academic Instruction')],
+          districtGoals,
+          accommodations: ['Extended time'],
+          testingAccommodations: ['Masking (embedded)'],
+        }),
+      ],
+    });
+
+    const offer = result.claimable[0];
+    // 51 weekly speech minutes → ceil(51/30) thirty-minute sessions; the SAI
+    // line belongs to resource and is ignored.
+    expect(offer.minutesProposal).toEqual({
+      weeklyMinutes: 51,
+      sessionsPerWeek: 2,
+      minutesPerSession: 30,
+      serviceNames: ['Language and Speech'],
+    });
+    // Only the speech goal routes to an SLP.
+    expect(offer.goals).toEqual(['Will produce /r/ in conversation']);
+    expect(offer.goalsIepDate).toBe('2026-01-22');
+    expect(offer.accommodations).toEqual(['Extended time']);
+    expect(offer.testingAccommodations).toEqual(['Masking (embedded)']);
+  });
+
+  it('keeps a secondary resource mandate as one weekly bucket', () => {
+    const result = plan({
+      myRole: 'resource',
+      schoolLevels: { 'sch-rodeo': { school_type: 'High School', grade_span_low: '9' } },
+      rosterChildren: [
+        rosterChild({ districtServices: [speechLine(285, '330', 'Specialized Academic Instruction')] }),
+      ],
+    });
+    expect(result.claimable[0].minutesProposal).toMatchObject({
+      sessionsPerWeek: 1,
+      minutesPerSession: 285,
+    });
+  });
+
+  it('proposes nothing for a role with no service of its own', () => {
+    const result = plan({
+      myRole: 'specialist',
+      rosterChildren: [rosterChild({ districtServices: [speechLine(30)] })],
+    });
+    expect(result.claimable[0].minutesProposal).toBeNull();
+    // But a specialist imports every goal, matching the per-provider rule.
+    const withGoals = plan({
+      myRole: 'specialist',
+      rosterChildren: [rosterChild({ districtGoals })],
+    });
+    expect(withGoals.claimable[0].goals).toHaveLength(2);
+  });
+
+  describe('updates on students the provider already has', () => {
+    it('offers minutes as a fill when the provider has none', () => {
+      const result = plan({
+        myRole: 'speech',
+        rosterChildren: [rosterChild({ caseloadCount: 1, districtServices: [speechLine(30)] })],
+        myStudents: [myStudent()],
+      });
+      const change = result.updates[0].changes.find((c) => c.field === 'serviceMinutes')!;
+      expect(change.kind).toBe('fill');
+      expect(change.split).toEqual({ sessionsPerWeek: 1, minutesPerSession: 30 });
+      expect(change.roster).toContain('30 min/week of Language and Speech');
+    });
+
+    it('does not re-flag the split acceptance itself wrote for a rounded-up mandate', () => {
+      // A 51 min/week mandate stores as ceil(51/30) = 2×30 = 60. Comparing the
+      // stored 60 against the raw 51 would conflict forever; the stored split
+      // matching the proposal's own split is the fixed point.
+      const result = plan({
+        myRole: 'speech',
+        rosterChildren: [
+          rosterChild({ caseloadCount: 1, districtServices: [speechLine(30), speechLine(21)] }),
+        ],
+        myStudents: [myStudent({ sessionsPerWeek: 2, minutesPerSession: 30 })],
+      });
+      expect(result.updates).toHaveLength(0);
+    });
+
+    it('does not flag a different split of the SAME weekly total', () => {
+      // The provider schedules 2×15; the district mandate is 30/week. Equal.
+      const result = plan({
+        myRole: 'speech',
+        rosterChildren: [rosterChild({ caseloadCount: 1, districtServices: [speechLine(30)] })],
+        myStudents: [myStudent({ sessionsPerWeek: 2, minutesPerSession: 15 })],
+      });
+      expect(result.updates).toHaveLength(0);
+    });
+
+    it('flags a different weekly total as a conflict, never pre-applied', () => {
+      const result = plan({
+        myRole: 'speech',
+        rosterChildren: [rosterChild({ caseloadCount: 1, districtServices: [speechLine(60)] })],
+        myStudents: [myStudent({ sessionsPerWeek: 1, minutesPerSession: 30 })],
+      });
+      const change = result.updates[0].changes.find((c) => c.field === 'serviceMinutes')!;
+      expect(change.kind).toBe('conflict');
+      expect(change.current).toContain('30 min/week');
+      expect(change.roster).toContain('60 min/week');
+    });
+
+    it('appends missing list entries, keeping the provider\'s own first', () => {
+      const result = plan({
+        myRole: 'speech',
+        rosterChildren: [
+          rosterChild({
+            caseloadCount: 1,
+            accommodations: ['Extended time', 'Preferential seating'],
+          }),
+        ],
+        myStudents: [myStudent({ accommodations: ['Preferential seating', 'My own note'] })],
+      });
+      const change = result.updates[0].changes.find((c) => c.field === 'accommodations')!;
+      // Non-empty list → the provider decides; never a pre-ticked fill.
+      expect(change.kind).toBe('conflict');
+      expect(change.values).toEqual(['Preferential seating', 'My own note', 'Extended time']);
+      expect(change.roster).toContain('adds 1 accommodation');
+    });
+
+    it('fills goals with the role\'s subset and carries the goal vintage', () => {
+      const result = plan({
+        myRole: 'speech',
+        rosterChildren: [rosterChild({ caseloadCount: 1, districtGoals })],
+        myStudents: [myStudent()],
+      });
+      const change = result.updates[0].changes.find((c) => c.field === 'iepGoals')!;
+      expect(change.kind).toBe('fill');
+      expect(change.values).toEqual(['Will produce /r/ in conversation']);
+      expect(change.goalsIepDate).toBe('2026-01-22');
+    });
+
+    it('offers nothing when the provider already holds every district entry', () => {
+      const result = plan({
+        myRole: 'speech',
+        rosterChildren: [
+          rosterChild({ caseloadCount: 1, accommodations: ['Extended  time'] }),
+        ],
+        // Whitespace differences are not additions.
+        myStudents: [myStudent({ accommodations: ['Extended time'] })],
+      });
+      expect(result.updates).toHaveLength(0);
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Stored-JSON validators (drop, never crash)
+// ---------------------------------------------------------------------------
+
+import { parseDistrictGoals, parseDistrictServices, proposeServiceMinutes } from '@/lib/district-roster/claim-plan';
+
+describe('parseDistrictServices / parseDistrictGoals', () => {
+  it('drops malformed service payloads instead of crashing an offer', () => {
+    expect(parseDistrictServices(null)).toBeNull();
+    expect(parseDistrictServices({ not: 'an array' })).toBeNull();
+    expect(parseDistrictServices([{ code: '415' }])).toBeNull(); // no weeklyMinutes
+    // A bad line is dropped; a good one beside it survives.
+    expect(
+      parseDistrictServices([{ code: '415', weeklyMinutes: 30 }, 'garbage']),
+    ).toEqual([
+      { code: '415', name: 'Service 415', minutes: 0, frequency: 'weekly', weeklyMinutes: 30 },
+    ]);
+  });
+
+  it('drops malformed goal payloads instead of crashing an offer', () => {
+    expect(parseDistrictGoals(null)).toBeNull();
+    expect(parseDistrictGoals([])).toBeNull();
+    expect(parseDistrictGoals({ goals: 'nope' })).toBeNull();
+    expect(parseDistrictGoals({ iepDate: '2026-01-15', goals: [{ text: '   ' }] })).toBeNull();
+    expect(
+      parseDistrictGoals({ iepDate: '2026-01-15', goals: [{ text: 'A real goal about reading.' }] }),
+    ).toEqual({
+      iepDate: '2026-01-15',
+      goals: [{ text: 'A real goal about reading.', areaOfNeed: '', goalType: '', personResponsible: '' }],
+    });
+  });
+
+  it('refuses a fractional weekly total from untyped stored JSON', () => {
+    const proposal = proposeServiceMinutes(
+      [{ code: '415', name: 'Language and Speech', minutes: 0, frequency: 'weekly', weeklyMinutes: 21.5 }],
+      'speech',
+      null,
+    );
+    expect(proposal).toBeNull();
   });
 });

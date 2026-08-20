@@ -75,6 +75,20 @@ exports[`parseCSVReport — SEIS Student Goals Report (CSV) parses the full fixt
       "caseManager": undefined,
       "districtStudentId": "100001",
       "firstName": "Ana",
+      "goalDetails": [
+        {
+          "areaOfNeed": "Reading",
+          "goalType": "Academic #1: 2026 - 2027",
+          "personResponsible": "Resource Specialist",
+          "text": "By 5/1/2027, given a grade-level passage, Ana will read 90 words per minute with 95% accuracy in 3 of 4 trials.",
+        },
+        {
+          "areaOfNeed": "Written",
+          "goalType": "Academic #2",
+          "personResponsible": "Resource Specialist",
+          "text": "By 5/1/2027, Ana will write a personal narrative with a beginning, middle, and end in 4 of 5 samples.",
+        },
+      ],
       "goals": [
         "By 5/1/2027, given a grade-level passage, Ana will read 90 words per minute with 95% accuracy in 3 of 4 trials.",
         "By 5/1/2027, Ana will write a personal narrative with a beginning, middle, and end in 4 of 5 samples.",
@@ -90,6 +104,14 @@ exports[`parseCSVReport — SEIS Student Goals Report (CSV) parses the full fixt
       "caseManager": "Rosa Delgado",
       "districtStudentId": "100002",
       "firstName": "Ben",
+      "goalDetails": [
+        {
+          "areaOfNeed": "Math",
+          "goalType": "Academic #2: 2025 - 2026",
+          "personResponsible": "Resource Specialist and General Education Teacher",
+          "text": "By 10/15/2026, given manipulatives, Ben will solve two-digit addition problems with 80% accuracy across 3 sessions.",
+        },
+      ],
       "goals": [
         "By 10/15/2026, given manipulatives, Ben will solve two-digit addition problems with 80% accuracy across 3 sessions.",
       ],
@@ -104,6 +126,14 @@ exports[`parseCSVReport — SEIS Student Goals Report (CSV) parses the full fixt
       "caseManager": "Rosa Delgado",
       "districtStudentId": "100003",
       "firstName": "Cora",
+      "goalDetails": [
+        {
+          "areaOfNeed": "Speech/Language",
+          "goalType": "Speech (1 of 1)",
+          "personResponsible": "Speech Language Pathologist",
+          "text": "By 1/20/2027, Cora will produce /r/ in structured sentences with 80% accuracy in 4 of 5 trials.",
+        },
+      ],
       "goals": [
         "By 1/20/2027, Cora will produce /r/ in structured sentences with 80% accuracy in 4 of 5 trials.",
       ],
@@ -118,6 +148,14 @@ exports[`parseCSVReport — SEIS Student Goals Report (CSV) parses the full fixt
       "caseManager": "Owen Pike",
       "districtStudentId": "100004",
       "firstName": "Drew",
+      "goalDetails": [
+        {
+          "areaOfNeed": "Social/Emotional",
+          "goalType": "Behavior (1 of 2)",
+          "personResponsible": "School Counselor",
+          "text": "By 2/10/2027, Drew will use a coping strategy when frustrated in 4 of 5 observed opportunities.",
+        },
+      ],
       "goals": [
         "By 2/10/2027, Drew will use a coping strategy when frustrated in 4 of 5 observed opportunities.",
       ],
@@ -132,6 +170,14 @@ exports[`parseCSVReport — SEIS Student Goals Report (CSV) parses the full fixt
       "caseManager": undefined,
       "districtStudentId": "100005",
       "firstName": "Ella",
+      "goalDetails": [
+        {
+          "areaOfNeed": "Fine Motor",
+          "goalType": "OT (1 of 1)",
+          "personResponsible": "Occupational Therapist",
+          "text": "By 3/5/2027, Ella will copy a five-word sentence legibly within 5 minutes in 4 of 5 trials.",
+        },
+      ],
       "goals": [
         "By 3/5/2027, Ella will copy a five-word sentence legibly within 5 minutes in 4 of 5 trials.",
       ],
@@ -146,6 +192,14 @@ exports[`parseCSVReport — SEIS Student Goals Report (CSV) parses the full fixt
       "caseManager": undefined,
       "districtStudentId": "100006",
       "firstName": "Finn",
+      "goalDetails": [
+        {
+          "areaOfNeed": "Handwriting",
+          "goalType": "OT (1 of 1)",
+          "personResponsible": "Occupational Therapist",
+          "text": "By 4/12/2027, Finn will form lower-case letters with correct size and spacing in 4 of 5 samples.",
+        },
+      ],
       "goals": [
         "By 4/12/2027, Finn will form lower-case letters with correct size and spacing in 4 of 5 samples.",
       ],
@@ -160,6 +214,14 @@ exports[`parseCSVReport — SEIS Student Goals Report (CSV) parses the full fixt
       "caseManager": undefined,
       "districtStudentId": undefined,
       "firstName": "Gia",
+      "goalDetails": [
+        {
+          "areaOfNeed": "",
+          "goalType": "",
+          "personResponsible": "",
+          "text": "By 5/9/2027, Gia will raise her hand and wait to be called on in 4 of 5 opportunities.",
+        },
+      ],
       "goals": [
         "By 5/9/2027, Gia will raise her hand and wait to be called on in 4 of 5 opportunities.",
       ],
@@ -174,6 +236,14 @@ exports[`parseCSVReport — SEIS Student Goals Report (CSV) parses the full fixt
       "caseManager": undefined,
       "districtStudentId": "100008",
       "firstName": "Hana",
+      "goalDetails": [
+        {
+          "areaOfNeed": "Receptive Languge",
+          "goalType": "Comm (1 of 1)",
+          "personResponsible": "Case Manager",
+          "text": "By 1/30/2027, Hana will answer wh- questions about a short story with 80% accuracy.",
+        },
+      ],
       "goals": [
         "By 1/30/2027, Hana will answer wh- questions about a short story with 80% accuracy.",
       ],
@@ -188,6 +258,14 @@ exports[`parseCSVReport — SEIS Student Goals Report (CSV) parses the full fixt
       "caseManager": undefined,
       "districtStudentId": "100009",
       "firstName": "Ivan",
+      "goalDetails": [
+        {
+          "areaOfNeed": "Written Expression",
+          "goalType": "Academic #1",
+          "personResponsible": "the student will write a paragraph with support",
+          "text": "By 2/22/2027, Ivan will write a three-sentence paragraph with a topic sentence in 4 of 5 samples.",
+        },
+      ],
       "goals": [
         "By 2/22/2027, Ivan will write a three-sentence paragraph with a topic sentence in 4 of 5 samples.",
       ],
@@ -202,6 +280,16 @@ exports[`parseCSVReport — SEIS Student Goals Report (CSV) parses the full fixt
       "caseManager": undefined,
       "districtStudentId": "100010",
       "firstName": "Jae",
+      "goalDetails": [
+        {
+          "areaOfNeed": "Reading",
+          "goalType": "Academic #1",
+          "personResponsible": "Resource Specialist",
+          "text": "By 6/1/2027 Jae will:
+- decode multisyllabic words
+- read 100 wpm with 95% accuracy",
+        },
+      ],
       "goals": [
         "By 6/1/2027 Jae will:
 - decode multisyllabic words

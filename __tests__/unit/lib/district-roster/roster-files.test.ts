@@ -57,6 +57,9 @@ describe('readDistrictRosterFiles', () => {
         `${DATES_HEADER}\n2838067,2578106158,Alvarez,Ana,D Domich,Rodeo Hills Elementary,` +
           '02/09/2027,02/09/2029,02/10/2026',
       ),
+      servicesFile: null,
+      accommodationsFile: null,
+      testingFile: null,
     });
 
     expect(result.error).toBeNull();
@@ -87,6 +90,9 @@ describe('readDistrictRosterFiles', () => {
         'dates.csv',
         `${DATES_HEADER}\n1,2,Edsinger,Rex,D Domich,John Swett High,09/01/2026,,08/15/2025`,
       ),
+      servicesFile: null,
+      accommodationsFile: null,
+      testingFile: null,
     });
 
     expect(result.error).toBeNull();
@@ -108,6 +114,9 @@ describe('readDistrictRosterFiles', () => {
           'Alvarez,Ana,Rodeo Hills Elementary,Kindergarten,09/01/2026\n' +
           'Bishop,Ben,Rodeo Hills Elementary,3rd,09/02/2026',
       ),
+      servicesFile: null,
+      accommodationsFile: null,
+      testingFile: null,
     });
 
     expect(result.error).toBeNull();
@@ -121,6 +130,9 @@ describe('readDistrictRosterFiles', () => {
         'First Name,Last Name,Grade,Teacher\nAna,Alvarez,1,Ms Chen',
       ),
       datesFile: null,
+      servicesFile: null,
+      accommodationsFile: null,
+      testingFile: null,
     });
 
     expect(result.error).toMatch(/does not look like the SEIS Student Goals report/);
@@ -135,6 +147,9 @@ describe('readDistrictRosterFiles', () => {
         'not really xlsx',
       ),
       datesFile: null,
+      servicesFile: null,
+      accommodationsFile: null,
+      testingFile: null,
     });
 
     expect(result.error).toMatch(/is not a CSV/);
@@ -144,14 +159,17 @@ describe('readDistrictRosterFiles', () => {
     const result = await readDistrictRosterFiles({
       goalsFile: null,
       datesFile: csvFile('dates.csv', 'Some Column,Another\n1,2'),
+      servicesFile: null,
+      accommodationsFile: null,
+      testingFile: null,
     });
 
     expect(result.error).toMatch(/"dates\.csv" could not be read/);
   });
 
   it('refuses an empty upload rather than planning nothing', async () => {
-    const result = await readDistrictRosterFiles({ goalsFile: null, datesFile: null });
-    expect(result.error).toMatch(/Upload your SEIS Student Goals report/);
+    const result = await readDistrictRosterFiles({ goalsFile: null, datesFile: null, servicesFile: null, accommodationsFile: null, testingFile: null });
+    expect(result.error).toMatch(/Upload at least one of your SEIS reports/);
   });
 
   it('caps the per-row notes it carries to the review screen', async () => {
@@ -164,10 +182,63 @@ describe('readDistrictRosterFiles', () => {
     const result = await readDistrictRosterFiles({
       goalsFile: null,
       datesFile: csvFile('dates.csv', `${DATES_HEADER}\n${rows}`),
+      servicesFile: null,
+      accommodationsFile: null,
+      testingFile: null,
     });
 
     expect(result.error).toBeNull();
     expect(result.warnings).toHaveLength(21);
     expect(result.warnings.at(-1)).toMatch(/5 more note\(s\) not listed/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SPE-575: the three new upload slots
+// ---------------------------------------------------------------------------
+
+describe('the Services / Accommodations / Testing slots', () => {
+  const asFile = (content: string, name: string, type = 'text/csv') =>
+    fakeFile(name, type, content);
+
+  const SERVICES_CSV = [
+    'SEIS ID,SSID,Student Legal First Name,Student Legal Last Name,Student Birth Date,Enrollment Date,Reporting LEA,District of Special Education Accountability,School of Attendance,Grade,Case Manager,Special Education Service Code,Special Education Service Provider Code,Nonpublic Agency Identifier (NPA),Special Education Service Location Code,Service Duration,Service Frequency Code',
+    '1,2,Pat,Example,03/02/2013,08/13/2026,LEA,LEA,Fictional Middle,Eighth grade,CM,415 - Language and Speech,100 - District of Service,,510,30,20 - Weekly (one or more times a week)',
+  ].join('\n');
+
+  it('reads a Services file on its own and counts it', async () => {
+    const result = await readDistrictRosterFiles({
+      goalsFile: null,
+      datesFile: null,
+      servicesFile: asFile(SERVICES_CSV, 'services.csv'),
+      accommodationsFile: null,
+      testingFile: null,
+    });
+    expect(result.error).toBeNull();
+    expect(result.read.services).toBe(1);
+    expect(result.servicesStudents[0].services[0]).toMatchObject({ code: '415', weeklyMinutes: 30 });
+  });
+
+  it('refuses a wrong file in the Services slot with the parser\'s named message', async () => {
+    const result = await readDistrictRosterFiles({
+      goalsFile: null,
+      datesFile: null,
+      servicesFile: asFile('Just,Some,Columns\n1,2,3', 'not-services.csv'),
+      accommodationsFile: null,
+      testingFile: null,
+    });
+    expect(result.error).toContain('not-services.csv');
+    expect(result.error).toContain('does not look like the SEIS Services report');
+  });
+
+  it('refuses an extension that is neither CSV nor Excel', async () => {
+    const result = await readDistrictRosterFiles({
+      goalsFile: null,
+      datesFile: null,
+      servicesFile: asFile('whatever', 'services.pdf', 'application/pdf'),
+      accommodationsFile: null,
+      testingFile: null,
+    });
+    expect(result.error).toContain('not an Excel or CSV file');
   });
 });

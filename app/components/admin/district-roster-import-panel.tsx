@@ -41,6 +41,7 @@ const EXCEPTION_HEADINGS: Record<RosterException['kind'], string> = {
   'missing-grade': 'No grade in either file',
   'unknown-school': 'School not in your district in Speddy',
   'ambiguous-name-match': 'Speddy could not tell which student this is',
+  'identity-mismatch': 'A student in Speddy shares this name, but may be someone else',
   'conflicting-district-id': 'Already has a different district student ID',
   'duplicate-in-files': 'Two students in your files share one district student ID',
 };
@@ -52,6 +53,7 @@ function FilePicker({
   file,
   onPick,
   disabled,
+  accept = '.csv,text/csv',
 }: {
   id: string;
   label: string;
@@ -59,6 +61,7 @@ function FilePicker({
   file: File | null;
   onPick: (file: File | null) => void;
   disabled: boolean;
+  accept?: string;
 }) {
   return (
     <div className="rounded-md border border-slate-200 bg-white px-3 py-2.5">
@@ -69,7 +72,7 @@ function FilePicker({
       <input
         id={id}
         type="file"
-        accept=".csv,text/csv"
+        accept={accept}
         disabled={disabled}
         onChange={(e) => onPick(e.target.files?.[0] ?? null)}
         className="mt-2 block w-full text-xs text-slate-600 file:mr-3 file:rounded-md file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-slate-700 hover:file:bg-slate-200 disabled:opacity-50"
@@ -99,6 +102,9 @@ function Stat({ n, label, tone }: { n: number; label: string; tone?: string }) {
 export default function DistrictRosterImportPanel() {
   const [goalsFile, setGoalsFile] = useState<File | null>(null);
   const [datesFile, setDatesFile] = useState<File | null>(null);
+  const [servicesFile, setServicesFile] = useState<File | null>(null);
+  const [accommodationsFile, setAccommodationsFile] = useState<File | null>(null);
+  const [testingFile, setTestingFile] = useState<File | null>(null);
   const [running, setRunning] = useState<'preview' | 'publish' | null>(null);
   const [result, setResult] = useState<RosterResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -108,6 +114,9 @@ export default function DistrictRosterImportPanel() {
     form.append('mode', mode);
     if (goalsFile) form.append('goalsFile', goalsFile);
     if (datesFile) form.append('datesFile', datesFile);
+    if (servicesFile) form.append('servicesFile', servicesFile);
+    if (accommodationsFile) form.append('accommodationsFile', accommodationsFile);
+    if (testingFile) form.append('testingFile', testingFile);
 
     if (mode === 'publish') {
       const plan = result?.plan;
@@ -172,7 +181,13 @@ export default function DistrictRosterImportPanel() {
   };
 
   const plan = result?.plan ?? null;
-  const canPreview = (goalsFile !== null || datesFile !== null) && running === null;
+  const anyFile =
+    goalsFile !== null ||
+    datesFile !== null ||
+    servicesFile !== null ||
+    accommodationsFile !== null ||
+    testingFile !== null;
+  const canPreview = anyFile && running === null;
   const canPublish =
     plan !== null &&
     result?.mode === 'preview' &&
@@ -200,29 +215,54 @@ export default function DistrictRosterImportPanel() {
   return (
     <div className="space-y-4">
       <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-        <p className="text-sm font-semibold text-slate-900">Your two SEIS reports</p>
+        <p className="text-sm font-semibold text-slate-900">Your SEIS reports</p>
         <p className="mt-0.5 max-w-3xl text-xs text-slate-500">
-          Export both as CSV. The Student Goals report carries each student&apos;s district ID,
-          grade and school; the IEP Dates report carries the annual review and triennial dates.
-          Either one on its own works — together they give the fullest roster.
+          Any one file on its own works — together they give the fullest roster.
         </p>
 
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <FilePicker
             id="roster-goals-file"
-            label="Student Goals report"
-            hint="District ID, grade, school of attendance"
+            label="Student Goals report (CSV)"
+            hint="District ID, grade, school, and each student's goals"
             file={goalsFile}
             onPick={pickFile(setGoalsFile)}
             disabled={running !== null}
           />
           <FilePicker
             id="roster-dates-file"
-            label="IEP Dates report"
+            label="IEP Dates report (CSV)"
             hint="Next annual review and reevaluation dates"
             file={datesFile}
             onPick={pickFile(setDatesFile)}
             disabled={running !== null}
+          />
+          <FilePicker
+            id="roster-services-file"
+            label="Services report (Excel or CSV)"
+            hint="Each student's IEP services with minutes and frequency"
+            file={servicesFile}
+            onPick={pickFile(setServicesFile)}
+            disabled={running !== null}
+            accept=".xlsx,.csv"
+          />
+          <FilePicker
+            id="roster-accommodations-file"
+            label="Accommodations report (Excel or CSV)"
+            hint="Classroom accommodations, modifications and supports"
+            file={accommodationsFile}
+            onPick={pickFile(setAccommodationsFile)}
+            disabled={running !== null}
+            accept=".xlsx,.csv"
+          />
+          <FilePicker
+            id="roster-testing-file"
+            label="Student Download — testing accommodations (Excel or CSV)"
+            hint="State-testing accommodations (not the TOMS upload file, which has no names)"
+            file={testingFile}
+            onPick={pickFile(setTestingFile)}
+            disabled={running !== null}
+            accept=".xlsx,.csv"
           />
         </div>
 
@@ -344,6 +384,43 @@ export default function DistrictRosterImportPanel() {
                   )}
                 </div>
 
+                {(plan.counts.withServices > 0 ||
+                  plan.counts.withAccommodations > 0 ||
+                  plan.counts.withTestingAccommodations > 0 ||
+                  plan.counts.withGoals > 0) && (
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">
+                      What providers will be offered when they claim
+                    </p>
+                    <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                      <Stat n={plan.counts.withServices} label="with service minutes" />
+                      <Stat n={plan.counts.withAccommodations} label="with accommodations" />
+                      <Stat
+                        n={plan.counts.withTestingAccommodations}
+                        label="with testing accommodations"
+                      />
+                      <Stat n={plan.counts.withGoals} label="with goals" />
+                    </div>
+                    {plan.counts.servicesStudentsNotUsed +
+                      plan.counts.accommodationsStudentsNotUsed +
+                      plan.counts.testingStudentsNotUsed >
+                      0 && (
+                      <p className="mt-2 rounded border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs text-amber-800">
+                        Some records could not be safely attached to one student — either two
+                        students on the roster share the name, or the record&apos;s district ID or
+                        birth date disagrees with the student it would have joined
+                        {plan.counts.servicesStudentsNotUsed > 0 &&
+                          ` — ${plan.counts.servicesStudentsNotUsed} in the Services report`}
+                        {plan.counts.accommodationsStudentsNotUsed > 0 &&
+                          ` — ${plan.counts.accommodationsStudentsNotUsed} in the Accommodations report`}
+                        {plan.counts.testingStudentsNotUsed > 0 &&
+                          ` — ${plan.counts.testingStudentsNotUsed} in the Student Download`}
+                        . Their existing records are untouched.
+                      </p>
+                    )}
+                  </div>
+                )}
+
                 {exceptionsByKind.size > 0 && (
                   <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5">
                     <p className="text-xs font-medium text-amber-900">
@@ -368,8 +445,9 @@ export default function DistrictRosterImportPanel() {
                           <ul className="mt-1 space-y-0.5 pl-4 text-xs text-amber-800/80">
                             {list.map((e, i) => (
                               <li key={`${e.initials}:${i}`}>
-                                {e.initials}
+                                {e.name || e.initials}
                                 {e.gradeLevel ? ` · grade ${e.gradeLevel}` : ''}
+                                {e.schoolName ? ` · ${e.schoolName}` : ''}
                                 {shared ? '' : ` — ${e.detail}`}
                               </li>
                             ))}
@@ -389,8 +467,9 @@ export default function DistrictRosterImportPanel() {
                     <ul className="mt-1 space-y-0.5 pl-4 text-xs text-slate-500">
                       {plan.notInRoster.map((c, i) => (
                         <li key={`${c.initials}:${i}`}>
-                          {c.initials}
-                          {c.gradeLevel ? ` · grade ${c.gradeLevel}` : ''} —{' '}
+                          {c.name || c.initials}
+                          {c.gradeLevel ? ` · grade ${c.gradeLevel}` : ''}
+                          {c.schoolName ? ` · ${c.schoolName}` : ''} —{' '}
                           {c.caseloadCount === 0
                             ? 'on no caseload'
                             : `on ${c.caseloadCount} caseload(s)`}

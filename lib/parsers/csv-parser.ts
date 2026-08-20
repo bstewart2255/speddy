@@ -10,6 +10,19 @@ import { getServiceTypeCode, getServiceTypeNameForRole, isGoalForProviderByKeywo
 import { normalizeGradeLevel } from '../utils/grade-parser';
 import { buildStudentDedupKey, normalizeInitialsForKey } from '../utils/student-dedup-key';
 
+/**
+ * One goal WITH the columns that route it to a provider role (SPE-575). The
+ * district roster stores these so the claim flow can offer each provider only
+ * their discipline's goals, using the same keyword rules the per-provider
+ * import applies at parse time.
+ */
+export interface ParsedGoalDetail {
+  text: string;
+  areaOfNeed: string;
+  goalType: string;
+  personResponsible: string;
+}
+
 export interface ParsedStudent {
   firstName: string;
   lastName: string;
@@ -24,6 +37,13 @@ export interface ParsedStudent {
   // about whose student this probably is; it is NOT the service provider.
   caseManager?: string;
   goals: string[];
+  // The goals with their routing metadata (SPE-575): one entry per distinct
+  // routing signature (text + area of need + goal type + person responsible).
+  // NOT positionally aligned with `goals` — that list dedupes by text alone,
+  // so a goal repeated under two signatures appears once there and twice here;
+  // never zip the two by index. Only the district roster reads this;
+  // per-provider consumers keep the flat, already-role-filtered `goals`.
+  goalDetails?: ParsedGoalDetail[];
   rawRow: number; // For debugging
   // Speddy roster template only (SPE-225): the template carries the teacher name
   // and schedule inline (no goals, no names). Undefined for SEIS/generic rows.
@@ -425,6 +445,7 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
 
         // Extract goals from goal columns
         const goals: string[] = [];
+        const goalDetails: ParsedGoalDetail[] = [];
 
         // Get provider-related columns for filtering (SEIS Student Goals Report)
         const areaOfNeed = columnMapping.areaOfNeed !== undefined ? row[columnMapping.areaOfNeed] || '' : '';
@@ -472,6 +493,12 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
 
           if (goalText.trim().length > 10) {
             goals.push(goalText.trim());
+            goalDetails.push({
+              text: goalText.trim(),
+              areaOfNeed: areaOfNeed.trim(),
+              goalType: goalType.trim(),
+              personResponsible: personResponsible.trim(),
+            });
           }
         }
 
@@ -495,10 +522,23 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
         if (studentMap.has(studentKey)) {
           // Add goals to existing student (avoid duplicates)
           const existing = studentMap.get(studentKey)!;
-          for (const goal of goals) {
-            if (!existing.goals.includes(goal)) {
-              existing.goals.push(goal);
+          for (const detail of goalDetails) {
+            // Flat display goals dedupe by TEXT (long-standing behavior), but
+            // routing metadata dedupes by its whole signature: the same goal
+            // text repeated under a different Area of Need / Person
+            // Responsible is a second routing signal, and dropping it would
+            // hide the goal from that discipline's claim offers (SPE-575).
+            if (!existing.goals.includes(detail.text)) {
+              existing.goals.push(detail.text);
             }
+            const sameRouting = existing.goalDetails?.some(
+              (d) =>
+                d.text === detail.text &&
+                d.areaOfNeed === detail.areaOfNeed &&
+                d.goalType === detail.goalType &&
+                d.personResponsible === detail.personResponsible,
+            );
+            if (!sameRouting) existing.goalDetails?.push(detail);
           }
           // Merge iepDate (keep first non-empty value)
           if (!existing.iepDate && iepDate) {
@@ -541,6 +581,7 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
             districtStudentId: districtStudentId || undefined,
             caseManager: caseManager || undefined,
             goals,
+            goalDetails,
             rawRow: rowIndex + 1
           });
         }

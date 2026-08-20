@@ -119,6 +119,9 @@ const plan = (over: Partial<RosterPlanInput> = {}) =>
       },
     ],
     datesRecords: [],
+    servicesStudents: [],
+    accommodationsStudents: [],
+    testingStudents: [],
     existingChildren: [],
     ...over,
   });

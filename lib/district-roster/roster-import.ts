@@ -24,6 +24,7 @@ import type {
   PlannedChild,
   RosterPlan,
 } from './plan';
+import { stableStringify } from './plan';
 
 const log = logger.child({ module: 'district-roster-import' });
 
@@ -87,7 +88,8 @@ export async function loadDistrictRosterContext(
 
   const CHILD_COLUMNS =
     'id, district_student_id, first_name, last_name, initials, grade_level, school_id, ' +
-    'upcoming_iep_date, upcoming_triennial_date, case_manager';
+    'date_of_birth, upcoming_iep_date, upcoming_triennial_date, case_manager, ' +
+    'accommodations, testing_accommodations, district_services, district_goals';
 
   // KEYSET paged, not offset paged. With `.range()`, a row inserted with a
   // lower id while we page shifts every later row across the offset boundary
@@ -118,9 +120,14 @@ export async function loadDistrictRosterContext(
         initials: String(row.initials ?? ''),
         gradeLevel: (row.grade_level as string | null) ?? null,
         schoolId: (row.school_id as string | null) ?? null,
+        dateOfBirth: (row.date_of_birth as string | null) ?? null,
         upcomingIepDate: (row.upcoming_iep_date as string | null) ?? null,
         upcomingTriennialDate: (row.upcoming_triennial_date as string | null) ?? null,
         caseManager: (row.case_manager as string | null) ?? null,
+        accommodations: (row.accommodations as string[] | null) ?? [],
+        testingAccommodations: (row.testing_accommodations as string[] | null) ?? [],
+        districtServices: row.district_services ?? null,
+        districtGoals: row.district_goals ?? null,
         caseloadCount: 0,
       });
     }
@@ -198,9 +205,9 @@ export interface RosterWriteResult {
 function rosterColumns(
   planned: PlannedChild,
   districtId: string,
-): Record<string, string> {
+): Record<string, unknown> {
   const { fields } = planned;
-  const columns: Record<string, string> = {
+  const columns: Record<string, unknown> = {
     // Always written: scoping the row to this district is what makes
     // `ux_children_district_student_id` apply to it at all.
     district_id: districtId,
@@ -211,9 +218,22 @@ function rosterColumns(
   };
   if (fields.schoolId) columns.school_id = fields.schoolId;
   if (fields.districtStudentId) columns.district_student_id = fields.districtStudentId;
+  if (fields.dateOfBirth) columns.date_of_birth = fields.dateOfBirth;
   if (fields.upcomingIepDate) columns.upcoming_iep_date = fields.upcomingIepDate;
   if (fields.upcomingTriennialDate) columns.upcoming_triennial_date = fields.upcomingTriennialDate;
   if (fields.caseManager) columns.case_manager = fields.caseManager;
+  if (fields.accommodations && fields.accommodations.length > 0) {
+    columns.accommodations = fields.accommodations;
+  }
+  if (fields.testingAccommodations && fields.testingAccommodations.length > 0) {
+    columns.testing_accommodations = fields.testingAccommodations;
+  }
+  if (fields.districtServices && fields.districtServices.length > 0) {
+    columns.district_services = fields.districtServices;
+  }
+  if (fields.districtGoals && fields.districtGoals.goals.length > 0) {
+    columns.district_goals = fields.districtGoals;
+  }
   return columns;
 }
 
@@ -328,9 +348,14 @@ export function rosterPlanDigest(plan: RosterPlan): string {
         c.fields.gradeLevel,
         c.fields.firstName,
         c.fields.lastName,
+        c.fields.dateOfBirth ?? '',
         c.fields.upcomingIepDate ?? '',
         c.fields.upcomingTriennialDate ?? '',
         c.fields.caseManager ?? '',
+        stableStringify(c.fields.accommodations ?? null),
+        stableStringify(c.fields.testingAccommodations ?? null),
+        stableStringify(c.fields.districtServices ?? null),
+        stableStringify(c.fields.districtGoals ?? null),
       ].join(''),
     )
     .sort();

@@ -173,6 +173,13 @@ describe('POST /api/assistant/chat', () => {
     expect(systemText).toContain('Students your district put on the roster');
     expect(systemText).toContain('arrive already ticked');
     expect(systemText).toContain('not the same job as being the service provider');
+    // SPE-575: claiming carries the district's minutes/goals/accommodations,
+    // list offers only ever add, and the Accommodations tab grew a state
+    // testing sub-section.
+    expect(systemText).toContain('comes with');
+    expect(systemText).toContain('never rewrites or removes anything of theirs');
+    expect(systemText).toContain('State Testing Accommodations');
+    expect(systemText).toContain('+ Add Testing Accommodation');
     expect(systemText).toContain('attribute them to California');
     expect(systemText).toContain('written request to review');
     expect(systemText).toContain('meeting held within 30 days');

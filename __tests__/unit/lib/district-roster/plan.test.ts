@@ -51,8 +51,14 @@ const existingChild = (over: Partial<ExistingChild> = {}): ExistingChild => ({
   initials: 'AA',
   gradeLevel: '1',
   schoolId: 'sch-rodeo',
+  dateOfBirth: null,
   upcomingIepDate: '2027-02-09',
   upcomingTriennialDate: '2029-02-09',
+  caseManager: null,
+  accommodations: [],
+  testingAccommodations: [],
+  districtServices: null,
+  districtGoals: null,
   caseloadCount: 1,
   ...over,
 });
@@ -63,6 +69,9 @@ const plan = (over: Partial<RosterPlanInput> = {}) =>
     today: '2026-08-19',
     goalsStudents: [goalsStudent()],
     datesRecords: [datesRecord()],
+    servicesStudents: [],
+    accommodationsStudents: [],
+    testingStudents: [],
     schools: SCHOOLS,
     existingChildren: [],
     ...over,
@@ -148,6 +157,125 @@ describe('planDistrictRoster', () => {
       expect(result.counts.creates).toBe(0);
       expect(result.children[0]).toMatchObject({ action: 'update', matchBasis: 'name-and-school' });
       expect(result.children[0].changedFields).toEqual(['grade']);
+    });
+
+    describe('vetting the single name+school candidate (CodeRabbit, PR #917)', () => {
+      // The name key excludes grade for the rollover's sake, so without this a
+      // grade-4 record from a file with no District ID column would fold into
+      // a same-named grade-1 child and rewrite their grade, birth date and
+      // district data.
+      it('refuses when the grades are too far apart to be a rollover', () => {
+        const result = plan({
+          goalsStudents: [goalsStudent({ districtStudentId: undefined, gradeLevel: '4' })],
+          datesRecords: [],
+          existingChildren: [existingChild({ districtStudentId: null, gradeLevel: '1' })],
+        });
+
+        expect(result.children).toHaveLength(0);
+        // Exceptions name the student and school — the admin has to act on
+        // these, and initials cannot locate anyone in a large district.
+        expect(result.exceptions[0]).toMatchObject({
+          kind: 'identity-mismatch',
+          name: 'Ana Alvarez',
+          schoolName: 'Rodeo Hills Elementary',
+        });
+        expect(result.exceptions[0].detail).toMatch(/grade 4.*grade 1/s);
+      });
+
+      it('refuses a grade regression too — students do not move down a grade', () => {
+        const result = plan({
+          goalsStudents: [goalsStudent({ districtStudentId: undefined, gradeLevel: '1' })],
+          datesRecords: [],
+          existingChildren: [existingChild({ districtStudentId: null, gradeLevel: '2' })],
+        });
+
+        expect(result.children).toHaveLength(0);
+        expect(result.exceptions[0]).toMatchObject({ kind: 'identity-mismatch' });
+      });
+
+      // The transitions the vet deliberately ACCEPTS with no birth date to
+      // arbitrate — the tolerance the name key exists for. A future change to
+      // the rank table would break these silently otherwise.
+      it.each([
+        ['the same grade — a mid-year re-import', '1', '1'],
+        ['one grade ahead — the fall rollover', '1', '2'],
+        ['TK to K — the rollover at the bottom of the scale', 'TK', 'K'],
+      ])('accepts %s', (_label, stored, fromFile) => {
+        const result = plan({
+          goalsStudents: [goalsStudent({ districtStudentId: undefined, gradeLevel: fromFile })],
+          datesRecords: [],
+          existingChildren: [existingChild({ districtStudentId: null, gradeLevel: stored })],
+        });
+
+        expect(result.exceptions).toHaveLength(0);
+        expect(result.children[0]).toMatchObject({ matchBasis: 'name-and-school' });
+      });
+
+      it('a matching birth date confirms the match whatever the grades say', () => {
+        // The file may be correcting a grade Speddy holds wrong.
+        const result = plan({
+          goalsStudents: [goalsStudent({ districtStudentId: undefined, gradeLevel: '4' })],
+          datesRecords: [],
+          servicesStudents: [
+            {
+              firstName: 'Ana',
+              lastName: 'Alvarez',
+              gradeLevel: '4',
+              schoolOfAttendance: 'Rodeo Hills Elementary',
+              dateOfBirth: '2016-01-05',
+              services: [],
+            },
+          ],
+          existingChildren: [
+            existingChild({ districtStudentId: null, gradeLevel: '1', dateOfBirth: '2016-01-05' }),
+          ],
+        });
+
+        expect(result.exceptions).toHaveLength(0);
+        expect(result.children[0]).toMatchObject({ action: 'update', matchBasis: 'name-and-school' });
+        expect(result.children[0].changedFields).toContain('grade');
+      });
+
+      it('refuses when the birth dates contradict, even with matching grades', () => {
+        // Two birth dates are two children; updating would hand one child the
+        // other's services and accommodations.
+        const result = plan({
+          goalsStudents: [goalsStudent({ districtStudentId: undefined })],
+          datesRecords: [],
+          servicesStudents: [
+            {
+              firstName: 'Ana',
+              lastName: 'Alvarez',
+              gradeLevel: '1',
+              schoolOfAttendance: 'Rodeo Hills Elementary',
+              dateOfBirth: '2017-09-30',
+              services: [],
+            },
+          ],
+          existingChildren: [
+            existingChild({ districtStudentId: null, dateOfBirth: '2016-01-05' }),
+          ],
+        });
+
+        expect(result.children).toHaveLength(0);
+        expect(result.exceptions[0]).toMatchObject({ kind: 'identity-mismatch' });
+        expect(result.exceptions[0].detail).toMatch(/birth date/);
+      });
+
+      it('a district-id match is never second-guessed by grade distance', () => {
+        // The id IS the identity; a big grade jump there is a data correction.
+        const result = plan({
+          goalsStudents: [goalsStudent({ gradeLevel: '5' })],
+          datesRecords: [],
+          existingChildren: [existingChild({ gradeLevel: '1' })],
+        });
+
+        expect(result.exceptions).toHaveLength(0);
+        expect(result.children[0]).toMatchObject({
+          action: 'update',
+          matchBasis: 'district-student-id',
+        });
+      });
     });
 
     it('refuses to guess when two children at one school share a name', () => {
@@ -354,7 +482,17 @@ describe('planDistrictRoster', () => {
         ],
       });
 
-      expect(result.notInRoster).toEqual([{ initials: 'BB', gradeLevel: '1', caseloadCount: 2 }]);
+      // Name + school ride along: a large district's admin cannot find a
+      // student from initials and a grade alone.
+      expect(result.notInRoster).toEqual([
+        {
+          initials: 'BB',
+          name: 'Ben Bishop',
+          gradeLevel: '1',
+          schoolName: 'Rodeo Hills Elementary',
+          caseloadCount: 2,
+        },
+      ]);
       // Nothing in the plan touches that child.
       expect(result.children.every((c) => c.childId !== 'child-2')).toBe(true);
     });
@@ -428,5 +566,277 @@ describe('planDistrictRoster', () => {
     });
 
     expect(result.children[0].fields.schoolId).toBe('sch-rodeo');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SPE-575: the Services / Accommodations / Student Download files
+// ---------------------------------------------------------------------------
+
+const serviceLine = (over: Partial<{ code: string; name: string; minutes: number; frequency: 'weekly' | 'daily' | 'monthly' | 'yearly'; weeklyMinutes: number }> = {}) => ({
+  code: '415',
+  name: 'Language and Speech',
+  minutes: 30,
+  frequency: 'weekly' as const,
+  weeklyMinutes: 30,
+  ...over,
+});
+
+const servicesStudent = (over: Record<string, unknown> = {}) => ({
+  firstName: 'Ana',
+  lastName: 'Alvarez',
+  gradeLevel: '1',
+  schoolOfAttendance: 'Rodeo Hills Elementary',
+  dateOfBirth: '2019-05-04',
+  caseManager: 'Casey Manager',
+  services: [serviceLine()],
+  ...over,
+});
+
+const accommodationsStudent = (over: Record<string, unknown> = {}) => ({
+  firstName: 'Ana',
+  lastName: 'Alvarez',
+  gradeLevel: '1',
+  schoolOfAttendance: 'Rodeo Hills Elementary',
+  accommodations: ['Extended time', 'Modification: Shortened assignments'],
+  testingAccommodations: ['Text-to-Speech (Reading Passages)'],
+  ...over,
+});
+
+const testingStudent = (over: Record<string, unknown> = {}) => ({
+  firstName: 'Ana',
+  lastName: 'Alvarez',
+  gradeLevel: '1',
+  schoolOfAttendance: 'Rodeo Hills Elementary',
+  testingAccommodations: ['Masking (embedded)', 'Separate Setting (non-embedded)'],
+  ...over,
+});
+
+describe('planDistrictRoster — SPE-575 district data files', () => {
+  it('attaches services, accommodations and testing data to the goals student', () => {
+    const result = plan({
+      goalsStudents: [
+        goalsStudent({
+          iepDate: '2026-01-22',
+          goalDetails: [
+            { text: 'A speech goal about sounds', areaOfNeed: 'Speech/Language', goalType: '', personResponsible: 'SLP' },
+          ],
+        }),
+      ],
+      servicesStudents: [servicesStudent()],
+      accommodationsStudents: [accommodationsStudent()],
+      testingStudents: [testingStudent()],
+    });
+
+    expect(result.refusal).toBeNull();
+    expect(result.children).toHaveLength(1);
+    const fields = result.children[0].fields;
+    expect(fields.dateOfBirth).toBe('2019-05-04');
+    expect(fields.districtServices).toEqual([serviceLine()]);
+    expect(fields.accommodations).toEqual(['Extended time', 'Modification: Shortened assignments']);
+    // The Accommodations report's assessment entries merge with the Student
+    // Download's, de-duplicated.
+    expect(fields.testingAccommodations).toEqual([
+      'Text-to-Speech (Reading Passages)',
+      'Masking (embedded)',
+      'Separate Setting (non-embedded)',
+    ]);
+    expect(fields.districtGoals).toEqual({
+      iepDate: '2026-01-22',
+      goals: [
+        { text: 'A speech goal about sounds', areaOfNeed: 'Speech/Language', goalType: '', personResponsible: 'SLP' },
+      ],
+    });
+    expect(result.counts.withServices).toBe(1);
+    expect(result.counts.withAccommodations).toBe(1);
+    expect(result.counts.withTestingAccommodations).toBe(1);
+    expect(result.counts.withGoals).toBe(1);
+  });
+
+  it('refuses to attach a record whose district ID contradicts the row it matches', () => {
+    // Same name, school and grade, but a different district ID: a different
+    // real student. Applying would hand this row their accommodations and
+    // silently drop the ID that proves the mismatch.
+    const result = plan({
+      accommodationsStudents: [accommodationsStudent({ districtStudentId: '999999' })],
+    });
+
+    expect(result.counts.accommodationsStudentsNotUsed).toBe(1);
+    expect(result.children[0].fields.accommodations).toBeNull();
+  });
+
+  it('refuses to attach a record whose birth date contradicts the row', () => {
+    const result = plan({
+      goalsStudents: [],
+      datesRecords: [],
+      servicesStudents: [servicesStudent()],
+      testingStudents: [testingStudent({ dateOfBirth: '2015-01-01' })],
+    });
+
+    expect(result.counts.testingStudentsNotUsed).toBe(1);
+    expect(result.children[0].fields.testingAccommodations).toBeNull();
+  });
+
+  it('does not duplicate a service line when two records reach one row', () => {
+    // A blank-grade second record legitimately folds into the first student's
+    // row; repeating the line would double the weekly minutes the claim
+    // planner sums from these.
+    const result = plan({
+      goalsStudents: [],
+      datesRecords: [],
+      servicesStudents: [servicesStudent(), servicesStudent({ gradeLevel: '' })],
+    });
+
+    expect(result.children).toHaveLength(1);
+    expect(result.children[0].fields.districtServices).toEqual([serviceLine()]);
+  });
+
+  it('creates a roster row for a student only the Services report mentions', () => {
+    const result = plan({
+      goalsStudents: [],
+      datesRecords: [],
+      servicesStudents: [
+        servicesStudent({ firstName: 'Rex', lastName: 'Edsinger', gradeLevel: 'TK' }),
+      ],
+    });
+    expect(result.children).toHaveLength(1);
+    expect(result.children[0].action).toBe('create');
+    expect(result.children[0].fields.gradeLevel).toBe('TK');
+    expect(result.children[0].fields.districtServices).toEqual([serviceLine()]);
+  });
+
+  it('refuses to attach data when two roster students share the name, and counts it', () => {
+    const twins = [
+      goalsStudent({ districtStudentId: '100001' }),
+      goalsStudent({ districtStudentId: '100002' }),
+    ];
+    const result = plan({
+      goalsStudents: twins,
+      datesRecords: [],
+      servicesStudents: [servicesStudent()],
+    });
+    expect(result.counts.servicesStudentsNotUsed).toBe(1);
+    for (const child of result.children) {
+      expect(child.fields.districtServices).toBeNull();
+    }
+  });
+
+  it('treats identical stored district data as unchanged, whatever the jsonb key order', () => {
+    const stored = JSON.parse(
+      // Key order scrambled the way jsonb re-orders it.
+      '[{"weeklyMinutes":30,"name":"Language and Speech","minutes":30,"frequency":"weekly","code":"415"}]',
+    );
+    const result = plan({
+      servicesStudents: [servicesStudent()],
+      accommodationsStudents: [accommodationsStudent()],
+      existingChildren: [
+        existingChild({
+          districtServices: stored,
+          accommodations: ['Extended time', 'Modification: Shortened assignments'],
+          testingAccommodations: ['Text-to-Speech (Reading Passages)'],
+          dateOfBirth: '2019-05-04',
+          caseManager: 'Casey Manager',
+        }),
+      ],
+    });
+    expect(result.children[0].action).toBe('unchanged');
+  });
+
+  it('merges the child\'s stored list with the district\'s, never replacing it', () => {
+    // The SPE-347 mirror writes provider-accepted entries onto these child
+    // columns; a wholesale replace would drop them on every re-import and then
+    // re-flag the student forever as the mirror wrote them back.
+    const result = plan({
+      accommodationsStudents: [accommodationsStudent()],
+      existingChildren: [
+        existingChild({
+          accommodations: ['Provider-added entry', 'Extended time'],
+        }),
+      ],
+    });
+    const child = result.children[0];
+    expect(child.fields.accommodations).toEqual([
+      'Provider-added entry',
+      'Extended time',
+      'Modification: Shortened assignments',
+    ]);
+    expect(child.changedFields).toContain('accommodations');
+
+    // Once the child holds every district entry, a re-import reads unchanged.
+    const again = plan({
+      accommodationsStudents: [accommodationsStudent()],
+      existingChildren: [
+        existingChild({
+          accommodations: ['Provider-added entry', 'Extended time', 'Modification: Shortened assignments'],
+          testingAccommodations: ['Text-to-Speech (Reading Passages)'],
+        }),
+      ],
+    });
+    expect(again.children[0].action).toBe('unchanged');
+  });
+
+  it('never erases stored district data when the file was not uploaded', () => {
+    const result = plan({
+      existingChildren: [
+        existingChild({
+          accommodations: ['Provider-kept entry'],
+          testingAccommodations: ['Masking (embedded)'],
+          districtServices: [serviceLine()],
+        }),
+      ],
+    });
+    const child = result.children[0];
+    expect(child.action).toBe('unchanged');
+    expect(child.changedFields).toEqual([]);
+    // And the fields carry null, which the writer drops from the UPDATE.
+    expect(child.fields.accommodations).toBeNull();
+    expect(child.fields.districtServices).toBeNull();
+  });
+
+  it('fills a missing district ID from the Accommodations report but never overwrites one', () => {
+    const filled = plan({
+      goalsStudents: [goalsStudent({ districtStudentId: undefined })],
+      datesRecords: [],
+      accommodationsStudents: [accommodationsStudent({ districtStudentId: '200002' })],
+    });
+    expect(filled.children[0].fields.districtStudentId).toBe('200002');
+
+    const kept = plan({
+      goalsStudents: [goalsStudent({ districtStudentId: '100001' })],
+      datesRecords: [],
+      accommodationsStudents: [accommodationsStudent({ districtStudentId: '999999' })],
+    });
+    expect(kept.children[0].fields.districtStudentId).toBe('100001');
+  });
+});
+
+describe('same-name students across a supplemental-only upload (Codex review, PR #917)', () => {
+  it('creates two rows for same-named students in different grades, folding neither into the other', () => {
+    const result = plan({
+      goalsStudents: [],
+      datesRecords: [],
+      testingStudents: [
+        testingStudent({ gradeLevel: '1', testingAccommodations: ['Masking (embedded)'] }),
+        testingStudent({ gradeLevel: '4', testingAccommodations: ['Separate Setting (non-embedded)'] }),
+      ],
+    });
+    expect(result.children).toHaveLength(2);
+    const byGrade = new Map(result.children.map((c) => [c.fields.gradeLevel, c]));
+    expect(byGrade.get('1')!.fields.testingAccommodations).toEqual(['Masking (embedded)']);
+    expect(byGrade.get('4')!.fields.testingAccommodations).toEqual(['Separate Setting (non-embedded)']);
+  });
+
+  it('does not attach a graded record onto a roster student whose grade contradicts it', () => {
+    const result = plan({
+      goalsStudents: [goalsStudent({ gradeLevel: '1' })],
+      datesRecords: [],
+      servicesStudents: [servicesStudent({ gradeLevel: '4' })],
+    });
+    // The grade-4 services student is a different child: their own row.
+    expect(result.children).toHaveLength(2);
+    const grade1 = result.children.find((c) => c.fields.gradeLevel === '1')!;
+    expect(grade1.fields.districtServices).toBeNull();
+    const grade4 = result.children.find((c) => c.fields.gradeLevel === '4')!;
+    expect(grade4.fields.districtServices).toEqual([serviceLine()]);
   });
 });
