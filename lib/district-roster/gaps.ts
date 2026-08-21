@@ -216,23 +216,33 @@ function classifyChild(
 }
 
 /**
- * The key a group is collected under: one per case-manager spelling per kind.
+ * The key a group is collected under: kind, case-manager spelling, and the
+ * account that spelling resolved to for these students.
  *
- * Deliberately the spelling, not the account it resolved to. Where a district's
- * files carry both "Antoinette Bentley" and "Toni Bentley", both reach the same
- * provider and each keeps its own row — which is the honest report, and shows
- * the admin their SEIS data disagrees with itself. Folding them would hide it.
+ * The SPELLING is kept, not replaced by the account. Where a district's files
+ * carry both "Antoinette Bentley" and "Toni Bentley", both reach the same
+ * provider and each keeps its own row — the honest report, and it shows the
+ * admin their SEIS data disagrees with itself. Folding them would hide it.
  *
- * CASE is folded, though: "DENISE DOMICH" and "Denise Domich" are one group,
- * because a difference only of case says nothing an admin could act on.
+ * The ACCOUNT is in the key because one spelling can resolve to DIFFERENT people
+ * for different students: two providers named "Sam Reyes" working at different
+ * campuses each cover their own school's children. Keying on the name alone put
+ * both sets in one row headed by whichever account the first child happened to
+ * match, which sends the admin to nudge the wrong specialist.
  *
- * `kind` is part of the key, so one case manager legitimately appears twice when
- * their students split across campuses they do and don't work at. The separator
- * is a NUL, which a name cannot contain, so two distinct (kind, name) pairs can
- * never collide on one key.
+ * CASE is folded: "DENISE DOMICH" and "Denise Domich" are one group, because a
+ * difference only of case says nothing an admin could act on.
+ *
+ * `kind` is part of the key too, so one case manager legitimately appears twice
+ * when their students split across campuses they do and don't work at. Every
+ * separator is a NUL, which neither a name nor a uuid can contain, so no two
+ * distinct triples can collide on one key.
  */
-const groupKey = (kind: RosterGapKind, caseManager: string): string =>
-  `${kind}\u0000${caseManager.toLowerCase()}`;
+const groupKey = (
+  kind: RosterGapKind,
+  caseManager: string,
+  account: GapStaffInput | null,
+): string => `${kind}\u0000${caseManager.toLowerCase()}\u0000${account?.id ?? ''}`;
 
 /**
  * Sort students the way an admin reads them: by school, then by name, so a
@@ -317,7 +327,7 @@ export function planRosterGaps(input: RosterGapsInput): RosterGaps {
 
     countsByKind[kind]++;
 
-    const key = groupKey(kind, caseManager);
+    const key = groupKey(kind, caseManager, account);
     let group = byGroup.get(key);
     if (!group) {
       group = {

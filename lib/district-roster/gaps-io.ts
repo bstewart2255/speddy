@@ -185,7 +185,9 @@ const PUBLISH_HISTORY = 20;
  *
  * Read back over the recent attempts rather than filtering server-side: the test
  * is "completed cleanly OR wrote something", which is a condition over two jsonb
- * fields that PostgREST cannot express in one filter.
+ * fields that PostgREST cannot express in one filter. A district whose last
+ * `PUBLISH_HISTORY` attempts ALL wrote nothing reads as never-published, and the
+ * open uploader that follows is the right answer for it.
  */
 export async function loadLastPublishedAt(districtId: string): Promise<string | null> {
   const supabase = createServiceClient();
@@ -209,12 +211,18 @@ export async function loadLastPublishedAt(districtId: string): Promise<string | 
     return null;
   }
 
+  // Excludes ONLY a row this can positively identify as a run that wrote
+  // nothing. Every other shape counts as a publish, including metadata that is
+  // missing or unreadable: the cost of wrongly excluding one is telling a
+  // district with a live roster it has never published, which springs the
+  // uploader open — the exact failure this function exists to prevent, just
+  // from the other side.
   const landed = (metadata: unknown): boolean => {
-    if (typeof metadata !== 'object' || metadata === null) return false;
+    if (typeof metadata !== 'object' || metadata === null) return true;
     const meta = metadata as { partial?: unknown; created?: unknown; updated?: unknown };
     if (meta.partial !== true) return true;
     const written = Number(meta.created ?? 0) + Number(meta.updated ?? 0);
-    return Number.isFinite(written) && written > 0;
+    return !Number.isFinite(written) || written > 0;
   };
 
   for (const row of data ?? []) {

@@ -86,10 +86,11 @@ function isGapsResponse(value: unknown): value is GapsResponse {
 }
 
 function GapGroup({ group }: { group: RosterGapGroup }) {
+  // Belt to the caller's braces: the render loop only ever passes kinds it
+  // filtered for, so this cannot fire today — but reading `.tone` off undefined
+  // would take the whole panel down, and the students an unknown kind carries
+  // are reported by the unaccounted-for line instead of vanishing.
   const copy = KIND_COPY[group.kind];
-  // A browser still holding the previous deploy's bundle after a new kind ships
-  // would otherwise read `.tone` off undefined and take the whole panel down —
-  // losing every group it DOES understand over one it doesn't.
   if (!copy) return null;
   return (
     <div className={`rounded-md border px-3 py-2.5 ${copy.tone}`}>
@@ -216,6 +217,28 @@ export default function DistrictRosterGapsPanel({
 
   const { gaps } = data;
 
+  /**
+   * Students under one reason. Falls back to summing that reason's own groups
+   * rather than trusting `countsByKind` to be present: a response shape this
+   * client doesn't fully know should cost a number, not the panel.
+   */
+  const countFor = (kind: RosterGapKind): number =>
+    gaps.countsByKind?.[kind] ??
+    gaps.groups.filter((g) => g.kind === kind).reduce((n, g) => n + g.studentCount, 0);
+
+  /**
+   * Students this build cannot file under any reason it knows.
+   *
+   * Only reachable when the server has shipped a new reason and this browser is
+   * still on the previous bundle. Rendering the known groups and saying nothing
+   * would leave a list SHORTER than the "N of M" headline above it — which reads
+   * as "that's all of them", the one thing this view must never imply.
+   */
+  const unaccounted = Math.max(
+    0,
+    gaps.totalUnserved - KIND_ORDER.reduce((n, kind) => n + countFor(kind), 0),
+  );
+
   if (gaps.totalOnRoster === 0) {
     return (
       <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-500">
@@ -255,23 +278,30 @@ export default function DistrictRosterGapsPanel({
                 <div className="flex items-baseline justify-between gap-3">
                   <h3 className="text-xs font-semibold text-slate-900">{copy.heading}</h3>
                   <span className="text-xs tabular-nums text-slate-500">
-                    {/* Falls back to the groups themselves rather than trusting
-                        `countsByKind` to be there: a response shape this client
-                        doesn't fully know should cost a number, not the panel. */}
-                    {gaps.countsByKind?.[kind] ??
-                      groups.reduce((n, g) => n + g.studentCount, 0)}{' '}
-                    student(s)
+                    {countFor(kind)} student(s)
                   </span>
                 </div>
                 <p className="mt-0.5 max-w-3xl text-xs text-slate-500">{copy.why}</p>
                 <div className="mt-1.5 space-y-1.5">
-                  {groups.map((group) => (
-                    <GapGroup key={`${group.kind}:${group.caseManager ?? ''}`} group={group} />
+                  {groups.map((group, i) => (
+                    // Indexed, because one case-manager spelling can now produce
+                    // two groups of the same kind — one per resolved account —
+                    // and nothing else on the group distinguishes two same-named
+                    // providers who also share a role. The list arrives in a
+                    // deterministic server order and is replaced wholesale.
+                    <GapGroup key={`${kind}:${i}`} group={group} />
                   ))}
                 </div>
               </section>
             );
           })}
+
+          {unaccounted > 0 && (
+            <p className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+              {unaccounted} more student(s) are not connected to a provider for a reason this
+              page does not recognize. Reload to pick up the latest version of Speddy.
+            </p>
+          )}
         </div>
       )}
     </div>

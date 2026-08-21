@@ -94,6 +94,22 @@ describe('loadLastPublishedAt', () => {
     await expect(loadLastPublishedAt(DISTRICT_ID)).resolves.toBe('2026-08-19T12:00:00Z');
   });
 
+  it('treats unreadable metadata as a publish, not a failure', async () => {
+    // Only a row provably identifiable as "wrote nothing" is skipped. Guessing
+    // the other way tells a district with a live roster it never published,
+    // which springs the uploader open — the failure from the opposite side.
+    for (const metadata of [null, 'not an object', 42]) {
+      rows = [{ timestamp: '2026-08-19T12:00:00Z', metadata }];
+      await expect(loadLastPublishedAt(DISTRICT_ID)).resolves.toBe('2026-08-19T12:00:00Z');
+    }
+  });
+
+  it('treats a partial run with unreadable counts as a publish', async () => {
+    rows = [attempt('2026-08-19T12:00:00Z', { partial: true, created: 'lots', updated: null })];
+
+    await expect(loadLastPublishedAt(DISTRICT_ID)).resolves.toBe('2026-08-19T12:00:00Z');
+  });
+
   it('answers null rather than throwing when the history cannot be read', async () => {
     // The gaps themselves are what the page is for — a missing "last published"
     // line beats an empty page.

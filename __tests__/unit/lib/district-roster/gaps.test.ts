@@ -32,13 +32,21 @@ const child = (over: Partial<GapChildInput> = {}): GapChildInput => ({
   ...over,
 });
 
-/** Defaults to working at the school `child()` puts students at. */
+/**
+ * Defaults to working at both schools `child()` can put students at.
+ *
+ * The id is a counter, NOT derived from the name: two colleagues can share a
+ * name (that is half of what this module exists to handle) and never share an
+ * account id. A name-derived id made two distinct providers indistinguishable
+ * and quietly turned a real grouping test green.
+ */
+let staffSeq = 0;
 const staff = (
   fullName: string,
   role: string,
   schoolIds: string[] = ['sch-rodeo', 'sch-high'],
 ): GapStaffInput => ({
-  id: `staff-${fullName}`,
+  id: `staff-${++staffSeq}`,
   fullName,
   role,
   schoolIds,
@@ -52,6 +60,7 @@ const run = (
 
 beforeEach(() => {
   seq = 0;
+  staffSeq = 0;
 });
 
 describe('who is stranded, and why', () => {
@@ -142,6 +151,14 @@ describe('who is stranded, and why', () => {
 
     expect(gaps.countsByKind['awaiting-provider-claim']).toBe(2);
     expect(gaps.countsByKind['case-manager-at-another-school']).toBe(0);
+
+    // ...and each student is filed under the provider who can actually reach
+    // them. Counting alone passed while both landed in one group headed by
+    // whichever account the first child matched, which would send the admin to
+    // nudge the wrong specialist.
+    expect(gaps.groups).toHaveLength(2);
+    expect(gaps.groups.map((g) => g.accountRoleLabel).sort()).toEqual(['Resource', 'Speech']);
+    expect(gaps.groups.every((g) => g.studentCount === 1)).toBe(true);
   });
 
   it('still reports another-school when no same-named provider covers the school', () => {
