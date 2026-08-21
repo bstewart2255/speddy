@@ -1730,12 +1730,13 @@ flowchart TD
 K-8 and K-12 combined sites are treated as **elementary** by product decision
 (they run elementary-style scheduling for their lower grades).
 
-**What a secondary site changes** (all client-side, in the six files that read
+**What a secondary site changes** (all client-side, in the components that read
 `isSecondary`):
 
 | Surface | Behavior on secondary | Where |
 |---|---|---|
-| Nav (`SECONDARY_HIDDEN_HREFS`) | Hides Schedule, Bell Schedules, Special Activities, Plan, teacher Special Activities | `app/components/navigation/navbar.tsx` |
+| Nav (`SECONDARY_HIDDEN_HREFS`) | Hides Schedule, Bell Schedules, Special Activities, Plan, teacher Special Activities — **role-aware since SPE-490/SPE-513**: the related-service roles (`canScheduleAtSecondary` — speech/OT/counseling/psych) lose Special Activities only, and `resource` loses Special Activities + Plan | `app/components/navigation/navbar.tsx` |
+| Schedule (Main Schedule) | `resource` gets the period week view instead of the time grid (SPE-513); every other role keeps the grid, gains "Add Protected Time" (SPE-492), and loses the **Visual Availability Filters** card — its grade and teacher shading can't be accurate above elementary (SPE-588), so the card is hidden and `useVisualFilters` is disabled in step, leaving no stored selection to shade the grid behind it | `app/(dashboard)/dashboard/schedule/page.tsx`; `hooks/useVisualFilters.ts` |
 | Dashboard | Hides the provider Weekly-view + Attendance widget | `app/(dashboard)/dashboard/page.tsx` |
 | Students list | Hides the "unscheduled sessions" alert; for a **resource** provider, service minutes display/edit as a weekly total ("570 min/week") instead of sessions × minutes | `app/(dashboard)/dashboard/students/page.tsx` |
 | Student modal | Hides the Attendance tab; Sessions/Minutes fields hidden — except a **resource** provider gets a single "Service Minutes per Week" field | `app/components/students/student-details-modal.tsx` |

@@ -9,11 +9,14 @@ export type VisualFilters = {
   studentId: string | null; // student_id (UUID)
 };
 
-const DEFAULT_VISUAL_FILTERS: VisualFilters = {
+// Frozen because a disabled hook hands this very object to its caller (one
+// stable reference, so consumers don't re-render on every tick) — nothing
+// downstream may reach back through it and mutate the default.
+const DEFAULT_VISUAL_FILTERS: VisualFilters = Object.freeze({
   grade: null,
   teacherId: null,
   studentId: null,
-};
+});
 
 // Use v2 key to force clean migration from old format
 const VISUAL_FILTERS_KEY = 'speddy-visual-filters-v2';
@@ -45,13 +48,23 @@ const loadVisualFilters = (schoolId?: string | null): VisualFilters => {
   }
 };
 
+/**
+ * @param enabled Whether the Visual Availability Filters panel is offered at
+ *   all. False at secondary sites (SPE-588), where the panel is hidden: with no
+ *   control on screen, a filter left in storage — set here before the panel was
+ *   hidden, or carried over from another school — would shade the grid with no
+ *   way to clear it. Disabled means defaults in, nothing out: storage is not
+ *   written, and it is re-read when the panel comes back, so an elementary
+ *   school's saved selections survive a trip through a secondary site.
+ */
 export const useVisualFilters = (
   schoolId: string | null | undefined,
   teachers: readonly Teacher[],
-  students: readonly Student[]
+  students: readonly Student[],
+  enabled = true
 ) => {
   const [visualFilters, setVisualFilters] = useState<VisualFilters>(() =>
-    loadVisualFilters(schoolId)
+    enabled ? loadVisualFilters(schoolId) : DEFAULT_VISUAL_FILTERS
   );
   const filterSaveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -71,9 +84,28 @@ export const useVisualFilters = (
     []
   );
 
+  // Re-entering an enabled school reloads its stored filters. Without this the
+  // state carried in from the disabled stretch — defaults — would be persisted
+  // straight over the destination's saved selection by the effect below. The
+  // disabled stretch is easy to reach: switching to a secondary site unmounts
+  // MainSchedule while SchedulePage fetches the role, so the hook remounts
+  // disabled and its useState initializer never runs again on the way back.
+  // Deliberately keyed on the enabled transition only, not on schoolId: two
+  // enabled schools keep today's carry-over behavior, which is SPE-591's call
+  // to make, not this change's.
+  const wasEnabled = useRef(enabled);
   useEffect(() => {
+    const reEnabled = enabled && !wasEnabled.current;
+    wasEnabled.current = enabled;
+    if (reEnabled) {
+      setVisualFilters(loadVisualFilters(schoolId));
+    }
+  }, [enabled, schoolId]);
+
+  useEffect(() => {
+    if (!enabled) return;
     persistFilters(visualFilters, schoolId);
-  }, [persistFilters, schoolId, visualFilters]);
+  }, [enabled, persistFilters, schoolId, visualFilters]);
 
   useEffect(() => {
     return () => {
@@ -85,7 +117,11 @@ export const useVisualFilters = (
 
   // Validate teacherId still exists
   useEffect(() => {
-    if (!schoolId || !visualFilters.teacherId) {
+    // Disabled means this school's lists say nothing about the retained
+    // selection — it belongs to the school the provider came FROM. Validating
+    // it here would null it out as "missing", and re-enabling on the way back
+    // would then persist that emptied state over their saved filters.
+    if (!enabled || !schoolId || !visualFilters.teacherId) {
       return;
     }
 
@@ -105,11 +141,12 @@ export const useVisualFilters = (
         teacherId: null,
       }));
     }
-  }, [schoolId, teachers, visualFilters.teacherId]);
+  }, [enabled, schoolId, teachers, visualFilters.teacherId]);
 
   // Validate studentId still exists
   useEffect(() => {
-    if (!schoolId || !visualFilters.studentId) {
+    // Skipped while disabled for the same reason as the teacher check above.
+    if (!enabled || !schoolId || !visualFilters.studentId) {
       return;
     }
 
@@ -129,7 +166,13 @@ export const useVisualFilters = (
         studentId: null,
       }));
     }
-  }, [schoolId, students, visualFilters.studentId]);
+  }, [enabled, schoolId, students, visualFilters.studentId]);
 
-  return { visualFilters, setVisualFilters } as const;
+  // Held at defaults while disabled rather than trusted: switching schools does
+  // not remount this hook, so the state can still carry what the provider chose
+  // at an elementary site, and that must not shade a grid whose panel is gone.
+  return {
+    visualFilters: enabled ? visualFilters : DEFAULT_VISUAL_FILTERS,
+    setVisualFilters,
+  } as const;
 };
