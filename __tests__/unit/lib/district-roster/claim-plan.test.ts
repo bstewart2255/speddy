@@ -11,6 +11,7 @@
 
 import {
   hasRosterOffers,
+  normalizeServedRole,
   planRosterClaims,
   type ClaimPlanInput,
   type ProviderStudent,
@@ -622,5 +623,17 @@ describe('role-based claiming (SPE-577)', () => {
       myRole: 'ot',
     });
     expect(result.counts.claimable).toBe(0);
+  });
+
+  it('normalizeServedRole folds raw profile text into the family vocabulary', () => {
+    // The role-family tables are lowercase and the RPC compares
+    // lower(btrim(…)); the loader folds through this so both layers speak the
+    // same alphabet — a 'Speech '-cased caseload row must still block speech.
+    expect(normalizeServedRole(' Speech ')).toBe('speech');
+    expect(planFor('speech', servedBy(normalizeServedRole(' Speech '))).counts.claimable).toBe(0);
+    // Unreadable — missing, blank, or not text — is the blocking sentinel.
+    expect(normalizeServedRole(null)).toBe('unknown');
+    expect(normalizeServedRole('   ')).toBe('unknown');
+    expect(normalizeServedRole(42)).toBe('unknown');
   });
 });

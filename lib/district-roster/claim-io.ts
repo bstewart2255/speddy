@@ -19,7 +19,7 @@
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { logger } from '@/lib/logger';
 import { updateExistingSessionsForStudent } from '@/lib/scheduling/session-requirement-sync';
-import { parseDistrictGoals, parseDistrictServices } from './claim-plan';
+import { normalizeServedRole, parseDistrictGoals, parseDistrictServices } from './claim-plan';
 import type { ClaimPlan, ProviderStudent, RosterChild, RosterFieldKey } from './claim-plan';
 import type { SchoolLevelInput } from '@/lib/school-helpers';
 
@@ -205,17 +205,20 @@ export async function loadProviderRosterContext(
         const id = String(row.child_id);
         served.set(id, (served.get(id) ?? 0) + 1);
         // The embed is many-to-one, but PostgREST's shape varies by client
-        // version — accept object or one-element array. A row whose provider
-        // role cannot be read records the 'unknown' sentinel, which the
-        // planner treats as blocking EVERY role: an unreadable caseload must
-        // close the child, never open it.
+        // version — accept object or one-element array. Roles are folded
+        // through normalizeServedRole so they compare against the lowercase
+        // role-family tables the way the RPC's lower(btrim(…)) does; a row
+        // whose provider role cannot be read becomes the 'unknown' sentinel,
+        // which the planner treats as blocking EVERY role.
         const provider = Array.isArray(row.provider) ? row.provider[0] : row.provider;
-        const role =
-          provider && typeof provider === 'object'
-            ? String((provider as Record<string, unknown>).role ?? '')
-            : '';
         const set = servedRoles.get(id) ?? new Set<string>();
-        set.add(role === '' ? 'unknown' : role);
+        set.add(
+          normalizeServedRole(
+            provider && typeof provider === 'object'
+              ? (provider as Record<string, unknown>).role
+              : null,
+          ),
+        );
         servedRoles.set(id, set);
       }
       if (rows.length < DB_PAGE) break;

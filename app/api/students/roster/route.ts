@@ -94,10 +94,11 @@ export const GET = withRoute({}, async ({ userId }) => {
  * The plan is RECOMPUTED server-side before anything is written, and only what
  * it currently offers is honoured: the request names a student and a field, it
  * never carries the value. Claiming goes through `claim_roster_children`, which
- * enforces "a student at a school you work at, not served by a provider of a
- * blocking role" in the database rather than here (SPE-577's role-family
- * table; any caseload at all refuses when the child carries no services data)
- * — so this route cannot widen it, and neither can a future one.
+ * enforces the planner's whole decision table in the database rather than
+ * here: a student at a school you work at, with a service line your discipline
+ * delivers, not served by a provider of a blocking role (SPE-577); any
+ * caseload at all refuses when the child carries no routable services — so
+ * this route cannot widen it, and neither can a future one.
  */
 export const POST = withRoute<Record<string, string>, z.infer<typeof bodySchema>>(
   {
@@ -191,7 +192,9 @@ export const POST = withRoute<Record<string, string>, z.infer<typeof bodySchema>
     // gap is overwhelmingly the same race, seen a moment earlier.
     const takenBySomeoneElse = countOf('already-served') + (requested.length - claims.length);
     // A different refusal entirely, and it is NOT a race: the student is no
-    // longer on the roster at a school this caller works at.
+    // longer on the roster at a school this caller works at — or (only via a
+    // direct call this screen never makes) carries no service line for the
+    // caller's discipline.
     const outOfScope = countOf('out-of-scope');
 
     log.info('Provider roster claim applied', {

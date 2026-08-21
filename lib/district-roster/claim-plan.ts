@@ -66,9 +66,10 @@ export interface RosterChild {
   districtGoals: RosterDistrictGoals | null;
   /** Caseloads currently serving this child, however many providers that is. */
   caseloadCount: number;
-  /** The DISTINCT roles of those providers ('unknown' when a role could not be
-   *  read — treated as blocking everyone). Role-based claiming (SPE-577)
-   *  decides visibility from these, not from the count. */
+  /** The DISTINCT roles of those providers, folded through normalizeServedRole
+   *  (lowercase/trimmed; 'unknown' when a role could not be read — treated as
+   *  blocking everyone). Role-based claiming (SPE-577) decides visibility from
+   *  these, not from the count. */
   servedRoles: string[];
 }
 
@@ -387,6 +388,20 @@ export function blockingRolesFor(role: string | null | undefined): readonly stri
   }
 }
 
+/**
+ * One vocabulary for caseload roles. The family tables above are lowercase, so
+ * raw profile text is folded to lowercase/trimmed at the boundary — the claim
+ * RPC applies lower(btrim(…)) to the same effect, keeping what the planner
+ * offers and what the database accepts in the same alphabet. Anything
+ * unreadable (missing, blank, not text) becomes the 'unknown' sentinel, which
+ * blocks every discipline: an unreadable caseload must close the child, never
+ * open it.
+ */
+export function normalizeServedRole(role: unknown): string {
+  const text = typeof role === 'string' ? role.trim().toLowerCase() : '';
+  return text === '' ? 'unknown' : text;
+}
+
 /** Whether the district's services include a line this role delivers. */
 const hasServiceForRole = (
   services: DistrictServiceLine[] | null,
@@ -457,8 +472,8 @@ export function planRosterClaims(input: ClaimPlanInput): ClaimPlan {
     //     (adapted PE, behavior intervention…) — keeps the original rule for
     //     every role: with nothing saying whose student this is, any caseload
     //     hides them, and everyone at the school is shown the unserved ones.
-    //     The RPC enforces the no-services-data arm too; the unmapped-codes
-    //     refinement lives only here, where the code table is.
+    //     The RPC enforces this whole table, service arms included — what this
+    //     planner offers is exactly what the database will accept.
     //
     // A same-discipline takeover remains SPE-348's flow, with its own
     // confirmation — and the database refuses it through this path regardless
