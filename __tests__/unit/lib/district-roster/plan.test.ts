@@ -17,6 +17,7 @@ import {
   type RosterFileStudent,
   type RosterPlanInput,
 } from '@/lib/district-roster/plan';
+import { normalizeGradeLevel } from '@/lib/utils/grade-parser';
 
 const SCHOOLS: DistrictSchool[] = [
   { id: 'sch-rodeo', name: 'Rodeo Hills Elementary' },
@@ -912,17 +913,99 @@ describe('one-grade vintage skew between files (SPE-578, the Gracelynn duplicate
     expect(result.children).toHaveLength(2);
   });
 
-  it('proof does not span more than one grade', () => {
-    // Same birth date but three grades apart is a data problem to show the
-    // admin as two rows, not a merge to guess at.
+  it('proof confirms across ANY grade gap — matching birth dates are the student (SPE-580)', () => {
+    // identityDoubt's rule, now mirrored in-batch: JSUSD shipped a TK-vs-
+    // grade-1 pair with one birth date. The higher grade still wins.
     const result = plan({
       goalsStudents: [
-        goalsStudent({ gradeLevel: '1', dateOfBirth: '2018-03-04', districtStudentId: undefined }),
+        goalsStudent({ gradeLevel: 'TK', dateOfBirth: '2020-05-07', districtStudentId: undefined }),
       ],
       datesRecords: [],
-      servicesStudents: [servicesStudent({ gradeLevel: '4', dateOfBirth: '2018-03-04' })],
+      servicesStudents: [servicesStudent({ gradeLevel: '1', dateOfBirth: '2020-05-07' })],
+    });
+    expect(result.children).toHaveLength(1);
+    expect(result.children[0].fields.gradeLevel).toBe('1');
+    expect(result.children[0].fields.districtServices).toEqual([serviceLine()]);
+  });
+
+  it('a matching district id spans grades too — two children cannot share one', () => {
+    // ux_children_district_student_id is unique per district: the same id IS
+    // the same student. (A refusal here used to hand the duplicate-id pass a
+    // second row with the same id, and it excluded BOTH copies under a
+    // misleading duplicate-in-files exception.)
+    const result = plan({
+      goalsStudents: [goalsStudent({ gradeLevel: '1', districtStudentId: '100001' })],
+      datesRecords: [],
+      accommodationsStudents: [
+        accommodationsStudent({ gradeLevel: '3', districtStudentId: '100001' }),
+      ],
+    });
+    expect(result.children).toHaveLength(1);
+    expect(result.children[0].fields.gradeLevel).toBe('3');
+  });
+
+  it('birth-date proof does NOT span schools beyond one grade', () => {
+    // The name-only fallback reaches across schools (its job is misspelled
+    // school names), where two same-named students sharing a birth date is a
+    // coincidence, not proof. Grade 1 at one school and grade 8 at another
+    // stay two children even with one birth date.
+    const result = plan({
+      goalsStudents: [
+        goalsStudent({ gradeLevel: '8', dateOfBirth: '2018-03-04', districtStudentId: undefined, schoolOfAttendance: 'John Swett High' }),
+      ],
+      datesRecords: [],
+      servicesStudents: [servicesStudent({ gradeLevel: '1', dateOfBirth: '2018-03-04' })],
     });
     expect(result.children).toHaveLength(2);
+  });
+
+  it('birth-date proof still bridges ONE grade on the cross-school fallback', () => {
+    // A misspelled school plus a vintage rollover is the fallback's bread and
+    // butter — one grade of reach stays, exactly as SPE-578 shipped it.
+    const result = plan({
+      goalsStudents: [
+        goalsStudent({ gradeLevel: '3', dateOfBirth: '2018-03-04', districtStudentId: undefined, schoolOfAttendance: 'John Swett High' }),
+      ],
+      datesRecords: [],
+      servicesStudents: [servicesStudent({ gradeLevel: '2', dateOfBirth: '2018-03-04' })],
+    });
+    expect(result.children).toHaveLength(1);
+    expect(result.children[0].fields.gradeLevel).toBe('3');
+  });
+
+  it("the parser's Preschool label and the planner's rank stay in lockstep", () => {
+    // GRADE_RANK keys the label normalizeGradeLevel emits for SEIS code 17;
+    // this pin routes the actual parser output through the planner so a
+    // relabel in either module fails a test instead of silently unranking
+    // the youngest cohort.
+    const result = plan({
+      goalsStudents: [
+        goalsStudent({
+          gradeLevel: normalizeGradeLevel('17'),
+          dateOfBirth: '2023-01-02',
+          districtStudentId: undefined,
+        }),
+      ],
+      datesRecords: [],
+      servicesStudents: [servicesStudent({ gradeLevel: 'TK', dateOfBirth: '2023-01-02' })],
+    });
+    expect(result.children).toHaveLength(1);
+    expect(result.children[0].fields.gradeLevel).toBe('TK'); // one rollover above Preschool
+  });
+
+  it('grade 12 and the Transition year sit one rollover apart (SPE-580)', () => {
+    // SEIS codes the 18–22 year as grade 13; the parsers hand it to this
+    // planner as 'Transition', ranked just above 12.
+    const result = plan({
+      goalsStudents: [
+        goalsStudent({ gradeLevel: 'Transition', dateOfBirth: '2007-12-18', districtStudentId: undefined }),
+      ],
+      datesRecords: [],
+      servicesStudents: [servicesStudent({ gradeLevel: '12', dateOfBirth: '2007-12-18' })],
+    });
+    expect(result.children).toHaveLength(1);
+    expect(result.children[0].fields.gradeLevel).toBe('Transition');
+    expect(result.children[0].fields.districtServices).toEqual([serviceLine()]);
   });
 
   it('proof singles a student out of a name clash the compatible ladder cannot resolve', () => {

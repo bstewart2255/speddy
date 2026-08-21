@@ -557,6 +557,12 @@ export function StudentDetailsModal({
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
                     disabled={readOnly}
                   >
+                    {/* Preschool and Transition are recognized-but-unscheduled
+                        grades (SPE-580): claimed district-roster students carry
+                        them, so the select must display and re-offer them —
+                        without them a preschooler's grade rendered blank and
+                        could only ever be replaced by a scheduling grade. */}
+                    <option value="Preschool">Preschool</option>
                     <option value="TK">Transitional Kindergarten</option>
                     <option value="K">Kindergarten</option>
                     <option value="1">1st Grade</option>
@@ -571,6 +577,7 @@ export function StudentDetailsModal({
                     <option value="10">10th Grade</option>
                     <option value="11">11th Grade</option>
                     <option value="12">12th Grade</option>
+                    <option value="Transition">Transition</option>
                   </select>
                 </FormGroup>
 

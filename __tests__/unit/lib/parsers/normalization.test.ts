@@ -48,8 +48,21 @@ describe('normalizeGradeLevel — CSV copy (lib/parsers/csv-parser.ts)', () => {
   });
 
   it('returns out-of-range numeric grades unchanged', () => {
-    // 13 is neither 1-12, nor a SEIS special case -> passed through as-is.
-    expect(normalizeGradeLevelCsv('13')).toBe('13');
+    // 14 is neither 1-12 nor a SEIS special case -> passed through as-is.
+    // (13 and 17 stopped being examples of this when SPE-580 mapped them.)
+    expect(normalizeGradeLevelCsv('14')).toBe('14');
+  });
+
+  it('maps the SEIS preschool and transition codes to their labels (SPE-580)', () => {
+    expect(normalizeGradeLevelCsv('17')).toBe('Preschool');
+    expect(normalizeGradeLevelCsv('Preschool')).toBe('Preschool');
+    expect(normalizeGradeLevelCsv('13')).toBe('Transition');
+    expect(normalizeGradeLevelCsv('Transition')).toBe('Transition');
+    // "Transitional Kindergarten" keeps meaning TK, never Transition — and a
+    // bare "Transitional" more plausibly means TK, so it deliberately passes
+    // through unnormalized rather than being guessed either way.
+    expect(normalizeGradeLevelCsv('Transitional Kindergarten')).toBe('TK');
+    expect(normalizeGradeLevelCsv('Transitional')).toBe('Transitional');
   });
 
   it('normalizes spelled-out grades (SPE-240: dropped the ordinal strip that clobbered them)', () => {
