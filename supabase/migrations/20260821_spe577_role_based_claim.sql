@@ -103,7 +103,7 @@ BEGIN
     -- with its confirmation, not this one's.)
     SELECT c.id, c.initials, c.grade_level, c.school_id, c.district_id,
            c.district_student_id, c.state_id, c.first_name, c.last_name,
-           c.upcoming_iep_date, c.upcoming_triennial_date
+           c.upcoming_iep_date, c.upcoming_triennial_date, c.district_services
       INTO v_child
       FROM public.children c
      WHERE c.id = v_id
@@ -125,7 +125,9 @@ BEGIN
     -- caseload (whatever their role says today), or when a provider of a
     -- blocking role serves them. A provider of a DIFFERENT discipline no
     -- longer closes the child: the speech therapist claiming a student stops
-    -- blocking the OT.
+    -- blocking the OT. A child with NO services data keeps SPE-447's rule at
+    -- the database too — with nothing saying whose student this is, ANY
+    -- caseload row refuses, matching the planner's fallback arm.
     IF EXISTS (
          SELECT 1 FROM public.students st
          WHERE st.child_id = v_id AND st.provider_id = v_caller
@@ -136,6 +138,12 @@ BEGIN
            JOIN public.profiles p ON p.id = st.provider_id
           WHERE st.child_id = v_id
             AND p.role = ANY(v_family)
+       )
+       OR (
+         (v_child.district_services IS NULL
+          OR jsonb_typeof(v_child.district_services) <> 'array'
+          OR jsonb_array_length(v_child.district_services) = 0)
+         AND EXISTS (SELECT 1 FROM public.students st WHERE st.child_id = v_id)
        )
     THEN
       child_id := v_id; student_id := NULL; outcome := 'already-served';
@@ -229,5 +237,16 @@ BEGIN
   END IF;
   IF has_function_privilege('anon', 'public.claim_roster_children(uuid[])', 'EXECUTE') THEN
     RAISE EXCEPTION 'SPE-577 guard: anon must not hold EXECUTE on claim_roster_children';
+  END IF;
+  -- The handshake this function depends on must still be the one the trigger
+  -- honours (same guard the 20260819 migration carried). If SPE-348's guard is
+  -- ever renamed, claiming would fail closed (42501) at runtime — say so
+  -- loudly at apply time instead.
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'public' AND p.proname = 'students_child_link'
+      AND pg_get_functiondef(p.oid) LIKE '%app.spe348_confirmed_child_id%'
+  ) THEN
+    RAISE EXCEPTION 'SPE-577 guard: students_child_link no longer honours the SPE-348 handshake';
   END IF;
 END $$;

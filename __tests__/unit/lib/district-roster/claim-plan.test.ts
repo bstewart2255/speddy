@@ -589,6 +589,19 @@ describe('role-based claiming (SPE-577)', () => {
     expect(planFor('resource', speechOnly).counts.claimable).toBe(0);
   });
 
+  it('services no discipline delivers fall back to the everyone-sees rule', () => {
+    // SEIS lists plenty Speddy cannot route — adapted PE, behavior support,
+    // vision services. A child whose services are ALL unmapped must not
+    // vanish from every discipline's list.
+    const unmappedOnly = { districtServices: [speechLine(60, '425', 'Adapted PE')] };
+    expect(planFor('resource', unmappedOnly).counts.claimable).toBe(1);
+    expect(planFor('speech', unmappedOnly).counts.claimable).toBe(1);
+    // Any caseload hides them again — the original rule end to end.
+    expect(planFor('speech', { ...unmappedOnly, ...servedBy('ot') }).counts.claimable).toBe(0);
+    // And no minutes proposal: those minutes belong to no Speddy role.
+    expect(planFor('resource', unmappedOnly).claimable[0].minutesProposal).toBeNull();
+  });
+
   it('a child with NO services data keeps the original rule for every role', () => {
     const noData = { districtServices: null };
     expect(planFor('speech', noData).counts.claimable).toBe(1);

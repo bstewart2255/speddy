@@ -48,8 +48,9 @@ const bodySchema = z
 
 /**
  * GET /api/students/roster — what this provider is offered from their
- * district's roster (SPE-447 slice 2): students at their school that nobody
- * serves yet, and students of theirs whose details the roster has newer.
+ * district's roster (SPE-447 slice 2, role-scoped by SPE-577): students at
+ * their school whose services for THIS caller's discipline nobody has picked
+ * up, and students of theirs whose details the roster has newer.
  *
  * Everything is scoped to the caller by the caller: their schools come from
  * `user_accessible_school_ids()` run as them, and the offer can never include a
@@ -93,9 +94,10 @@ export const GET = withRoute({}, async ({ userId }) => {
  * The plan is RECOMPUTED server-side before anything is written, and only what
  * it currently offers is honoured: the request names a student and a field, it
  * never carries the value. Claiming goes through `claim_roster_children`, which
- * enforces "a student at a school you work at, whom nobody serves" in the
- * database rather than here — so this route cannot widen it, and neither can a
- * future one.
+ * enforces "a student at a school you work at, not served by a provider of a
+ * blocking role" in the database rather than here (SPE-577's role-family
+ * table; any caseload at all refuses when the child carries no services data)
+ * — so this route cannot widen it, and neither can a future one.
  */
 export const POST = withRoute<Record<string, string>, z.infer<typeof bodySchema>>(
   {

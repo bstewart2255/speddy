@@ -3,8 +3,13 @@
  *
  * Two things, and only two, per the settled design:
  *
- *   1. Students on the roster at their school that NOBODY serves yet — theirs
- *      to claim.
+ *   1. Students on the roster at their school whose services for THIS
+ *      provider's discipline nobody has picked up (SPE-577) — theirs to
+ *      claim. A student with academic, speech and OT services appears to all
+ *      three disciplines, and each claim closes only its own. Students whose
+ *      services the district's data cannot route (none listed, or none a
+ *      Speddy discipline delivers) keep the original SPE-447 rule: shown to
+ *      everyone while nobody at all serves them.
  *   2. Students they ALREADY serve where the roster holds something newer.
  *
  * Nothing here decides anything on the provider's behalf. Every change is shown
@@ -392,6 +397,19 @@ const hasServiceForRole = (
   return (services ?? []).some((line) => codes.includes(line.code));
 };
 
+/**
+ * Whether ANY listed service maps to a discipline Speddy routes (330/415/450/
+ * 510/515). SEIS lists plenty that no Speddy role delivers — adapted PE,
+ * behavior intervention, vision services — and a child whose services are ALL
+ * unmapped must fall back to the original everyone-sees-unserved rule, or
+ * they would silently vanish from every discipline's claim list.
+ * (psychologist shares counseling's codes, so these four cover all five.)
+ */
+const hasAnyMappedService = (services: DistrictServiceLine[] | null): boolean =>
+  ['resource', 'speech', 'ot', 'counseling'].some((role) =>
+    hasServiceForRole(services, role),
+  );
+
 /** Whitespace-insensitive text key, for "does the provider already have this entry". */
 const entryKey = (value: string): string => value.trim().replace(/\s+/g, ' ').toLowerCase();
 
@@ -429,15 +447,18 @@ export function planRosterClaims(input: ClaimPlanInput): ClaimPlan {
     //
     //   * Closed when the caller already has the child, or when a provider of
     //     a blocking role does ('unknown' — an unreadable role — blocks
-    //     everyone). Same table the claim RPC enforces.
-    //   * When the district's data lists services, the child must carry a line
-    //     this caller's role delivers — the speech-only student never appears
-    //     on the OT's list. Generalist roles have no codes of their own; their
-    //     blocking family is every role, so for them this reduces to the
-    //     original nobody-serves rule.
-    //   * A child with NO services data keeps the original rule for every
-    //     role: with nothing saying whose student this is, any caseload hides
-    //     them, and everyone at the school is shown the unserved ones.
+    //     everyone). The same role-family table the claim RPC enforces.
+    //   * When the district's data lists a service some discipline DELIVERS,
+    //     the child must carry a line this caller's role delivers — the
+    //     speech-only student never appears on the OT's list. Generalist
+    //     roles have no codes of their own; their blocking family is every
+    //     role, so for them this reduces to the original nobody-serves rule.
+    //   * A child with NO services data — or none that maps to any discipline
+    //     (adapted PE, behavior intervention…) — keeps the original rule for
+    //     every role: with nothing saying whose student this is, any caseload
+    //     hides them, and everyone at the school is shown the unserved ones.
+    //     The RPC enforces the no-services-data arm too; the unmapped-codes
+    //     refinement lives only here, where the code table is.
     //
     // A same-discipline takeover remains SPE-348's flow, with its own
     // confirmation — and the database refuses it through this path regardless
@@ -445,8 +466,8 @@ export function planRosterClaims(input: ClaimPlanInput): ClaimPlan {
     const closedForMe =
       myChildIds.has(child.id) ||
       child.servedRoles.some((r) => r === 'unknown' || blocking.includes(r));
-    const hasServicesData = (child.districtServices?.length ?? 0) > 0;
-    const visible = hasServicesData
+    const routableServices = hasAnyMappedService(child.districtServices);
+    const visible = routableServices
       ? myCodes.length > 0
         ? hasServiceForRole(child.districtServices, input.myRole) && !closedForMe
         : child.caseloadCount === 0 && !closedForMe

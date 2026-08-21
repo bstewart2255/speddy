@@ -58,14 +58,20 @@ export async function loadProviderRosterContext(
 ): Promise<ProviderRosterContext> {
   const session = await createClient();
 
-  // Their own name and role, through their session (`profiles_view_own`). A
-  // failure here must not stop the offers — the name only costs the
-  // pre-selection, and the role only costs the minutes/goals extras.
-  const { data: me } = await session
+  // Their own name and role, through their session (`profiles_view_own`).
+  // The role became LOAD-BEARING with SPE-577: it decides which students are
+  // visible at all, and a null role takes the generalist branch — a transient
+  // read failure would offer an OT students they must not claim. So a failed
+  // read throws (the route answers 502 "try again"), like every other read
+  // here. A genuinely missing row still yields nulls: `requireProvider`
+  // upstream guarantees the profile exists, so that is the RLS-empty case,
+  // not an outage.
+  const { data: me, error: meError } = await session
     .from('profiles')
     .select('full_name, role')
     .eq('id', userId)
     .maybeSingle();
+  if (meError) throw new Error(`Could not read your profile: ${meError.message}`);
   const myName = (me?.full_name as string | null) ?? null;
   const myRole = (me?.role as string | null) ?? null;
 
