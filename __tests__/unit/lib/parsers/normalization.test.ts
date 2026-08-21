@@ -58,8 +58,11 @@ describe('normalizeGradeLevel — CSV copy (lib/parsers/csv-parser.ts)', () => {
     expect(normalizeGradeLevelCsv('Preschool')).toBe('Preschool');
     expect(normalizeGradeLevelCsv('13')).toBe('Transition');
     expect(normalizeGradeLevelCsv('Transition')).toBe('Transition');
-    // "Transitional Kindergarten" keeps meaning TK, never Transition.
+    // "Transitional Kindergarten" keeps meaning TK, never Transition — and a
+    // bare "Transitional" more plausibly means TK, so it deliberately passes
+    // through unnormalized rather than being guessed either way.
     expect(normalizeGradeLevelCsv('Transitional Kindergarten')).toBe('TK');
+    expect(normalizeGradeLevelCsv('Transitional')).toBe('Transitional');
   });
 
   it('normalizes spelled-out grades (SPE-240: dropped the ordinal strip that clobbered them)', () => {
