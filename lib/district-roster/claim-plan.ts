@@ -3,8 +3,13 @@
  *
  * Two things, and only two, per the settled design:
  *
- *   1. Students on the roster at their school that NOBODY serves yet — theirs
- *      to claim.
+ *   1. Students on the roster at their school whose services for THIS
+ *      provider's discipline nobody has picked up (SPE-577) — theirs to
+ *      claim. A student with academic, speech and OT services appears to all
+ *      three disciplines, and each claim closes only its own. Students whose
+ *      services the district's data cannot route (none listed, or none a
+ *      Speddy discipline delivers) keep the original SPE-447 rule: shown to
+ *      everyone while nobody at all serves them.
  *   2. Students they ALREADY serve where the roster holds something newer.
  *
  * Nothing here decides anything on the provider's behalf. Every change is shown
@@ -59,8 +64,13 @@ export interface RosterChild {
   testingAccommodations: string[];
   districtServices: DistrictServiceLine[] | null;
   districtGoals: RosterDistrictGoals | null;
-  /** Caseloads currently serving this child. 0 means claimable. */
+  /** Caseloads currently serving this child, however many providers that is. */
   caseloadCount: number;
+  /** The DISTINCT roles of those providers, folded through normalizeServedRole
+   *  (lowercase/trimmed; 'unknown' when a role could not be read — treated as
+   *  blocking everyone). Role-based claiming (SPE-577) decides visibility from
+   *  these, not from the count. */
+  servedRoles: string[];
 }
 
 /** One of the caller's OWN caseload rows, joined to its details. */
@@ -342,6 +352,79 @@ export function goalsForRole(
   );
 }
 
+/**
+ * The caseload roles that CLOSE a child to a given caller (SPE-577) — the same
+ * table the claim RPC enforces, so what this planner offers is exactly what
+ * the database will accept.
+ *
+ * A provider of the caller's own discipline (counseling and psychologist are
+ * one discipline: both deliver 510/515) means the caller's service is spoken
+ * for. Generalists (specialist/intervention) block every discipline — their
+ * scope is "everything" — and are themselves blocked by ANY caseload, which
+ * the ELSE arm produces: their family is every role, so any served child
+ * reads as closed. That keeps the original SPE-447 rule for them intact.
+ */
+export function blockingRolesFor(role: string | null | undefined): readonly string[] {
+  switch ((role ?? '').toLowerCase().trim()) {
+    case 'resource':
+      return ['resource', 'specialist', 'intervention'];
+    case 'speech':
+      return ['speech', 'specialist', 'intervention'];
+    case 'ot':
+      return ['ot', 'specialist', 'intervention'];
+    case 'counseling':
+    case 'psychologist':
+      return ['counseling', 'psychologist', 'specialist', 'intervention'];
+    default:
+      return [
+        'resource',
+        'specialist',
+        'speech',
+        'ot',
+        'counseling',
+        'psychologist',
+        'intervention',
+      ];
+  }
+}
+
+/**
+ * One vocabulary for caseload roles. The family tables above are lowercase, so
+ * raw profile text is folded to lowercase/trimmed at the boundary — the claim
+ * RPC applies lower(btrim(…)) to the same effect, keeping what the planner
+ * offers and what the database accepts in the same alphabet. Anything
+ * unreadable (missing, blank, not text) becomes the 'unknown' sentinel, which
+ * blocks every discipline: an unreadable caseload must close the child, never
+ * open it.
+ */
+export function normalizeServedRole(role: unknown): string {
+  const text = typeof role === 'string' ? role.trim().toLowerCase() : '';
+  return text === '' ? 'unknown' : text;
+}
+
+/** Whether the district's services include a line this role delivers. */
+const hasServiceForRole = (
+  services: DistrictServiceLine[] | null,
+  role: string | null | undefined,
+): boolean => {
+  const codes = getDeliveryServiceTypeCodes(role ?? '');
+  if (codes.length === 0) return false;
+  return (services ?? []).some((line) => codes.includes(line.code));
+};
+
+/**
+ * Whether ANY listed service maps to a discipline Speddy routes (330/415/450/
+ * 510/515). SEIS lists plenty that no Speddy role delivers — adapted PE,
+ * behavior intervention, vision services — and a child whose services are ALL
+ * unmapped must fall back to the original everyone-sees-unserved rule, or
+ * they would silently vanish from every discipline's claim list.
+ * (psychologist shares counseling's codes, so these four cover all five.)
+ */
+const hasAnyMappedService = (services: DistrictServiceLine[] | null): boolean =>
+  ['resource', 'speech', 'ot', 'counseling'].some((role) =>
+    hasServiceForRole(services, role),
+  );
+
 /** Whitespace-insensitive text key, for "does the provider already have this entry". */
 const entryKey = (value: string): string => value.trim().replace(/\s+/g, ' ').toLowerCase();
 
@@ -367,16 +450,44 @@ export function planRosterClaims(input: ClaimPlanInput): ClaimPlan {
   );
 
   const myKey = nameKey(input.myName);
+  const blocking = blockingRolesFor(input.myRole);
+  const myCodes = getDeliveryServiceTypeCodes(input.myRole ?? '');
   const claimable: ClaimOffer[] = [];
   const rosterByChildId = new Map<string, RosterChild>();
   for (const child of input.rosterChildren) {
     rosterByChildId.set(child.id, child);
 
-    // Claimable means nobody serves them — not merely "not me". Taking over a
-    // student another provider already has is a different decision with its own
-    // confirmation (SPE-348), and the database refuses it through this path
-    // regardless of what this planner says.
-    if (child.caseloadCount === 0 && !myChildIds.has(child.id)) {
+    // Role-based claiming (SPE-577). A child is claimable by THIS caller when
+    // their discipline's service is unserved — not when nobody serves them:
+    //
+    //   * Closed when the caller already has the child, or when a provider of
+    //     a blocking role does ('unknown' — an unreadable role — blocks
+    //     everyone). The same role-family table the claim RPC enforces.
+    //   * When the district's data lists a service some discipline DELIVERS,
+    //     the child must carry a line this caller's role delivers — the
+    //     speech-only student never appears on the OT's list. Generalist
+    //     roles have no codes of their own; their blocking family is every
+    //     role, so for them this reduces to the original nobody-serves rule.
+    //   * A child with NO services data — or none that maps to any discipline
+    //     (adapted PE, behavior intervention…) — keeps the original rule for
+    //     every role: with nothing saying whose student this is, any caseload
+    //     hides them, and everyone at the school is shown the unserved ones.
+    //     The RPC enforces this whole table, service arms included — what this
+    //     planner offers is exactly what the database will accept.
+    //
+    // A same-discipline takeover remains SPE-348's flow, with its own
+    // confirmation — and the database refuses it through this path regardless
+    // of what this planner says.
+    const closedForMe =
+      myChildIds.has(child.id) ||
+      child.servedRoles.some((r) => r === 'unknown' || blocking.includes(r));
+    const routableServices = hasAnyMappedService(child.districtServices);
+    const visible = routableServices
+      ? myCodes.length > 0
+        ? hasServiceForRole(child.districtServices, input.myRole) && !closedForMe
+        : child.caseloadCount === 0 && !closedForMe
+      : child.caseloadCount === 0 && !myChildIds.has(child.id);
+    if (visible) {
       const school = input.schoolLevels?.[child.schoolId] ?? null;
       claimable.push({
         childId: child.id,

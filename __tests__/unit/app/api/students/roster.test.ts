@@ -102,6 +102,7 @@ const CONTEXT: ProviderRosterContext = {
       ],
       districtGoals: null,
       caseloadCount: 0,
+      servedRoles: [],
     },
     {
       id: CHILD_B,
@@ -120,6 +121,7 @@ const CONTEXT: ProviderRosterContext = {
       districtServices: null,
       districtGoals: null,
       caseloadCount: 1,
+      servedRoles: ['resource'],
     },
     {
       id: CHILD_C,
@@ -138,6 +140,7 @@ const CONTEXT: ProviderRosterContext = {
       districtServices: null,
       districtGoals: null,
       caseloadCount: 0,
+      servedRoles: [],
     },
   ],
   myStudents: [

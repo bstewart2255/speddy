@@ -178,6 +178,13 @@ describe('POST /api/assistant/chat', () => {
     // testing sub-section.
     expect(systemText).toContain('comes with');
     expect(systemText).toContain('never rewrites or removes anything of theirs');
+    // SPE-577: claiming is per specialty — a multi-service student stays
+    // available to the other disciplines after one of them claims. The two
+    // exceptions ride along: counseling/psychologist claim as one specialty,
+    // and a generalist's claim closes the student to everyone.
+    expect(systemText).toContain('stays available to the other specialties');
+    expect(systemText).toContain('count as one specialty for claiming');
+    expect(systemText).toContain('specialist or intervention provider closes the student to everyone');
     expect(systemText).toContain('State Testing Accommodations');
     expect(systemText).toContain('+ Add Testing Accommodation');
     expect(systemText).toContain('attribute them to California');

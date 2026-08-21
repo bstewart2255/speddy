@@ -11,6 +11,7 @@
 
 import {
   hasRosterOffers,
+  normalizeServedRole,
   planRosterClaims,
   type ClaimPlanInput,
   type ProviderStudent,
@@ -34,7 +35,14 @@ const rosterChild = (over: Partial<RosterChild> = {}): RosterChild => ({
   districtServices: null,
   districtGoals: null,
   caseloadCount: 0,
+  servedRoles: [],
   ...over,
+});
+
+/** A served child the loader invariant would produce: count and roles agree. */
+const servedBy = (...roles: string[]): Partial<RosterChild> => ({
+  caseloadCount: roles.length,
+  servedRoles: [...new Set(roles)],
 });
 
 const myStudent = (over: Partial<ProviderStudent> = {}): ProviderStudent => ({
@@ -347,7 +355,7 @@ describe('planRosterClaims — SPE-575 district data', () => {
     it('offers minutes as a fill when the provider has none', () => {
       const result = plan({
         myRole: 'speech',
-        rosterChildren: [rosterChild({ caseloadCount: 1, districtServices: [speechLine(30)] })],
+        rosterChildren: [rosterChild({ ...servedBy('speech'), districtServices: [speechLine(30)] })],
         myStudents: [myStudent()],
       });
       const change = result.updates[0].changes.find((c) => c.field === 'serviceMinutes')!;
@@ -363,7 +371,7 @@ describe('planRosterClaims — SPE-575 district data', () => {
       const result = plan({
         myRole: 'speech',
         rosterChildren: [
-          rosterChild({ caseloadCount: 1, districtServices: [speechLine(30), speechLine(21)] }),
+          rosterChild({ ...servedBy('speech'), districtServices: [speechLine(30), speechLine(21)] }),
         ],
         myStudents: [myStudent({ sessionsPerWeek: 2, minutesPerSession: 30 })],
       });
@@ -374,7 +382,7 @@ describe('planRosterClaims — SPE-575 district data', () => {
       // The provider schedules 2×15; the district mandate is 30/week. Equal.
       const result = plan({
         myRole: 'speech',
-        rosterChildren: [rosterChild({ caseloadCount: 1, districtServices: [speechLine(30)] })],
+        rosterChildren: [rosterChild({ ...servedBy('speech'), districtServices: [speechLine(30)] })],
         myStudents: [myStudent({ sessionsPerWeek: 2, minutesPerSession: 15 })],
       });
       expect(result.updates).toHaveLength(0);
@@ -383,7 +391,7 @@ describe('planRosterClaims — SPE-575 district data', () => {
     it('flags a different weekly total as a conflict, never pre-applied', () => {
       const result = plan({
         myRole: 'speech',
-        rosterChildren: [rosterChild({ caseloadCount: 1, districtServices: [speechLine(60)] })],
+        rosterChildren: [rosterChild({ ...servedBy('speech'), districtServices: [speechLine(60)] })],
         myStudents: [myStudent({ sessionsPerWeek: 1, minutesPerSession: 30 })],
       });
       const change = result.updates[0].changes.find((c) => c.field === 'serviceMinutes')!;
@@ -397,7 +405,7 @@ describe('planRosterClaims — SPE-575 district data', () => {
         myRole: 'speech',
         rosterChildren: [
           rosterChild({
-            caseloadCount: 1,
+            ...servedBy('speech'),
             accommodations: ['Extended time', 'Preferential seating'],
           }),
         ],
@@ -413,7 +421,7 @@ describe('planRosterClaims — SPE-575 district data', () => {
     it('fills goals with the role\'s subset and carries the goal vintage', () => {
       const result = plan({
         myRole: 'speech',
-        rosterChildren: [rosterChild({ caseloadCount: 1, districtGoals })],
+        rosterChildren: [rosterChild({ ...servedBy('speech'), districtGoals })],
         myStudents: [myStudent()],
       });
       const change = result.updates[0].changes.find((c) => c.field === 'iepGoals')!;
@@ -426,7 +434,7 @@ describe('planRosterClaims — SPE-575 district data', () => {
       const result = plan({
         myRole: 'speech',
         rosterChildren: [
-          rosterChild({ caseloadCount: 1, accommodations: ['Extended  time'] }),
+          rosterChild({ ...servedBy('speech'), accommodations: ['Extended  time'] }),
         ],
         // Whitespace differences are not additions.
         myStudents: [myStudent({ accommodations: ['Extended time'] })],
@@ -475,5 +483,157 @@ describe('parseDistrictServices / parseDistrictGoals', () => {
       null,
     );
     expect(proposal).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SPE-577: role-based claiming — a child is claimable per SERVICE, not once
+// ---------------------------------------------------------------------------
+
+describe('role-based claiming (SPE-577)', () => {
+  // Brooklynn Charles, the real JSUSD test case: academic across two lines
+  // (900 + 940 min/week — placement-scale), speech 30/wk + 21/wk, OT 30/wk.
+  const brooklynn = (over: Partial<RosterChild> = {}) =>
+    rosterChild({
+      id: 'child-bk',
+      initials: 'BC',
+      firstName: 'Brooklynn',
+      lastName: 'Charles',
+      gradeLevel: '1',
+      accommodations: ['Preferential seating', 'Extra time'],
+      districtServices: [
+        speechLine(900, '330', 'Specialized Academic Instruction'),
+        speechLine(940, '330', 'Specialized Academic Instruction'),
+        speechLine(30, '415', 'Language and Speech'),
+        speechLine(21, '415', 'Language and Speech'),
+        speechLine(30, '450', 'Occupational therapy'),
+      ],
+      ...over,
+    });
+
+  const planFor = (role: string, over: Partial<RosterChild> = {}) =>
+    planRosterClaims({ rosterChildren: [brooklynn(over)], myStudents: [], myRole: role });
+
+  it('shows a three-service student to all three disciplines at once', () => {
+    for (const role of ['resource', 'speech', 'ot']) {
+      const result = planFor(role);
+      expect(result.counts.claimable).toBe(1);
+      expect(result.claimable[0].accommodations).toEqual([
+        'Preferential seating',
+        'Extra time',
+      ]);
+    }
+  });
+
+  it('keeps the offer role-specific: minutes for MY service only', () => {
+    // Speech: 30 + 21 = 51/week → written as 2×30. OT: 1×30.
+    expect(planFor('speech').claimable[0].minutesProposal).toMatchObject({
+      weeklyMinutes: 51,
+      sessionsPerWeek: 2,
+      minutesPerSession: 30,
+    });
+    expect(planFor('ot').claimable[0].minutesProposal).toMatchObject({
+      weeklyMinutes: 30,
+      sessionsPerWeek: 1,
+      minutesPerSession: 30,
+    });
+    // 1,840 academic min/week would be 62 sessions — beyond anything Speddy
+    // will propose, so the resource offer carries NO minutes pre-fill (the
+    // claim itself still stands).
+    expect(planFor('resource').claimable[0].minutesProposal).toBeNull();
+  });
+
+  it('a speech claim closes the child to speech but NOT to OT or resource', () => {
+    expect(planFor('speech', servedBy('speech')).counts.claimable).toBe(0);
+    expect(planFor('ot', servedBy('speech')).counts.claimable).toBe(1);
+    expect(planFor('resource', servedBy('speech')).counts.claimable).toBe(1);
+  });
+
+  it('two disciplines served leaves only the third open', () => {
+    const taken = servedBy('speech', 'ot');
+    expect(planFor('resource', taken).counts.claimable).toBe(1);
+    expect(planFor('speech', taken).counts.claimable).toBe(0);
+    expect(planFor('ot', taken).counts.claimable).toBe(0);
+  });
+
+  it('counseling and psychologist block each other — one discipline, two titles', () => {
+    const withCounseling = brooklynn({
+      districtServices: [speechLine(30, '510', 'Individual Counseling')],
+      ...servedBy('counseling'),
+    });
+    for (const role of ['counseling', 'psychologist']) {
+      const result = planRosterClaims({
+        rosterChildren: [withCounseling],
+        myStudents: [],
+        myRole: role,
+      });
+      expect(result.counts.claimable).toBe(0);
+    }
+  });
+
+  it('a generalist on the caseload closes the child to every discipline', () => {
+    for (const role of ['resource', 'speech', 'ot']) {
+      expect(planFor(role, servedBy('specialist')).counts.claimable).toBe(0);
+    }
+  });
+
+  it('generalists keep the original rule: only a nobody-serves child is theirs', () => {
+    expect(planFor('specialist').counts.claimable).toBe(1);
+    expect(planFor('specialist', servedBy('speech')).counts.claimable).toBe(0);
+  });
+
+  it('never offers a student whose services do not include my discipline', () => {
+    // Speech-only student: not on the OT or resource lists at all.
+    const speechOnly = { districtServices: [speechLine(30)] };
+    expect(planFor('speech', speechOnly).counts.claimable).toBe(1);
+    expect(planFor('ot', speechOnly).counts.claimable).toBe(0);
+    expect(planFor('resource', speechOnly).counts.claimable).toBe(0);
+  });
+
+  it('services no discipline delivers fall back to the everyone-sees rule', () => {
+    // SEIS lists plenty Speddy cannot route — adapted PE, behavior support,
+    // vision services. A child whose services are ALL unmapped must not
+    // vanish from every discipline's list.
+    const unmappedOnly = { districtServices: [speechLine(60, '425', 'Adapted PE')] };
+    expect(planFor('resource', unmappedOnly).counts.claimable).toBe(1);
+    expect(planFor('speech', unmappedOnly).counts.claimable).toBe(1);
+    // Any caseload hides them again — the original rule end to end.
+    expect(planFor('speech', { ...unmappedOnly, ...servedBy('ot') }).counts.claimable).toBe(0);
+    // And no minutes proposal: those minutes belong to no Speddy role.
+    expect(planFor('resource', unmappedOnly).claimable[0].minutesProposal).toBeNull();
+  });
+
+  it('a child with NO services data keeps the original rule for every role', () => {
+    const noData = { districtServices: null };
+    expect(planFor('speech', noData).counts.claimable).toBe(1);
+    expect(planFor('ot', noData).counts.claimable).toBe(1);
+    expect(planFor('speech', { districtServices: null, ...servedBy('ot') }).counts.claimable).toBe(0);
+  });
+
+  it('an unreadable caseload role blocks everyone — it can never open a child', () => {
+    for (const role of ['resource', 'speech', 'ot', 'specialist']) {
+      expect(planFor(role, servedBy('unknown')).counts.claimable).toBe(0);
+    }
+  });
+
+  it('never re-offers a child already on MY caseload, whatever the roles say', () => {
+    const result = planRosterClaims({
+      rosterChildren: [brooklynn(servedBy('speech'))],
+      myStudents: [myStudent({ childId: 'child-bk' })],
+      myRole: 'ot',
+    });
+    expect(result.counts.claimable).toBe(0);
+  });
+
+  it('normalizeServedRole folds raw profile text into the family vocabulary', () => {
+    // The role-family tables are lowercase and the RPC compares
+    // lower(btrim(…)); the loader folds through this so both layers speak the
+    // same alphabet — a 'Speech '-cased caseload row must still block speech.
+    expect(normalizeServedRole(' Speech ')).toBe('speech');
+    expect(planFor('speech', servedBy(normalizeServedRole(' Speech '))).counts.claimable).toBe(0);
+    // Unreadable — missing, blank, or not text — is the blocking sentinel.
+    expect(normalizeServedRole(null)).toBe('unknown');
+    expect(normalizeServedRole('   ')).toBe('unknown');
+    expect(normalizeServedRole(42)).toBe('unknown');
   });
 });

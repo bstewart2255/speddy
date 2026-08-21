@@ -19,7 +19,7 @@
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { logger } from '@/lib/logger';
 import { updateExistingSessionsForStudent } from '@/lib/scheduling/session-requirement-sync';
-import { parseDistrictGoals, parseDistrictServices } from './claim-plan';
+import { normalizeServedRole, parseDistrictGoals, parseDistrictServices } from './claim-plan';
 import type { ClaimPlan, ProviderStudent, RosterChild, RosterFieldKey } from './claim-plan';
 import type { SchoolLevelInput } from '@/lib/school-helpers';
 
@@ -58,14 +58,20 @@ export async function loadProviderRosterContext(
 ): Promise<ProviderRosterContext> {
   const session = await createClient();
 
-  // Their own name and role, through their session (`profiles_view_own`). A
-  // failure here must not stop the offers — the name only costs the
-  // pre-selection, and the role only costs the minutes/goals extras.
-  const { data: me } = await session
+  // Their own name and role, through their session (`profiles_view_own`).
+  // The role became LOAD-BEARING with SPE-577: it decides which students are
+  // visible at all, and a null role takes the generalist branch — a transient
+  // read failure would offer an OT students they must not claim. So a failed
+  // read throws (the route answers 502 "try again"), like every other read
+  // here. A genuinely missing row still yields nulls: `requireProvider`
+  // upstream guarantees the profile exists, so that is the RLS-empty case,
+  // not an outage.
+  const { data: me, error: meError } = await session
     .from('profiles')
     .select('full_name, role')
     .eq('id', userId)
     .maybeSingle();
+  if (meError) throw new Error(`Could not read your profile: ${meError.message}`);
   const myName = (me?.full_name as string | null) ?? null;
   const myRole = (me?.role as string | null) ?? null;
 
@@ -177,21 +183,43 @@ export async function loadProviderRosterContext(
     }
   }
 
-  // Who serves each of them. "Claimable" means NOBODY does — not merely "not
-  // me" — so this counts every caseload row, not just the caller's.
+  // Who serves each of them, and AS WHAT. Role-based claiming (SPE-577) needs
+  // the serving ROLES, not just a count: a child with a speech provider is
+  // closed to speech but open to OT. Every caseload row still counts, not just
+  // the caller's.
   const served = new Map<string, number>();
+  const servedRoles = new Map<string, Set<string>>();
   const childIds = rosterRows.map((r) => String(r.id));
   for (const chunk of chunked(childIds, IN_CHUNK)) {
     for (let afterId: string | null = null; ; ) {
-      const query = service.from('students').select('id, child_id').in('child_id', chunk);
+      const query = service
+        .from('students')
+        .select('id, child_id, provider:profiles!students_provider_id_fkey(role)')
+        .in('child_id', chunk);
       const { data, error } = await (afterId === null ? query : query.gt('id', afterId))
         .order('id')
         .limit(DB_PAGE);
       if (error) throw new Error(`Could not read caseloads: ${error.message}`);
-      const rows = (data ?? []) as { id: string; child_id: string | null }[];
+      const rows = (data ?? []) as unknown as Record<string, unknown>[];
       for (const row of rows) {
         const id = String(row.child_id);
         served.set(id, (served.get(id) ?? 0) + 1);
+        // The embed is many-to-one, but PostgREST's shape varies by client
+        // version — accept object or one-element array. Roles are folded
+        // through normalizeServedRole so they compare against the lowercase
+        // role-family tables the way the RPC's lower(btrim(…)) does; a row
+        // whose provider role cannot be read becomes the 'unknown' sentinel,
+        // which the planner treats as blocking EVERY role.
+        const provider = Array.isArray(row.provider) ? row.provider[0] : row.provider;
+        const set = servedRoles.get(id) ?? new Set<string>();
+        set.add(
+          normalizeServedRole(
+            provider && typeof provider === 'object'
+              ? (provider as Record<string, unknown>).role
+              : null,
+          ),
+        );
+        servedRoles.set(id, set);
       }
       if (rows.length < DB_PAGE) break;
       afterId = String(rows[rows.length - 1].id);
@@ -215,6 +243,7 @@ export async function loadProviderRosterContext(
     districtServices: parseDistrictServices(row.district_services),
     districtGoals: parseDistrictGoals(row.district_goals),
     caseloadCount: served.get(String(row.id)) ?? 0,
+    servedRoles: [...(servedRoles.get(String(row.id)) ?? [])],
   }));
 
   return { schoolIds, rosterChildren, myStudents, myName, myRole, schoolLevels };
