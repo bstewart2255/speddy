@@ -350,6 +350,11 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
     const PER_ROW_WARNING_LIMIT = 25;
     let blankMetadataWarnings = 0;
     let idMismatchWarnings = 0;
+    let dobMismatchWarnings = 0;
+    // Students whose goal rows disagreed on Birthdate: their date is dropped
+    // AND stays dropped — a later row must not quietly resurrect one side of
+    // a conflict the admin was told about (SPE-578).
+    const dobConflicted = new Set<string>();
 
     // Temporary map to consolidate duplicate students
     const studentMap = new Map<string, ParsedStudent>();
@@ -579,8 +584,24 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
           if (!existing.caseManager && caseManager) {
             existing.caseManager = caseManager;
           }
-          // Same first-non-empty rule for the birth date (SPE-578).
-          if (!existing.dateOfBirth && dateOfBirth) {
+          // First non-empty birth date wins, like the case manager — EXCEPT a
+          // conflict poisons it (Codex review, PR #920). Two different valid
+          // dates under one student key mean the export is inconsistent, or
+          // two real children merged by name+grade+school; the planner treats
+          // this value as identity PROOF (SPE-578), and a wrong survivor
+          // could attach an adjacent-grade record to the wrong student. So on
+          // conflict the date is dropped for good — no proof beats false
+          // proof — and the admin is told, like the id mismatch above.
+          if (dateOfBirth && existing.dateOfBirth && existing.dateOfBirth !== dateOfBirth) {
+            existing.dateOfBirth = undefined;
+            dobConflicted.add(studentKey);
+            if (dobMismatchWarnings++ < PER_ROW_WARNING_LIMIT) {
+              warnings.push({
+                row: rowIndex + 1,
+                message: `Birthdate mismatch for ${firstName} ${lastName}: found "${birthdateRaw}" but an earlier row recorded a different date. Neither is used — check this student in your export.`,
+              });
+            }
+          } else if (!existing.dateOfBirth && dateOfBirth && !dobConflicted.has(studentKey)) {
             existing.dateOfBirth = dateOfBirth;
           }
           // Same rule for the district id (SPE-339): a student's goal rows all

@@ -130,6 +130,31 @@ describe('parseCSVReport — SEIS Student Goals Report (CSV)', () => {
     expect(result.students[0].dateOfBirth).toBeUndefined();
   });
 
+  it('drops the birth date entirely when a student\'s goal rows disagree on it', async () => {
+    // Two different valid dates under one student mean the export is
+    // inconsistent — and this value is identity proof for the roster matcher,
+    // so a wrong survivor could merge the wrong students. Neither value is
+    // used, the admin is warned, and a THIRD row repeating one side must not
+    // quietly resurrect it (Codex review, PR #920).
+    const goalRow = (goal: string, extras: Record<number, string>) => ({
+      0: '2000001', 1: '100001', 2: 'Alvarez', 3: 'Ana', 5: '01',
+      6: 'Mt Diablo Elementary School', 9: '05/01/2026', 11: 'Reading', 12: goal,
+      14: `By 5/1/2027, Ana will ${goal}.`, 17: 'Resource Specialist',
+      ...extras,
+    });
+    const result = await parseCSVReport(
+      buildSeisGoalsCsvFrom([
+        goalRow('Academic #1', { 4: '03/04/2018' }),
+        goalRow('Academic #2', { 4: '07/22/2017' }),
+        goalRow('Academic #3', { 4: '03/04/2018' }),
+      ]),
+      {},
+    );
+    expect(result.students).toHaveLength(1);
+    expect(result.students[0].dateOfBirth).toBeUndefined();
+    expect(result.warnings.some((w) => w.message.includes('Birthdate mismatch'))).toBe(true);
+  });
+
   it('warns instead of silently dropping a conflicting id across a student\'s goal rows', async () => {
     // Two goal rows for one student carrying DIFFERENT ids means the export is
     // inconsistent, or two real children are being merged by name+grade+school.
