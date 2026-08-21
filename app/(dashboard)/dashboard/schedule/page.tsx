@@ -29,7 +29,7 @@ import { deleteMainstreamingBlock } from '../../../../lib/supabase/queries/mains
 import { deleteStudentBlockedTime } from '../../../../lib/supabase/queries/student-blocked-times';
 import type { ScheduleSession } from '@/src/types';
 import { isSpecialistSourceRole } from '@/lib/auth/role-utils';
-import { getSchoolGradeRange } from '@/lib/school-helpers';
+import { getSchoolGradeRange, getSchoolKey } from '@/lib/school-helpers';
 import { ResourceWeekView } from './components/resource-week-view';
 import { getUserRole } from '../../../../lib/supabase/queries/sea-students';
 
@@ -197,6 +197,12 @@ function MainSchedule() {
     () => getSchoolGradeRange(currentSchool),
     [currentSchool]
   );
+  // The same identity the school context caches on, so a switch between two
+  // same-span schools still re-seeds the selection.
+  const schoolKey = useMemo(
+    () => (currentSchool ? getSchoolKey(currentSchool) : 'none'),
+    [currentSchool]
+  );
 
   // UI state management hook
   const {
@@ -228,7 +234,7 @@ function MainSchedule() {
     endDrag,
     openSessionPopup,
     closeSessionPopup,
-  } = useScheduleState(availableGrades);
+  } = useScheduleState(availableGrades, schoolKey);
 
   // Operations hook
   const {
