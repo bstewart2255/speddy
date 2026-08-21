@@ -912,17 +912,48 @@ describe('one-grade vintage skew between files (SPE-578, the Gracelynn duplicate
     expect(result.children).toHaveLength(2);
   });
 
-  it('proof does not span more than one grade', () => {
-    // Same birth date but three grades apart is a data problem to show the
-    // admin as two rows, not a merge to guess at.
+  it('proof confirms across ANY grade gap — matching birth dates are the student (SPE-580)', () => {
+    // identityDoubt's rule, now mirrored in-batch: JSUSD shipped a TK-vs-
+    // grade-1 pair with one birth date. The higher grade still wins.
     const result = plan({
       goalsStudents: [
-        goalsStudent({ gradeLevel: '1', dateOfBirth: '2018-03-04', districtStudentId: undefined }),
+        goalsStudent({ gradeLevel: 'TK', dateOfBirth: '2020-05-07', districtStudentId: undefined }),
       ],
       datesRecords: [],
-      servicesStudents: [servicesStudent({ gradeLevel: '4', dateOfBirth: '2018-03-04' })],
+      servicesStudents: [servicesStudent({ gradeLevel: '1', dateOfBirth: '2020-05-07' })],
     });
-    expect(result.children).toHaveLength(2);
+    expect(result.children).toHaveLength(1);
+    expect(result.children[0].fields.gradeLevel).toBe('1');
+    expect(result.children[0].fields.districtServices).toEqual([serviceLine()]);
+  });
+
+  it('a matching district id spans grades too — two children cannot share one', () => {
+    // ux_children_district_student_id is unique per district, so refusing this
+    // merge would plan a second row the database cannot even write.
+    const result = plan({
+      goalsStudents: [goalsStudent({ gradeLevel: '1', districtStudentId: '100001' })],
+      datesRecords: [],
+      accommodationsStudents: [
+        accommodationsStudent({ gradeLevel: '3', districtStudentId: '100001' }),
+      ],
+    });
+    expect(result.children).toHaveLength(1);
+    expect(result.children[0].fields.gradeLevel).toBe('3');
+  });
+
+  it('grade 12 and the Transition year sit one rollover apart (SPE-580)', () => {
+    // SEIS codes the 18–22 year as grade 13; the parsers hand it to this
+    // planner as 'Transition', ranked just above 12.
+    const result = plan({
+      goalsStudents: [
+        goalsStudent({ gradeLevel: 'Transition', dateOfBirth: '2007-12-18', districtStudentId: undefined }),
+      ],
+      datesRecords: [],
+      servicesStudents: [servicesStudent({ gradeLevel: '12', dateOfBirth: '2007-12-18' })],
+    });
+    expect(result.children).toHaveLength(1);
+    expect(result.children[0].fields.gradeLevel).toBe('Transition');
+    expect(result.children[0].fields.districtServices).toEqual([serviceLine()]);
   });
 
   it('proof singles a student out of a name clash the compatible ladder cannot resolve', () => {

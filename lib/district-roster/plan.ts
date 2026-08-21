@@ -305,11 +305,16 @@ export const nameSchoolKey = (
     clean(schoolId),
   ].join('|');
 
-/** Speddy's normalized grades in order. Unrecognized spellings get no rank. */
+/** Speddy's normalized grades in order. Preschool (SEIS code 17) and the
+ *  18–22 Transition year (code 13) rank outside the scheduling vocabulary but
+ *  inside the matcher's (SPE-580): each is one rollover step from TK and 12
+ *  respectively. Unrecognized spellings get no rank. */
 const GRADE_RANK = new Map<string, number>([
+  ['PRESCHOOL', -2],
   ['TK', -1],
   ['K', 0],
   ...Array.from({ length: 12 }, (_, i) => [String(i + 1), i + 1] as [string, number]),
+  ['TRANSITION', 13],
 ]);
 
 /**
@@ -573,15 +578,22 @@ export function planDistrictRoster(input: RosterPlanInput): RosterPlan {
   const gradesCompatible = (a: string, b: string): boolean =>
     !a || !b || a.toUpperCase() === b.toUpperCase();
 
-  // One exception spans a single grade of difference, because the files in a
-  // batch are NOT always the same vintage: SEIS generates each report from its
-  // own data, and JSUSD's Goals export straddled a grade rollover against its
+  // One exception spans grade differences, because the files in a batch are
+  // NOT always the same vintage: SEIS generates each report from its own
+  // data, and JSUSD's Goals export straddled a grade rollover against its
   // Services export — one real student arrived as grade 2 and grade 3 and
-  // published as two children (SPE-578, the Gracelynn duplicate). PROOF is the
-  // bar for crossing it: a birth date or district id that MATCHES the row
+  // published as two children (SPE-578, the Gracelynn duplicate). PROOF is
+  // the bar for crossing it: a birth date or district id that MATCHES the row
   // (with no contradiction from the other) says this is the same student seen
-  // through an older or newer export. Without proof the grades keep their
-  // word, so same-named students in adjacent grades stay two children.
+  // through an older or newer export, whatever the grades say — matching
+  // birth dates confirm outright, identityDoubt's own rule, and two children
+  // in one district cannot even SHARE a district id
+  // (ux_children_district_student_id), so a capped id refusal would plan an
+  // unwritable second row (SPE-580; JSUSD shipped a TK-vs-grade-1 pair).
+  // Both grades must still be RANKED — the higher-grade reconcile needs an
+  // order — and equal grades are the compatible ladder's business, not this
+  // rung's. Without proof the grades keep their word, so same-named students
+  // in different grades stay two children.
   const gradeRank = (grade: string): number | undefined =>
     GRADE_RANK.get(clean(grade).toUpperCase());
   const confirmedAcrossRollover = (
@@ -592,7 +604,7 @@ export function planDistrictRoster(input: RosterPlanInput): RosterPlan {
     const fromRecord = gradeRank(recordGrade);
     const fromRow = gradeRank(row.gradeLevel);
     if (fromRecord === undefined || fromRow === undefined) return false;
-    if (Math.abs(fromRecord - fromRow) !== 1) return false;
+    if (fromRecord === fromRow) return false;
     const recordDob = clean(record.dateOfBirth);
     const rowDob = clean(row.dateOfBirth);
     const recordId = districtIdKey(record.districtStudentId);

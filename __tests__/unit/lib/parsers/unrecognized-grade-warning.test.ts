@@ -1,19 +1,24 @@
 /**
  * SPE-467: SEIS exports grade as a numeric code and the normalizer maps only
- * the two we learned empirically — `18` → TK and `0` → K — plus `1`–`12`.
- * Every other code falls through `normalizeGradeLevel` verbatim and becomes the
- * student's grade. Nothing downstream catches it: there is no CHECK constraint
- * on `students.grade_level`, and the import preserves grade on purpose so the
+ * the codes we have learned empirically — `18` → TK, `0` → K, and since
+ * SPE-580 `17` → Preschool and `13` → Transition — plus `1`–`12`. Every other
+ * code falls through `normalizeGradeLevel` verbatim and becomes the student's
+ * grade. Nothing downstream catches it: there is no CHECK constraint on
+ * `students.grade_level`, and the import preserves grade on purpose so the
  * confirm step cannot clobber a good value.
  *
- * Three students reached production that way, carrying grades of '17' and '13'.
- * They match no bell schedule (those are keyed TK/K/1-5), so the auto-scheduler
- * protects nothing for them — and grade is part of student identity, so a later
- * re-import with a corrected grade would duplicate the child rather than update
- * them.
+ * Three students reached production that way, carrying grades of '17' and '13'
+ * — the observation that later identified those two codes (SPE-580). An
+ * unreadable grade matches no bell schedule (those are keyed TK/K/1-5), so
+ * the auto-scheduler protects nothing for such a student — and grade is part
+ * of student identity, so a later re-import with a corrected grade would
+ * duplicate the child rather than update them.
  *
  * The fix is to say so at review time rather than to reject: a grade we cannot
- * read is still better imported than dropped.
+ * read is still better imported than dropped. Preschool and Transition are
+ * recognized-but-unscheduled (RECOGNIZED_UNSCHEDULED_GRADES): read perfectly
+ * well, deliberately outside the scheduling vocabulary, and never warned
+ * about — the note's "could not read" claim would be false for them.
  *
  * The notes are DERIVED from the students being shown, not emitted while
  * parsing. The note claims the grade "was imported as-is", so it must only
@@ -30,6 +35,7 @@ import {
   normalizeGradeLevel,
   unreadableGradeNotes,
   CANONICAL_GRADES,
+  RECOGNIZED_UNSCHEDULED_GRADES,
 } from '@/lib/utils/grade-parser';
 import { buildSeisGoalsCsvFrom, buildSeisXlsxFrom } from './fixtures/builders';
 
@@ -51,9 +57,15 @@ describe('isCanonicalGrade', () => {
     for (const g of CANONICAL_GRADES) expect(isCanonicalGrade(g)).toBe(true);
   });
 
-  it('rejects the unmapped SEIS codes that reached production', () => {
+  it('rejects raw SEIS codes and the recognized-but-unscheduled grades alike', () => {
+    // Canonical means "the scheduling layer knows it" — raw codes don't
+    // qualify, and neither do Preschool/Transition (SPE-580), which are read
+    // correctly but deliberately kept out of bell schedules and dropdowns.
     expect(isCanonicalGrade('17')).toBe(false);
     expect(isCanonicalGrade('13')).toBe(false);
+    for (const g of RECOGNIZED_UNSCHEDULED_GRADES) {
+      expect(isCanonicalGrade(g)).toBe(false);
+    }
   });
 
   it('rejects empty and missing values rather than treating them as a grade', () => {
@@ -63,30 +75,39 @@ describe('isCanonicalGrade', () => {
   });
 
   it('agrees with what normalizeGradeLevel can actually interpret', () => {
-    // The codes the normalizer maps come back canonical...
+    // The codes the normalizer maps to scheduling grades come back canonical...
     expect(isCanonicalGrade(normalizeGradeLevel('18'))).toBe(true); // SEIS TK
     expect(isCanonicalGrade(normalizeGradeLevel('0'))).toBe(true);  // SEIS K
     expect(isCanonicalGrade(normalizeGradeLevel('3RD'))).toBe(true);
     expect(isCanonicalGrade(normalizeGradeLevel('First'))).toBe(true);
-    // ...and the ones it does not, do not.
-    expect(isCanonicalGrade(normalizeGradeLevel('17'))).toBe(false);
+    // ...the SPE-580 codes normalize to their unscheduled labels...
+    expect(normalizeGradeLevel('17')).toBe('Preschool');
+    expect(normalizeGradeLevel('13')).toBe('Transition');
+    // ...and a code the normalizer does not know stays non-canonical.
+    expect(isCanonicalGrade(normalizeGradeLevel('99'))).toBe(false);
   });
 });
 
 describe('unreadableGradeNotes', () => {
   const student = (over: Partial<{ initials: string; gradeLevel: string; rawRow: number }> = {}) => ({
-    initials: 'LR', gradeLevel: '17', rawRow: 2, ...over,
+    initials: 'LR', gradeLevel: '99', rawRow: 2, ...over,
   });
 
   it('names the student and quotes the grade the file actually contained', () => {
     const [note] = unreadableGradeNotes([student()]);
-    expect(note.message).toContain('"17"');
+    expect(note.message).toContain('"99"');
     expect(note.message).toContain('LR');
     expect(note.row).toBe(2);
   });
 
   it('says nothing about grades it understands, including the mapped SEIS codes', () => {
-    const fine = ['TK', 'K', '1', '12', normalizeGradeLevel('18'), normalizeGradeLevel('0')];
+    const fine = [
+      'TK', 'K', '1', '12',
+      normalizeGradeLevel('18'), normalizeGradeLevel('0'),
+      // Recognized-but-unscheduled (SPE-580): read correctly, never warned.
+      normalizeGradeLevel('17'), normalizeGradeLevel('13'),
+      'Preschool', 'Transition',
+    ];
     expect(unreadableGradeNotes(fine.map((g, i) => student({ gradeLevel: g, rawRow: i })))).toEqual([]);
   });
 
@@ -114,19 +135,19 @@ describe('unreadableGradeNotes', () => {
 
 describe('parsers leave the raw grade on the student for the note to quote', () => {
   it('CSV: preserves an unreadable grade rather than coercing it', async () => {
-    const result = await parseCSVReport(buildSeisGoalsCsvFrom([row({ [GRADE]: '17' })]), {});
+    const result = await parseCSVReport(buildSeisGoalsCsvFrom([row({ [GRADE]: '99' })]), {});
 
     expect(result.students).toHaveLength(1);
-    expect(result.students[0].gradeLevel).toBe('17');
+    expect(result.students[0].gradeLevel).toBe('99');
     expect(unreadableGradeNotes(result.students)).toHaveLength(1);
   });
 
   it('CSV: one note per student, not one per goal row', async () => {
     const result = await parseCSVReport(
       buildSeisGoalsCsvFrom([
-        row({ [GRADE]: '17', [GOAL_NO]: 'Academic #1: 2026 - 2027' }),
-        row({ [GRADE]: '17', [GOAL_NO]: 'Academic #2: 2026 - 2027' }),
-        row({ [GRADE]: '17', [GOAL_NO]: 'Academic #3: 2026 - 2027' }),
+        row({ [GRADE]: '99', [GOAL_NO]: 'Academic #1: 2026 - 2027' }),
+        row({ [GRADE]: '99', [GOAL_NO]: 'Academic #2: 2026 - 2027' }),
+        row({ [GRADE]: '99', [GOAL_NO]: 'Academic #3: 2026 - 2027' }),
       ]),
       {},
     );
@@ -143,16 +164,21 @@ describe('parsers leave the raw grade on the student for the note to quote', () 
     expect(unreadableGradeNotes(result.students)).toEqual([]);
   });
 
-  it('XLSX: preserves an unreadable grade rather than coercing it', async () => {
+  it('CSV: the preschool code becomes Preschool and earns NO note (SPE-580)', async () => {
+    const result = await parseCSVReport(buildSeisGoalsCsvFrom([row({ [GRADE]: '17' })]), {});
+
+    expect(result.students).toHaveLength(1);
+    expect(result.students[0].gradeLevel).toBe('Preschool');
+    expect(unreadableGradeNotes(result.students)).toEqual([]);
+  });
+
+  it('XLSX: the transition code becomes Transition and earns NO note (SPE-580)', async () => {
     const buffer = await buildSeisXlsxFrom([row({ [GRADE]: '13' })]);
     const result = await parseSEISReport(buffer, { providerRole: 'resource' });
 
     expect(result.students).toHaveLength(1);
-    expect(result.students[0].gradeLevel).toBe('13');
-
-    const notes = unreadableGradeNotes(result.students);
-    expect(notes).toHaveLength(1);
-    expect(notes[0].message).toContain('"13"');
+    expect(result.students[0].gradeLevel).toBe('Transition');
+    expect(unreadableGradeNotes(result.students)).toEqual([]);
   });
 
   it('XLSX: still normalizes the codes it does understand', async () => {

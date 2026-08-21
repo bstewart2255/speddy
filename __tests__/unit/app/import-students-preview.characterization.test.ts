@@ -689,7 +689,9 @@ describe('POST /api/import-students — unreadable grade notes (SPE-467)', () =>
   };
 
   it('surfaces the note for an imported student whose grade could not be read', async () => {
-    const csv = buildSeisGoalsCsvFrom([seisRow({ [GRADE]: '17' })]);
+    // '99' — SPE-580 taught the normalizer the once-unreadable '17' and '13'
+    // (Preschool and Transition), so the pin uses a code that stays unknown.
+    const csv = buildSeisGoalsCsvFrom([seisRow({ [GRADE]: '99' })]);
     const result = await runPost(
       mainTables(),
       requestWith({ studentsFile: fileFrom(csv, 'students.csv', 'text/csv') }, schoolCtx),
@@ -698,7 +700,7 @@ describe('POST /api/import-students — unreadable grade notes (SPE-467)', () =>
     expect(result.status).toBe(200);
     const notes = gradeNotesIn(result.body);
     expect(notes).toHaveLength(1);
-    expect(notes[0]).toContain('"17"');
+    expect(notes[0]).toContain('"99"');
     expect(notes[0]).toContain('LR');
   });
 

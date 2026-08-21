@@ -72,12 +72,31 @@ export function normalizeGradeLevel(grade: string): string {
     return 'TK';
   }
 
+  // SEIS's youngest cohort (SPE-580). Unlike Pre-K above — which the app folds
+  // into TK — "Preschool" is its own stored grade: JSUSD's Services report
+  // labels its 2–3-year-olds with the word, and the Goals report codes the
+  // same children as grade 17 (proven by matching birth dates). Bell
+  // schedules and the Add Student dropdown deliberately do not know it
+  // (CANONICAL_GRADES is unchanged); it exists so these students carry a
+  // truthful label instead of "17".
+  if (/^PRE[-\s]?SCHOOL$/i.test(normalized)) {
+    return 'Preschool';
+  }
+
   if (/^T\.?K\.?$|TRANSITIONAL\s*K|TK/i.test(normalized)) {
     return 'TK';
   }
 
   if (/^K\.?$|KINDER|KINDERGARTEN/i.test(normalized)) {
     return 'K';
+  }
+
+  // The post-senior year (SEIS grade code 13): 18–22 transition services
+  // (SPE-580). Standalone word only — "Transitional Kindergarten" already
+  // matched TK above, and a bare "Transitional" more plausibly means TK, so
+  // it deliberately falls through unnormalized.
+  if (/^TRANSITION$/i.test(normalized)) {
+    return 'Transition';
   }
 
   // Spelled-out ordinals
@@ -97,6 +116,8 @@ export function normalizeGradeLevel(grade: string): string {
   if (match) {
     const num = parseInt(match[0], 10);
     if (num === 18) return 'TK'; // SEIS uses 18 for TK / Pre-K
+    if (num === 17) return 'Preschool'; // SEIS uses 17 for preschool (SPE-580)
+    if (num === 13) return 'Transition'; // SEIS uses 13 for the 18–22 transition year (SPE-580)
     if (num >= 1 && num <= 12) return String(num);
     if (num === 0) return 'K'; // SEIS uses 0 for Kindergarten
   }
@@ -114,16 +135,31 @@ export const CANONICAL_GRADES: readonly string[] = [
 const CANONICAL_GRADE_SET = new Set(CANONICAL_GRADES);
 
 /**
- * Whether `normalizeGradeLevel` actually recognised a value, as opposed to
- * handing back the input untouched.
+ * Grades the importers RECOGNIZE but the scheduling layer does not: preschool
+ * and the 18–22 transition year sit outside bell schedules, school hours and
+ * the Add Student dropdown (CANONICAL_GRADES) on purpose — neither cohort
+ * follows a bell schedule. Listed here so the "could not read the grade" note
+ * never fires for a value the normalizer read perfectly well (SPE-580).
+ */
+export const RECOGNIZED_UNSCHEDULED_GRADES: readonly string[] = ['Preschool', 'Transition'];
+
+const RECOGNIZED_UNSCHEDULED_SET = new Set(
+  RECOGNIZED_UNSCHEDULED_GRADES.map((g) => g.toUpperCase()),
+);
+
+/**
+ * Whether `normalizeGradeLevel` produced a grade the SCHEDULING layer
+ * understands, as opposed to a recognized-but-unscheduled one (Preschool,
+ * Transition — SPE-580) or the input handed back untouched.
  *
- * SPE-467: SEIS exports grade as a numeric code and we only map the two we
- * learned empirically (`18` → TK, `0` → K) plus `1`–`12`. Every other code
- * falls through the normalizer verbatim and lands in `students.grade_level`,
- * where nothing validates it — there is no CHECK constraint on that column,
- * and the import preserves grade on purpose so confirm cannot clobber a good
- * value. Three students reached production that way carrying grades of `'17'`
- * and `'13'`.
+ * SPE-467: SEIS exports grade as a numeric code and we map only the codes we
+ * have learned empirically (`18` → TK, `0` → K, `17` → Preschool, `13` →
+ * Transition, plus `1`–`12`). Anything else falls through the normalizer
+ * verbatim and lands in `students.grade_level`, where nothing validates it —
+ * there is no CHECK constraint on that column, and the import preserves grade
+ * on purpose so confirm cannot clobber a good value. (`'17'` and `'13'` were
+ * SPE-467's original fall-through examples; SPE-580 identified them from
+ * JSUSD's paired exports and mapped them.)
  *
  * Callers use this to tell the user, rather than to reject: a grade we cannot
  * read is still better imported than dropped, and the provider can fix it.
@@ -159,6 +195,13 @@ export function unreadableGradeNotes(
   students: ReadonlyArray<{ initials: string; gradeLevel: string; rawRow: number }>,
 ): Array<{ row: number; message: string }> {
   return students
-    .filter((s) => !isCanonicalGrade(s.gradeLevel))
+    .filter(
+      (s) =>
+        !isCanonicalGrade(s.gradeLevel) &&
+        // Recognized, just unscheduled — the note's "could not read" claim
+        // would be false for these, and its bell-schedule warning describes a
+        // schedule these cohorts were never going to follow (SPE-580).
+        !RECOGNIZED_UNSCHEDULED_SET.has(String(s.gradeLevel ?? '').trim().toUpperCase()),
+    )
     .map((s) => ({ row: s.rawRow, message: unrecognizedGradeWarning(s.initials, s.gradeLevel) }));
 }
