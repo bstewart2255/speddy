@@ -114,6 +114,22 @@ describe('parseCSVReport — SEIS Student Goals Report (CSV)', () => {
     }
   });
 
+  it('drops a malformed Birthdate cell rather than fabricating an ISO string', async () => {
+    // '13/04/2018' would pass the lenient MM/DD/YYYY regex as '2018-13-04' —
+    // not a real date, so it would abort the publish at the database's date
+    // column and could never match another file's real birth date. Identity
+    // evidence must be real or absent.
+    const rows = [
+      {
+        0: '2000001', 1: '100001', 2: 'Alvarez', 3: 'Ana', 4: '13/04/2018', 5: '01',
+        6: 'Mt Diablo Elementary School', 9: '05/01/2026', 11: 'Reading', 12: 'Academic #1',
+        14: 'By 5/1/2027, Ana will read 90 words per minute.', 17: 'Resource Specialist',
+      },
+    ];
+    const result = await parseCSVReport(buildSeisGoalsCsvFrom(rows), {});
+    expect(result.students[0].dateOfBirth).toBeUndefined();
+  });
+
   it('warns instead of silently dropping a conflicting id across a student\'s goal rows', async () => {
     // Two goal rows for one student carrying DIFFERENT ids means the export is
     // inconsistent, or two real children are being merged by name+grade+school.

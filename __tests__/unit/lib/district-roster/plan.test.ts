@@ -924,4 +924,67 @@ describe('one-grade vintage skew between files (SPE-578, the Gracelynn duplicate
     });
     expect(result.children).toHaveLength(2);
   });
+
+  it('proof singles a student out of a name clash the compatible ladder cannot resolve', () => {
+    // Two same-named grade-compatible students at OTHER schools make the
+    // name-only fallback ambiguous; before the proven rung ran first, that
+    // refusal starved it and the record reached nobody. The birth date
+    // uniquely identifies the same-school student one grade away.
+    const result = plan({
+      schools: [...SCHOOLS, { id: 'sch-third', name: 'Third Street Elementary' }],
+      goalsStudents: [
+        goalsStudent({ gradeLevel: '3', dateOfBirth: '2018-03-04', districtStudentId: undefined }),
+        goalsStudent({ gradeLevel: '2', schoolOfAttendance: 'John Swett High', districtStudentId: undefined }),
+        goalsStudent({ gradeLevel: '2', schoolOfAttendance: 'Third Street Elementary', districtStudentId: undefined }),
+      ],
+      datesRecords: [],
+      servicesStudents: [servicesStudent({ gradeLevel: '2', dateOfBirth: '2018-03-04' })],
+    });
+    expect(result.children).toHaveLength(3);
+    const proven = result.children.find((c) => c.fields.schoolId === 'sch-rodeo')!;
+    expect(proven.fields.gradeLevel).toBe('3');
+    expect(proven.fields.districtServices).toEqual([serviceLine()]);
+    expect(result.counts.servicesStudentsNotUsed).toBe(0);
+  });
+
+  it('two proven candidates are ambiguity, refused and counted', () => {
+    // Same name, same school, same birth date, one grade above AND below the
+    // record: nothing says which is the student, so the record reaches
+    // neither — the same refusal every other ambiguity here gets.
+    const result = plan({
+      goalsStudents: [
+        goalsStudent({ gradeLevel: '2', dateOfBirth: '2018-03-04', districtStudentId: undefined }),
+        goalsStudent({ gradeLevel: '4', dateOfBirth: '2018-03-04', districtStudentId: undefined }),
+      ],
+      datesRecords: [],
+      servicesStudents: [servicesStudent({ gradeLevel: '3', dateOfBirth: '2018-03-04' })],
+    });
+    expect(result.children).toHaveLength(2);
+    expect(result.counts.servicesStudentsNotUsed).toBe(1);
+    for (const child of result.children) {
+      expect(child.fields.districtServices).toBeNull();
+    }
+  });
+
+  it('a proven candidate at the record\'s own school beats one elsewhere', () => {
+    const result = plan({
+      goalsStudents: [
+        goalsStudent({ gradeLevel: '2', dateOfBirth: '2018-03-04', districtStudentId: undefined }),
+        goalsStudent({
+          gradeLevel: '2',
+          dateOfBirth: '2018-03-04',
+          schoolOfAttendance: 'John Swett High',
+          districtStudentId: undefined,
+        }),
+      ],
+      datesRecords: [],
+      servicesStudents: [servicesStudent({ gradeLevel: '3', dateOfBirth: '2018-03-04' })],
+    });
+    expect(result.children).toHaveLength(2);
+    const home = result.children.find((c) => c.fields.schoolId === 'sch-rodeo')!;
+    expect(home.fields.districtServices).toEqual([serviceLine()]);
+    expect(home.fields.gradeLevel).toBe('3');
+    const elsewhere = result.children.find((c) => c.fields.schoolId !== 'sch-rodeo')!;
+    expect(elsewhere.fields.districtServices).toBeNull();
+  });
 });

@@ -669,17 +669,17 @@ export function planDistrictRoster(input: RosterPlanInput): RosterPlan {
         attachTo(target);
         continue;
       }
-      if (exact.length > 1 || byName.length > 1) {
-        notUsed++;
-        continue;
-      }
-
-      // The vintage-skew rung (SPE-578): no grade-compatible candidate, but
-      // the same ladder — school first, then name alone — may hold this
+      // The vintage-skew rung (SPE-578): no UNIQUE grade-compatible candidate,
+      // but the same ladder — school first, then name alone — may hold this
       // student one grade away with PROOF (see confirmedAcrossRollover).
       // Exactly one proven candidate attaches, keeping the HIGHER of the two
-      // grades: a rollover only ever moves a student up. More than one proven
-      // candidate is ambiguity, refused like every other ambiguity here.
+      // grades: a rollover only ever moves a student up. It runs BEFORE the
+      // ambiguity refusal below on purpose — proof is precisely the evidence
+      // that can single one student out of a name clash the compatible ladder
+      // cannot resolve. What it never outranks is a unique compatible match
+      // above, including the name-only fallback's different-school tolerance,
+      // which predates this rung; proof only steps in where that ladder found
+      // nothing certain.
       const exactProven = exactAll.filter((row) =>
         confirmedAcrossRollover(record, recordGrade, row),
       );
@@ -701,7 +701,10 @@ export function planDistrictRoster(input: RosterPlanInput): RosterPlan {
         }
         continue;
       }
-      if (exactProven.length > 1 || byNameProven.length > 1) {
+      // Ambiguity on either rung — two compatible candidates, or two proven
+      // ones (same-birth-date same-named rows a grade apart) — is refused and
+      // counted, like every other ambiguity here.
+      if (exact.length > 1 || byName.length > 1 || exactProven.length > 1 || byNameProven.length > 1) {
         notUsed++;
         continue;
       }

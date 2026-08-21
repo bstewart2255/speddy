@@ -8,7 +8,29 @@ import { TextDecoder } from 'util';
 import { normalizeSchoolName } from '../school-helpers';
 import { getServiceTypeCode, getServiceTypeNameForRole, isGoalForProviderByKeywords, hasNoProviderRoutingSignal, blankMetadataGoalWarning } from './service-type-mapping';
 import { normalizeGradeLevel } from '../utils/grade-parser';
+import { parseDate as parseDateShared } from '../utils/iep-date-utils';
 import { buildStudentDedupKey, normalizeInitialsForKey } from '../utils/student-dedup-key';
+
+/**
+ * A birth date is IDENTITY EVIDENCE (SPE-578), so unlike the display dates a
+ * malformed cell must yield nothing rather than a fabricated ISO string —
+ * "13/04/2018" would otherwise become "2018-13-04", abort the publish at the
+ * database's date column, and never match the real date another file carries.
+ * The shared parseDate first (the same normalization the district-report
+ * parsers run their birth dates through, so cross-file equality compares one
+ * vocabulary), then a real-calendar check on what it produced.
+ */
+const parseBirthDate = (raw: string): string | undefined => {
+  const iso = parseDateShared(raw);
+  if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return undefined;
+  const [year, month, day] = iso.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day
+    ? iso
+    : undefined;
+};
 
 /**
  * One goal WITH the columns that route it to a provider role (SPE-575). The
@@ -459,7 +481,7 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
         const caseManager = columnMapping.caseManager !== undefined ? (row[columnMapping.caseManager] || '').trim() : '';
         const birthdateRaw =
           columnMapping.birthdate !== undefined ? (row[columnMapping.birthdate] || '').trim() : '';
-        const dateOfBirth = birthdateRaw ? parseDate(birthdateRaw) : undefined;
+        const dateOfBirth = birthdateRaw ? parseBirthDate(birthdateRaw) : undefined;
 
         // A SEIS goal row with blank Area of Need, Annual Goal #, AND Person
         // Responsible has no signal to route it to any provider. Under keyword
