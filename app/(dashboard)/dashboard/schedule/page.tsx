@@ -22,13 +22,16 @@ import { useTeachers } from './hooks/useTeachers';
 import { useOtherProviderSessions } from './hooks/useOtherProviderSessions';
 import { sessionUpdateService } from '../../../../lib/services/session-update-service';
 import { filterScheduleSessions } from './utils/session-filters';
+import {
+  getSessionFilterAvailability,
+  isSessionFilterOffered,
+} from './utils/session-filter-availability';
 import { buildAssignmentUpdate, buildSessionTimes } from './utils/drag-session';
 import { AddMainstreamingBlockModal } from '../../../components/schedule/add-mainstreaming-block-modal';
 import { AddBlockedTimeModal } from '../../../components/schedule/add-blocked-time-modal';
 import { deleteMainstreamingBlock } from '../../../../lib/supabase/queries/mainstreaming-blocks';
 import { deleteStudentBlockedTime } from '../../../../lib/supabase/queries/student-blocked-times';
 import type { ScheduleSession } from '@/src/types';
-import { isSpecialistSourceRole } from '@/lib/auth/role-utils';
 import { ResourceWeekView } from './components/resource-week-view';
 import { getUserRole } from '../../../../lib/supabase/queries/sea-students';
 
@@ -227,6 +230,41 @@ function MainSchedule() {
     clearDragValidation,
   } = useScheduleOperations();
 
+  // SPE-589: which "View Sessions" filters this provider has any use for.
+  const filterAvailability = useMemo(
+    () => getSessionFilterAvailability({
+      sessions,
+      providerRole,
+      currentUserId,
+      hasAssignableSeas: seaProfiles.length > 0,
+    }),
+    [sessions, providerRole, currentUserId, seaProfiles]
+  );
+
+  // A filter can outlive its button — switch to a school with no SEA while "SEA
+  // Sessions" is active and the grid would keep hiding everything else, with no
+  // control left to undo it. Fall back to "all" for as long as the button is
+  // gone rather than resetting the state: return to a school where it applies
+  // and the provider's choice is still there.
+  const effectiveSessionFilter = isSessionFilterOffered(sessionFilter, filterAvailability)
+    ? sessionFilter
+    : 'all';
+
+  // The person behind the filter has to survive the switch too, and a name is
+  // narrower than a filter: School A and School B can both have SEAs, keeping
+  // "SEA Sessions" on offer, while the SEA picked at A doesn't work at B. Drop a
+  // selection the current school's roster doesn't contain — otherwise the grid
+  // filters on a stranger, and a drag would write them onto the session
+  // (buildAssignmentUpdate reads these). Derived rather than reset, so a
+  // provider who switches back finds their selection intact; a roster still
+  // loading reads as "not found", which shows all and assigns nobody.
+  const effectiveSelectedSeaId =
+    selectedSeaId && seaProfiles.some(sea => sea.id === selectedSeaId) ? selectedSeaId : null;
+  const effectiveSelectedSpecialistId =
+    selectedSpecialistId && otherSpecialists.some(s => s.id === selectedSpecialistId)
+      ? selectedSpecialistId
+      : null;
+
   // Unscheduled panel state
   const [isUnscheduledPanelDragOver, setIsUnscheduledPanelDragOver] = React.useState(false);
   const [isUnscheduledHeaderDragOver, setIsUnscheduledHeaderDragOver] = React.useState(false);
@@ -346,7 +384,11 @@ function MainSchedule() {
     );
 
     // Determine assignment updates based on selected filter
-    const assignmentUpdate = buildAssignmentUpdate(sessionFilter, selectedSeaId, selectedSpecialistId);
+    const assignmentUpdate = buildAssignmentUpdate(
+      effectiveSessionFilter,
+      effectiveSelectedSeaId,
+      effectiveSelectedSpecialistId
+    );
 
     optimisticUpdateSession(sessionToMove.id, {
       day_of_week: day,
@@ -407,7 +449,7 @@ function MainSchedule() {
         });
       }
     }
-  }, [draggedSession, dragPosition, students, endDrag, clearDragValidation, optimisticUpdateSession, handleSessionDrop, sessionFilter, selectedSeaId, selectedSpecialistId, supabase, reconcileGroupsAfterMove]);
+  }, [draggedSession, dragPosition, students, endDrag, clearDragValidation, optimisticUpdateSession, handleSessionDrop, effectiveSessionFilter, effectiveSelectedSeaId, effectiveSelectedSpecialistId, supabase, reconcileGroupsAfterMove]);
 
   // Handle schedule complete
   const handleScheduleComplete = useCallback(() => {
@@ -551,19 +593,19 @@ function MainSchedule() {
     const templateSessions = sessions.filter(s => s.session_date === null);
     return filterScheduleSessions({
       sessions: templateSessions,
-      sessionFilter,
+      sessionFilter: effectiveSessionFilter,
       providerRole,
       currentUserId,
-      selectedSeaId,
-      selectedSpecialistId,
+      selectedSeaId: effectiveSelectedSeaId,
+      selectedSpecialistId: effectiveSelectedSpecialistId,
     }).length;
   }, [
     sessions,
-    sessionFilter,
+    effectiveSessionFilter,
     providerRole,
     currentUserId,
-    selectedSeaId,
-    selectedSpecialistId,
+    effectiveSelectedSeaId,
+    effectiveSelectedSpecialistId,
   ]);
 
   // Cleanup on unmount
@@ -632,22 +674,21 @@ function MainSchedule() {
           )}
 
           <ScheduleControls
-            sessionFilter={sessionFilter}
+            sessionFilter={effectiveSessionFilter}
             selectedGrades={selectedGrades}
             selectedTimeSlot={selectedTimeSlot}
             selectedDay={selectedDay}
             highlightedStudentId={highlightedStudentId}
             onSessionFilterChange={setSessionFilter}
-            showSpecialistFilter={providerRole === 'resource' && otherSpecialists.length > 0}
-            showAssignedFilter={isSpecialistSourceRole(providerRole)}
+            filterAvailability={filterAvailability}
             onGradeToggle={toggleGrade}
             onTimeSlotClear={clearTimeSlot}
             onDayClear={clearDay}
             onHighlightClear={clearHighlight}
             seaProfiles={seaProfiles}
             otherSpecialists={otherSpecialists}
-            selectedSeaId={selectedSeaId}
-            selectedSpecialistId={selectedSpecialistId}
+            selectedSeaId={effectiveSelectedSeaId}
+            selectedSpecialistId={effectiveSelectedSpecialistId}
             onSeaSelect={setSelectedSeaId}
             onSpecialistSelect={setSelectedSpecialistId}
           />
@@ -670,9 +711,9 @@ function MainSchedule() {
             selectedTimeSlot={selectedTimeSlot}
             selectedDay={selectedDay}
             highlightedStudentId={highlightedStudentId}
-            sessionFilter={sessionFilter}
-            selectedSeaId={selectedSeaId}
-            selectedSpecialistId={selectedSpecialistId}
+            sessionFilter={effectiveSessionFilter}
+            selectedSeaId={effectiveSelectedSeaId}
+            selectedSpecialistId={effectiveSelectedSpecialistId}
             draggedSession={draggedSession}
             dragPosition={dragPosition}
             selectedSession={selectedSession}

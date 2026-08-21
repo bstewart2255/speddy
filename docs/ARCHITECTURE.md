@@ -1176,6 +1176,22 @@ erDiagram
   `provider`) plus the optional `assigned_to_sea_id` / `assigned_to_specialist_id`
   delegations. A DB trigger (`handle_assignee_deletion`) reverts `delivered_by`
   back to `provider` if the assignee profile is deleted.
+- **Delegation is what earns the "View Sessions" card** (SPE-589). The Main
+  Schedule's filter card is drawn only for a provider who shares work: an SEA
+  they can assign to (`seaProfiles`, which `useScheduleData` fetches for
+  `resource` only — it doubles as the "Assign to" picker's options, so the other
+  roles cannot delegate to an SEA and an SEA on staff can never reach their
+  grid), sessions this provider delegated out, or sessions delegated to them.
+  Each of the three sharing buttons carries its own condition, and
+  `getSessionFilterAvailability` asks `filterScheduleSessions` itself rather
+  than re-deriving the match, so a visible button always has something behind
+  it — except the SEA button, deliberately offered before the first assignment,
+  and kept afterwards for sessions left behind by an SEA who has moved on. An
+  SEA gets no card: their filters all resolve to the same set. Across a school
+  switch a filter whose button is gone falls back to `all`, and a selected
+  SEA/specialist who is not on the new school's roster falls back to nobody —
+  for every read, including the drag-drop assignment in `buildAssignmentUpdate`,
+  which would otherwise write the previous school's assignee.
 - **Status:** `session_status` enum = `active | conflict | needs_attention`;
   companion flags `has_conflict`, `conflict_reason`, `outside_schedule_conflict`,
   `manually_placed`.
@@ -1418,8 +1434,10 @@ palette); `app/api/groups/mutate/route.ts` + the `groups_v2_*` RPCs
 `supabase/migrations/20260724_slot_capacity_soft_guard.sql`
 (`trg_flag_session_over_capacity`) + `checkConcurrentSessionLimit`
 (`lib/services/session-update-service.ts`) +
-`DEFAULT_SCHEDULING_CONFIG.maxConcurrentSessions`. Full design: the project doc
-**"Groups v2 — Design Spec"** (SPE-308…315).
+`DEFAULT_SCHEDULING_CONFIG.maxConcurrentSessions`;
+`app/(dashboard)/dashboard/schedule/utils/session-filters.ts` +
+`session-filter-availability.ts` (which filters exist, and which are offered).
+Full design: the project doc **"Groups v2 — Design Spec"** (SPE-308…315).
 
 ### `school_year` — the Aug 1 flip, and who scopes on it (SPE-470)
 

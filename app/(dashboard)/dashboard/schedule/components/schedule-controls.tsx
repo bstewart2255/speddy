@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { formatTime } from '@/lib/utils/time-options';
+import type { SessionFilterAvailability } from '../utils/session-filter-availability';
 
 interface SeaProfile {
   id: string;
@@ -21,8 +22,12 @@ interface ScheduleControlsProps {
   selectedDay: number | null;
   highlightedStudentId: string | null;
   onSessionFilterChange: (filter: 'all' | 'mine' | 'sea' | 'specialist' | 'assigned') => void;
-  showSpecialistFilter?: boolean;
-  showAssignedFilter?: boolean;
+  /**
+   * SPE-589: which sharing filters this provider has any use for. Nothing on
+   * offer means no "View Sessions" card at all — Grade Levels then takes the
+   * full row on its own.
+   */
+  filterAvailability: SessionFilterAvailability;
   onGradeToggle: (grade: string) => void;
   onTimeSlotClear: () => void;
   onDayClear: () => void;
@@ -55,8 +60,7 @@ export function ScheduleControls({
   selectedDay,
   highlightedStudentId,
   onSessionFilterChange,
-  showSpecialistFilter = false,
-  showAssignedFilter = false,
+  filterAvailability,
   onGradeToggle,
   onTimeSlotClear,
   onDayClear,
@@ -72,7 +76,11 @@ export function ScheduleControls({
     <>
       {/* Session Filter and Grade Level Filter - Side by Side */}
       <div className="mb-4 flex flex-col lg:flex-row gap-4">
-        {/* View Sessions - Left Side */}
+        {/* View Sessions - Left Side. SPE-589: only for providers who share
+            work. With no SEA at the site and nothing delegated either way, every
+            button here led to the same grid, so the whole card is dropped and
+            Grade Levels (flex-1) takes the row. */}
+        {filterAvailability.showCard && (
         <div className="bg-white rounded-lg shadow-sm p-4 flex-shrink-0">
           <h3 className="text-sm font-medium text-gray-700 mb-3">View Sessions</h3>
           <div className="grid grid-cols-2 gap-2 lg:flex lg:flex-wrap">
@@ -90,32 +98,34 @@ export function ScheduleControls({
             >
               My Sessions
             </FilterButton>
-            <div className="relative">
-              <FilterButton
-                active={sessionFilter === 'sea'}
-                onClick={() => onSessionFilterChange('sea')}
-                compact
-              >
-                SEA Sessions
-              </FilterButton>
-              {sessionFilter === 'sea' && seaProfiles.length > 0 && (
-                <div className="absolute top-full left-0 mt-1 z-10">
-                  <select
-                    value={selectedSeaId || ''}
-                    onChange={(e) => onSeaSelect(e.target.value || null)}
-                    className="text-xs px-2 py-1 border border-gray-300 rounded-md bg-white shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500 min-w-[120px]"
-                  >
-                    <option value="">All SEAs</option>
-                    {seaProfiles.map((sea) => (
-                      <option key={sea.id} value={sea.id}>
-                        {sea.full_name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-            </div>
-            {showSpecialistFilter && (
+            {filterAvailability.sea && (
+              <div className="relative">
+                <FilterButton
+                  active={sessionFilter === 'sea'}
+                  onClick={() => onSessionFilterChange('sea')}
+                  compact
+                >
+                  SEA Sessions
+                </FilterButton>
+                {sessionFilter === 'sea' && seaProfiles.length > 0 && (
+                  <div className="absolute top-full left-0 mt-1 z-10">
+                    <select
+                      value={selectedSeaId || ''}
+                      onChange={(e) => onSeaSelect(e.target.value || null)}
+                      className="text-xs px-2 py-1 border border-gray-300 rounded-md bg-white shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500 min-w-[120px]"
+                    >
+                      <option value="">All SEAs</option>
+                      {seaProfiles.map((sea) => (
+                        <option key={sea.id} value={sea.id}>
+                          {sea.full_name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+            )}
+            {filterAvailability.specialist && (
               <div className="relative">
                 <FilterButton
                   active={sessionFilter === 'specialist'}
@@ -142,7 +152,7 @@ export function ScheduleControls({
                 )}
               </div>
             )}
-            {showAssignedFilter && (
+            {filterAvailability.assigned && (
               <FilterButton
                 active={sessionFilter === 'assigned'}
                 onClick={() => onSessionFilterChange('assigned')}
@@ -153,6 +163,7 @@ export function ScheduleControls({
             )}
           </div>
         </div>
+        )}
 
         {/* Grade Levels - Right Side */}
         <div className="bg-white rounded-lg shadow-sm p-4 flex-1">

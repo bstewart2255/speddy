@@ -259,6 +259,10 @@ describe('POST /api/assistant/chat', () => {
       'it appears only where the wider AI features are switched on',
       // Scheduling
       'Balanced, Group by grade, Group by teacher, or Prefer mornings',
+      // SPE-589: the card is conditional, so the gating clause is the part that
+      // matters — without it the assistant sends a solo provider hunting for
+      // buttons that are correctly absent.
+      'The card is only there for providers who have someone to share with',
       'there is no "create group" button',
       '"Add Protected Time"',
       '"Add Mainstreaming Block"',
