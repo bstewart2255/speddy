@@ -727,7 +727,7 @@ export function planDistrictRoster(input: RosterPlanInput): RosterPlan {
         name: fullName,
         schoolName: row.schoolName,
         gradeLevel: '',
-        detail: 'No grade in either file, so this student cannot be added to the roster.',
+        detail: 'No grade in any of your files, so this student cannot be added to the roster.',
       });
       continue;
     }

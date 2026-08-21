@@ -13,6 +13,7 @@ import {
   loadDistrictRosterContext,
   rosterPlanCounts,
   rosterPlanDigest,
+  RosterApplyError,
 } from '@/lib/district-roster/roster-import';
 
 export const runtime = 'nodejs';
@@ -234,11 +235,17 @@ export const POST = withRoute({
     written = await applyDistrictRosterPlan({ plan, actorId: userId, districtId });
   } catch (err) {
     log.error('Publishing the district roster failed partway', err, { districtId });
+    // Say how far it got, not "some may be saved": the writer reports its
+    // progress, and a re-run of the preview shows exactly what is left.
+    const progress = err instanceof RosterApplyError ? err.progress : null;
     return NextResponse.json(
       {
-        error:
-          'Publishing hit an error partway — some students may already be saved. ' +
-          'Run the preview again; it shows the current state.',
+        error: progress
+          ? `Publishing stopped partway: ${progress.created} student(s) had been added and ` +
+            `${progress.updated} updated before the error — those are saved; nothing else ` +
+            'changed. Run the preview again to see exactly what is left.'
+          : 'Publishing hit an error partway — some students may already be saved. ' +
+            'Run the preview again; it shows the current state.',
       },
       { status: 500 },
     );

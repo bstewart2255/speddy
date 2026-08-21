@@ -38,7 +38,7 @@ const writableCount = (plan: RosterPlan): number =>
   plan.refusal ? 0 : plan.counts.creates + plan.counts.updates;
 
 const EXCEPTION_HEADINGS: Record<RosterException['kind'], string> = {
-  'missing-grade': 'No grade in either file',
+  'missing-grade': 'No grade in any of your files',
   'unknown-school': 'School not in your district in Speddy',
   'ambiguous-name-match': 'Speddy could not tell which student this is',
   'identity-mismatch': 'A student in Speddy shares this name, but may be someone else',
