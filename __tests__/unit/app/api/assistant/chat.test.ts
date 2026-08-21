@@ -173,6 +173,9 @@ describe('POST /api/assistant/chat', () => {
     expect(systemText).toContain('Students your district put on the roster');
     expect(systemText).toContain('arrive already ticked');
     expect(systemText).toContain('not the same job as being the service provider');
+    // SPE-584: unticked cards label the name — "Case Manager: …" — so a
+    // provider knows whose name that is, not whose student it is.
+    expect(systemText).toContain('showing "Case Manager:"');
     // SPE-575: claiming carries the district's minutes/goals/accommodations,
     // list offers only ever add, and the Accommodations tab grew a state
     // testing sub-section.
