@@ -412,7 +412,10 @@ export default function RosterClaimBanner() {
                             ) : null}
                           </>
                         ) : c.caseManager ? (
-                          <span className="ml-1.5 text-slate-400">· {c.caseManager}</span>
+                          // SPE-584: label whose name this is — a speech provider
+                          // claiming a student case-managed by resource shouldn't
+                          // read the bare name as "someone else's student".
+                          <span className="ml-1.5 text-slate-400">· Case Manager: {c.caseManager}</span>
                         ) : null}
                         {includes.length > 0 && (
                           <span className="mt-0.5 block text-[11px] text-slate-500">
