@@ -128,6 +128,31 @@ describe('who is stranded, and why', () => {
     expect(gaps.groups.every((g) => g.studentCount === 1)).toBe(true);
   });
 
+  it('picks the same-named provider who actually covers each student’s school', () => {
+    // Two providers share a matching name and work at different campuses.
+    // Resolving the name once and reusing that account would strand every
+    // student at the other one's school.
+    const gaps = run(
+      [
+        child({ caseManager: 'Sam Reyes', schoolId: 'sch-rodeo' }),
+        child({ caseManager: 'Sam Reyes', schoolId: 'sch-high' }),
+      ],
+      [staff('Sam Reyes', 'resource', ['sch-rodeo']), staff('Sam Reyes', 'speech', ['sch-high'])],
+    );
+
+    expect(gaps.countsByKind['awaiting-provider-claim']).toBe(2);
+    expect(gaps.countsByKind['case-manager-at-another-school']).toBe(0);
+  });
+
+  it('still reports another-school when no same-named provider covers the school', () => {
+    const gaps = run(
+      [child({ caseManager: 'Sam Reyes', schoolId: 'sch-high' })],
+      [staff('Sam Reyes', 'resource', ['sch-rodeo']), staff('Sam Reyes', 'ot', ['sch-rodeo'])],
+    );
+
+    expect(gaps.groups[0].kind).toBe('case-manager-at-another-school');
+  });
+
   it('does not invent a school problem for a child with no school recorded', () => {
     const gaps = run(
       [child({ caseManager: 'Tara Larkin', schoolId: null })],

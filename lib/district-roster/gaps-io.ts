@@ -15,24 +15,18 @@
  */
 
 import { createServiceClient } from '@/lib/supabase/server';
+import { logger } from '@/lib/logger';
 import {
+  chunked,
+  DB_PAGE,
+  IN_CHUNK,
   loadCaseloadCounts,
   loadDistrictChildRows,
   loadDistrictSchools,
 } from './roster-import';
 import { planRosterGaps, type GapStaffInput, type RosterGaps } from './gaps';
 
-/** `.in()` filters ride in the request URL — chunked so ids can't overflow it. */
-const IN_CHUNK = 100;
-
-/** PostgREST caps a select at max_rows, so every read below pages to the end. */
-const DB_PAGE = 1000;
-
-function chunked<T>(values: T[], size: number): T[][] {
-  const out: T[][] = [];
-  for (let i = 0; i < values.length; i += size) out.push(values.slice(i, i + size));
-  return out;
-}
+const log = logger.child({ module: 'district-roster-gaps-io' });
 
 /** Only what the view shows — the roster's jsonb columns are never read here. */
 const GAP_CHILD_COLUMNS =
@@ -172,21 +166,61 @@ async function loadDistrictStaff(
   return [...byId.values()];
 }
 
-/** When the district last published a roster, or null if it never has. */
+/** How many recent publish attempts to look back through for a successful one. */
+const PUBLISH_HISTORY = 20;
+
+/**
+ * When the district last published a roster, or null if it never has.
+ *
+ * FAILED ATTEMPTS DO NOT COUNT, and getting that wrong has a specific cost:
+ * `applyDistrictRosterPlan` records `district_roster_imported` whether the write
+ * succeeded or died, marking the failures `partial: true` — and production holds
+ * a row reading `{created: 0, updated: 0, partial: true}` from exactly such a
+ * run. Treating that as a publish would tell the page the district has a roster,
+ * which collapses the uploader on the one admin who just failed to use it.
+ *
+ * A partial run that DID write students still counts. Those students are on the
+ * roster, the gaps list below is about to talk about them, and calling that "not
+ * published" would be its own lie.
+ *
+ * Read back over the recent attempts rather than filtering server-side: the test
+ * is "completed cleanly OR wrote something", which is a condition over two jsonb
+ * fields that PostgREST cannot express in one filter.
+ */
 export async function loadLastPublishedAt(districtId: string): Promise<string | null> {
   const supabase = createServiceClient();
   const { data, error } = await supabase
     .from('audit_logs')
-    .select('timestamp')
+    .select('timestamp, metadata')
     .eq('action', 'district_roster_imported')
     .eq('resource_id', districtId)
     .order('timestamp', { ascending: false })
-    .limit(1);
+    .limit(PUBLISH_HISTORY);
+
   // Never the news. The gaps themselves are what the page is for, and a missing
-  // "last published" line is a far better outcome than an empty page.
-  if (error) return null;
-  const timestamp = data?.[0]?.timestamp;
-  return typeof timestamp === 'string' ? timestamp : null;
+  // "last published" line is a far better outcome than an empty page — but a
+  // permanent fault here is otherwise invisible, and it springs the uploader
+  // open on every district, so say so in the log.
+  if (error) {
+    log.warn('Could not read the district roster publish history', {
+      districtId,
+      error: error.message,
+    });
+    return null;
+  }
+
+  const landed = (metadata: unknown): boolean => {
+    if (typeof metadata !== 'object' || metadata === null) return false;
+    const meta = metadata as { partial?: unknown; created?: unknown; updated?: unknown };
+    if (meta.partial !== true) return true;
+    const written = Number(meta.created ?? 0) + Number(meta.updated ?? 0);
+    return Number.isFinite(written) && written > 0;
+  };
+
+  for (const row of data ?? []) {
+    if (typeof row.timestamp === 'string' && landed(row.metadata)) return row.timestamp;
+  }
+  return null;
 }
 
 /** The whole view, computed fresh: nothing about it is stored between requests. */

@@ -57,6 +57,13 @@ export const GET = withRoute(
       groups: gaps.groups.length,
     });
 
-    return NextResponse.json({ gaps, lastPublishedAt });
+    // The body carries student names, grades and schools across the district.
+    // The gate reads cookies, so Next.js already treats this as dynamic and
+    // does not cache it — the header says so outright rather than resting on
+    // that inference, or on what an intermediate cache decides to do.
+    return NextResponse.json(
+      { gaps, lastPublishedAt },
+      { headers: { 'Cache-Control': 'no-store' } },
+    );
   },
 );

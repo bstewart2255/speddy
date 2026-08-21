@@ -169,4 +169,23 @@ describe('what the answer carries', () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ gaps: EMPTY_GAPS, lastPublishedAt: null });
   });
+
+  it('tells the browser never to cache a body full of student names', async () => {
+    const res = await call();
+
+    expect(res.headers.get('Cache-Control')).toBe('no-store');
+  });
+
+  it('fails loudly, and without district data, when the roster cannot be read', async () => {
+    // The panel's error message depends on this contract: a read that throws
+    // must not come back as an empty-looking but successful answer, which would
+    // render as "every student is connected".
+    mockGaps.mockRejectedValue(new Error('Could not load this district’s children: boom'));
+
+    const res = await call();
+
+    expect(res.status).toBe(500);
+    const body = await res.json();
+    expect(body.gaps).toBeUndefined();
+  });
 });

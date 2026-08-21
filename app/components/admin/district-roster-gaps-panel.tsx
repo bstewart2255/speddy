@@ -3,10 +3,13 @@
 import { useEffect, useRef, useState } from 'react';
 
 /**
- * Types come from the planner module, never re-declared: `import type` is
- * erased at compile time, so no server-only code reaches this bundle and the
- * shapes cannot drift from what the route actually returns.
+ * Types come from the planner module, never re-declared, so the shapes cannot
+ * drift from what the route actually returns. `GAP_KIND_ORDER` is a real import
+ * rather than a copy for the same reason — a kind added to the planner shows up
+ * here instead of being silently dropped by a stale local list. The module is
+ * pure and IO-free, so nothing server-only reaches this bundle.
  */
+import { GAP_KIND_ORDER } from '@/lib/district-roster/gaps';
 import type { RosterGapGroup, RosterGapKind, RosterGaps } from '@/lib/district-roster/gaps';
 
 interface GapsResponse {
@@ -71,14 +74,8 @@ const KIND_COPY: Record<
   },
 };
 
-/** The order the groups arrive in, and the order the empty states are listed. */
-const KIND_ORDER: RosterGapKind[] = [
-  'case-manager-cannot-serve',
-  'case-manager-at-another-school',
-  'case-manager-not-in-speddy',
-  'awaiting-provider-claim',
-  'no-case-manager',
-];
+/** The order the groups arrive in, straight from the planner. */
+const KIND_ORDER = GAP_KIND_ORDER;
 
 function isGapsResponse(value: unknown): value is GapsResponse {
   if (typeof value !== 'object' || value === null) return false;
@@ -90,6 +87,10 @@ function isGapsResponse(value: unknown): value is GapsResponse {
 
 function GapGroup({ group }: { group: RosterGapGroup }) {
   const copy = KIND_COPY[group.kind];
+  // A browser still holding the previous deploy's bundle after a new kind ships
+  // would otherwise read `.tone` off undefined and take the whole panel down —
+  // losing every group it DOES understand over one it doesn't.
+  if (!copy) return null;
   return (
     <div className={`rounded-md border px-3 py-2.5 ${copy.tone}`}>
       <div className="flex items-baseline justify-between gap-3">
@@ -190,7 +191,11 @@ export default function DistrictRosterGapsPanel({
 
   if (loading) {
     return (
-      <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-500">
+      <div
+        role="status"
+        aria-live="polite"
+        className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-500"
+      >
         Checking who is connected to a provider&hellip;
       </div>
     );
@@ -250,7 +255,12 @@ export default function DistrictRosterGapsPanel({
                 <div className="flex items-baseline justify-between gap-3">
                   <h3 className="text-xs font-semibold text-slate-900">{copy.heading}</h3>
                   <span className="text-xs tabular-nums text-slate-500">
-                    {gaps.countsByKind[kind]} student(s)
+                    {/* Falls back to the groups themselves rather than trusting
+                        `countsByKind` to be there: a response shape this client
+                        doesn't fully know should cost a number, not the panel. */}
+                    {gaps.countsByKind?.[kind] ??
+                      groups.reduce((n, g) => n + g.studentCount, 0)}{' '}
+                    student(s)
                   </span>
                 </div>
                 <p className="mt-0.5 max-w-3xl text-xs text-slate-500">{copy.why}</p>

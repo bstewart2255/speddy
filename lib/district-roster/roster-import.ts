@@ -28,16 +28,22 @@ import { stableStringify } from './plan';
 
 const log = logger.child({ module: 'district-roster-import' });
 
+/**
+ * Paging limits shared with `./gaps-io`, which reads the same tables the same
+ * way. Exported rather than copied: two modules paging the same rows with
+ * different page sizes is a difference nothing would ever surface.
+ */
+
 /** PostgREST caps a select at max_rows, so every read below pages to the end. */
-const DB_PAGE = 1000;
+export const DB_PAGE = 1000;
 
 /** `.in()` filters ride in the request URL — chunked so ids can't overflow it. */
-const IN_CHUNK = 100;
+export const IN_CHUNK = 100;
 
-/** How many rows to insert per round trip. */
+/** How many rows to insert per round trip. Writes are this module's alone. */
 const INSERT_CHUNK = 200;
 
-function chunked<T>(values: T[], size: number): T[][] {
+export function chunked<T>(values: T[], size: number): T[][] {
   const out: T[][] = [];
   for (let i = 0; i < values.length; i += size) out.push(values.slice(i, i + size));
   return out;
@@ -111,6 +117,11 @@ export async function loadDistrictSchools(districtId: string): Promise<DistrictS
  *
  * Rows come back loosely typed: `columns` is a caller-supplied string rather
  * than an inline literal, so the client cannot infer the row shape from it.
+ *
+ * `columns` MUST include `id`, and MUST always be a module constant. Rows are
+ * deduped on `row.id` and callers key caseload counts by it, so a projection
+ * without it collapses the whole district to one child. It is also a raw
+ * PostgREST projection, so nothing derived from a request may reach it.
  */
 export async function loadDistrictChildRows(
   districtId: string,

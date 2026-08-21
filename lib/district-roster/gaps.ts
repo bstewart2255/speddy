@@ -132,56 +132,104 @@ export interface RosterGaps {
 
 const clean = (v: string | null | undefined): string => (v ?? '').trim();
 
+/** Every Speddy account a case-manager name reaches, split by what it can do. */
+interface CaseManagerMatches {
+  /** Accounts that can hold a caseload, exact spellings first. */
+  providers: GapStaffInput[];
+  /** Accounts that cannot, exact spellings first. */
+  others: GapStaffInput[];
+}
+
 /**
- * The Speddy account a case-manager name refers to, and whether it can serve.
+ * Every Speddy account a case-manager name refers to.
  *
- * "Can serve" is `isSpecialistSourceRole`, and deliberately nothing else: it is
- * the same set `requireProvider` admits and `claim_roster_children` enforces in
- * the database, so this view can never call someone a provider that the claim
- * flow would refuse — or strand a student it would happily offer. SEAs are
- * outside it (they deliver under supervision and own no caseload), and so is
- * every admin and teacher role.
+ * ALL matches are kept, not just the best one, because which of them counts
+ * depends on the STUDENT: two providers can share a matching name and work at
+ * different schools, and picking one here would strand every student at the
+ * other's campus. `classifyChild` does the choosing, per child.
  *
- * A name can reach SEVERAL accounts, and in production it does: John Swett has
- * both a `resource` provider and a SIS-synced `teacher` account reading
- * "Cynthia Shankle". A provider among the matches settles it — if anyone by
- * that name CAN take the student, this is a waiting-to-claim case, not a broken
- * one. Exact spellings win over nickname matches within each half, so the
- * account we name back is the one the admin will recognize.
+ * The provider/other split is `isSpecialistSourceRole`, and deliberately nothing
+ * else: it is the same set `requireProvider` admits and `claim_roster_children`
+ * enforces in the database, so this view can never call someone a provider that
+ * the claim flow would refuse — or strand a student it would happily offer.
+ * SEAs are outside it (they deliver under supervision and own no caseload), and
+ * so is every admin and teacher role.
+ *
+ * A name reaching several accounts is not hypothetical: John Swett has both a
+ * `resource` provider and a SIS-synced `teacher` account reading "Cynthia
+ * Shankle". Exact spellings sort ahead of nickname matches within each list, so
+ * the account named back to the admin is the one they will recognize.
  */
-function resolveCaseManager(
-  caseManager: string,
-  staff: GapStaffInput[],
-): { account: GapStaffInput | null; canServe: boolean } {
-  let bestProvider: { staff: GapStaffInput; exact: boolean } | null = null;
-  let bestOther: { staff: GapStaffInput; exact: boolean } | null = null;
+function matchCaseManager(caseManager: string, staff: GapStaffInput[]): CaseManagerMatches {
+  const providers: { staff: GapStaffInput; exact: boolean }[] = [];
+  const others: { staff: GapStaffInput; exact: boolean }[] = [];
 
   for (const member of staff) {
     const match = matchPersonNames(caseManager, member.fullName);
     if (match === null) continue;
     const candidate = { staff: member, exact: match === 'exact' };
-    if (isSpecialistSourceRole(clean(member.role))) {
-      if (!bestProvider || (candidate.exact && !bestProvider.exact)) bestProvider = candidate;
-    } else if (!bestOther || (candidate.exact && !bestOther.exact)) {
-      bestOther = candidate;
-    }
+    if (isSpecialistSourceRole(clean(member.role))) providers.push(candidate);
+    else others.push(candidate);
   }
 
-  if (bestProvider) return { account: bestProvider.staff, canServe: true };
-  if (bestOther) return { account: bestOther.staff, canServe: false };
-  return { account: null, canServe: false };
+  const exactFirst = (list: { staff: GapStaffInput; exact: boolean }[]) =>
+    list
+      .slice()
+      .sort((a, b) => Number(b.exact) - Number(a.exact))
+      .map((c) => c.staff);
+
+  return { providers: exactFirst(providers), others: exactFirst(others) };
 }
 
 /**
- * The key a group is collected under: one per case-manager SPELLING.
+ * Why THIS child reaches no provider, given everyone their case manager names.
+ *
+ * Per child rather than per case manager, because the answer genuinely differs
+ * between two students of the same case manager: one at a school that case
+ * manager works at is waiting on a click, one at a school they don't is
+ * unreachable. The same is true across two same-named providers at different
+ * campuses — whichever of them covers this child's school is the one that
+ * matters, so the whole candidate list has to survive to this point.
+ *
+ * A child with no school recorded cannot be checked against anyone's schools,
+ * and is left in the waiting bucket rather than accused of a problem we cannot
+ * see.
+ */
+function classifyChild(
+  matches: CaseManagerMatches,
+  childSchoolId: string | null,
+): { kind: RosterGapKind; account: GapStaffInput | null } {
+  const { providers, others } = matches;
+
+  if (providers.length > 0) {
+    if (childSchoolId === null) {
+      return { kind: 'awaiting-provider-claim', account: providers[0] };
+    }
+    const atThisSchool = providers.find((p) => p.schoolIds.includes(childSchoolId));
+    return atThisSchool
+      ? { kind: 'awaiting-provider-claim', account: atThisSchool }
+      : { kind: 'case-manager-at-another-school', account: providers[0] };
+  }
+
+  if (others.length > 0) return { kind: 'case-manager-cannot-serve', account: others[0] };
+  return { kind: 'case-manager-not-in-speddy', account: null };
+}
+
+/**
+ * The key a group is collected under: one per case-manager spelling per kind.
  *
  * Deliberately the spelling, not the account it resolved to. Where a district's
  * files carry both "Antoinette Bentley" and "Toni Bentley", both reach the same
  * provider and each keeps its own row — which is the honest report, and shows
  * the admin their SEIS data disagrees with itself. Folding them would hide it.
  *
- * The separator is a NUL because a name cannot contain one, so no two distinct
- * (kind, caseManager) pairs can collide on a single key.
+ * CASE is folded, though: "DENISE DOMICH" and "Denise Domich" are one group,
+ * because a difference only of case says nothing an admin could act on.
+ *
+ * `kind` is part of the key, so one case manager legitimately appears twice when
+ * their students split across campuses they do and don't work at. The separator
+ * is a NUL, which a name cannot contain, so two distinct (kind, name) pairs can
+ * never collide on one key.
  */
 const groupKey = (kind: RosterGapKind, caseManager: string): string =>
   `${kind}\u0000${caseManager.toLowerCase()}`;
@@ -195,7 +243,7 @@ const studentOrder = (a: GapStudent, b: GapStudent): number =>
   (a.schoolName ?? '').localeCompare(b.schoolName ?? '') ||
   (a.name ?? a.initials).localeCompare(b.name ?? b.initials);
 
-/** How many students each group listed, biggest first, then alphabetical. */
+/** Most stuck kind first, then the biggest group, then alphabetical. */
 const groupOrder = (a: RosterGapGroup, b: RosterGapGroup): number =>
   GAP_KIND_ORDER.indexOf(a.kind) - GAP_KIND_ORDER.indexOf(b.kind) ||
   b.studentCount - a.studentCount ||
@@ -237,10 +285,12 @@ export function planRosterGaps(input: RosterGapsInput): RosterGaps {
     'no-case-manager': 0,
   };
 
-  // One resolution per DISTINCT case-manager spelling, not per student: the
-  // matcher walks every staff account, and a district re-running it for each of
-  // several thousand children would be doing the same work thousands of times.
-  const resolved = new Map<string, ReturnType<typeof resolveCaseManager>>();
+  // NAME MATCHING is memoized per distinct case-manager spelling — it walks
+  // every staff account, and redoing that for each of several thousand children
+  // would be the same work thousands of times over. CLASSIFICATION is not
+  // memoized: it depends on the child's school, so two students of one case
+  // manager can land in different groups.
+  const matched = new Map<string, CaseManagerMatches>();
   const byGroup = new Map<string, RosterGapGroup>();
 
   let totalUnserved = 0;
@@ -256,30 +306,13 @@ export function planRosterGaps(input: RosterGapsInput): RosterGaps {
     if (caseManager === '') {
       kind = 'no-case-manager';
     } else {
-      let lookup = resolved.get(caseManager.toLowerCase());
-      if (!lookup) {
-        lookup = resolveCaseManager(caseManager, input.staff);
-        resolved.set(caseManager.toLowerCase(), lookup);
+      const nameKey = caseManager.toLowerCase();
+      let matches = matched.get(nameKey);
+      if (!matches) {
+        matches = matchCaseManager(caseManager, input.staff);
+        matched.set(nameKey, matches);
       }
-      account = lookup.account;
-      if (!account) {
-        kind = 'case-manager-not-in-speddy';
-      } else if (!lookup.canServe) {
-        kind = 'case-manager-cannot-serve';
-      } else if (child.schoolId !== null && !account.schoolIds.includes(child.schoolId)) {
-        // A provider only ever sees the roster at schools they work at — the
-        // claim screen scopes itself to `user_accessible_school_ids()`. So a
-        // case manager attached to a different campus is as unreachable as an
-        // admin: nothing offers this student to them, or to anyone.
-        //
-        // Checked per CHILD rather than per case manager, because one case
-        // manager's students can span campuses they do and don't work at.
-        // A child with no school recorded at all cannot be checked, and is left
-        // in the waiting bucket rather than accused of a problem we can't see.
-        kind = 'case-manager-at-another-school';
-      } else {
-        kind = 'awaiting-provider-claim';
-      }
+      ({ kind, account } = classifyChild(matches, child.schoolId));
     }
 
     countsByKind[kind]++;
