@@ -59,8 +59,12 @@ export interface RosterChild {
   testingAccommodations: string[];
   districtServices: DistrictServiceLine[] | null;
   districtGoals: RosterDistrictGoals | null;
-  /** Caseloads currently serving this child. 0 means claimable. */
+  /** Caseloads currently serving this child, however many providers that is. */
   caseloadCount: number;
+  /** The DISTINCT roles of those providers ('unknown' when a role could not be
+   *  read — treated as blocking everyone). Role-based claiming (SPE-577)
+   *  decides visibility from these, not from the count. */
+  servedRoles: string[];
 }
 
 /** One of the caller's OWN caseload rows, joined to its details. */
@@ -342,6 +346,52 @@ export function goalsForRole(
   );
 }
 
+/**
+ * The caseload roles that CLOSE a child to a given caller (SPE-577) — the same
+ * table the claim RPC enforces, so what this planner offers is exactly what
+ * the database will accept.
+ *
+ * A provider of the caller's own discipline (counseling and psychologist are
+ * one discipline: both deliver 510/515) means the caller's service is spoken
+ * for. Generalists (specialist/intervention) block every discipline — their
+ * scope is "everything" — and are themselves blocked by ANY caseload, which
+ * the ELSE arm produces: their family is every role, so any served child
+ * reads as closed. That keeps the original SPE-447 rule for them intact.
+ */
+export function blockingRolesFor(role: string | null | undefined): readonly string[] {
+  switch ((role ?? '').toLowerCase().trim()) {
+    case 'resource':
+      return ['resource', 'specialist', 'intervention'];
+    case 'speech':
+      return ['speech', 'specialist', 'intervention'];
+    case 'ot':
+      return ['ot', 'specialist', 'intervention'];
+    case 'counseling':
+    case 'psychologist':
+      return ['counseling', 'psychologist', 'specialist', 'intervention'];
+    default:
+      return [
+        'resource',
+        'specialist',
+        'speech',
+        'ot',
+        'counseling',
+        'psychologist',
+        'intervention',
+      ];
+  }
+}
+
+/** Whether the district's services include a line this role delivers. */
+const hasServiceForRole = (
+  services: DistrictServiceLine[] | null,
+  role: string | null | undefined,
+): boolean => {
+  const codes = getDeliveryServiceTypeCodes(role ?? '');
+  if (codes.length === 0) return false;
+  return (services ?? []).some((line) => codes.includes(line.code));
+};
+
 /** Whitespace-insensitive text key, for "does the provider already have this entry". */
 const entryKey = (value: string): string => value.trim().replace(/\s+/g, ' ').toLowerCase();
 
@@ -367,16 +417,41 @@ export function planRosterClaims(input: ClaimPlanInput): ClaimPlan {
   );
 
   const myKey = nameKey(input.myName);
+  const blocking = blockingRolesFor(input.myRole);
+  const myCodes = getDeliveryServiceTypeCodes(input.myRole ?? '');
   const claimable: ClaimOffer[] = [];
   const rosterByChildId = new Map<string, RosterChild>();
   for (const child of input.rosterChildren) {
     rosterByChildId.set(child.id, child);
 
-    // Claimable means nobody serves them — not merely "not me". Taking over a
-    // student another provider already has is a different decision with its own
-    // confirmation (SPE-348), and the database refuses it through this path
-    // regardless of what this planner says.
-    if (child.caseloadCount === 0 && !myChildIds.has(child.id)) {
+    // Role-based claiming (SPE-577). A child is claimable by THIS caller when
+    // their discipline's service is unserved — not when nobody serves them:
+    //
+    //   * Closed when the caller already has the child, or when a provider of
+    //     a blocking role does ('unknown' — an unreadable role — blocks
+    //     everyone). Same table the claim RPC enforces.
+    //   * When the district's data lists services, the child must carry a line
+    //     this caller's role delivers — the speech-only student never appears
+    //     on the OT's list. Generalist roles have no codes of their own; their
+    //     blocking family is every role, so for them this reduces to the
+    //     original nobody-serves rule.
+    //   * A child with NO services data keeps the original rule for every
+    //     role: with nothing saying whose student this is, any caseload hides
+    //     them, and everyone at the school is shown the unserved ones.
+    //
+    // A same-discipline takeover remains SPE-348's flow, with its own
+    // confirmation — and the database refuses it through this path regardless
+    // of what this planner says.
+    const closedForMe =
+      myChildIds.has(child.id) ||
+      child.servedRoles.some((r) => r === 'unknown' || blocking.includes(r));
+    const hasServicesData = (child.districtServices?.length ?? 0) > 0;
+    const visible = hasServicesData
+      ? myCodes.length > 0
+        ? hasServiceForRole(child.districtServices, input.myRole) && !closedForMe
+        : child.caseloadCount === 0 && !closedForMe
+      : child.caseloadCount === 0 && !myChildIds.has(child.id);
+    if (visible) {
       const school = input.schoolLevels?.[child.schoolId] ?? null;
       claimable.push({
         childId: child.id,

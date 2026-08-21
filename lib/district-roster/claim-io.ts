@@ -177,21 +177,40 @@ export async function loadProviderRosterContext(
     }
   }
 
-  // Who serves each of them. "Claimable" means NOBODY does — not merely "not
-  // me" — so this counts every caseload row, not just the caller's.
+  // Who serves each of them, and AS WHAT. Role-based claiming (SPE-577) needs
+  // the serving ROLES, not just a count: a child with a speech provider is
+  // closed to speech but open to OT. Every caseload row still counts, not just
+  // the caller's.
   const served = new Map<string, number>();
+  const servedRoles = new Map<string, Set<string>>();
   const childIds = rosterRows.map((r) => String(r.id));
   for (const chunk of chunked(childIds, IN_CHUNK)) {
     for (let afterId: string | null = null; ; ) {
-      const query = service.from('students').select('id, child_id').in('child_id', chunk);
+      const query = service
+        .from('students')
+        .select('id, child_id, provider:profiles!students_provider_id_fkey(role)')
+        .in('child_id', chunk);
       const { data, error } = await (afterId === null ? query : query.gt('id', afterId))
         .order('id')
         .limit(DB_PAGE);
       if (error) throw new Error(`Could not read caseloads: ${error.message}`);
-      const rows = (data ?? []) as { id: string; child_id: string | null }[];
+      const rows = (data ?? []) as unknown as Record<string, unknown>[];
       for (const row of rows) {
         const id = String(row.child_id);
         served.set(id, (served.get(id) ?? 0) + 1);
+        // The embed is many-to-one, but PostgREST's shape varies by client
+        // version — accept object or one-element array. A row whose provider
+        // role cannot be read records the 'unknown' sentinel, which the
+        // planner treats as blocking EVERY role: an unreadable caseload must
+        // close the child, never open it.
+        const provider = Array.isArray(row.provider) ? row.provider[0] : row.provider;
+        const role =
+          provider && typeof provider === 'object'
+            ? String((provider as Record<string, unknown>).role ?? '')
+            : '';
+        const set = servedRoles.get(id) ?? new Set<string>();
+        set.add(role === '' ? 'unknown' : role);
+        servedRoles.set(id, set);
       }
       if (rows.length < DB_PAGE) break;
       afterId = String(rows[rows.length - 1].id);
@@ -215,6 +234,7 @@ export async function loadProviderRosterContext(
     districtServices: parseDistrictServices(row.district_services),
     districtGoals: parseDistrictGoals(row.district_goals),
     caseloadCount: served.get(String(row.id)) ?? 0,
+    servedRoles: [...(servedRoles.get(String(row.id)) ?? [])],
   }));
 
   return { schoolIds, rosterChildren, myStudents, myName, myRole, schoolLevels };
