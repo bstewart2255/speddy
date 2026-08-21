@@ -89,6 +89,33 @@ describe('getSchoolGradeRange', () => {
     expect(getSchoolGradeRange({ school_type: null })).toEqual(ELEMENTARY_DEFAULT);
   });
 
+  it('falls back within the school\'s own level, never across it', () => {
+    // A secondary site with no usable span falls back to 6-12, NOT to the
+    // elementary TK-5: an unfilled grade span is no reason to hand a high
+    // school the exact legend this ticket removed. The type an admin chose is
+    // the better evidence. (CodeRabbit proposed the opposite on PR #925.)
+    expect(getSchoolGradeRange({ school_type: 'High' })).toEqual([
+      '6', '7', '8', '9', '10', '11', '12',
+    ]);
+    expect(getSchoolGradeRange({ school_type: 'Middle' })).toEqual([
+      '6', '7', '8', '9', '10', '11', '12',
+    ]);
+    expect(
+      getSchoolGradeRange({
+        school_type: 'High',
+        grade_span_low: '11',
+        grade_span_high: '9',
+      })
+    ).toEqual(['6', '7', '8', '9', '10', '11', '12']);
+
+    for (const type of ['High', 'Middle', 'Junior High', 'Secondary']) {
+      const grades = getSchoolGradeRange({ school_type: type });
+      expect(grades).not.toContain('TK');
+      expect(grades).not.toContain('K');
+      expect(grades).not.toContain('5');
+    }
+  });
+
   it('leads with TK whenever the span reaches kindergarten', () => {
     // Spans are recorded as K; TK students are entered against them anyway.
     expect(getSchoolGradeRange({ grade_span_low: 'K', grade_span_high: '2' })).toEqual([

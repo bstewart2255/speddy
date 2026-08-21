@@ -305,9 +305,13 @@ export function getSecondaryGradeRange(
  * instead of stopping at 5th. TK leads any span reaching kindergarten: spans
  * are recorded as K but TK students are entered against them.
  *
- * Falls back to TK–5 when the span is missing or unusable, matching the
- * elementary-first default the rest of the app takes (SPE-152). The high end
- * is capped at 12 so an unreadable span (SEIS writes codes like `17` — SPE-467)
+ * Each branch falls back within its own level when the span is missing or
+ * unusable — TK–5 here, 6–12 inside `getSecondaryGradeRange`. The fallback is
+ * deliberately NOT shared: handing a high school TK–5 because nobody filled in
+ * its grade span is the bug this helper exists to fix, and the school_type an
+ * admin chose is better evidence than an absent span (SPE-152 covers the
+ * legacy sites that have neither, which read as elementary). The high end is
+ * capped at 12 so an unreadable span (SEIS writes codes like `17` — SPE-467)
  * can't produce grades outside `CANONICAL_GRADES`.
  */
 export function getSchoolGradeRange(
