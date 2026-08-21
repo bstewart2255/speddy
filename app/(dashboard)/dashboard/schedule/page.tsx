@@ -179,7 +179,8 @@ function MainSchedule() {
   const { visualFilters, setVisualFilters } = useVisualFilters(
     currentSchool?.school_id,
     teachers,
-    students
+    students,
+    !isSecondary
   );
 
   // Fetch other provider sessions when a student is selected in filters
@@ -611,15 +612,24 @@ function MainSchedule() {
             onAddBlockedTime={() => setBlockedTimeModalOpen(true)}
           />
 
-          <ConflictFilterPanel
-            bellSchedules={bellSchedules}
-            specialActivities={specialActivities}
-            students={students}
-            teachers={teachers}
-            selectedFilters={visualFilters}
-            onFilterChange={setVisualFilters}
-            hasOtherProviderSessions={otherProviderSessions.length > 0}
-          />
+          {/* SPE-588: elementary-only. Neither shading this panel drives can be
+              accurate above elementary — a secondary bell row carries the whole
+              grade span (SPE-491), so every grade paints the same bands, and the
+              teacher filter reads Special Activities, a page secondary sites
+              don't have. Rather than offer filters that can't tell the truth,
+              hide the card; useVisualFilters is disabled in step, so no stored
+              selection shades the grid behind it. */}
+          {!isSecondary && (
+            <ConflictFilterPanel
+              bellSchedules={bellSchedules}
+              specialActivities={specialActivities}
+              students={students}
+              teachers={teachers}
+              selectedFilters={visualFilters}
+              onFilterChange={setVisualFilters}
+              hasOtherProviderSessions={otherProviderSessions.length > 0}
+            />
+          )}
 
           <ScheduleControls
             sessionFilter={sessionFilter}
