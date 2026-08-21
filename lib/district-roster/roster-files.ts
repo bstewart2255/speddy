@@ -142,6 +142,7 @@ export async function readDistrictRosterFiles(
         gradeLevel: student.gradeLevel,
         districtStudentId: student.districtStudentId,
         schoolOfAttendance: student.schoolOfAttendance,
+        dateOfBirth: student.dateOfBirth,
         caseManager: student.caseManager,
         iepDate: student.iepDate,
         goalDetails: student.goalDetails,

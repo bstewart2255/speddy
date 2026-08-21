@@ -38,6 +38,10 @@ export interface RosterFileStudent {
   /** SEIS "District ID" — the sole join to the SIS teacher link sync. */
   districtStudentId?: string;
   schoolOfAttendance?: string;
+  /** SEIS "Birthdate", ISO — identity evidence for the cross-file merge and
+   *  the existing-child vet; the Goals export often predates the others
+   *  (SPE-578). */
+  dateOfBirth?: string;
   /** SEIS "Case Manager" — a hint for the claim screen, never an assignment. */
   caseManager?: string;
   /** The report's IEP Date — the vintage of the goals below, not a compliance date. */
@@ -481,6 +485,7 @@ export function planDistrictRoster(input: RosterPlanInput): RosterPlan {
     districtStudentId: districtIdValue(student.districtStudentId),
     schoolName: clean(student.schoolOfAttendance),
     caseManager: clean(student.caseManager) || null,
+    dateOfBirth: clean(student.dateOfBirth) || undefined,
     districtGoals:
       student.goalDetails && student.goalDetails.length > 0
         ? { iepDate: clean(student.iepDate) || null, goals: student.goalDetails }
@@ -560,14 +565,43 @@ export function planDistrictRoster(input: RosterPlanInput): RosterPlan {
   // the earlier files mentioned becomes their own roster row — every file
   // carries name, school and grade, which is all a row needs. Ambiguity is
   // counted per file, so the admin can see data that reached nobody.
-  // Grade compatibility narrows a name match WITHIN one upload batch: every
-  // file in the batch is the same vintage, so two same-named students in
-  // different grades are two children, and a record must never fold into a row
-  // whose grade contradicts it (Codex review on PR #917). A blank on either
-  // side stays compatible — several files legitimately omit or fail to carry
-  // grade for a student.
+  // Grade compatibility narrows a name match WITHIN one upload batch: two
+  // same-named students in different grades are two children, and a record
+  // must never fold into a row whose grade contradicts it (Codex review on
+  // PR #917). A blank on either side stays compatible — several files
+  // legitimately omit or fail to carry grade for a student.
   const gradesCompatible = (a: string, b: string): boolean =>
     !a || !b || a.toUpperCase() === b.toUpperCase();
+
+  // One exception spans a single grade of difference, because the files in a
+  // batch are NOT always the same vintage: SEIS generates each report from its
+  // own data, and JSUSD's Goals export straddled a grade rollover against its
+  // Services export — one real student arrived as grade 2 and grade 3 and
+  // published as two children (SPE-578, the Gracelynn duplicate). PROOF is the
+  // bar for crossing it: a birth date or district id that MATCHES the row
+  // (with no contradiction from the other) says this is the same student seen
+  // through an older or newer export. Without proof the grades keep their
+  // word, so same-named students in adjacent grades stay two children.
+  const gradeRank = (grade: string): number | undefined =>
+    GRADE_RANK.get(clean(grade).toUpperCase());
+  const confirmedAcrossRollover = (
+    record: { dateOfBirth?: string; districtStudentId?: string },
+    recordGrade: string,
+    row: { gradeLevel: string; dateOfBirth?: string; districtStudentId: string | null },
+  ): boolean => {
+    const fromRecord = gradeRank(recordGrade);
+    const fromRow = gradeRank(row.gradeLevel);
+    if (fromRecord === undefined || fromRow === undefined) return false;
+    if (Math.abs(fromRecord - fromRow) !== 1) return false;
+    const recordDob = clean(record.dateOfBirth);
+    const rowDob = clean(row.dateOfBirth);
+    const recordId = districtIdKey(record.districtStudentId);
+    const rowId = districtIdKey(row.districtStudentId);
+    if ((recordDob && rowDob && recordDob !== rowDob) || (recordId && rowId && recordId !== rowId)) {
+      return false;
+    }
+    return Boolean(recordDob && rowDob) || Boolean(recordId && rowId);
+  };
 
   const attachStudents = <T extends {
     firstName: string;
@@ -588,15 +622,31 @@ export function planDistrictRoster(input: RosterPlanInput): RosterPlan {
       const schoolName = clean(record.schoolOfAttendance);
       const recordGrade = clean(record.gradeLevel);
 
-      const exact = (
+      const exactAll =
         rowsByNameSchool.get(nameSchoolKey(firstName, lastName, normalizeSchoolName(schoolName))) ??
-        []
-      ).filter((row) => gradesCompatible(recordGrade, row.gradeLevel));
-      const byName = (rowsByName.get(nameSchoolKey(firstName, lastName, null)) ?? []).filter(
-        (row) => gradesCompatible(recordGrade, row.gradeLevel),
-      );
+        [];
+      const byNameAll = rowsByName.get(nameSchoolKey(firstName, lastName, null)) ?? [];
+      const exact = exactAll.filter((row) => gradesCompatible(recordGrade, row.gradeLevel));
+      const byName = byNameAll.filter((row) => gradesCompatible(recordGrade, row.gradeLevel));
       const target =
         exact.length === 1 ? exact[0] : exact.length === 0 && byName.length === 1 ? byName[0] : null;
+
+      // Everything a record contributes to the row it joins, shared by both
+      // attach paths below. Fill-only on the identity fields: blanks never
+      // erase, and a filled value is never overwritten.
+      const attachTo = (row: RosterRow) => {
+        apply(row, record);
+        if (!row.gradeLevel) row.gradeLevel = recordGrade;
+        if (!row.dateOfBirth) row.dateOfBirth = clean(record.dateOfBirth) || undefined;
+        if (!row.caseManager) row.caseManager = clean(record.caseManager) || null;
+        // The Accommodations report is the one extra file carrying District ID
+        // — it can fill a blank, but never overwrites (a mismatch against the
+        // Goals report would be resolved silently in whichever order the files
+        // were read, which is a guess this planner refuses everywhere else).
+        if (!row.districtStudentId && record.districtStudentId) {
+          row.districtStudentId = districtIdValue(record.districtStudentId);
+        }
+      };
 
       if (target) {
         // Fill-only is not enough (CodeRabbit, PR #917): a record whose
@@ -616,20 +666,42 @@ export function planDistrictRoster(input: RosterPlanInput): RosterPlan {
           notUsed++;
           continue;
         }
-        apply(target, record);
-        if (!target.gradeLevel) target.gradeLevel = clean(record.gradeLevel);
-        if (!target.dateOfBirth) target.dateOfBirth = clean(record.dateOfBirth) || undefined;
-        if (!target.caseManager) target.caseManager = clean(record.caseManager) || null;
-        // The Accommodations report is the one extra file carrying District ID
-        // — it can fill a blank, but never overwrites (a mismatch against the
-        // Goals report would be resolved silently in whichever order the files
-        // were read, which is a guess this planner refuses everywhere else).
-        if (!target.districtStudentId && record.districtStudentId) {
-          target.districtStudentId = districtIdValue(record.districtStudentId);
-        }
+        attachTo(target);
         continue;
       }
       if (exact.length > 1 || byName.length > 1) {
+        notUsed++;
+        continue;
+      }
+
+      // The vintage-skew rung (SPE-578): no grade-compatible candidate, but
+      // the same ladder — school first, then name alone — may hold this
+      // student one grade away with PROOF (see confirmedAcrossRollover).
+      // Exactly one proven candidate attaches, keeping the HIGHER of the two
+      // grades: a rollover only ever moves a student up. More than one proven
+      // candidate is ambiguity, refused like every other ambiguity here.
+      const exactProven = exactAll.filter((row) =>
+        confirmedAcrossRollover(record, recordGrade, row),
+      );
+      const byNameProven = byNameAll.filter((row) =>
+        confirmedAcrossRollover(record, recordGrade, row),
+      );
+      const proven =
+        exactProven.length === 1
+          ? exactProven[0]
+          : exactProven.length === 0 && byNameProven.length === 1
+            ? byNameProven[0]
+            : null;
+      if (proven) {
+        attachTo(proven);
+        const fromRecord = gradeRank(recordGrade);
+        const fromRow = gradeRank(proven.gradeLevel);
+        if (fromRecord !== undefined && fromRow !== undefined && fromRecord > fromRow) {
+          proven.gradeLevel = recordGrade;
+        }
+        continue;
+      }
+      if (exactProven.length > 1 || byNameProven.length > 1) {
         notUsed++;
         continue;
       }

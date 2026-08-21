@@ -29,6 +29,10 @@ export interface ParsedStudent {
   initials: string;
   gradeLevel: string;
   schoolOfAttendance?: string; // SEIS "School of Attendance"
+  // SEIS "Birthdate", normalized to ISO. Identity evidence for the district
+  // roster's cross-file and existing-child matching (SPE-578); no import
+  // surface displays it.
+  dateOfBirth?: string;
   iepDate?: string; // SEIS "IEP Date" - for validation warnings
   // The district's own student id (SPE-339). SEIS "District ID"; the roster
   // template's optional "Student ID" column. Undefined when the file omits it.
@@ -81,6 +85,7 @@ interface ColumnMapping {
   goalType?: number; // SEIS "Annual Goal #" - used for filtering
   personResponsible?: number; // SEIS "Person Responsible" - used for filtering
   caseManager?: number; // SEIS "Case Manager" - carried through for the district roster (SPE-447)
+  birthdate?: number; // SEIS "Birthdate" - label-only, like caseManager (SPE-578)
   goalColumns: number[];
   /** SEIS only: fields located by POSITION because their label wasn't recognized. */
   positionallyResolved?: string[];
@@ -452,6 +457,9 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
         const goalType = columnMapping.goalType !== undefined ? row[columnMapping.goalType] || '' : '';
         const personResponsible = columnMapping.personResponsible !== undefined ? row[columnMapping.personResponsible] || '' : '';
         const caseManager = columnMapping.caseManager !== undefined ? (row[columnMapping.caseManager] || '').trim() : '';
+        const birthdateRaw =
+          columnMapping.birthdate !== undefined ? (row[columnMapping.birthdate] || '').trim() : '';
+        const dateOfBirth = birthdateRaw ? parseDate(birthdateRaw) : undefined;
 
         // A SEIS goal row with blank Area of Need, Annual Goal #, AND Person
         // Responsible has no signal to route it to any provider. Under keyword
@@ -549,6 +557,10 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
           if (!existing.caseManager && caseManager) {
             existing.caseManager = caseManager;
           }
+          // Same first-non-empty rule for the birth date (SPE-578).
+          if (!existing.dateOfBirth && dateOfBirth) {
+            existing.dateOfBirth = dateOfBirth;
+          }
           // Same rule for the district id (SPE-339): a student's goal rows all
           // carry the same id, but only some rows may have it filled in.
           if (!existing.districtStudentId && districtStudentId) {
@@ -577,6 +589,7 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
             initials,
             gradeLevel: normalizedGrade,
             schoolOfAttendance: schoolOfAttendance ? schoolOfAttendance.trim() : undefined,
+            dateOfBirth,
             iepDate,
             districtStudentId: districtStudentId || undefined,
             caseManager: caseManager || undefined,
@@ -810,6 +823,14 @@ const SEIS_FIELDS = {
     exact: ['case manager'],
     pattern: /^case\s*manager(\s*name)?(\s*\(.*\))?$/,
   },
+  // SPE-578: the student's birth date, identity evidence for the district
+  // roster's duplicate matching. Label-only like caseManager (see
+  // SEIS_LABEL_ONLY_FIELDS), with a sharper edge: a positional guess here
+  // would FABRICATE identity data the matcher trusts.
+  birthdate: {
+    exact: ['birthdate'],
+    pattern: /^birth\s*date(\s*\(.*\))?$|^date\s*of\s*birth(\s*\(.*\))?$|^dob$/,
+  },
 } as const;
 
 /**
@@ -853,7 +874,7 @@ const SEIS_CANONICAL_INDEX = {
  * as who manages the student. A missing hint costs an unticked checkbox; both
  * of those cost real data.
  */
-const SEIS_LABEL_ONLY_FIELDS = ['caseManager'] as const satisfies readonly (keyof typeof SEIS_FIELDS)[];
+const SEIS_LABEL_ONLY_FIELDS = ['caseManager', 'birthdate'] as const satisfies readonly (keyof typeof SEIS_FIELDS)[];
 
 /** Human-facing column names, for warnings that name what couldn't be read. */
 const SEIS_FIELD_LABELS: Record<keyof typeof SEIS_FIELDS, string> = {
@@ -868,6 +889,7 @@ const SEIS_FIELD_LABELS: Record<keyof typeof SEIS_FIELDS, string> = {
   goal: 'Goal',
   personResponsible: 'Person Responsible',
   caseManager: 'Case Manager',
+  birthdate: 'Birthdate',
 };
 
 /** The six fields whose presence identifies the report (5 of 6 required). */
@@ -917,7 +939,6 @@ const SEIS_MARKER_HEADERS = [
  */
 const SEIS_OTHER_COLUMNS: readonly (string | RegExp)[] = [
   'ssid',
-  'birthdate',
   'case manager email',
   'baseline',
   'standard',
@@ -1122,6 +1143,7 @@ function mapSeisColumnsByHeader(headers: string[]): ColumnMapping {
     goalType: columns.goalType,
     personResponsible: columns.personResponsible,
     caseManager: columns.caseManager,
+    birthdate: columns.birthdate,
     goalColumns: columns.goal === undefined ? [] : [columns.goal],
     positionallyResolved: (columns.positionallyResolved ?? []).map(
       (field) => SEIS_FIELD_LABELS[field],

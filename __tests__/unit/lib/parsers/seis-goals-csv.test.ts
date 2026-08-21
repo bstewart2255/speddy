@@ -83,6 +83,37 @@ describe('parseCSVReport — SEIS Student Goals Report (CSV)', () => {
     expect(gia!.districtStudentId).toBeUndefined();
   });
 
+  // SPE-578: the Birthdate column is identity evidence for the district
+  // roster's duplicate matching — parsed to ISO, first non-empty across a
+  // student's goal rows, and resolved by LABEL only (a positional guess would
+  // fabricate identity data, so a file without the column simply yields none).
+  it('parses the Birthdate column to an ISO dateOfBirth', async () => {
+    const rows = [
+      {
+        0: '2000001', 1: '100001', 2: 'Alvarez', 3: 'Ana', 4: '03/04/2018', 5: '01',
+        6: 'Mt Diablo Elementary School', 9: '05/01/2026', 11: 'Reading', 12: 'Academic #1',
+        14: 'By 5/1/2027, Ana will read 90 words per minute.', 17: 'Resource Specialist',
+      },
+      {
+        // A second goal row with a BLANK birthdate must not erase the first.
+        0: '2000001', 1: '100001', 2: 'Alvarez', 3: 'Ana', 5: '01',
+        6: 'Mt Diablo Elementary School', 9: '05/01/2026', 11: 'Written', 12: 'Academic #2',
+        14: 'By 5/1/2027, Ana will write a narrative.', 17: 'Resource Specialist',
+      },
+    ];
+    const result = await parseCSVReport(buildSeisGoalsCsvFrom(rows), {});
+    expect(result.students).toHaveLength(1);
+    expect(result.students[0].dateOfBirth).toBe('2018-03-04');
+  });
+
+  it('leaves dateOfBirth undefined when the export has no Birthdate column', async () => {
+    const result = await parseCSVReport(buildSeisGoalsCsvWithoutColumns([4]), {});
+    expect(result.students.length).toBeGreaterThan(0);
+    for (const student of result.students) {
+      expect(student.dateOfBirth).toBeUndefined();
+    }
+  });
+
   it('warns instead of silently dropping a conflicting id across a student\'s goal rows', async () => {
     // Two goal rows for one student carrying DIFFERENT ids means the export is
     // inconsistent, or two real children are being merged by name+grade+school.
