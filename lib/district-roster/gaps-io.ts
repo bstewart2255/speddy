@@ -64,14 +64,18 @@ async function loadDistrictStaff(
   const supabase = createServiceClient();
   const byId = new Map<string, GapStaffInput>();
 
-  const collect = (rows: { id: unknown; full_name?: unknown; role?: unknown }[]) => {
+  const collect = (
+    rows: { id: unknown; full_name?: unknown; role?: unknown; school_id?: unknown }[],
+  ) => {
     for (const row of rows) {
       const id = String(row.id);
       if (byId.has(id)) continue;
+      const ownSchool = row.school_id === null ? null : String(row.school_id ?? '') || null;
       byId.set(id, {
         id,
         fullName: (row.full_name as string | null) ?? null,
         role: (row.role as string | null) ?? null,
+        schoolIds: ownSchool ? [ownSchool] : [],
       });
     }
   };
@@ -83,7 +87,10 @@ async function loadDistrictStaff(
   // could also skip a row inserted mid-read, and a provider this loader misses
   // is a provider the view wrongly reports as having no Speddy account.
   for (let afterId: string | null = null; ; ) {
-    const q = supabase.from('profiles').select('id, full_name, role').eq('district_id', districtId);
+    const q = supabase
+      .from('profiles')
+      .select('id, full_name, role, school_id')
+      .eq('district_id', districtId);
     const { data, error } = await (afterId === null ? q : q.gt('id', afterId))
       .order('id')
       .limit(DB_PAGE);
@@ -97,7 +104,7 @@ async function loadDistrictStaff(
     for (let afterId: string | null = null; ; ) {
       const q = supabase
         .from('profiles')
-        .select('id, full_name, role')
+        .select('id, full_name, role, school_id')
         .in('school_id', chunk)
         .is('district_id', null);
       const { data, error } = await (afterId === null ? q : q.gt('id', afterId))
@@ -110,29 +117,42 @@ async function loadDistrictStaff(
     }
   }
 
-  // Providers attached to a district school through provider_schools. Ids come
-  // back first, then their profiles — a nested select would depend on a FK
-  // relationship name PostgREST infers, which is one more thing to get wrong.
-  const linkedIds = new Set<string>();
+  // Which district schools each account is attached to through provider_schools.
+  // This is half of "where can they claim?" — the other half is their profile's
+  // own school, collected above — and it decides whether a case manager who IS a
+  // provider can actually reach the student, or is sitting on another campus.
+  //
+  // Ids come back first, then any profile not already loaded: a nested select
+  // would depend on a FK relationship name PostgREST infers, which is one more
+  // thing to get wrong.
+  const schoolIdsByProvider = new Map<string, Set<string>>();
   for (const chunk of chunked(schoolIds, IN_CHUNK)) {
     for (let afterId: string | null = null; ; ) {
-      const q = supabase.from('provider_schools').select('id, provider_id').in('school_id', chunk);
+      const q = supabase
+        .from('provider_schools')
+        .select('id, provider_id, school_id')
+        .in('school_id', chunk);
       const { data, error } = await (afterId === null ? q : q.gt('id', afterId))
         .order('id')
         .limit(DB_PAGE);
       if (error) throw new Error(`Could not load school assignments: ${error.message}`);
       for (const row of data ?? []) {
         const providerId = row.provider_id === null ? '' : String(row.provider_id);
-        if (providerId !== '' && !byId.has(providerId)) linkedIds.add(providerId);
+        const schoolId = row.school_id === null ? '' : String(row.school_id);
+        if (providerId === '' || schoolId === '') continue;
+        const seen = schoolIdsByProvider.get(providerId);
+        if (seen) seen.add(schoolId);
+        else schoolIdsByProvider.set(providerId, new Set([schoolId]));
       }
       if (!data || data.length < DB_PAGE) break;
       afterId = String(data[data.length - 1].id);
     }
   }
 
-  for (const chunk of chunked([...linkedIds], IN_CHUNK)) {
+  const missing = [...schoolIdsByProvider.keys()].filter((id) => !byId.has(id));
+  for (const chunk of chunked(missing, IN_CHUNK)) {
     for (let afterId: string | null = null; ; ) {
-      const q = supabase.from('profiles').select('id, full_name, role').in('id', chunk);
+      const q = supabase.from('profiles').select('id, full_name, role, school_id').in('id', chunk);
       const { data, error } = await (afterId === null ? q : q.gt('id', afterId))
         .order('id')
         .limit(DB_PAGE);
@@ -141,6 +161,12 @@ async function loadDistrictStaff(
       if (!data || data.length < DB_PAGE) break;
       afterId = String(data[data.length - 1].id);
     }
+  }
+
+  for (const [providerId, linked] of schoolIdsByProvider) {
+    const member = byId.get(providerId);
+    if (!member) continue;
+    member.schoolIds = [...new Set([...member.schoolIds, ...linked])];
   }
 
   return [...byId.values()];

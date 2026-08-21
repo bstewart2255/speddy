@@ -41,6 +41,13 @@ const KIND_COPY: Record<
     tone: 'border-rose-200 bg-rose-50',
     pill: 'border-rose-200 bg-white text-rose-700',
   },
+  'case-manager-at-another-school': {
+    heading: 'Their case manager works at a different school',
+    why:
+      'The case manager is a provider in Speddy, but is not assigned to the school this student attends — and providers only ever see the roster at their own schools. Add them to that school, or ask a provider who works there to pick the student up.',
+    tone: 'border-rose-200 bg-rose-50',
+    pill: 'border-rose-200 bg-white text-rose-700',
+  },
   'case-manager-not-in-speddy': {
     heading: 'No Speddy account matches the case manager',
     why:
@@ -51,7 +58,7 @@ const KIND_COPY: Record<
   'awaiting-provider-claim': {
     heading: 'Waiting on a provider to claim them',
     why:
-      'These students are on a provider’s claim list in Speddy right now. Nothing is broken — nobody has picked them up yet.',
+      'The case manager is a provider at this student’s school, so nothing is stopping them — they have not picked the student up yet. A provider is offered a student whose services match their own specialty, so where the district listed no service this one delivers, a colleague in another specialty may be the one to nudge.',
     tone: 'border-sky-200 bg-sky-50',
     pill: 'border-sky-200 bg-white text-sky-800',
   },
@@ -67,6 +74,7 @@ const KIND_COPY: Record<
 /** The order the groups arrive in, and the order the empty states are listed. */
 const KIND_ORDER: RosterGapKind[] = [
   'case-manager-cannot-serve',
+  'case-manager-at-another-school',
   'case-manager-not-in-speddy',
   'awaiting-provider-claim',
   'no-case-manager',
@@ -113,7 +121,7 @@ function GapGroup({ group }: { group: RosterGapGroup }) {
         ))}
         {group.hiddenCount > 0 && (
           <li className="italic text-slate-400">
-            and {group.hiddenCount} more &mdash; publish again or filter in SEIS to see the rest
+            and {group.hiddenCount} more, not listed here
           </li>
         )}
       </ul>
@@ -206,8 +214,8 @@ export default function DistrictRosterGapsPanel({
   if (gaps.totalOnRoster === 0) {
     return (
       <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-500">
-        No roster published yet. Upload your SEIS reports above and this will show every student who
-        is not connected to a provider.
+        No students in Speddy for your district yet. Upload your SEIS reports above, and this will
+        show every student who is not connected to a provider.
       </div>
     );
   }

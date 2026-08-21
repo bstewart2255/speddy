@@ -32,10 +32,16 @@ const child = (over: Partial<GapChildInput> = {}): GapChildInput => ({
   ...over,
 });
 
-const staff = (fullName: string, role: string): GapStaffInput => ({
+/** Defaults to working at the school `child()` puts students at. */
+const staff = (
+  fullName: string,
+  role: string,
+  schoolIds: string[] = ['sch-rodeo', 'sch-high'],
+): GapStaffInput => ({
   id: `staff-${fullName}`,
   fullName,
   role,
+  schoolIds,
 });
 
 const run = (
@@ -88,6 +94,47 @@ describe('who is stranded, and why', () => {
       accountName: null,
       accountRoleLabel: 'Resource',
     });
+  });
+
+  it('does not call a student "waiting" when their case manager works elsewhere', () => {
+    // Providers only ever see the roster at their own schools, so a case manager
+    // on another campus is as unreachable as an admin — and telling the district
+    // "nothing is broken, nudge them" would be a false assurance.
+    const gaps = run(
+      [child({ caseManager: 'Tara Larkin', schoolId: 'sch-high' })],
+      [staff('Tara Larkin', 'resource', ['sch-rodeo'])],
+    );
+
+    expect(gaps.groups[0]).toMatchObject({
+      kind: 'case-manager-at-another-school',
+      caseManager: 'Tara Larkin',
+      accountRoleLabel: 'Resource',
+    });
+  });
+
+  it('splits one case manager’s students across the campuses they do and don’t serve', () => {
+    const gaps = run(
+      [
+        child({ caseManager: 'Tara Larkin', schoolId: 'sch-rodeo' }),
+        child({ caseManager: 'Tara Larkin', schoolId: 'sch-high' }),
+      ],
+      [staff('Tara Larkin', 'resource', ['sch-rodeo'])],
+    );
+
+    expect(gaps.groups.map((g) => g.kind)).toEqual([
+      'case-manager-at-another-school',
+      'awaiting-provider-claim',
+    ]);
+    expect(gaps.groups.every((g) => g.studentCount === 1)).toBe(true);
+  });
+
+  it('does not invent a school problem for a child with no school recorded', () => {
+    const gaps = run(
+      [child({ caseManager: 'Tara Larkin', schoolId: null })],
+      [staff('Tara Larkin', 'resource', ['sch-rodeo'])],
+    );
+
+    expect(gaps.groups[0].kind).toBe('awaiting-provider-claim');
   });
 
   it('reports a name no account answers to', () => {
@@ -202,6 +249,18 @@ describe('what the view counts', () => {
       'awaiting-provider-claim',
       'no-case-manager',
     ]);
+  });
+
+  it('counts every reason, including the ones no student is in', () => {
+    const gaps = run([child({ caseManager: null })]);
+
+    expect(gaps.countsByKind).toEqual({
+      'case-manager-cannot-serve': 0,
+      'case-manager-at-another-school': 0,
+      'case-manager-not-in-speddy': 0,
+      'awaiting-provider-claim': 0,
+      'no-case-manager': 1,
+    });
   });
 
   it('carries the school and grade an admin needs to find the student', () => {

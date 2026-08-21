@@ -26,15 +26,18 @@ import DistrictRosterGapsPanel from '@/app/components/admin/district-roster-gaps
 
 export default function DistrictRosterPage() {
   // Null until the gaps panel reports back — the uploader stays collapsed while
-  // it is unknown, and only springs open for a district with no roster at all.
-  const [hasRoster, setHasRoster] = useState<boolean | null>(null);
+  // it is unknown, and only springs open for a district that has never
+  // published. "Never published" is the last-publish timestamp and NOT the
+  // number of children: a provider's own caseload rows create children too, so
+  // a district with plenty of them may never have uploaded anything.
   const [lastPublishedAt, setLastPublishedAt] = useState<string | null>(null);
+  const [hasPublished, setHasPublished] = useState<boolean | null>(null);
   const [refreshToken, setRefreshToken] = useState(0);
 
   const handleLoaded = useCallback(
     (summary: { totalOnRoster: number; lastPublishedAt: string | null }) => {
-      setHasRoster(summary.totalOnRoster > 0);
       setLastPublishedAt(summary.lastPublishedAt);
+      setHasPublished(summary.lastPublishedAt !== null);
     },
     [],
   );
@@ -54,7 +57,7 @@ export default function DistrictRosterPage() {
       </div>
 
       <DistrictRosterImportPanel
-        hasRoster={hasRoster}
+        hasPublished={hasPublished}
         lastPublishedAt={lastPublishedAt}
         onPublished={handlePublished}
       />

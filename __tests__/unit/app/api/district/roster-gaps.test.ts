@@ -73,6 +73,7 @@ const EMPTY_GAPS = {
   totalUnserved: 0,
   countsByKind: {
     'case-manager-cannot-serve': 0,
+    'case-manager-at-another-school': 0,
     'case-manager-not-in-speddy': 0,
     'awaiting-provider-claim': 0,
     'no-case-manager': 0,

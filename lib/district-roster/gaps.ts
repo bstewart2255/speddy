@@ -45,6 +45,13 @@ export interface GapStaffInput {
   id: string;
   fullName: string | null;
   role: string | null;
+  /**
+   * The schools this account works at — their profile's own school plus every
+   * `provider_schools` link. Both halves are needed: the signup trigger writes
+   * `provider_schools` rows only for MULTI-school providers (SPE-573), so a
+   * single-school provider is reachable by `profiles.school_id` alone.
+   */
+  schoolIds: string[];
 }
 
 export interface RosterGapsInput {
@@ -64,11 +71,12 @@ export interface RosterGapsInput {
 
 /**
  * Why a student reaches no provider. Ordered by how stuck they are: the first
- * two need someone to act before anything can happen, the third is waiting on a
- * click, and the fourth is a fact about the files rather than a problem.
+ * three need someone to act before anything can happen, the fourth is waiting on
+ * a click, and the fifth is a fact about the files rather than a problem.
  */
 export type RosterGapKind =
   | 'case-manager-cannot-serve'
+  | 'case-manager-at-another-school'
   | 'case-manager-not-in-speddy'
   | 'awaiting-provider-claim'
   | 'no-case-manager';
@@ -76,6 +84,7 @@ export type RosterGapKind =
 /** The order groups are returned in, most stuck first. */
 export const GAP_KIND_ORDER: readonly RosterGapKind[] = [
   'case-manager-cannot-serve',
+  'case-manager-at-another-school',
   'case-manager-not-in-speddy',
   'awaiting-provider-claim',
   'no-case-manager',
@@ -222,6 +231,7 @@ export function planRosterGaps(input: RosterGapsInput): RosterGaps {
   const maxPerGroup = input.maxPerGroup ?? DEFAULT_MAX_PER_GROUP;
   const countsByKind: Record<RosterGapKind, number> = {
     'case-manager-cannot-serve': 0,
+    'case-manager-at-another-school': 0,
     'case-manager-not-in-speddy': 0,
     'awaiting-provider-claim': 0,
     'no-case-manager': 0,
@@ -252,11 +262,24 @@ export function planRosterGaps(input: RosterGapsInput): RosterGaps {
         resolved.set(caseManager.toLowerCase(), lookup);
       }
       account = lookup.account;
-      kind = lookup.canServe
-        ? 'awaiting-provider-claim'
-        : account
-          ? 'case-manager-cannot-serve'
-          : 'case-manager-not-in-speddy';
+      if (!account) {
+        kind = 'case-manager-not-in-speddy';
+      } else if (!lookup.canServe) {
+        kind = 'case-manager-cannot-serve';
+      } else if (child.schoolId !== null && !account.schoolIds.includes(child.schoolId)) {
+        // A provider only ever sees the roster at schools they work at — the
+        // claim screen scopes itself to `user_accessible_school_ids()`. So a
+        // case manager attached to a different campus is as unreachable as an
+        // admin: nothing offers this student to them, or to anyone.
+        //
+        // Checked per CHILD rather than per case manager, because one case
+        // manager's students can span campuses they do and don't work at.
+        // A child with no school recorded at all cannot be checked, and is left
+        // in the waiting bucket rather than accused of a problem we can't see.
+        kind = 'case-manager-at-another-school';
+      } else {
+        kind = 'awaiting-provider-claim';
+      }
     }
 
     countsByKind[kind]++;
