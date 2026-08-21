@@ -550,6 +550,7 @@ export function planRosterClaims(input: ClaimPlanInput): ClaimPlan {
       : child.caseloadCount === 0 && !myChildIds.has(child.id);
     if (visible) {
       const school = input.schoolLevels?.[child.schoolId] ?? null;
+      const managerMatch = acceptedManagers.get(nameKey(child.caseManager)) ?? null;
       claimable.push({
         childId: child.id,
         initials: child.initials,
@@ -567,8 +568,8 @@ export function planRosterClaims(input: ClaimPlanInput): ClaimPlan {
         testingAccommodations: child.testingAccommodations,
         goals: goalsForRole(child.districtGoals, input.myRole),
         goalsIepDate: child.districtGoals?.iepDate ?? null,
-        suggested: acceptedManagers.has(nameKey(child.caseManager)),
-        suggestedMatch: acceptedManagers.get(nameKey(child.caseManager)) ?? null,
+        suggested: managerMatch !== null,
+        suggestedMatch: managerMatch,
       });
     }
   }
