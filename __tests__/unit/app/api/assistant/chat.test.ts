@@ -259,6 +259,9 @@ describe('POST /api/assistant/chat', () => {
       'it appears only where the wider AI features are switched on',
       // Scheduling
       'Balanced, Group by grade, Group by teacher, or Prefer mornings',
+      // SPE-587: the grade chips list the SCHOOL's grades, so a secondary
+      // provider is not told to look for a TK-5 row that isn't on their screen.
+      'The grades offered are the school\'s own',
       'there is no "create group" button',
       '"Add Protected Time"',
       '"Add Mainstreaming Block"',

@@ -29,6 +29,7 @@ import { deleteMainstreamingBlock } from '../../../../lib/supabase/queries/mains
 import { deleteStudentBlockedTime } from '../../../../lib/supabase/queries/student-blocked-times';
 import type { ScheduleSession } from '@/src/types';
 import { isSpecialistSourceRole } from '@/lib/auth/role-utils';
+import { getSchoolGradeRange } from '@/lib/school-helpers';
 import { ResourceWeekView } from './components/resource-week-view';
 import { getUserRole } from '../../../../lib/supabase/queries/sea-students';
 
@@ -188,6 +189,15 @@ function MainSchedule() {
     visualFilters.studentId
   );
 
+  // SPE-587: the Grade Levels legend follows the active school's own grades —
+  // a high school offers 9th–12th, a middle school 6th–8th — instead of the
+  // TK–5 list every site used to get, which matched no secondary student and
+  // left every session on the grid dimmed with no toggle to restore it.
+  const availableGrades = useMemo(
+    () => getSchoolGradeRange(currentSchool),
+    [currentSchool]
+  );
+
   // UI state management hook
   const {
     selectedGrades,
@@ -218,7 +228,7 @@ function MainSchedule() {
     endDrag,
     openSessionPopup,
     closeSessionPopup,
-  } = useScheduleState();
+  } = useScheduleState(availableGrades);
 
   // Operations hook
   const {
@@ -633,6 +643,7 @@ function MainSchedule() {
 
           <ScheduleControls
             sessionFilter={sessionFilter}
+            availableGrades={availableGrades}
             selectedGrades={selectedGrades}
             selectedTimeSlot={selectedTimeSlot}
             selectedDay={selectedDay}
@@ -666,6 +677,7 @@ function MainSchedule() {
             teachers={teachers}
             visualFilters={visualFilters}
             otherProviderSessions={otherProviderSessions}
+            availableGrades={availableGrades}
             selectedGrades={selectedGrades}
             selectedTimeSlot={selectedTimeSlot}
             selectedDay={selectedDay}

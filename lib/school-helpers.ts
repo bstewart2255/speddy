@@ -297,6 +297,45 @@ export function getSecondaryGradeRange(
 }
 
 /**
+ * The scheduling grades a school's UI should offer, in grade order (SPE-587).
+ *
+ * Secondary sites defer to `getSecondaryGradeRange` (6–12, clamped to the
+ * span). Elementary sites derive from their own span, so a K-8 or K-12
+ * combined site — classified elementary on purpose — offers its upper grades
+ * instead of stopping at 5th. TK leads any span reaching kindergarten: spans
+ * are recorded as K but TK students are entered against them.
+ *
+ * Falls back to TK–5 when the span is missing or unusable, matching the
+ * elementary-first default the rest of the app takes (SPE-152). The high end
+ * is capped at 12 so an unreadable span (SEIS writes codes like `17` — SPE-467)
+ * can't produce grades outside `CANONICAL_GRADES`.
+ */
+export function getSchoolGradeRange(
+  school?: (SchoolLevelInput & { grade_span_high?: string | null }) | null
+): string[] {
+  if (isSecondarySchool(school)) return getSecondaryGradeRange(school);
+
+  const DEFAULT_LOW = 0; // TK / K
+  const DEFAULT_HIGH = 5;
+  const CANONICAL_HIGH = 12;
+
+  const parsedLow = parseGradeLevel(school?.grade_span_low);
+  const parsedHigh = parseGradeLevel(school?.grade_span_high);
+
+  let low = parsedLow === null ? DEFAULT_LOW : Math.max(parsedLow, DEFAULT_LOW);
+  let high = parsedHigh === null ? DEFAULT_HIGH : Math.min(parsedHigh, CANONICAL_HIGH);
+  if (high < low) {
+    low = DEFAULT_LOW;
+    high = DEFAULT_HIGH;
+  }
+
+  const grades: string[] = [];
+  if (low <= 0) grades.push('TK', 'K');
+  for (let g = Math.max(low, 1); g <= high; g++) grades.push(String(g));
+  return grades;
+}
+
+/**
  * Merge duplicate team members that might appear due to migration
  * (e.g., same person appearing with both ID and text matching)
  */

@@ -25,11 +25,31 @@ export interface ScheduleUIState {
   popupPosition: DOMRect | null;
 }
 
-export function useScheduleState() {
+/**
+ * @param availableGrades the active school's own grades, in grade order
+ *   (`getSchoolGradeRange`). Every one starts selected — the grade filter is a
+ *   legend first and a filter second, so nothing is dimmed until the provider
+ *   dims it (SPE-587).
+ */
+export function useScheduleState(availableGrades: string[]) {
   // Filter states
   const [selectedGrades, setSelectedGrades] = useState<Set<string>>(
-    new Set(['TK', 'K', '1', '2', '3', '4', '5'])
+    () => new Set(availableGrades)
   );
+
+  // Re-seed when the active school's grades change, so the legend and the
+  // selection can never disagree — switching schools swaps the range without
+  // remounting this hook. Adjusted during render rather than in an effect:
+  // an effect would paint one frame holding the previous school's grades,
+  // which is the all-gray grid this exists to prevent. Keyed on the joined
+  // list, not the array, so a school object re-created with identical grades
+  // doesn't wipe the provider's toggles.
+  const gradeKey = availableGrades.join(',');
+  const [seededGradeKey, setSeededGradeKey] = useState(gradeKey);
+  if (seededGradeKey !== gradeKey) {
+    setSeededGradeKey(gradeKey);
+    setSelectedGrades(new Set(availableGrades));
+  }
   const [selectedTimeSlot, setSelectedTimeSlot] = useState<string | null>(null);
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
   const [highlightedStudentId, setHighlightedStudentId] = useState<string | null>(null);
