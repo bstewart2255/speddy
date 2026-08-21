@@ -1,19 +1,46 @@
 'use client';
 
 /**
- * District admin → Student roster (SPE-447).
+ * District admin → Student roster (SPE-447, SPE-587).
  *
- * One place for the district to put its whole special-education roster into
- * Speddy, from the two reports SEIS already exports district-wide — instead of
- * every provider downloading and uploading their own slice of the same files.
+ * Two things, in the order a district actually needs them.
  *
- * The page writes nothing itself: it uploads to `/api/district/roster-import`,
- * which is where the district-admin gate and every database write live.
+ * The roster ITSELF is the standing content: which published students reach no
+ * provider, and why. That answer used to exist only for as long as the import's
+ * review screen stayed open — a district admin who navigated away had no way
+ * back to it short of re-uploading their files, so students nobody picked up
+ * simply went quiet. It now loads on every visit.
+ *
+ * Uploading is the periodic action, so once a roster exists the uploader
+ * collapses to a single line above it.
+ *
+ * The page writes nothing itself: it reads `/api/district/roster-gaps` and
+ * uploads to `/api/district/roster-import`, which is where the district-admin
+ * gate and every database write live.
  */
 
-import DistrictRosterImportPanel from '@/app/components/admin/district-roster-import-panel';
+import { useCallback, useState } from 'react';
 
-export default function DistrictRosterImportPage() {
+import DistrictRosterImportPanel from '@/app/components/admin/district-roster-import-panel';
+import DistrictRosterGapsPanel from '@/app/components/admin/district-roster-gaps-panel';
+
+export default function DistrictRosterPage() {
+  // Null until the gaps panel reports back — the uploader stays collapsed while
+  // it is unknown, and only springs open for a district with no roster at all.
+  const [hasRoster, setHasRoster] = useState<boolean | null>(null);
+  const [lastPublishedAt, setLastPublishedAt] = useState<string | null>(null);
+  const [refreshToken, setRefreshToken] = useState(0);
+
+  const handleLoaded = useCallback(
+    (summary: { totalOnRoster: number; lastPublishedAt: string | null }) => {
+      setHasRoster(summary.totalOnRoster > 0);
+      setLastPublishedAt(summary.lastPublishedAt);
+    },
+    [],
+  );
+
+  const handlePublished = useCallback(() => setRefreshToken((n) => n + 1), []);
+
   return (
     <div className="mx-auto max-w-5xl space-y-4 p-6">
       <div>
@@ -26,7 +53,13 @@ export default function DistrictRosterImportPage() {
         </p>
       </div>
 
-      <DistrictRosterImportPanel />
+      <DistrictRosterImportPanel
+        hasRoster={hasRoster}
+        lastPublishedAt={lastPublishedAt}
+        onPublished={handlePublished}
+      />
+
+      <DistrictRosterGapsPanel refreshToken={refreshToken} onLoaded={handleLoaded} />
     </div>
   );
 }
