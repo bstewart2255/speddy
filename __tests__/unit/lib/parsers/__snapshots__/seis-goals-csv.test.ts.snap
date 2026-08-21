@@ -73,6 +73,7 @@ exports[`parseCSVReport — SEIS Student Goals Report (CSV) parses the full fixt
   "students": [
     {
       "caseManager": undefined,
+      "dateOfBirth": undefined,
       "districtStudentId": "100001",
       "firstName": "Ana",
       "goalDetails": [
@@ -102,6 +103,7 @@ exports[`parseCSVReport — SEIS Student Goals Report (CSV) parses the full fixt
     },
     {
       "caseManager": "Rosa Delgado",
+      "dateOfBirth": undefined,
       "districtStudentId": "100002",
       "firstName": "Ben",
       "goalDetails": [
@@ -124,6 +126,7 @@ exports[`parseCSVReport — SEIS Student Goals Report (CSV) parses the full fixt
     },
     {
       "caseManager": "Rosa Delgado",
+      "dateOfBirth": undefined,
       "districtStudentId": "100003",
       "firstName": "Cora",
       "goalDetails": [
@@ -146,6 +149,7 @@ exports[`parseCSVReport — SEIS Student Goals Report (CSV) parses the full fixt
     },
     {
       "caseManager": "Owen Pike",
+      "dateOfBirth": undefined,
       "districtStudentId": "100004",
       "firstName": "Drew",
       "goalDetails": [
@@ -168,6 +172,7 @@ exports[`parseCSVReport — SEIS Student Goals Report (CSV) parses the full fixt
     },
     {
       "caseManager": undefined,
+      "dateOfBirth": undefined,
       "districtStudentId": "100005",
       "firstName": "Ella",
       "goalDetails": [
@@ -190,6 +195,7 @@ exports[`parseCSVReport — SEIS Student Goals Report (CSV) parses the full fixt
     },
     {
       "caseManager": undefined,
+      "dateOfBirth": undefined,
       "districtStudentId": "100006",
       "firstName": "Finn",
       "goalDetails": [
@@ -212,6 +218,7 @@ exports[`parseCSVReport — SEIS Student Goals Report (CSV) parses the full fixt
     },
     {
       "caseManager": undefined,
+      "dateOfBirth": undefined,
       "districtStudentId": undefined,
       "firstName": "Gia",
       "goalDetails": [
@@ -234,6 +241,7 @@ exports[`parseCSVReport — SEIS Student Goals Report (CSV) parses the full fixt
     },
     {
       "caseManager": undefined,
+      "dateOfBirth": undefined,
       "districtStudentId": "100008",
       "firstName": "Hana",
       "goalDetails": [
@@ -256,6 +264,7 @@ exports[`parseCSVReport — SEIS Student Goals Report (CSV) parses the full fixt
     },
     {
       "caseManager": undefined,
+      "dateOfBirth": undefined,
       "districtStudentId": "100009",
       "firstName": "Ivan",
       "goalDetails": [
@@ -278,6 +287,7 @@ exports[`parseCSVReport — SEIS Student Goals Report (CSV) parses the full fixt
     },
     {
       "caseManager": undefined,
+      "dateOfBirth": undefined,
       "districtStudentId": "100010",
       "firstName": "Jae",
       "goalDetails": [

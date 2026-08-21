@@ -8,7 +8,29 @@ import { TextDecoder } from 'util';
 import { normalizeSchoolName } from '../school-helpers';
 import { getServiceTypeCode, getServiceTypeNameForRole, isGoalForProviderByKeywords, hasNoProviderRoutingSignal, blankMetadataGoalWarning } from './service-type-mapping';
 import { normalizeGradeLevel } from '../utils/grade-parser';
+import { parseDate as parseDateShared } from '../utils/iep-date-utils';
 import { buildStudentDedupKey, normalizeInitialsForKey } from '../utils/student-dedup-key';
+
+/**
+ * A birth date is IDENTITY EVIDENCE (SPE-578), so unlike the display dates a
+ * malformed cell must yield nothing rather than a fabricated ISO string —
+ * "13/04/2018" would otherwise become "2018-13-04", abort the publish at the
+ * database's date column, and never match the real date another file carries.
+ * The shared parseDate first (the same normalization the district-report
+ * parsers run their birth dates through, so cross-file equality compares one
+ * vocabulary), then a real-calendar check on what it produced.
+ */
+const parseBirthDate = (raw: string): string | undefined => {
+  const iso = parseDateShared(raw);
+  if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return undefined;
+  const [year, month, day] = iso.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day
+    ? iso
+    : undefined;
+};
 
 /**
  * One goal WITH the columns that route it to a provider role (SPE-575). The
@@ -29,6 +51,10 @@ export interface ParsedStudent {
   initials: string;
   gradeLevel: string;
   schoolOfAttendance?: string; // SEIS "School of Attendance"
+  // SEIS "Birthdate", normalized to ISO. Identity evidence for the district
+  // roster's cross-file and existing-child matching (SPE-578); no import
+  // surface displays it.
+  dateOfBirth?: string;
   iepDate?: string; // SEIS "IEP Date" - for validation warnings
   // The district's own student id (SPE-339). SEIS "District ID"; the roster
   // template's optional "Student ID" column. Undefined when the file omits it.
@@ -81,6 +107,7 @@ interface ColumnMapping {
   goalType?: number; // SEIS "Annual Goal #" - used for filtering
   personResponsible?: number; // SEIS "Person Responsible" - used for filtering
   caseManager?: number; // SEIS "Case Manager" - carried through for the district roster (SPE-447)
+  birthdate?: number; // SEIS "Birthdate" - label-only, like caseManager (SPE-578)
   goalColumns: number[];
   /** SEIS only: fields located by POSITION because their label wasn't recognized. */
   positionallyResolved?: string[];
@@ -323,6 +350,11 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
     const PER_ROW_WARNING_LIMIT = 25;
     let blankMetadataWarnings = 0;
     let idMismatchWarnings = 0;
+    let dobMismatchWarnings = 0;
+    // Students whose goal rows disagreed on Birthdate: their date is dropped
+    // AND stays dropped — a later row must not quietly resurrect one side of
+    // a conflict the admin was told about (SPE-578).
+    const dobConflicted = new Set<string>();
 
     // Temporary map to consolidate duplicate students
     const studentMap = new Map<string, ParsedStudent>();
@@ -452,6 +484,9 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
         const goalType = columnMapping.goalType !== undefined ? row[columnMapping.goalType] || '' : '';
         const personResponsible = columnMapping.personResponsible !== undefined ? row[columnMapping.personResponsible] || '' : '';
         const caseManager = columnMapping.caseManager !== undefined ? (row[columnMapping.caseManager] || '').trim() : '';
+        const birthdateRaw =
+          columnMapping.birthdate !== undefined ? (row[columnMapping.birthdate] || '').trim() : '';
+        const dateOfBirth = birthdateRaw ? parseBirthDate(birthdateRaw) : undefined;
 
         // A SEIS goal row with blank Area of Need, Annual Goal #, AND Person
         // Responsible has no signal to route it to any provider. Under keyword
@@ -549,6 +584,26 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
           if (!existing.caseManager && caseManager) {
             existing.caseManager = caseManager;
           }
+          // First non-empty birth date wins, like the case manager — EXCEPT a
+          // conflict poisons it (Codex review, PR #920). Two different valid
+          // dates under one student key mean the export is inconsistent, or
+          // two real children merged by name+grade+school; the planner treats
+          // this value as identity PROOF (SPE-578), and a wrong survivor
+          // could attach an adjacent-grade record to the wrong student. So on
+          // conflict the date is dropped for good — no proof beats false
+          // proof — and the admin is told, like the id mismatch above.
+          if (dateOfBirth && existing.dateOfBirth && existing.dateOfBirth !== dateOfBirth) {
+            existing.dateOfBirth = undefined;
+            dobConflicted.add(studentKey);
+            if (dobMismatchWarnings++ < PER_ROW_WARNING_LIMIT) {
+              warnings.push({
+                row: rowIndex + 1,
+                message: `Birthdate mismatch for ${firstName} ${lastName}: found "${birthdateRaw}" but an earlier row recorded a different date. Neither is used — check this student in your export.`,
+              });
+            }
+          } else if (!existing.dateOfBirth && dateOfBirth && !dobConflicted.has(studentKey)) {
+            existing.dateOfBirth = dateOfBirth;
+          }
           // Same rule for the district id (SPE-339): a student's goal rows all
           // carry the same id, but only some rows may have it filled in.
           if (!existing.districtStudentId && districtStudentId) {
@@ -577,6 +632,7 @@ export async function parseCSVReport(buffer: Buffer, options: ParseOptions = {})
             initials,
             gradeLevel: normalizedGrade,
             schoolOfAttendance: schoolOfAttendance ? schoolOfAttendance.trim() : undefined,
+            dateOfBirth,
             iepDate,
             districtStudentId: districtStudentId || undefined,
             caseManager: caseManager || undefined,
@@ -810,6 +866,14 @@ const SEIS_FIELDS = {
     exact: ['case manager'],
     pattern: /^case\s*manager(\s*name)?(\s*\(.*\))?$/,
   },
+  // SPE-578: the student's birth date, identity evidence for the district
+  // roster's duplicate matching. Label-only like caseManager (see
+  // SEIS_LABEL_ONLY_FIELDS), with a sharper edge: a positional guess here
+  // would FABRICATE identity data the matcher trusts.
+  birthdate: {
+    exact: ['birthdate'],
+    pattern: /^birth\s*date(\s*\(.*\))?$|^date\s*of\s*birth(\s*\(.*\))?$|^dob$/,
+  },
 } as const;
 
 /**
@@ -853,7 +917,7 @@ const SEIS_CANONICAL_INDEX = {
  * as who manages the student. A missing hint costs an unticked checkbox; both
  * of those cost real data.
  */
-const SEIS_LABEL_ONLY_FIELDS = ['caseManager'] as const satisfies readonly (keyof typeof SEIS_FIELDS)[];
+const SEIS_LABEL_ONLY_FIELDS = ['caseManager', 'birthdate'] as const satisfies readonly (keyof typeof SEIS_FIELDS)[];
 
 /** Human-facing column names, for warnings that name what couldn't be read. */
 const SEIS_FIELD_LABELS: Record<keyof typeof SEIS_FIELDS, string> = {
@@ -868,6 +932,7 @@ const SEIS_FIELD_LABELS: Record<keyof typeof SEIS_FIELDS, string> = {
   goal: 'Goal',
   personResponsible: 'Person Responsible',
   caseManager: 'Case Manager',
+  birthdate: 'Birthdate',
 };
 
 /** The six fields whose presence identifies the report (5 of 6 required). */
@@ -917,7 +982,6 @@ const SEIS_MARKER_HEADERS = [
  */
 const SEIS_OTHER_COLUMNS: readonly (string | RegExp)[] = [
   'ssid',
-  'birthdate',
   'case manager email',
   'baseline',
   'standard',
@@ -1122,6 +1186,7 @@ function mapSeisColumnsByHeader(headers: string[]): ColumnMapping {
     goalType: columns.goalType,
     personResponsible: columns.personResponsible,
     caseManager: columns.caseManager,
+    birthdate: columns.birthdate,
     goalColumns: columns.goal === undefined ? [] : [columns.goal],
     positionallyResolved: (columns.positionallyResolved ?? []).map(
       (field) => SEIS_FIELD_LABELS[field],
