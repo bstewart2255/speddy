@@ -194,6 +194,22 @@ export interface RosterWriteResult {
 }
 
 /**
+ * A mid-publish failure, carrying how far the apply got before it stopped.
+ * "Some students may already be saved" is useless to an admin; the counts let
+ * the route say exactly how many landed (chunks before the failing one stay
+ * committed — see the stop-on-failure note on `applyDistrictRosterPlan`).
+ */
+export class RosterApplyError extends Error {
+  constructor(
+    message: string,
+    readonly progress: RosterWriteResult,
+  ) {
+    super(message);
+    this.name = 'RosterApplyError';
+  }
+}
+
+/**
  * The roster's own columns for one planned child, with blanks dropped.
  *
  * Dropping them IS the never-erase rule at the write layer: an absent key is a
@@ -292,9 +308,19 @@ export async function applyDistrictRosterPlan(params: {
   try {
     const creates = plan.children.filter((c) => c.action === 'create');
     for (const chunk of chunked(creates, INSERT_CHUNK)) {
-      const { error } = await supabase
-        .from('children')
-        .insert(chunk.map((planned) => rosterColumns(planned, districtId)));
+      const { error } = await supabase.from('children').insert(
+        chunk.map((planned) => ({
+          // A bulk insert unifies the key set across the whole chunk and
+          // NULL-fills the gaps — so a student with no accommodations beside
+          // one who has some would write NULL into a NOT NULL column and
+          // abort the chunk (JSUSD's first real publish, 59 creates, 0
+          // written). Explicit empties keep every row writable; the nullable
+          // columns may NULL-fill freely.
+          accommodations: [],
+          testing_accommodations: [],
+          ...rosterColumns(planned, districtId),
+        })),
+      );
       if (error) throw new Error(`Adding students to the roster failed: ${error.message}`);
       result.created += chunk.length;
     }
@@ -317,7 +343,12 @@ export async function applyDistrictRosterPlan(params: {
     } catch (auditErr) {
       log.error('Recording the partial roster import outcome failed', auditErr, { districtId });
     }
-    throw err;
+    // Carry how far the apply got: "some students may already be saved" told
+    // the admin nothing — the route can now answer with the real counts.
+    throw new RosterApplyError(err instanceof Error ? err.message : String(err), {
+      created: result.created,
+      updated: result.updated,
+    });
   }
 
   await recordOutcome(false);
