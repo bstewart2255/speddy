@@ -1182,12 +1182,19 @@ erDiagram
   `resource` only — it doubles as the "Assign to" picker's options, so the other
   roles cannot delegate to an SEA and an SEA on staff can never reach their
   grid), sessions this provider delegated out, or sessions delegated to them.
-  Each of the three sharing buttons carries its own condition, and
-  `getSessionFilterAvailability` asks `filterScheduleSessions` itself rather
-  than re-deriving the match, so a visible button always has something behind
-  it — except the SEA button, deliberately offered before the first assignment,
-  and kept afterwards for sessions left behind by an SEA who has moved on. An
-  SEA gets no card: their filters all resolve to the same set. Across a school
+  Each of the three sharing buttons carries its own condition. Availability
+  matches delegation directly — an assignee who **isn't** this provider — and
+  deliberately does *not* reuse `filterScheduleSessions`: Auto-Schedule stamps a
+  specialist-source provider's own id into `assigned_to_specialist_id` with
+  `delivered_by = 'specialist'` (`optimized-scheduler.ts`, the branch that
+  INSERTs rather than reusing an unscheduled row), and both the `specialist` and
+  `assigned` filters match that shape, so borrowing them would read ordinary
+  solo work as delegation. Latent rather than live — the scheduler's other
+  branch preserves `delivered_by = 'provider'`, which is why no such row exists
+  in prod — but the gate must not depend on that holding. The SEA button is the
+  one offered before any assignment, and kept afterwards for sessions left
+  behind by an SEA who has moved on. An SEA gets no card: their filters all
+  resolve to the same set. Across a school
   switch a filter whose button is gone falls back to `all`, and a selected
   SEA/specialist who is not on the new school's roster falls back to nobody —
   for every read, including the drag-drop assignment in `buildAssignmentUpdate`,

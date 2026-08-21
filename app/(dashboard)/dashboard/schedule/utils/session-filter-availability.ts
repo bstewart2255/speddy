@@ -1,4 +1,4 @@
-import { filterScheduleSessions, type SessionFilter } from './session-filters';
+import type { SessionFilter } from './session-filters';
 import type { ScheduleSession } from '@/src/types';
 
 /**
@@ -57,35 +57,50 @@ export function getSessionFilterAvailability({
   }
 
   // Every signal below is "did this user delegate, or get delegated to", which
-  // is unanswerable without knowing who they are. Fail closed — and note that
-  // filterScheduleSessions fails OPEN on 'assigned' with no user id (it falls
-  // through to `default: return sessions`), so an unguarded probe here would
-  // report the filter as populated for everyone.
+  // is unanswerable without knowing who they are. Fail closed, and note this
+  // guard is load-bearing rather than defensive: the comparisons below would
+  // read `assigned_to_specialist_id === null` as a match with no user id, so an
+  // ordinary undelegated session would count as delegated to them.
   if (!currentUserId) {
     return NOTHING_OFFERED;
   }
 
-  // Ask the filter itself rather than re-deriving what it matches: a button is
-  // worth offering exactly when pressing it would leave something on the grid.
-  // No person is pre-selected, so this asks "any SEA / any specialist".
-  const wouldShowSessions = (sessionFilter: SessionFilter) =>
-    filterScheduleSessions({
-      sessions,
-      sessionFilter,
-      providerRole,
-      currentUserId,
-      selectedSeaId: null,
-      selectedSpecialistId: null,
-    }).length > 0;
+  // Delegation means the work changed hands, so every probe below requires an
+  // assignee who ISN'T this provider.
+  //
+  // The tempting shortcut — run filterScheduleSessions for each candidate and
+  // check whether anything survives — is wrong here, because a session a
+  // provider runs themselves does not always look undelegated. Auto-Schedule
+  // stamps a specialist-source provider's OWN id into assigned_to_specialist_id
+  // with delivered_by 'specialist' (optimized-scheduler.ts, the branch that
+  // INSERTs rather than reusing an unscheduled row). Both the 'specialist' and
+  // 'assigned' filters match that shape, so asking them would hand a provider
+  // who has never shared anything a card and two redundant buttons — the exact
+  // noise this gate exists to remove. Match the delegation directly instead:
+  // someone else's id on my session, or my id on someone else's.
+  const delegatedOutToSea = sessions.some(
+    s => s.provider_id === currentUserId &&
+         s.assigned_to_sea_id != null &&
+         s.assigned_to_sea_id !== currentUserId
+  );
+  const delegatedOutToSpecialist = sessions.some(
+    s => s.provider_id === currentUserId &&
+         s.assigned_to_specialist_id != null &&
+         s.assigned_to_specialist_id !== currentUserId
+  );
+  const delegatedIn = sessions.some(
+    s => s.assigned_to_specialist_id === currentUserId &&
+         s.provider_id !== currentUserId
+  );
 
   // The SEA filter is the one gated on a person existing rather than on work
   // already delegated — a resource specialist with an SEA at their site should
   // find the filter waiting before they assign the first session, not after.
   // The second clause is for the leftovers: an SEA who has since moved schools
   // still has sessions on this grid, and those must stay reachable.
-  const sea = hasAssignableSeas || wouldShowSessions('sea');
-  const specialist = wouldShowSessions('specialist');
-  const assigned = wouldShowSessions('assigned');
+  const sea = hasAssignableSeas || delegatedOutToSea;
+  const specialist = delegatedOutToSpecialist;
+  const assigned = delegatedIn;
 
   return { sea, specialist, assigned, showCard: sea || specialist || assigned };
 }

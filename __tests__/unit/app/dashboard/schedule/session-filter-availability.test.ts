@@ -125,6 +125,44 @@ describe('getSessionFilterAvailability (SPE-589)', () => {
     expect(result.showCard).toBe(false);
   });
 
+  it('treats the scheduler\'s self-assignment as solo work, not delegation', () => {
+    // Auto-Schedule stamps a specialist-source provider's OWN id into
+    // assigned_to_specialist_id with delivered_by 'specialist' (the
+    // optimized-scheduler branch that INSERTs instead of reusing an unscheduled
+    // row). Both the 'specialist' and 'assigned' filters match that shape, so a
+    // probe that asked them would give a provider who has never shared anything
+    // a card and two redundant buttons. Caught by Codex on PR #927; latent in
+    // prod today only because the scheduler's other branch preserves
+    // delivered_by='provider'.
+    const result = availability({
+      sessions: [
+        MY_OWN,
+        session({
+          provider_id: ME,
+          delivered_by: 'specialist',
+          assigned_to_specialist_id: ME, // me → me: never a handover
+        }),
+      ],
+    });
+
+    expect(result).toEqual({ sea: false, specialist: false, assigned: false, showCard: false });
+  });
+
+  it('still sees a real delegation alongside self-assigned sessions', () => {
+    // Control for the test above: the self-assigned row must not mask a genuine
+    // one, or the fix would trade a false positive for a false negative.
+    const result = availability({
+      sessions: [
+        session({ provider_id: ME, delivered_by: 'specialist', assigned_to_specialist_id: ME }),
+        session({ provider_id: ME, delivered_by: 'specialist', assigned_to_specialist_id: SPECIALIST_ID }),
+      ],
+    });
+
+    expect(result.specialist).toBe(true);
+    expect(result.assigned).toBe(false);
+    expect(result.showCard).toBe(true);
+  });
+
   it('offers the assigned filter when someone else hands work to this provider', () => {
     const result = availability({
       sessions: [
