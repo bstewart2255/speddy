@@ -147,6 +147,33 @@ describe('useVisualFilters — disabled at secondary sites (SPE-588)', () => {
     expect(readFilters(ELEMENTARY)).toEqual(JSON.stringify(SAVED));
   });
 
+  it('reloads the elementary filters when the panel comes back after a remount', async () => {
+    // The sequence a real multi-school provider takes, and the one the
+    // round-trip test above cannot see: switching TO a secondary site makes
+    // SchedulePage render ScheduleLoading while it fetches the role, so
+    // MainSchedule unmounts and this hook remounts disabled — starting at
+    // defaults, with its useState initializer spent. Coming back to elementary
+    // reuses that same instance (same component, same position, so React keeps
+    // it), so nothing re-reads storage; the defaults would be persisted right
+    // over the provider's saved selection. Caught by Codex and CodeRabbit on
+    // PR #924.
+    storeFilters(ELEMENTARY, SAVED);
+
+    // Mount disabled: this hook instance began life at the secondary school.
+    const { result, rerender } = renderHook(
+      ({ schoolId, enabled }) =>
+        useVisualFilters(schoolId, teacherRoster('teacher-1'), NO_STUDENTS, enabled),
+      { initialProps: { schoolId: SECONDARY, enabled: false } }
+    );
+    expect(result.current.visualFilters).toEqual(DEFAULTS);
+
+    rerender({ schoolId: ELEMENTARY, enabled: true });
+    await flushPersist();
+
+    expect(result.current.visualFilters).toEqual(SAVED);
+    expect(readFilters(ELEMENTARY)).toEqual(JSON.stringify(SAVED));
+  });
+
   it('still drops a teacher who really has left the school', async () => {
     // Control for the round-trip test above: gating the check on `enabled` must
     // not disarm it while the panel is on screen.

@@ -52,10 +52,10 @@ const loadVisualFilters = (schoolId?: string | null): VisualFilters => {
  * @param enabled Whether the Visual Availability Filters panel is offered at
  *   all. False at secondary sites (SPE-588), where the panel is hidden: with no
  *   control on screen, a filter left in storage — set here before the panel was
- *   hidden, or carried over by switching schools without a remount — would shade
- *   the grid with no way to clear it. Disabled means defaults in, nothing out:
- *   storage is neither read nor written, so an elementary school's saved
- *   selections survive untouched.
+ *   hidden, or carried over from another school — would shade the grid with no
+ *   way to clear it. Disabled means defaults in, nothing out: storage is not
+ *   written, and it is re-read when the panel comes back, so an elementary
+ *   school's saved selections survive a trip through a secondary site.
  */
 export const useVisualFilters = (
   schoolId: string | null | undefined,
@@ -83,6 +83,24 @@ export const useVisualFilters = (
     },
     []
   );
+
+  // Re-entering an enabled school reloads its stored filters. Without this the
+  // state carried in from the disabled stretch — defaults — would be persisted
+  // straight over the destination's saved selection by the effect below. The
+  // disabled stretch is easy to reach: switching to a secondary site unmounts
+  // MainSchedule while SchedulePage fetches the role, so the hook remounts
+  // disabled and its useState initializer never runs again on the way back.
+  // Deliberately keyed on the enabled transition only, not on schoolId: two
+  // enabled schools keep today's carry-over behavior, which is SPE-591's call
+  // to make, not this change's.
+  const wasEnabled = useRef(enabled);
+  useEffect(() => {
+    const reEnabled = enabled && !wasEnabled.current;
+    wasEnabled.current = enabled;
+    if (reEnabled) {
+      setVisualFilters(loadVisualFilters(schoolId));
+    }
+  }, [enabled, schoolId]);
 
   useEffect(() => {
     if (!enabled) return;
