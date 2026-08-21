@@ -394,9 +394,23 @@ export default function RosterClaimBanner() {
                         </span>
                         {c.gradeLevel ? ` · grade ${c.gradeLevel}` : ''}
                         {c.suggested ? (
-                          <span className="ml-1.5 rounded-full bg-sky-100 px-1.5 py-0.5 text-[10px] font-medium text-sky-800">
-                            you&apos;re case manager
-                          </span>
+                          <>
+                            <span className="ml-1.5 rounded-full bg-sky-100 px-1.5 py-0.5 text-[10px] font-medium text-sky-800">
+                              you&apos;re case manager
+                            </span>
+                            {/*
+                             * SPE-583. A ticked row whose name Speddy FOLDED
+                             * ("Antoinette Bentley" for a Toni) keeps showing
+                             * the district's own wording. It is the one kind
+                             * of tick a provider might need to overrule, and
+                             * they cannot if the name it came from is hidden.
+                             */}
+                            {c.suggestedMatch === 'nickname' && c.caseManager ? (
+                              <span className="ml-1.5 text-slate-600">
+                                · listed as {c.caseManager}
+                              </span>
+                            ) : null}
+                          </>
                         ) : c.caseManager ? (
                           // SPE-584: label whose name this is — a speech provider
                           // claiming a student case-managed by resource shouldn't
