@@ -37,6 +37,12 @@ import {
   isGoalForProviderByKeywords,
 } from '@/lib/parsers/service-type-mapping';
 import { dedupeEntries } from '@/lib/parsers/district-reports';
+import {
+  matchPersonNames,
+  normalizePersonName as nameKey,
+  personIdentityKey,
+  type NameMatchKind,
+} from '@/lib/utils/person-name-match';
 import type { SchoolLevelInput } from '@/lib/school-helpers';
 import type { DistrictServiceLine } from '@/lib/parsers/district-reports';
 import type { RosterDistrictGoals } from './plan';
@@ -195,8 +201,19 @@ export interface ClaimOffer {
    * screen may pre-select them. Being a hint is the whole point: case manager
    * is not the same role as service provider (one pilot SLP serves 42 students
    * while managing 17), so a false means "decide yourself", never "not yours".
+   *
+   * Matched on the name exactly, with one narrow nickname fold when no spelling
+   * of the caller's own name is on the roster — see `acceptedCaseManagerKeys`.
    */
   suggested: boolean;
+  /**
+   * HOW the name matched, so the screen can be honest about it. `'nickname'`
+   * means Speddy folded a spelling ("Antoinette Bentley" for a Toni), and the
+   * screen must keep the district's own wording visible: the fold is the one
+   * kind of suggestion a provider might need to overrule, and it is worthless
+   * to them if the name it came from is hidden. Null when not suggested.
+   */
+  suggestedMatch: NameMatchKind | null;
 }
 
 export interface ClaimPlan {
@@ -220,21 +237,63 @@ export interface ClaimPlan {
 const clean = (v: string | null | undefined): string => (v ?? '').trim();
 
 /**
- * Compare a SEIS case-manager name with a Speddy provider's name.
+ * Which SEIS case-manager names mean "this caller", as the roster spells them
+ * (SPE-583).
  *
- * Exact after normalizing case, punctuation and spacing — deliberately no fuzzy
- * matching. A miss costs one unticked checkbox the provider ticks themselves; a
- * wrong hit pre-selects someone else's student, and although the provider still
- * confirms, a pre-ticked box is exactly the thing people stop reading.
+ * Exact comparison is the whole rule whenever it finds anything, because of the
+ * cost asymmetry: a miss leaves one unticked checkbox the provider ticks
+ * themselves, while a wrong hit pre-selects someone else's student, and a
+ * pre-ticked box is exactly the thing people stop reading.
+ *
+ * The nickname fold applies only where NO spelling of the caller's own name was
+ * found — "Toni Bentley" against a roster that only ever says "Antoinette
+ * Bentley". That gate is what keeps this safe: it can turn "nothing ticked"
+ * into "something ticked", and can never change a suggestion the exact rule
+ * already got right. Where the district's system demonstrably spells this
+ * provider correctly, a different first name under the same surname is likelier
+ * a colleague than a nickname, so nothing is folded.
+ *
+ * "A spelling of the caller's own name" means the same words, allowing for a
+ * middle initial one system carries and the other doesn't. That is not a
+ * nickname guess at all, so it is always accepted — otherwise a provider the
+ * roster spells correctly would do WORSE than a nicknamed one across rows that
+ * disagree about her middle initial.
+ *
+ * Beyond that the fold must be UNAMBIGUOUS. Two DIFFERENT case managers whose
+ * names both fold to mine is precisely the case not to guess through, so
+ * neither is pre-selected — both stay on offer, simply unticked. Counting
+ * people rather than spellings matters here too: one case manager written
+ * "Antoinette Bentley" on one row and "Antoinette M Bentley" on the next is one
+ * person, and SEIS exports are not consistent about middle initials.
  */
-const nameKey = (name: string | null | undefined): string =>
-  clean(name)
-    .toLowerCase()
-    // Apostrophes are pure noise between two spellings of one name — the pilot
-    // district's SEIS writes "Charli OMalley" where Speddy has "Charli
-    // O'Malley". Both the straight and curly forms, since exports use either.
-    .replace(/['\u2019.,]/g, '')
-    .replace(/\s+/g, ' ');
+const acceptedCaseManagerKeys = (
+  rosterChildren: RosterChild[],
+  myName: string | null | undefined,
+): Map<string, NameMatchKind> => {
+  const accepted = new Map<string, NameMatchKind>();
+  const myIdentity = personIdentityKey(myName);
+  if (myIdentity === '') return accepted;
+
+  const foldedKeys = new Set<string>();
+  const foldedPeople = new Set<string>();
+  for (const child of rosterChildren) {
+    const key = nameKey(child.caseManager);
+    if (key === '') continue;
+    if (personIdentityKey(child.caseManager) === myIdentity) {
+      accepted.set(key, 'exact');
+      continue;
+    }
+    if (matchPersonNames(child.caseManager, myName) === 'nickname') {
+      foldedKeys.add(key);
+      foldedPeople.add(personIdentityKey(child.caseManager));
+    }
+  }
+
+  if (accepted.size === 0 && foldedPeople.size === 1) {
+    for (const key of foldedKeys) accepted.set(key, 'nickname');
+  }
+  return accepted;
+};
 
 /** Labels are the provider's words, not the column names. */
 const FIELD_LABELS: Record<RosterFieldKey, string> = {
@@ -449,7 +508,7 @@ export function planRosterClaims(input: ClaimPlanInput): ClaimPlan {
     input.myStudents.map((s) => clean(s.childId)).filter((id) => id !== ''),
   );
 
-  const myKey = nameKey(input.myName);
+  const acceptedManagers = acceptedCaseManagerKeys(input.rosterChildren, input.myName);
   const blocking = blockingRolesFor(input.myRole);
   const myCodes = getDeliveryServiceTypeCodes(input.myRole ?? '');
   const claimable: ClaimOffer[] = [];
@@ -506,7 +565,8 @@ export function planRosterClaims(input: ClaimPlanInput): ClaimPlan {
         testingAccommodations: child.testingAccommodations,
         goals: goalsForRole(child.districtGoals, input.myRole),
         goalsIepDate: child.districtGoals?.iepDate ?? null,
-        suggested: myKey !== '' && nameKey(child.caseManager) === myKey,
+        suggested: acceptedManagers.has(nameKey(child.caseManager)),
+        suggestedMatch: acceptedManagers.get(nameKey(child.caseManager)) ?? null,
       });
     }
   }

@@ -169,6 +169,113 @@ describe('planRosterClaims', () => {
     });
   });
 
+  // SPE-583. A provider signed up as "Toni Bentley" while her district's SEIS
+  // carries "Antoinette Bentley", so nothing was ever pre-selected for her.
+  describe('the case-manager hint, when the district uses a legal name', () => {
+    const bentley = (over: Partial<RosterChild>) =>
+      rosterChild({ initials: 'BB', ...over });
+
+    it('pre-selects when the roster only ever spells her legal name', () => {
+      const result = planRosterClaims({
+        rosterChildren: [bentley({ caseManager: 'Antoinette Bentley' })],
+        myStudents: [],
+        myName: 'Toni Bentley',
+      });
+
+      expect(result.counts.suggested).toBe(1);
+      expect(result.claimable[0].suggested).toBe(true);
+      // Flagged as a FOLD, so the screen keeps the district's wording visible
+      // — a provider can only overrule a tick whose source she can see.
+      expect(result.claimable[0].suggestedMatch).toBe('nickname');
+      expect(result.claimable[0].caseManager).toBe('Antoinette Bentley');
+    });
+
+    it('folds a middle initial the district carries and Speddy does not', () => {
+      expect(
+        planRosterClaims({
+          rosterChildren: [bentley({ caseManager: 'Antoinette M Bentley' })],
+          myStudents: [],
+          myName: 'Toni Bentley',
+        }).claimable[0].suggested,
+      ).toBe(true);
+    });
+
+    it('stays exact-only once the roster spells her name somewhere', () => {
+      // The district's system demonstrably knows how to spell her, so another
+      // first name under the same surname is likelier a colleague.
+      const result = planRosterClaims({
+        rosterChildren: [
+          bentley({ id: 'child-exact', caseManager: 'Toni Bentley' }),
+          bentley({ id: 'child-legal', caseManager: 'Antoinette Bentley' }),
+        ],
+        myStudents: [],
+        myName: 'Toni Bentley',
+      });
+
+      expect(result.counts.suggested).toBe(1);
+      expect(result.claimable.find((c) => c.childId === 'child-exact')?.suggested).toBe(true);
+      expect(result.claimable.find((c) => c.childId === 'child-legal')?.suggested).toBe(false);
+    });
+
+    it('refuses to guess when two case managers both fold to her name', () => {
+      const result = planRosterClaims({
+        rosterChildren: [
+          bentley({ id: 'child-a', caseManager: 'Antoinette Bentley' }),
+          bentley({ id: 'child-b', caseManager: 'Antonia Bentley' }),
+        ],
+        myStudents: [],
+        myName: 'Toni Bentley',
+      });
+
+      // Both are still OFFERED — they are simply not ticked for her.
+      expect(result.counts.claimable).toBe(2);
+      expect(result.counts.suggested).toBe(0);
+      expect(result.claimable.every((c) => c.suggestedMatch === null)).toBe(true);
+    });
+
+    it('counts one case manager written two ways as one person, not two', () => {
+      // SEIS exports are not consistent about middle initials, and an
+      // ambiguity guard that counted spellings would abandon the fold here.
+      const result = planRosterClaims({
+        rosterChildren: [
+          bentley({ id: 'child-a', caseManager: 'Antoinette Bentley' }),
+          bentley({ id: 'child-b', caseManager: 'Antoinette M Bentley' }),
+        ],
+        myStudents: [],
+        myName: 'Toni Bentley',
+      });
+
+      expect(result.counts.suggested).toBe(2);
+    });
+
+    it('accepts every spelling of her OWN name, middle initial or not', () => {
+      // Nothing is being guessed here, so the exact-first gate must not hold
+      // it back: a provider the roster spells correctly would otherwise do
+      // worse than a nicknamed one across rows that disagree about an initial.
+      const result = planRosterClaims({
+        rosterChildren: [
+          bentley({ id: 'child-a', caseManager: 'Antoinette Bentley' }),
+          bentley({ id: 'child-b', caseManager: 'Antoinette M Bentley' }),
+        ],
+        myStudents: [],
+        myName: 'Antoinette Bentley',
+      });
+
+      expect(result.counts.suggested).toBe(2);
+      expect(result.claimable.every((c) => c.suggestedMatch === 'exact')).toBe(true);
+    });
+
+    it('does not fold a colleague who merely shares her surname', () => {
+      expect(
+        planRosterClaims({
+          rosterChildren: [bentley({ caseManager: 'Marcus Bentley' })],
+          myStudents: [],
+          myName: 'Toni Bentley',
+        }).claimable[0].suggested,
+      ).toBe(false);
+    });
+  });
+
   describe('updates to students they already serve', () => {
     it('finds nothing when the roster agrees with them', () => {
       const result = plan({
