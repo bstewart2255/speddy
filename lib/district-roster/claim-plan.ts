@@ -40,7 +40,6 @@ import { dedupeEntries } from '@/lib/parsers/district-reports';
 import {
   matchPersonNames,
   normalizePersonName as nameKey,
-  personIdentityKey,
   type NameMatchKind,
 } from '@/lib/utils/person-name-match';
 import type { SchoolLevelInput } from '@/lib/school-helpers';
@@ -253,43 +252,46 @@ const clean = (v: string | null | undefined): string => (v ?? '').trim();
  * provider correctly, a different first name under the same surname is likelier
  * a colleague than a nickname, so nothing is folded.
  *
- * "A spelling of the caller's own name" means the same words, allowing for a
- * middle initial one system carries and the other doesn't. That is not a
- * nickname guess at all, so it is always accepted — otherwise a provider the
- * roster spells correctly would do WORSE than a nicknamed one across rows that
- * disagree about her middle initial.
+ * "A spelling of the caller's own name" is `matchPersonNames`'s `'exact'`: the
+ * same given name, allowing for a middle initial one system carries and the
+ * other doesn't. No guess is involved, so it is always accepted — otherwise a
+ * provider the roster spells correctly would do WORSE than a nicknamed one
+ * across rows that disagree about her middle initial.
  *
  * Beyond that the fold must be UNAMBIGUOUS. Two DIFFERENT case managers whose
  * names both fold to mine is precisely the case not to guess through, so
- * neither is pre-selected — both stay on offer, simply unticked. Counting
- * people rather than spellings matters here too: one case manager written
- * "Antoinette Bentley" on one row and "Antoinette M Bentley" on the next is one
- * person, and SEIS exports are not consistent about middle initials.
+ * neither is pre-selected — both stay on offer, simply unticked. Distinct
+ * PEOPLE is the count that matters, not distinct spellings: one case manager
+ * written "Antoinette Bentley" on one row and "Antoinette M Bentley" on the
+ * next is one person, and SEIS exports are not consistent about middle
+ * initials. Two candidates are the same person when they match each other.
  */
 const acceptedCaseManagerKeys = (
   rosterChildren: RosterChild[],
   myName: string | null | undefined,
 ): Map<string, NameMatchKind> => {
   const accepted = new Map<string, NameMatchKind>();
-  const myIdentity = personIdentityKey(myName);
-  if (myIdentity === '') return accepted;
+  if (nameKey(myName) === '') return accepted;
 
   const foldedKeys = new Set<string>();
-  const foldedPeople = new Set<string>();
+  /** One entry per distinct person among the folded candidates. */
+  const foldedPeople: string[] = [];
   for (const child of rosterChildren) {
     const key = nameKey(child.caseManager);
     if (key === '') continue;
-    if (personIdentityKey(child.caseManager) === myIdentity) {
+    const kind = matchPersonNames(child.caseManager, myName);
+    if (kind === 'exact') {
       accepted.set(key, 'exact');
-      continue;
-    }
-    if (matchPersonNames(child.caseManager, myName) === 'nickname') {
+    } else if (kind === 'nickname') {
       foldedKeys.add(key);
-      foldedPeople.add(personIdentityKey(child.caseManager));
+      const name = child.caseManager ?? '';
+      if (!foldedPeople.some((seen) => matchPersonNames(seen, name) !== null)) {
+        foldedPeople.push(name);
+      }
     }
   }
 
-  if (accepted.size === 0 && foldedPeople.size === 1) {
+  if (accepted.size === 0 && foldedPeople.length === 1) {
     for (const key of foldedKeys) accepted.set(key, 'nickname');
   }
   return accepted;

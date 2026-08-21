@@ -248,7 +248,6 @@ export const NICKNAME_GROUPS: readonly (readonly string[])[] = [
   ['roland', 'rollie'],
   ['ronald', 'ron', 'ronnie'],
   ['rosa', 'rosie', 'rosita'],
-  ['rose', 'rosie'],
   ['rosemary', 'rose', 'rosie'],
   ['russell', 'russ', 'rusty'],
   ['ruth', 'ruthie'],
@@ -322,35 +321,32 @@ export function normalizePersonName(name: string | null | undefined): string {
   return (name ?? '')
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
-    .trim()
     .toLowerCase()
     .replace(/['\u2019.,]/g, '')
-    .replace(/\s+/g, ' ');
+    // Trim LAST: stripping a leading or trailing "." would otherwise leave an
+    // edge space behind, and "Cynthia Reyes ." would stop matching "Cynthia
+    // Reyes".
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
+/** A middle word that is just an initial, e.g. the "M" in "Antoinette M Bentley". */
+const isInitial = (word: string): boolean => word.length === 1;
+
 /**
- * The words that identify the person: a middle INITIAL is dropped, since one
- * system carrying it and another not is the same person either way. A spelled
- * middle name is kept — dropping it would fold two-surname names together.
+ * The middle words to compare, once an initial that only ONE side carries is
+ * discounted.
+ *
+ * Dropping initials unilaterally would be a bug: "Antoinette M Bentley" and
+ * "Antoinette Q Bentley" are two people, and discarding both initials makes
+ * them one. So an initial is ignored only where the other side has no middle
+ * word at all — where both sides have one, they must agree.
  */
-const identityWords = (key: string): string[] => {
-  const words = key === '' ? [] : key.split(' ');
-  if (words.length <= 2) return words;
-  return [
-    words[0],
-    ...words.slice(1, -1).filter((w) => w.length > 1),
-    words[words.length - 1],
-  ];
+const comparableMiddles = (a: string[], b: string[]): [string[], string[]] => {
+  if (a.length === 0 && b.every(isInitial)) return [a, []];
+  if (b.length === 0 && a.every(isInitial)) return [[], b];
+  return [a, b];
 };
-
-/**
- * One key per PERSON, so two spellings of one name count once. "Antoinette
- * Bentley" and "Antoinette M Bentley" share a key; "Antoinette Bentley" and
- * "Antonia Bentley" do not.
- */
-export function personIdentityKey(name: string | null | undefined): string {
-  return identityWords(normalizePersonName(name)).join(' ');
-}
 
 /** True when two given names are the same name written two ways. */
 function givenNamesEquivalent(a: string, b: string): boolean {
@@ -365,16 +361,19 @@ function givenNamesEquivalent(a: string, b: string): boolean {
 /**
  * Compare two people's full names.
  *
- * `'exact'` — the same string once accents, case, punctuation and spacing are
- * folded.
+ * `'exact'` — the same person under the same given name: identical once
+ * accents, case, punctuation and spacing are folded, allowing for a middle
+ * INITIAL one side carries and the other doesn't. No guessing is involved, so
+ * callers can trust this anywhere.
  *
- * `'nickname'` — every word matches except the first, which is a known
- * nickname of the other. A middle initial present on one side only is ignored;
- * a spelled middle name is not, so "Maria Reyes Garcia" stays apart from
- * "Maria Lopez Garcia". A differing final word never matches, which keeps
- * "Reyes-Smith" apart from "Reyes" and a reversed "Reyes Cynthia" apart from
- * "Cynthia Reyes". Both sides need at least two words — one bare word says too
- * little to fold.
+ * `'nickname'` — everything matches except the given name, which is a known
+ * nickname of the other. This one is a judgement, and callers gate on it.
+ *
+ * Either way every other word must be identical: a spelled middle name is NOT
+ * skipped, so "Maria Reyes Garcia" stays apart from "Maria Lopez Garcia", and a
+ * differing final word never matches, which keeps "Reyes-Smith" apart from
+ * "Reyes" and a reversed "Reyes Cynthia" apart from "Cynthia Reyes". Both sides
+ * need at least two words — one bare word says too little to fold.
  *
  * `null` — treat them as different people.
  */
@@ -387,13 +386,15 @@ export function matchPersonNames(
   if (aKey === '' || bKey === '') return null;
   if (aKey === bKey) return 'exact';
 
-  const aWords = identityWords(aKey);
-  const bWords = identityWords(bKey);
-  if (aWords.length < 2 || aWords.length !== bWords.length) return null;
-  // Only the given name may differ. Every surname word, and every spelled
-  // middle name, has to be identical.
-  for (let i = 1; i < aWords.length; i += 1) {
-    if (aWords[i] !== bWords[i]) return null;
-  }
+  const aWords = aKey.split(' ');
+  const bWords = bKey.split(' ');
+  if (aWords.length < 2 || bWords.length < 2) return null;
+  if (aWords[aWords.length - 1] !== bWords[bWords.length - 1]) return null;
+
+  const [aMiddle, bMiddle] = comparableMiddles(aWords.slice(1, -1), bWords.slice(1, -1));
+  if (aMiddle.length !== bMiddle.length) return null;
+  if (aMiddle.some((word, i) => word !== bMiddle[i])) return null;
+
+  if (aWords[0] === bWords[0]) return 'exact';
   return givenNamesEquivalent(aWords[0], bWords[0]) ? 'nickname' : null;
 }

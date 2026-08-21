@@ -406,7 +406,7 @@ export default function RosterClaimBanner() {
                              * they cannot if the name it came from is hidden.
                              */}
                             {c.suggestedMatch === 'nickname' && c.caseManager ? (
-                              <span className="ml-1.5 text-slate-400">
+                              <span className="ml-1.5 text-slate-600">
                                 · listed as {c.caseManager}
                               </span>
                             ) : null}

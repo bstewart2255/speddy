@@ -13,7 +13,6 @@ import {
   NICKNAME_GROUPS,
   matchPersonNames,
   normalizePersonName,
-  personIdentityKey,
 } from '@/lib/utils/person-name-match';
 
 describe('normalizePersonName', () => {
@@ -24,26 +23,17 @@ describe('normalizePersonName', () => {
     expect(normalizePersonName('Reyes, Cynthia')).toBe('reyes cynthia');
   });
 
+  it('leaves no edge space when punctuation is stripped from an end', () => {
+    // The strip runs before the trim, so a leading or trailing "." would
+    // otherwise leave a space behind and lose an exact match.
+    expect(normalizePersonName('Cynthia Reyes .')).toBe('cynthia reyes');
+    expect(normalizePersonName('. Cynthia Reyes')).toBe('cynthia reyes');
+  });
+
   it('is empty for nothing at all', () => {
     expect(normalizePersonName(null)).toBe('');
     expect(normalizePersonName(undefined)).toBe('');
     expect(normalizePersonName('   ')).toBe('');
-  });
-});
-
-describe('personIdentityKey', () => {
-  it('gives one key per person, dropping only a middle INITIAL', () => {
-    expect(personIdentityKey('Antoinette M Bentley')).toBe(personIdentityKey('Antoinette Bentley'));
-    expect(personIdentityKey('Antoinette M. Bentley')).toBe('antoinette bentley');
-  });
-
-  it('keeps a spelled middle name, so two-surname names stay distinct', () => {
-    expect(personIdentityKey('Maria Reyes Garcia')).not.toBe(personIdentityKey('Maria Lopez Garcia'));
-    expect(personIdentityKey('Maria Reyes Garcia')).toBe('maria reyes garcia');
-  });
-
-  it('does not fold a nickname — this counts people, it does not match them', () => {
-    expect(personIdentityKey('Toni Bentley')).not.toBe(personIdentityKey('Antoinette Bentley'));
   });
 });
 
@@ -82,11 +72,20 @@ describe('matchPersonNames', () => {
       }
     });
 
-    it('ignores a middle INITIAL on either side', () => {
+    it('ignores a middle INITIAL the other side does not carry', () => {
       expect(matchPersonNames('Antoinette M Bentley', 'Toni Bentley')).toBe('nickname');
       expect(matchPersonNames('Antoinette Bentley', 'Toni M. Bentley')).toBe('nickname');
-      // Same person either way, so an inconsistent initial still folds.
-      expect(matchPersonNames('Antoinette M Bentley', 'Antoinette Bentley')).toBe('nickname');
+      // Same given name, so this is her own name written two ways, not a guess.
+      expect(matchPersonNames('Antoinette M Bentley', 'Antoinette Bentley')).toBe('exact');
+    });
+
+    it('refuses two DIFFERENT middle initials', () => {
+      // Discarding both initials would make Antoinette M and Antoinette Q one
+      // person — and label it 'exact', which callers trust without asking.
+      expect(matchPersonNames('Antoinette M Bentley', 'Antoinette Q Bentley')).toBeNull();
+      expect(matchPersonNames('Toni M Bentley', 'Antoinette Q Bentley')).toBeNull();
+      // A spelled middle name and an initial are not assumed to agree either.
+      expect(matchPersonNames('Antoinette M Bentley', 'Antoinette Marie Bentley')).toBeNull();
     });
 
     it('folds accents, which the district writes and Speddy may not', () => {
@@ -179,6 +178,17 @@ describe('matchPersonNames', () => {
       for (const group of NICKNAME_GROUPS) {
         for (const name of group) {
           expect(name).toBe(normalizePersonName(name));
+        }
+      }
+    });
+
+    it('never lets one group\'s root appear inside another group', () => {
+      // The invariant behind "one formal name per group": if a root turned up
+      // as somebody else's short form, two formal names would fold.
+      const roots = new Set(NICKNAME_GROUPS.map((g) => g[0]));
+      for (const group of NICKNAME_GROUPS) {
+        for (const shortForm of group.slice(1)) {
+          expect(roots.has(shortForm) ? `${group[0]} -> ${shortForm}` : null).toBeNull();
         }
       }
     });

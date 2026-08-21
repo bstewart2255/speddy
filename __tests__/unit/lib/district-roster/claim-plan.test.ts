@@ -265,6 +265,20 @@ describe('planRosterClaims', () => {
       expect(result.claimable.every((c) => c.suggestedMatch === 'exact')).toBe(true);
     });
 
+    it('does not fold a colleague who differs only by middle initial', () => {
+      // Antoinette M and Antoinette Q are two people. Discarding both initials
+      // would call them one AND label it 'exact', hiding the district's own
+      // spelling on the row.
+      const result = planRosterClaims({
+        rosterChildren: [bentley({ caseManager: 'Antoinette Q Bentley' })],
+        myStudents: [],
+        myName: 'Antoinette M Bentley',
+      });
+
+      expect(result.counts.claimable).toBe(1);
+      expect(result.counts.suggested).toBe(0);
+    });
+
     it('does not fold a colleague who merely shares her surname', () => {
       expect(
         planRosterClaims({
