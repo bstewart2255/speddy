@@ -583,13 +583,21 @@ export function planDistrictRoster(input: RosterPlanInput): RosterPlan {
   // data, and JSUSD's Goals export straddled a grade rollover against its
   // Services export — one real student arrived as grade 2 and grade 3 and
   // published as two children (SPE-578, the Gracelynn duplicate). PROOF is
-  // the bar for crossing it: a birth date or district id that MATCHES the row
-  // (with no contradiction from the other) says this is the same student seen
-  // through an older or newer export, whatever the grades say — matching
-  // birth dates confirm outright, identityDoubt's own rule, and two children
-  // in one district cannot even SHARE a district id
-  // (ux_children_district_student_id), so a capped id refusal would plan an
-  // unwritable second row (SPE-580; JSUSD shipped a TK-vs-grade-1 pair).
+  // the bar for crossing it, and how far proof reaches depends on what backs
+  // it (SPE-580):
+  //   * A matching district id confirms across ANY ranked gap, at either
+  //     ladder rung: two children in one district cannot share an id
+  //     (ux_children_district_student_id), so the same id IS the same
+  //     student. Refusing used to plan a second row carrying the same id,
+  //     which the duplicate-id pass downstream then refused WHOLESALE —
+  //     both copies excluded under a misleading duplicate-in-files
+  //     exception.
+  //   * Matching birth dates confirm across ANY gap at the same-school rung
+  //     (identityDoubt's own rule — the birth date is the student; JSUSD
+  //     shipped a TK-vs-grade-1 pair). On the name-only fallback they reach
+  //     exactly one grade: that rung spans SCHOOLS, where a shared birth
+  //     date between two same-named students is a coincidence the id
+  //     argument cannot rescue.
   // Both grades must still be RANKED — the higher-grade reconcile needs an
   // order — and equal grades are the compatible ladder's business, not this
   // rung's. Without proof the grades keep their word, so same-named students
@@ -600,6 +608,7 @@ export function planDistrictRoster(input: RosterPlanInput): RosterPlan {
     record: { dateOfBirth?: string; districtStudentId?: string },
     recordGrade: string,
     row: { gradeLevel: string; dateOfBirth?: string; districtStudentId: string | null },
+    sameSchool: boolean,
   ): boolean => {
     const fromRecord = gradeRank(recordGrade);
     const fromRow = gradeRank(row.gradeLevel);
@@ -612,7 +621,9 @@ export function planDistrictRoster(input: RosterPlanInput): RosterPlan {
     if ((recordDob && rowDob && recordDob !== rowDob) || (recordId && rowId && recordId !== rowId)) {
       return false;
     }
-    return Boolean(recordDob && rowDob) || Boolean(recordId && rowId);
+    if (recordId && rowId) return true;
+    if (recordDob && rowDob) return sameSchool || Math.abs(fromRecord - fromRow) === 1;
+    return false;
   };
 
   const attachStudents = <T extends {
@@ -693,10 +704,10 @@ export function planDistrictRoster(input: RosterPlanInput): RosterPlan {
       // which predates this rung; proof only steps in where that ladder found
       // nothing certain.
       const exactProven = exactAll.filter((row) =>
-        confirmedAcrossRollover(record, recordGrade, row),
+        confirmedAcrossRollover(record, recordGrade, row, true),
       );
       const byNameProven = byNameAll.filter((row) =>
-        confirmedAcrossRollover(record, recordGrade, row),
+        confirmedAcrossRollover(record, recordGrade, row, false),
       );
       const proven =
         exactProven.length === 1
