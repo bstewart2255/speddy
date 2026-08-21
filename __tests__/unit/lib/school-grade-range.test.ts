@@ -17,6 +17,7 @@ import {
   GRADE_LEGEND_COLOR_MAP,
   GRADE_SESSION_COLOR_MAP,
 } from '@/lib/scheduling/constants';
+import tailwindConfig from '@/tailwind.config';
 
 const ELEMENTARY_DEFAULT = ['TK', 'K', '1', '2', '3', '4', '5'];
 
@@ -210,6 +211,24 @@ describe('schedule grade palette', () => {
       c.replace(/^bg-/, '').replace(/-\d+$/, '')
     );
     expect(new Set(hues).size).toBe(hues.length);
+  });
+
+  it('sits in a file Tailwind scans, or none of it reaches the browser', () => {
+    // The JIT only emits classes it finds as literal text. These colours used
+    // to live under app/, which is scanned; a file outside `content` compiles
+    // and tests clean while painting transparent blocks in production, so the
+    // coupling gets pinned rather than trusted.
+    expect(tailwindConfig.content).toContain('./lib/scheduling/constants.ts');
+  });
+
+  it('keeps red for conflicts — no grade may claim it', () => {
+    // The grid marks a conflicted session with bg-red-100 and a red inset
+    // ring; a healthy block in red would read as a problem.
+    for (const map of Object.values(maps)) {
+      for (const value of Object.values(map)) {
+        expect(value).not.toMatch(/\bhover:bg-red-|\bbg-red-/);
+      }
+    }
   });
 
   it('gives session blocks a hover state and overlays a lighter shade', () => {
