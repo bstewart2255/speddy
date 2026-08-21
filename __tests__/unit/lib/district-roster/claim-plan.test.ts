@@ -355,7 +355,7 @@ describe('planRosterClaims — SPE-575 district data', () => {
     it('offers minutes as a fill when the provider has none', () => {
       const result = plan({
         myRole: 'speech',
-        rosterChildren: [rosterChild({ caseloadCount: 1, districtServices: [speechLine(30)] })],
+        rosterChildren: [rosterChild({ ...servedBy('speech'), districtServices: [speechLine(30)] })],
         myStudents: [myStudent()],
       });
       const change = result.updates[0].changes.find((c) => c.field === 'serviceMinutes')!;
@@ -371,7 +371,7 @@ describe('planRosterClaims — SPE-575 district data', () => {
       const result = plan({
         myRole: 'speech',
         rosterChildren: [
-          rosterChild({ caseloadCount: 1, districtServices: [speechLine(30), speechLine(21)] }),
+          rosterChild({ ...servedBy('speech'), districtServices: [speechLine(30), speechLine(21)] }),
         ],
         myStudents: [myStudent({ sessionsPerWeek: 2, minutesPerSession: 30 })],
       });
@@ -382,7 +382,7 @@ describe('planRosterClaims — SPE-575 district data', () => {
       // The provider schedules 2×15; the district mandate is 30/week. Equal.
       const result = plan({
         myRole: 'speech',
-        rosterChildren: [rosterChild({ caseloadCount: 1, districtServices: [speechLine(30)] })],
+        rosterChildren: [rosterChild({ ...servedBy('speech'), districtServices: [speechLine(30)] })],
         myStudents: [myStudent({ sessionsPerWeek: 2, minutesPerSession: 15 })],
       });
       expect(result.updates).toHaveLength(0);
@@ -391,7 +391,7 @@ describe('planRosterClaims — SPE-575 district data', () => {
     it('flags a different weekly total as a conflict, never pre-applied', () => {
       const result = plan({
         myRole: 'speech',
-        rosterChildren: [rosterChild({ caseloadCount: 1, districtServices: [speechLine(60)] })],
+        rosterChildren: [rosterChild({ ...servedBy('speech'), districtServices: [speechLine(60)] })],
         myStudents: [myStudent({ sessionsPerWeek: 1, minutesPerSession: 30 })],
       });
       const change = result.updates[0].changes.find((c) => c.field === 'serviceMinutes')!;
@@ -405,7 +405,7 @@ describe('planRosterClaims — SPE-575 district data', () => {
         myRole: 'speech',
         rosterChildren: [
           rosterChild({
-            caseloadCount: 1,
+            ...servedBy('speech'),
             accommodations: ['Extended time', 'Preferential seating'],
           }),
         ],
@@ -421,7 +421,7 @@ describe('planRosterClaims — SPE-575 district data', () => {
     it('fills goals with the role\'s subset and carries the goal vintage', () => {
       const result = plan({
         myRole: 'speech',
-        rosterChildren: [rosterChild({ caseloadCount: 1, districtGoals })],
+        rosterChildren: [rosterChild({ ...servedBy('speech'), districtGoals })],
         myStudents: [myStudent()],
       });
       const change = result.updates[0].changes.find((c) => c.field === 'iepGoals')!;
@@ -434,7 +434,7 @@ describe('planRosterClaims — SPE-575 district data', () => {
       const result = plan({
         myRole: 'speech',
         rosterChildren: [
-          rosterChild({ caseloadCount: 1, accommodations: ['Extended  time'] }),
+          rosterChild({ ...servedBy('speech'), accommodations: ['Extended  time'] }),
         ],
         // Whitespace differences are not additions.
         myStudents: [myStudent({ accommodations: ['Extended time'] })],

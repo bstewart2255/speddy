@@ -18,9 +18,11 @@ import type { ClaimPlan, RosterFieldKey, RosterUpdateOffer } from '@/lib/distric
  *   * Students at this provider's school whose services for THIS provider's
  *     discipline nobody has picked up (SPE-577): a student with academic,
  *     speech and OT services appears on all three providers' lists, and each
- *     claim only closes that one discipline. (Students the district lists no
- *     services for keep the older rule — shown while nobody at all serves
- *     them.) The ones the district names THEM as case manager for are
+ *     claim only closes that one discipline — except that counseling and
+ *     psychologist claim as ONE discipline (both deliver the same services),
+ *     and a generalist's (specialist/intervention) claim closes every
+ *     discipline. (Students the district lists no services for keep the older
+ *     rule — shown while nobody at all serves them.) The ones the district names THEM as case manager for are
  *     pre-ticked; the rest are not, because case manager is not the same role
  *     as service provider and Speddy will not assume. An unticked student is
  *     never "not yours" — guessing would put a student on the wrong caseload,
