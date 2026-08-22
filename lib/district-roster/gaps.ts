@@ -75,6 +75,7 @@ export interface RosterGapsInput {
  * a click, and the fifth is a fact about the files rather than a problem.
  */
 export type RosterGapKind =
+  | 'student-has-no-school'
   | 'case-manager-cannot-serve'
   | 'case-manager-at-another-school'
   | 'case-manager-not-in-speddy'
@@ -83,6 +84,7 @@ export type RosterGapKind =
 
 /** The order groups are returned in, most stuck first. */
 export const GAP_KIND_ORDER: readonly RosterGapKind[] = [
+  'student-has-no-school',
   'case-manager-cannot-serve',
   'case-manager-at-another-school',
   'case-manager-not-in-speddy',
@@ -191,20 +193,17 @@ function matchCaseManager(caseManager: string, staff: GapStaffInput[]): CaseMana
  * campuses — whichever of them covers this child's school is the one that
  * matters, so the whole candidate list has to survive to this point.
  *
- * A child with no school recorded cannot be checked against anyone's schools,
- * and is left in the waiting bucket rather than accused of a problem we cannot
- * see.
+ * The child's school is required, not nullable: a child without one is decided
+ * before this is ever called (`student-has-no-school`), because no case manager
+ * can rescue them.
  */
 function classifyChild(
   matches: CaseManagerMatches,
-  childSchoolId: string | null,
+  childSchoolId: string,
 ): { kind: RosterGapKind; account: GapStaffInput | null } {
   const { providers, others } = matches;
 
   if (providers.length > 0) {
-    if (childSchoolId === null) {
-      return { kind: 'awaiting-provider-claim', account: providers[0] };
-    }
     const atThisSchool = providers.find((p) => p.schoolIds.includes(childSchoolId));
     return atThisSchool
       ? { kind: 'awaiting-provider-claim', account: atThisSchool }
@@ -288,6 +287,7 @@ const DEFAULT_MAX_STUDENTS_LISTED = 500;
 export function planRosterGaps(input: RosterGapsInput): RosterGaps {
   const maxPerGroup = input.maxPerGroup ?? DEFAULT_MAX_PER_GROUP;
   const countsByKind: Record<RosterGapKind, number> = {
+    'student-has-no-school': 0,
     'case-manager-cannot-serve': 0,
     'case-manager-at-another-school': 0,
     'case-manager-not-in-speddy': 0,
@@ -313,16 +313,33 @@ export function planRosterGaps(input: RosterGapsInput): RosterGaps {
     let kind: RosterGapKind;
     let account: GapStaffInput | null = null;
 
-    if (caseManager === '') {
-      kind = 'no-case-manager';
-    } else {
-      const nameKey = caseManager.toLowerCase();
+    const matchesFor = (name: string): CaseManagerMatches => {
+      const nameKey = name.toLowerCase();
       let matches = matched.get(nameKey);
       if (!matches) {
-        matches = matchCaseManager(caseManager, input.staff);
+        matches = matchCaseManager(name, input.staff);
         matched.set(nameKey, matches);
       }
-      ({ kind, account } = classifyChild(matches, child.schoolId));
+      return matches;
+    };
+
+    if (child.schoolId === null) {
+      // Decided before the case manager is even consulted, because no case
+      // manager can fix it. A provider's claim list is read with
+      // `.in('school_id', …)` over the schools they work at (`claim-io`), so a
+      // child with no school recorded is offered to NOBODY — naming them
+      // "waiting on a provider" would be exactly the false assurance this view
+      // exists to prevent. Whoever the files blame is still named, so the admin
+      // knows who to ask about the missing school.
+      kind = 'student-has-no-school';
+      if (caseManager !== '') {
+        const matches = matchesFor(caseManager);
+        account = matches.providers[0] ?? matches.others[0] ?? null;
+      }
+    } else if (caseManager === '') {
+      kind = 'no-case-manager';
+    } else {
+      ({ kind, account } = classifyChild(matchesFor(caseManager), child.schoolId));
     }
 
     countsByKind[kind]++;

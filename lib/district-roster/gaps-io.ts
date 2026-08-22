@@ -221,7 +221,11 @@ export async function loadLastPublishedAt(districtId: string): Promise<string | 
     if (typeof metadata !== 'object' || metadata === null) return true;
     const meta = metadata as { partial?: unknown; created?: unknown; updated?: unknown };
     if (meta.partial !== true) return true;
-    const written = Number(meta.created ?? 0) + Number(meta.updated ?? 0);
+    // A partial run is only PROVABLY empty when it says how much it wrote.
+    // Defaulting an absent count to zero would convict a row of writing nothing
+    // on the strength of a field it never carried.
+    if (meta.created == null || meta.updated == null) return true;
+    const written = Number(meta.created) + Number(meta.updated);
     return !Number.isFinite(written) || written > 0;
   };
 

@@ -72,6 +72,7 @@ const EMPTY_GAPS = {
   totalOnRoster: 0,
   totalUnserved: 0,
   countsByKind: {
+    'student-has-no-school': 0,
     'case-manager-cannot-serve': 0,
     'case-manager-at-another-school': 0,
     'case-manager-not-in-speddy': 0,

@@ -37,6 +37,13 @@ const KIND_COPY: Record<
   RosterGapKind,
   { heading: string; why: string; tone: string; pill: string }
 > = {
+  'student-has-no-school': {
+    heading: 'No school recorded for the student',
+    why:
+      'Providers only ever see the roster at the schools they work at, so a student with no school on file is offered to nobody — whoever their case manager is. Set the school in SEIS and publish again.',
+    tone: 'border-rose-200 bg-rose-50',
+    pill: 'border-rose-200 bg-white text-rose-700',
+  },
   'case-manager-cannot-serve': {
     heading: 'Assigned to someone who cannot hold a caseload',
     why:
@@ -123,7 +130,13 @@ function GapGroup({ group }: { group: RosterGapGroup }) {
         ))}
         {group.hiddenCount > 0 && (
           <li className="italic text-slate-400">
-            and {group.hiddenCount} more, not listed here
+            {/* "and N more" needs something to be more THAN. Once the
+                district-wide listing budget is spent a later group lists
+                nobody, which is exactly the first-publish case the caps exist
+                for. */}
+            {group.students.length === 0
+              ? `${group.hiddenCount} student(s), not listed here`
+              : `and ${group.hiddenCount} more, not listed here`}
           </li>
         )}
       </ul>

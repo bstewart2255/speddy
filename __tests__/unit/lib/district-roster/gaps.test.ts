@@ -170,13 +170,39 @@ describe('who is stranded, and why', () => {
     expect(gaps.groups[0].kind).toBe('case-manager-at-another-school');
   });
 
-  it('does not invent a school problem for a child with no school recorded', () => {
+  it('never calls a child with no school "waiting on a provider"', () => {
+    // The provider's claim list is read with `.in('school_id', …)` over the
+    // schools they work at, so a child with no school reaches NOBODY. Filing
+    // them under "nothing is stopping them" would be the false assurance this
+    // whole view exists to prevent.
     const gaps = run(
       [child({ caseManager: 'Tara Larkin', schoolId: null })],
       [staff('Tara Larkin', 'resource', ['sch-rodeo'])],
     );
 
-    expect(gaps.groups[0].kind).toBe('awaiting-provider-claim');
+    expect(gaps.groups[0]).toMatchObject({
+      kind: 'student-has-no-school',
+      // Still names who the files blame, so the admin knows who to ask.
+      caseManager: 'Tara Larkin',
+      accountRoleLabel: 'Resource',
+    });
+  });
+
+  it('puts the missing school ahead of anything the case manager could fix', () => {
+    // A district admin case manager AND no school: fixing the case manager
+    // leaves the student just as unreachable, so the school is the finding.
+    const gaps = run(
+      [child({ caseManager: 'Megan Tucker', schoolId: null })],
+      [staff('Megan Tucker', 'district_admin')],
+    );
+
+    expect(gaps.groups[0].kind).toBe('student-has-no-school');
+  });
+
+  it('reports a school-less child with no case manager under the school', () => {
+    const gaps = run([child({ caseManager: null, schoolId: null })]);
+
+    expect(gaps.groups[0]).toMatchObject({ kind: 'student-has-no-school', caseManager: null });
   });
 
   it('reports a name no account answers to', () => {
@@ -297,6 +323,7 @@ describe('what the view counts', () => {
     const gaps = run([child({ caseManager: null })]);
 
     expect(gaps.countsByKind).toEqual({
+      'student-has-no-school': 0,
       'case-manager-cannot-serve': 0,
       'case-manager-at-another-school': 0,
       'case-manager-not-in-speddy': 0,
