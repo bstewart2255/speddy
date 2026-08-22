@@ -91,6 +91,14 @@ function Stat({ n, label, tone }: { n: number; label: string; tone?: string }) {
   );
 }
 
+/** "14 Aug 2026", or null when the district has never published. */
+function formatPublishedAt(iso: string | null): string | null {
+  if (!iso) return null;
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return null;
+  return at.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
 /**
  * District-admin roster import (SPE-447).
  *
@@ -98,8 +106,36 @@ function Stat({ n, label, tone }: { n: number; label: string; tone?: string }) {
  * summary, and publishes it in a single action. Publishing writes the
  * district's student RECORDS — it never adds anyone to a provider's caseload,
  * and it never removes a student Speddy already has.
+ *
+ * Once a roster exists this collapses to a single line (SPE-587). Uploading is
+ * something a district does every few weeks; the standing question of who is
+ * actually connected to a provider is what the page is for the rest of the
+ * time, and a full-height upload form on top of it pushes that below the fold.
  */
-export default function DistrictRosterImportPanel() {
+export default function DistrictRosterImportPanel({
+  hasPublished,
+  lastPublishedAt = null,
+  onPublished,
+}: {
+  /**
+   * Has this district ever published a roster? Null until that is known.
+   *
+   * Deliberately NOT "does the district have any children": every caseload row
+   * a provider creates makes a child too (the SPE-347 trigger), so a district
+   * that has never uploaded anything still has children, and keying on them
+   * would hide the uploader from exactly the admin who has yet to find it.
+   */
+  hasPublished?: boolean | null;
+  lastPublishedAt?: string | null;
+  /** Fired after a publish attempt so the gaps list re-asks its question. */
+  onPublished?: () => void;
+} = {}) {
+  // `null` means the admin has not touched the disclosure, so the district's own
+  // state decides. Collapsed while that is still unknown: a form that appears
+  // and then folds away reads as a glitch, and the reverse never happens.
+  const [expandedByUser, setExpandedByUser] = useState<boolean | null>(null);
+  const expanded = expandedByUser ?? hasPublished === false;
+
   const [goalsFile, setGoalsFile] = useState<File | null>(null);
   const [datesFile, setDatesFile] = useState<File | null>(null);
   const [servicesFile, setServicesFile] = useState<File | null>(null);
@@ -135,6 +171,12 @@ export default function DistrictRosterImportPanel() {
     setRunning(mode);
     setError(null);
     if (mode === 'preview') setResult(null);
+    // Pin the panel open for the rest of the visit. A first publish flips the
+    // district from "never published" to "published", and without this the
+    // panel would fold away on that news — taking the "Published. N added…"
+    // summary, the file warnings, the exceptions and the not-in-roster list
+    // with it, at the exact moment they appear.
+    if (mode === 'publish') setExpandedByUser(true);
 
     // Above the ROUTE'S own ceiling (maxDuration = 300s), so the browser never
     // gives up on a run the server can still finish — a publish abandoned here
@@ -165,15 +207,21 @@ export default function DistrictRosterImportPanel() {
             ? 'The response could not be read, so the outcome is unknown. Run the preview again — it shows the current state.'
             : 'The preview returned an unreadable response. Nothing was written.',
         );
+        // The write may still have landed, so the standing list below is now
+        // suspect either way — re-read it rather than leaving stale counts up.
+        if (mode === 'publish') onPublished?.();
         return;
       }
       setResult(json);
+      if (mode === 'publish') onPublished?.();
     } catch {
       setError(
         mode === 'publish'
           ? 'The connection dropped mid-publish, so the outcome is unknown — it may have finished on the server. Run the preview again; it shows the current state.'
           : 'Could not reach the roster import. Nothing was written.',
       );
+      // Same reasoning as an unreadable response: the publish may have landed.
+      if (mode === 'publish') onPublished?.();
     } finally {
       clearTimeout(timer);
       setRunning(null);
@@ -212,10 +260,41 @@ export default function DistrictRosterImportPanel() {
     exceptionsByKind.set(e.kind, [...(exceptionsByKind.get(e.kind) ?? []), e]);
   }
 
+  const publishedOn = formatPublishedAt(lastPublishedAt);
+
+  if (!expanded) {
+    return (
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-3">
+        <p className="text-xs text-slate-600">
+          <span className="font-semibold text-slate-900">Update the roster</span>
+          {publishedOn ? ` — last published ${publishedOn}` : ''}
+        </p>
+        <button
+          type="button"
+          onClick={() => setExpandedByUser(true)}
+          className="shrink-0 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-100"
+        >
+          Upload SEIS reports
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
       <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-        <p className="text-sm font-semibold text-slate-900">Your SEIS reports</p>
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <p className="text-sm font-semibold text-slate-900">Your SEIS reports</p>
+          {hasPublished === true && (
+            <button
+              type="button"
+              onClick={() => setExpandedByUser(false)}
+              className="text-xs font-medium text-slate-500 underline-offset-2 transition-colors hover:text-slate-800 hover:underline"
+            >
+              Hide
+            </button>
+          )}
+        </div>
         <p className="mt-0.5 max-w-3xl text-xs text-slate-500">
           Any one file on its own works — together they give the fullest roster.
         </p>
