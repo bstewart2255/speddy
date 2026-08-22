@@ -10,6 +10,7 @@ import { isScheduledSession } from '@/lib/utils/session-helpers';
 import { formatTime } from '@/lib/utils/time-options';
 import { filterScheduleSessions } from '../utils/session-filters';
 import { formatTeacherName } from '@/lib/utils/teacher-utils';
+import { GRADE_SESSION_COLOR_MAP } from '@/lib/scheduling/constants';
 import type {
   BellSchedule,
   MainstreamingBlock,
@@ -47,6 +48,8 @@ interface ScheduleGridProps {
     studentId: string | null;
   };
   otherProviderSessions?: OtherProviderSession[];
+  /** The active school's own grades — the ones the legend offers (SPE-587). */
+  availableGrades: string[];
   selectedGrades: Set<string>;
   selectedTimeSlot: string | null;
   selectedDay: number | null;
@@ -87,16 +90,6 @@ interface ScheduleGridProps {
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 
-const GRADE_COLOR_MAP: { [key: string]: string } = {
-  TK: 'bg-pink-400 hover:bg-pink-500',
-  K: 'bg-purple-400 hover:bg-purple-500',
-  '1': 'bg-sky-400 hover:bg-sky-500',
-  '2': 'bg-cyan-400 hover:bg-cyan-500',
-  '3': 'bg-emerald-400 hover:bg-emerald-500',
-  '4': 'bg-amber-400 hover:bg-amber-500',
-  '5': 'bg-rose-400 hover:bg-rose-500',
-};
-
 export const ScheduleGrid = memo(function ScheduleGrid({
   sessions,
   students,
@@ -111,6 +104,7 @@ export const ScheduleGrid = memo(function ScheduleGrid({
   teachers,
   visualFilters,
   otherProviderSessions,
+  availableGrades,
   selectedGrades,
   selectedTimeSlot,
   selectedDay,
@@ -156,6 +150,12 @@ export const ScheduleGrid = memo(function ScheduleGrid({
     ),
     [gridConfig]
   );
+
+  // SPE-587: the grade filter reaches only the grades the legend offers. A
+  // student outside them — a 5th grader recorded at a high school, an
+  // unreadable imported grade (SPE-467) — has no toggle to switch back on, so
+  // dimming their session would hide it with no way to recover it.
+  const filterableGrades = useMemo(() => new Set(availableGrades), [availableGrades]);
 
   const timeToPixels = (timeStr: string): number => {
     const [hours, minutes] = timeStr.split(':').map(Number);
@@ -671,7 +671,9 @@ export const ScheduleGrid = memo(function ScheduleGrid({
                       const top = timeToPixels(startTime);
                       const height = timeToPixels(endTime) - top;
 
-                      const isGradeFiltered = student && !selectedGrades.has(student.grade_level);
+                      const isGradeFiltered = student
+                        && filterableGrades.has(student.grade_level)
+                        && !selectedGrades.has(student.grade_level);
                       const isTimeFiltered = selectedTimeSlot && !sessionOverlapsTimeSlot(session, selectedTimeSlot);
                       const isDayFiltered = selectedDay && session.day_of_week !== selectedDay;
                       const shouldGrayOut = isGradeFiltered || isTimeFiltered || isDayFiltered;
@@ -684,7 +686,7 @@ export const ScheduleGrid = memo(function ScheduleGrid({
                       const gradeColor = shouldGrayOut
                         ? 'bg-gray-300 hover:bg-gray-400 opacity-50'
                         : student
-                          ? GRADE_COLOR_MAP[student.grade_level] || 'bg-gray-400'
+                          ? GRADE_SESSION_COLOR_MAP[student.grade_level] || 'bg-gray-400'
                           : 'bg-gray-400';
 
                       const assignmentClass =

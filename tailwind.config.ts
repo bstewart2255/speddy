@@ -14,6 +14,11 @@ const config: Config = {
     // the ticket linked from lib/constants/activity-colors.ts. Scoping to the
     // one file keeps this refactor's promise of no visual change.
     './lib/constants/activity-colors.ts',
+    // Same one-file-at-a-time reasoning (SPE-587): the schedule's grade palette
+    // moved here from three copies under app/, where it was being scanned. Both
+    // files hold nothing but colour literals, so scanning them un-purges those
+    // colours and nothing else.
+    './lib/scheduling/constants.ts',
   ],
   theme: {
     extend: {
@@ -74,17 +79,10 @@ const config: Config = {
   },
   plugins: [],
   safelist: [
-    // Colors used dynamically in VisualAvailabilityLayer for grade levels
-    // Must match GRADE_COLOR_MAP in lib/scheduling/constants.ts
-    'bg-pink-300',     // TK
-    'bg-purple-300',   // K
-    'bg-sky-300',      // 1
-    'bg-cyan-300',     // 2
-    'bg-emerald-300',  // 3
-    'bg-amber-300',    // 4
-    'bg-rose-300',     // 5
-    'bg-gray-300',     // Fallback
-    'bg-red-300',      // Legacy
+    // The grade-level colors that used to be listed here are now emitted by
+    // scanning lib/scheduling/constants.ts above — one list to keep current
+    // instead of two, which is what let the 400/500 shades go missing.
+    'bg-gray-300',     // Fallback for a grade with no color of its own
     // Gradient class for conflict visualization
     'bg-gradient-to-r',
     'from-red-300',
