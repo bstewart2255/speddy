@@ -259,6 +259,14 @@ describe('POST /api/assistant/chat', () => {
       'it appears only where the wider AI features are switched on',
       // Scheduling
       'Balanced, Group by grade, Group by teacher, or Prefer mornings',
+      // SPE-589: the card is conditional, so the gating clause is the part that
+      // matters — without it the assistant sends a solo provider hunting for
+      // buttons that are correctly absent.
+      'The card is only there for providers who have someone to share with',
+      // The SEA exception is the half that goes confidently wrong without it:
+      // sessions ARE assigned to an SEA, so the sentence above reads as if they
+      // qualify. Pinned separately so a trim can't drop it and leave the rule.
+      'An SEA never sees the card either',
       // SPE-587: the grade chips list the SCHOOL's grades, so a secondary
       // provider is not told to look for a TK-5 row that isn't on their screen.
       'The grades offered are the school\'s own',
