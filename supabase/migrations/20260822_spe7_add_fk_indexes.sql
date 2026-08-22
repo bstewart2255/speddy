@@ -3,7 +3,10 @@
 --
 -- The advisor flagged 49 unindexed FKs. Per the ticket's own caveat ("don't
 -- blindly index all of them"), each was checked against live app code and
--- RLS policy text, not just column name. Verdict: 13 index, 36 skip.
+-- RLS policy text, not just column name. Verdict: 13 index, 36 skip — though
+-- 2 of the 13 (calendar_events.district_id/.school_id) turned out to be
+-- mistakes on a stale RLS-policy citation and were dropped by a same-day
+-- follow-up migration; see the per-column notes below. Net result: 11 kept.
 --
 -- All 13 tables here are small today (all comfortably under 1000 rows, the
 -- largest at 829), so this is a non-concurrent CREATE INDEX (plain
@@ -15,14 +18,22 @@
 -- query filter:
 --
 --   * bell_schedules.provider_id       - RLS: provider_id = auth.uid()
---   * calendar_events.district_id      - RLS: "SEAs can view provider
---                                         calendar events" matches district_id
+--   * calendar_events.district_id      - WRONG at the time this migration
+--                                         was written (cited a policy named
+--                                         "SEAs can view provider calendar
+--                                         events" that no longer exists —
+--                                         see 20260822_spe7_drop_unjustified_
+--                                         calendar_events_indexes.sql). Kept
+--                                         here, not edited, as the honest
+--                                         record of what actually ran; the
+--                                         follow-up migration drops it.
 --   * calendar_events.provider_id      - RLS: provider_id = auth.uid() (x4);
 --                                         indexed previously, dropped as
 --                                         "unused" in 20251003 before this
 --                                         RLS dependency existed
---   * calendar_events.school_id        - same SEAs RLS policy, matches
---                                         school_id
+--   * calendar_events.school_id        - same WRONG justification as
+--                                         district_id above; dropped by the
+--                                         same follow-up migration
 --   * conversation_read_state.profile_id - RLS: profile_id = auth.uid();
 --                                         scanned in get_my_conversations()
 --                                         on every chat-list load
