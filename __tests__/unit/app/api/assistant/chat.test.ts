@@ -263,6 +263,10 @@ describe('POST /api/assistant/chat', () => {
       // matters — without it the assistant sends a solo provider hunting for
       // buttons that are correctly absent.
       'The card is only there for providers who have someone to share with',
+      // The SEA exception is the half that goes confidently wrong without it:
+      // sessions ARE assigned to an SEA, so the sentence above reads as if they
+      // qualify. Pinned separately so a trim can't drop it and leave the rule.
+      'An SEA never sees the card either',
       'there is no "create group" button',
       '"Add Protected Time"',
       '"Add Mainstreaming Block"',
