@@ -3,6 +3,8 @@
 import React from 'react';
 import { formatTime } from '@/lib/utils/time-options';
 import type { SessionFilterAvailability } from '../utils/session-filter-availability';
+import { formatGradeShort } from '@/lib/utils/grade-level';
+import { GRADE_LEGEND_COLOR_MAP } from '@/lib/scheduling/constants';
 
 interface SeaProfile {
   id: string;
@@ -17,6 +19,8 @@ interface SpecialistProfile {
 
 interface ScheduleControlsProps {
   sessionFilter: 'all' | 'mine' | 'sea' | 'specialist' | 'assigned';
+  /** The active school's own grades, in grade order (SPE-587). */
+  availableGrades: string[];
   selectedGrades: Set<string>;
   selectedTimeSlot: string | null;
   selectedDay: number | null;
@@ -41,20 +45,11 @@ interface ScheduleControlsProps {
   onSpecialistSelect: (specialistId: string | null) => void;
 }
 
-const GRADE_COLORS = [
-  { grade: 'TK', colorClass: 'bg-pink-400', displayName: 'TK' },
-  { grade: 'K', colorClass: 'bg-purple-400', displayName: 'K' },
-  { grade: '1', colorClass: 'bg-sky-400', displayName: '1st' },
-  { grade: '2', colorClass: 'bg-cyan-400', displayName: '2nd' },
-  { grade: '3', colorClass: 'bg-emerald-400', displayName: '3rd' },
-  { grade: '4', colorClass: 'bg-amber-400', displayName: '4th' },
-  { grade: '5', colorClass: 'bg-rose-400', displayName: '5th' },
-];
-
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 
 export function ScheduleControls({
   sessionFilter,
+  availableGrades,
   selectedGrades,
   selectedTimeSlot,
   selectedDay,
@@ -169,7 +164,7 @@ export function ScheduleControls({
         <div className="bg-white rounded-lg shadow-sm p-4 flex-1">
           <h3 className="text-sm font-medium text-gray-700 mb-3">Grade Levels</h3>
           <div className="flex flex-wrap gap-3">
-            {GRADE_COLORS.map(({ grade, colorClass, displayName }) => {
+            {availableGrades.map((grade) => {
               const isActive = selectedGrades.has(grade);
               return (
                 <button
@@ -179,7 +174,9 @@ export function ScheduleControls({
                 >
                   <div
                     className={`w-4 h-4 rounded ${
-                      isActive ? colorClass : 'bg-gray-300'
+                      isActive
+                        ? GRADE_LEGEND_COLOR_MAP[grade] || 'bg-gray-400'
+                        : 'bg-gray-300'
                     }`}
                   />
                   <span
@@ -187,7 +184,7 @@ export function ScheduleControls({
                       isActive ? 'text-gray-600' : 'text-gray-400'
                     }`}
                   >
-                    {displayName}
+                    {formatGradeShort(grade)}
                   </span>
                 </button>
               );

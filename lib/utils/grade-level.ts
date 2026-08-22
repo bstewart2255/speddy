@@ -92,6 +92,28 @@ export function formatGradeLevel(standardizedGrade: string | null | undefined): 
 }
 
 /**
+ * Short display label for a grade, for legends and chips where
+ * `formatGradeLevel`'s full wording ("6th Grade") doesn't fit.
+ *
+ * TK and K stay as they are; numbers become ordinals ("1st" … "12th").
+ * Anything else is handed back untouched — an unreadable imported grade
+ * (SPE-467) should show as itself rather than as a fabricated ordinal.
+ */
+export function formatGradeShort(grade: string | null | undefined): string {
+  if (!grade) return '';
+
+  const trimmed = String(grade).trim();
+  const upper = trimmed.toUpperCase();
+  if (upper === 'TK' || upper === 'K') return upper;
+
+  // Reject '12abc' and the like: only a wholly numeric grade gets an ordinal.
+  if (!/^\d+$/.test(trimmed)) return trimmed;
+
+  const num = parseInt(trimmed, 10);
+  return `${num}${getOrdinalSuffix(num)}`;
+}
+
+/**
  * Gets the ordinal suffix for a number
  */
 function getOrdinalSuffix(num: number): string {

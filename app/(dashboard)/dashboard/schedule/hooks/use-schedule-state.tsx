@@ -25,11 +25,40 @@ export interface ScheduleUIState {
   popupPosition: DOMRect | null;
 }
 
-export function useScheduleState() {
+/**
+ * @param availableGrades the active school's own grades, in grade order
+ *   (`getSchoolGradeRange`). Every one starts selected — the grade filter is a
+ *   legend first and a filter second, so nothing is dimmed until the provider
+ *   dims it (SPE-587).
+ * @param schoolKey identifies the active school (`getSchoolKey`), so the
+ *   selection resets on a school switch even between two schools that happen
+ *   to share a grade range.
+ */
+export function useScheduleState(availableGrades: string[], schoolKey: string) {
   // Filter states
   const [selectedGrades, setSelectedGrades] = useState<Set<string>>(
-    new Set(['TK', 'K', '1', '2', '3', '4', '5'])
+    () => new Set(availableGrades)
   );
+
+  // Re-seed on a school switch, so the legend and the selection can never
+  // disagree — the school picker swaps schools without remounting this hook.
+  // Adjusted during render rather than in an effect: an effect would paint one
+  // frame holding the previous school's grades, which is the all-gray grid
+  // this exists to prevent.
+  //
+  // Keyed on the school's identity AND its grades, not on the arrays' object
+  // identity. School identity alone would miss nothing, but grades alone miss
+  // a switch between two schools with the same range — an itinerant provider
+  // moving between two elementary sites would carry the first one's dimmed
+  // grades onto the second (Codex, PR #925). Object identity would go the
+  // other way and wipe the provider's toggles every time the context refetched
+  // the same school.
+  const seedKey = `${schoolKey}|${availableGrades.join(',')}`;
+  const [seededKey, setSeededKey] = useState(seedKey);
+  if (seededKey !== seedKey) {
+    setSeededKey(seedKey);
+    setSelectedGrades(new Set(availableGrades));
+  }
   const [selectedTimeSlot, setSelectedTimeSlot] = useState<string | null>(null);
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
   const [highlightedStudentId, setHighlightedStudentId] = useState<string | null>(null);

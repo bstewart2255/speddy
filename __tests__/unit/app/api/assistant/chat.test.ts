@@ -267,6 +267,9 @@ describe('POST /api/assistant/chat', () => {
       // sessions ARE assigned to an SEA, so the sentence above reads as if they
       // qualify. Pinned separately so a trim can't drop it and leave the rule.
       'An SEA never sees the card either',
+      // SPE-587: the grade chips list the SCHOOL's grades, so a secondary
+      // provider is not told to look for a TK-5 row that isn't on their screen.
+      'The grades offered are the school\'s own',
       'there is no "create group" button',
       '"Add Protected Time"',
       '"Add Mainstreaming Block"',

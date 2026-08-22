@@ -4,16 +4,7 @@ import React, { useState } from 'react';
 import { ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
 import { ExclamationTriangleIcon } from '@heroicons/react/24/solid';
 import type { ScheduleSession, Student } from '@/src/types';
-
-const GRADE_COLOR_MAP: { [key: string]: string } = {
-  TK: 'bg-pink-400 hover:bg-pink-500',
-  K: 'bg-purple-400 hover:bg-purple-500',
-  '1': 'bg-sky-400 hover:bg-sky-500',
-  '2': 'bg-cyan-400 hover:bg-cyan-500',
-  '3': 'bg-emerald-400 hover:bg-emerald-500',
-  '4': 'bg-amber-400 hover:bg-amber-500',
-  '5': 'bg-rose-400 hover:bg-rose-500',
-};
+import { GRADE_SESSION_COLOR_MAP } from '@/lib/scheduling/constants';
 
 interface StudentSessionGroupProps {
   student: Student;
@@ -38,7 +29,7 @@ export function StudentSessionGroup({
     return acc + (student.minutes_per_session || 0);
   }, 0);
 
-  const gradeColor = GRADE_COLOR_MAP[student.grade_level] || 'bg-gray-400';
+  const gradeColor = GRADE_SESSION_COLOR_MAP[student.grade_level] || 'bg-gray-400';
 
   return (
     <div className="border border-gray-200 rounded-lg overflow-hidden">
